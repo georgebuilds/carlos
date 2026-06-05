@@ -1,0 +1,13 @@
+diff --git a/uneven.go b/uneven.go
+index aaaaaaa..bbbbbbb 100644
+--- a/uneven.go
++++ b/uneven.go
+@@ -1,4 +1,6 @@
+ context
+-one
+-two
++ONE
++TWO
++THREE
++FOUR
+ done

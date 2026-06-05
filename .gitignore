@@ -1,0 +1,27 @@
+/carlos
+*.test
+*.out
+*_report.txt
+*.log
+coverage.*
+.DS_Store
+.env
+.env.local
+*.swp
+*~
+/tmp/
+/.carlos/
+/dist/
+/build/
+/bin/
+
+# Local-only Go workspace files.
+go.work
+go.work.sum
+
+# Claude Code's local working area (worktrees, transcripts, settings).
+/.claude/
+
+# CLAUDE.md is a local pointer to AGENTS.md (the committed source of truth);
+# Claude Code auto-loads it but we don't ship it.
+/CLAUDE.md

@@ -1,0 +1,639 @@
+package agent
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/georgebuilds/carlos/internal/providers"
+	"github.com/georgebuilds/carlos/internal/tools"
+)
+
+// State enumerates the 10 supervisor states from SPEC § Manage mode §
+// State machine. Definitions live here because the Supervisor is the
+// canonical owner of the value; state.go owns the Transition function
+// (the state-machine rules) and is intentionally smaller.
+type State int
+
+const (
+	StateSpawning State = iota
+	StateQueued
+	StateRunning
+	StateAwaitingInput
+	StateBlocked
+	StatePausedByUser
+	StateCompacting
+	StateCancelling
+	StateDone
+	StateFailed
+	StateOrphaned
+)
+
+func (s State) String() string {
+	switch s {
+	case StateSpawning:
+		return "spawning"
+	case StateQueued:
+		return "queued"
+	case StateRunning:
+		return "running"
+	case StateAwaitingInput:
+		return "awaiting-input"
+	case StateBlocked:
+		return "blocked"
+	case StatePausedByUser:
+		return "paused-by-user"
+	case StateCompacting:
+		return "compacting"
+	case StateCancelling:
+		return "cancelling"
+	case StateDone:
+		return "done"
+	case StateFailed:
+		return "failed"
+	case StateOrphaned:
+		return "orphaned"
+	}
+	return "unknown"
+}
+
+func (s State) IsTerminal() bool {
+	return s == StateDone || s == StateFailed || s == StateOrphaned
+}
+
+type SubAgent struct {
+	ID              string
+	ParentID        string
+	RootID          string
+	Attempt         int
+	Title           string
+	Model           string
+	State           State
+	TokensIn        int
+	TokensOut       int
+	CostCents       int
+	ToolCalls       int
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+	LastHeartbeatAt time.Time
+	Err             error
+}
+
+// SpawnContract is the typed four-part task spec a parent agent sends
+// to a child (SPEC § Manage mode § Parent-child contract). All fields
+// except Objective are optional; zero values mean "use defaults" or
+// "no boundary set".
+type SpawnContract struct {
+	Objective       string
+	OutputFormat    string
+	ToolAllowlist   []string
+	MaxTokens       int
+	MaxTurns        int
+	MaxWallClock    time.Duration
+	SuccessCriteria string
+}
+
+// Errors surfaced by Spawn / Retry. Exported so Slice 3e's Agent tool
+// can errors.Is them and turn them into tool_result text for the
+// model.
+var (
+	ErrSpawnDepthExceeded       = errors.New("supervisor: spawn depth cap exceeded")
+	ErrConcurrencyExceeded      = errors.New("supervisor: concurrency cap exceeded")
+	ErrRestartIntensityExceeded = errors.New("supervisor: restart intensity exceeded (circuit broken)")
+)
+
+// Supervisor owns the per-process supervision state: the heartbeat
+// tickers, the orphan sweeper, and (post-3b) the active-children map +
+// retry-intensity counters that gate Spawn / Retry.
+type Supervisor struct {
+	maxConcurrentChildren int
+	maxSpawnDepth         int
+	restartMaxR           int
+	restartMaxT           time.Duration
+
+	log       *SQLiteEventLog
+	provider  providers.Provider
+	baseReg   *tools.Registry
+	heartbeat *HeartbeatTicker
+	sweeper   *OrphanSweeper
+
+	// Slice 3b mutex-guarded state. children tracks every in-flight
+	// child agent (one entry per active spawn); retries tracks
+	// per-agent attempt timestamps for the OTP restart-intensity
+	// breaker. Same mutex because Spawn / Retry / runChild touch both
+	// together.
+	mu       sync.Mutex
+	children map[string]*runningChild
+	retries  map[string]*retryAttempts
+
+	// Phase 5 slice 5a: per-run + per-subtree budget plumbing.
+	// parentTracker is the run-wide cumulative counter; each Spawn
+	// allocates a fresh subtreeTracker whose parent is parentTracker,
+	// so per-subtree spend rolls up into the per-run cap.
+	// SetRunBudget installs both. nil = no enforcement (legacy default).
+	parentTracker *Tracker
+
+	// Phase 7 slice 7e/7f: per-agent worktree handles. The foreground
+	// (cmd/carlos --worktree) opens a sandbox.Worktree for a session
+	// and registers it under the top-level agent id so the apply
+	// handler can find it on EvtApprovalAccepted / EvtApprovalRejected.
+	//
+	// The map is in-memory only — NOT persisted to the event log. If
+	// carlos crashes between Propose and Accept the entry is gone and
+	// the user has to re-run the session (the worktree on disk is also
+	// orphaned and gets cleaned up by the next `git worktree prune`).
+	// This is an explicit v0 limitation; a future slice could persist
+	// worktree state alongside the agent row.
+	//
+	// Keyed by agentID. We accept the generic interface here rather
+	// than *sandbox.Worktree to keep the supervisor free of a sandbox
+	// import (and to keep tests fakeable).
+	worktrees map[string]AgentWorktree
+}
+
+// AgentWorktree is the subset of *sandbox.Worktree the supervisor +
+// apply-handler need. Defining it here (rather than importing the
+// sandbox package directly) avoids a circular dependency on the
+// transitive test wiring and lets tests stand up a fake worktree
+// without git.
+type AgentWorktree interface {
+	Apply() error
+	Discard() error
+	Close() error
+}
+
+// NewSupervisor constructs a Supervisor backed by the given event log,
+// provider, and base tool registry.
+//
+// Signature evolution:
+//   - Slice 1g: NewSupervisor(log)
+//   - Slice 3a: NewSupervisor(log, provider, baseReg)
+//
+// No backwards-compat alias is kept because pre-3a callers existed
+// only in tests; they were updated alongside this signature change.
+//
+// Both `provider` and `baseReg` may be nil for supervisors that will
+// never Spawn (e.g. tests that only exercise the heartbeat path).
+// Spawn surfaces a clear error if invoked without them.
+//
+// After construction, callers MUST call Supervisor.Run(ctx) exactly
+// once to launch the orphan sweep goroutine. Spawn / Stop / etc are
+// safe before Run, but heartbeat liveness only matters once the
+// sweeper is running.
+func NewSupervisor(log *SQLiteEventLog, p providers.Provider, baseReg *tools.Registry) *Supervisor {
+	s := &Supervisor{
+		maxConcurrentChildren: 5,
+		maxSpawnDepth:         1,
+		restartMaxR:           3,
+		restartMaxT:           60 * time.Second,
+		log:                   log,
+		provider:              p,
+		baseReg:               baseReg,
+		children:              map[string]*runningChild{},
+		retries:               map[string]*retryAttempts{},
+		worktrees:             map[string]AgentWorktree{},
+	}
+	if log != nil {
+		s.heartbeat = NewHeartbeatTicker(log, RealClock{}, HeartbeatInterval)
+		s.sweeper = NewOrphanSweeper(log, RealClock{}, SweepInterval, StalenessTolerance)
+	}
+	return s
+}
+
+// Run starts the per-process orphan sweep goroutine. Idempotent
+// (subsequent calls are no-ops). The sweeper exits on ctx.Done() OR
+// when the caller invokes Supervisor.Shutdown.
+//
+// Heartbeat tickers are started per-agent inside Spawn, not here.
+func (s *Supervisor) Run(ctx context.Context) {
+	if s.sweeper != nil {
+		s.sweeper.Start(ctx)
+	}
+}
+
+// Shutdown stops the orphan sweeper, every active heartbeat ticker,
+// and cancels every in-flight child context. Idempotent.
+//
+// Shutdown does NOT block on child completion — children's
+// SpawnResult channels still close in their own time once their
+// goroutines unwind. Callers that need to wait should drain the
+// channels they received from Spawn.
+func (s *Supervisor) Shutdown() {
+	s.mu.Lock()
+	for _, c := range s.children {
+		c.cancel()
+	}
+	s.mu.Unlock()
+	if s.heartbeat != nil {
+		s.heartbeat.StopAll()
+	}
+	if s.sweeper != nil {
+		s.sweeper.Stop()
+	}
+}
+
+// Spawn creates a new child agent under parentID and starts its
+// inner tool-use loop in a goroutine. Returns the SubAgent snapshot
+// (state = spawning at the moment of return), a SpawnResult channel
+// that will receive exactly one value when the child terminates, and
+// an error.
+//
+// Cap-check order (matches the docstring of slice 3b's spec):
+//
+//  1. nil-log guard
+//  2. nil-provider guard (only when actually spawning a loop)
+//  3. spawn-depth cap (ErrSpawnDepthExceeded)
+//  4. circuit-breaker check on parentID's subtree
+//  5. concurrency cap, scoped per-parent (ErrConcurrencyExceeded)
+//  6. event-log writes (state_change kind=created + InsertAgent)
+//  7. heartbeat ticker start + active-children registration
+//  8. child goroutine launch
+//
+// Returned channel is buffered (cap 1) and closed by the worker after
+// the single send, so a caller that never reads it doesn't leak the
+// goroutine.
+func (s *Supervisor) Spawn(ctx context.Context, parentID string, contract SpawnContract) (*SubAgent, <-chan SpawnResult, error) {
+	if s.log == nil {
+		return nil, nil, errors.New("supervisor.Spawn: nil log (constructed without state.db)")
+	}
+	if s.provider == nil {
+		return nil, nil, errors.New("supervisor.Spawn: nil provider (constructor passed nil)")
+	}
+
+	// 3. Spawn-depth cap. computeDepth returns the depth of parentID
+	//    in the projection cache; child depth = parent depth + 1.
+	parentDepth, err := s.computeDepth(ctx, parentID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("supervisor.Spawn: depth check: %w", err)
+	}
+	if parentDepth+1 > s.maxSpawnDepth {
+		return nil, nil, ErrSpawnDepthExceeded
+	}
+
+	// 4. Circuit-breaker check on the parent (and conceptually its
+	//    subtree). For 3b we just check the direct parent; a future
+	//    slice can walk descendants.
+	if parentID != "" && s.IsCircuitBroken(parentID) {
+		return nil, nil, ErrRestartIntensityExceeded
+	}
+
+	// 5. Concurrency cap, per-parent. A manager with N siblings
+	//    shouldn't be starved by a peer subtree, so we count only
+	//    children whose parent_id == this Spawn's parentID.
+	s.mu.Lock()
+	active := 0
+	for _, c := range s.children {
+		if c.parentID == parentID {
+			active++
+		}
+	}
+	if active >= s.maxConcurrentChildren {
+		s.mu.Unlock()
+		return nil, nil, ErrConcurrencyExceeded
+	}
+	s.mu.Unlock()
+
+	// 6. Event-log writes.
+	id := newSpawnIDStrong()
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	rootID := parentID
+	if rootID == "" {
+		rootID = id
+	}
+	created, err := NewStateChangeCreated(AgentCreated{
+		ID:       id,
+		ParentID: parentID,
+		RootID:   rootID,
+		Title:    contract.Objective,
+		Model:    "", // Slice 3e will pull from provider config
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("supervisor.Spawn: marshal created: %w", err)
+	}
+	if _, err := s.log.Append(ctx, Event{
+		AgentID: id, TS: now, Type: EvtStateChange, Payload: created,
+	}); err != nil {
+		return nil, nil, fmt.Errorf("supervisor.Spawn: append created: %w", err)
+	}
+	row := AgentRow{
+		ID:              id,
+		ParentID:        parentID,
+		RootID:          rootID,
+		State:           StateSpawning,
+		Attempt:         1,
+		Title:           contract.Objective,
+		CreatedAt:       now,
+		UpdatedAt:       now,
+		LastHeartbeatAt: now,
+	}
+	if err := s.log.InsertAgent(ctx, row); err != nil {
+		return nil, nil, fmt.Errorf("supervisor.Spawn: insert row: %w", err)
+	}
+
+	// 7. Heartbeat + active-children registration. We derive a
+	//    cancellable childCtx that is a *sibling* of the caller's
+	//    ctx — Shutdown can cancel it independently of the parent.
+	childCtx, childCancel := context.WithCancel(context.Background())
+	if contract.MaxWallClock > 0 {
+		childCtx, childCancel = context.WithTimeout(childCtx, contract.MaxWallClock)
+	}
+	// Honor caller-side cancel too: bridge ctx.Done into childCtx.
+	go func() {
+		select {
+		case <-ctx.Done():
+			childCancel()
+		case <-childCtx.Done():
+		}
+	}()
+
+	// Phase 5 slice 5a: allocate a per-subtree Tracker whose parent is
+	// the supervisor's run-wide parentTracker (if installed). Sibling
+	// subtrees end up with independent Trackers but all roll up into
+	// the same per-run cap.
+	var subtreeTracker *Tracker
+	if s.parentTracker != nil {
+		subtreeTracker = NewTracker(s.parentTracker)
+	}
+
+	child := &runningChild{
+		id:       id,
+		parentID: parentID,
+		cancel:   childCancel,
+		done:     make(chan struct{}),
+		// Buffered so a rapid-fire Steer doesn't block the supervisor.
+		// Capacity 16 is more than the user could plausibly fire in
+		// one tool-call boundary's worth of think time.
+		steering: make(chan string, 16),
+		tracker:  subtreeTracker,
+	}
+	s.mu.Lock()
+	s.children[id] = child
+	s.mu.Unlock()
+
+	if s.heartbeat != nil {
+		s.heartbeat.Start(childCtx, id)
+	}
+
+	// 8. Launch the worker.
+	resultCh := make(chan SpawnResult, 1)
+	childReg := buildChildRegistry(s.baseReg, contract.ToolAllowlist)
+	go s.runChild(childCtx, child, s.provider, childReg, contract, resultCh)
+
+	return &SubAgent{
+		ID:              id,
+		ParentID:        parentID,
+		RootID:          rootID,
+		Attempt:         1,
+		Title:           contract.Objective,
+		State:           StateSpawning,
+		CreatedAt:       now,
+		UpdatedAt:       now,
+		LastHeartbeatAt: now,
+	}, resultCh, nil
+}
+
+// Roster is implemented as a thin wrapper around the projection cache.
+// Slice 4 (TUI) will own the rendering; this just returns the
+// non-nil-active list so tests can introspect.
+func (s *Supervisor) Roster() []*SubAgent { return nil }
+
+// ErrAgentNotFound is what the three user-facing verbs return when the
+// agent ID doesn't match any in-flight child. The TUI surfaces this as
+// "agent already finished" or similar.
+var ErrAgentNotFound = errors.New("supervisor: agent not found among in-flight children")
+
+// Steer appends a `steering` event to the target agent's log (for
+// audit) and queues the message for delivery at the next tool-call
+// boundary (the agent.Run loop's between-iterations seam).
+//
+// SPEC contract: "inject a [steering] message into the agent's event
+// log; delivered at the next tool-call boundary, never mid-inference."
+// The loop's drainSteering picks it up before the next provider call
+// and prepends it as a user-role message tagged "[steer] ".
+//
+// If the child's steering channel is full (cap 16; user fired too many
+// nudges between tool-call boundaries), Steer returns nil — the audit
+// event is appended but the runtime injection drops. The user can
+// re-steer once the queue drains.
+func (s *Supervisor) Steer(id, message string) error {
+	if strings.TrimSpace(message) == "" {
+		return errors.New("supervisor.Steer: empty message")
+	}
+	s.mu.Lock()
+	child, ok := s.children[id]
+	s.mu.Unlock()
+	if !ok {
+		return ErrAgentNotFound
+	}
+	// Audit event first — the log is the source of truth, even if the
+	// runtime delivery drops on a full channel.
+	payload, _ := json.Marshal(struct {
+		Message string `json:"message"`
+	}{Message: message})
+	_, _ = s.log.Append(context.Background(), Event{
+		AgentID: id,
+		TS:      time.Now().UTC().Truncate(time.Millisecond),
+		Type:    EvtSteering,
+		Payload: payload,
+	})
+	// Non-blocking send: drop on full so we never wedge the supervisor.
+	select {
+	case child.steering <- message:
+	default:
+	}
+	return nil
+}
+
+// Interrupt cancels the agent's current turn. Per SPEC: "abort the
+// current turn (soft), keep the session and context alive, return
+// control." V0 implementation: we cancel the entire child context,
+// which terminates the agent.Run loop in flight. Tool calls already
+// completed (and committed to the event log) stay in place — the loop
+// runs to completion of the current iteration, then returns.
+//
+// V0 limitation flagged in SPEC: this collapses Interrupt and Stop's
+// runtime behavior (both cancel the loop) — a future refinement
+// introduces a per-iteration ctx so Interrupt truly aborts only the
+// current turn, not the whole agent.
+func (s *Supervisor) Interrupt(id string) error {
+	s.mu.Lock()
+	child, ok := s.children[id]
+	s.mu.Unlock()
+	if !ok {
+		return ErrAgentNotFound
+	}
+	child.cancel()
+	return nil
+}
+
+// Stop terminates the agent gracefully — cancels the child context;
+// the in-flight iteration completes naturally; transition to done /
+// failed is recorded by runChild's classifier. SPEC: "Default is
+// graceful drain: signal stop, wait for the agent to reach a safe
+// boundary, then transition to done/failed. Drain timeout escalates to
+// hard-kill if the agent doesn't reach a boundary within the budget."
+//
+// V0 implementation: ctx cancellation IS the drain signal. The
+// agent.Run loop checks ctx at every iteration boundary. Hard-kill on
+// timeout is Kill's responsibility (and a future refinement: today
+// Stop and Kill are the same cancel).
+func (s *Supervisor) Stop(id string) error {
+	s.mu.Lock()
+	child, ok := s.children[id]
+	s.mu.Unlock()
+	if !ok {
+		return ErrAgentNotFound
+	}
+	child.cancel()
+	return nil
+}
+
+// Kill is the hard-cancel verb. Today same as Stop (ctx cancel); the
+// future "hard-kill after drain timeout" semantic lives behind a
+// configurable timeout the supervisor wraps Stop with — TODO Phase 5.
+func (s *Supervisor) Kill(id string) error {
+	return s.Stop(id)
+}
+
+// Retry implements the OTP restart-intensity counter. Slice 3e (the
+// Agent tool) will be the first production caller; today the contract
+// is: every call records a timestamp; if more than restartMaxR calls
+// land within restartMaxT, the breaker trips for id and we return
+// ErrRestartIntensityExceeded.
+//
+// Retry does NOT actually re-spawn the child today — that's Slice 3e
+// + future work. The breaker check is what slice 3b owes; the
+// concrete restart pipeline is the Agent tool's responsibility.
+//
+// TODO Slice 4: on breaker trip, walk descendants of `id` in the
+// projection cache and cancel each in-flight child + surface a roster
+// badge.
+func (s *Supervisor) Retry(id string) (*SubAgent, error) {
+	now := time.Now().UTC()
+	s.mu.Lock()
+	s.recordRetry(id, now)
+	count := s.retryCount(id, now)
+	if count > s.restartMaxR {
+		s.markCircuitBroken(id)
+		s.mu.Unlock()
+		return nil, ErrRestartIntensityExceeded
+	}
+	s.mu.Unlock()
+	// The real respawn path lives in Slice 3e; for slice 3b we just
+	// return nil + nil to signal "breaker not tripped, caller may
+	// proceed with their own respawn logic".
+	return nil, nil
+}
+
+// ActiveChildren returns the count of in-flight children whose parent
+// is parentID. Exposed (lowercase parent param, exported func) so
+// tests can assert the concurrency-cap accounting without poking at
+// internals.
+func (s *Supervisor) ActiveChildren(parentID string) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	n := 0
+	for _, c := range s.children {
+		if c.parentID == parentID {
+			n++
+		}
+	}
+	return n
+}
+
+// SetMaxSpawnDepth overrides the default depth cap. Useful for tests
+// that want to exercise deeper chains without rebuilding the whole
+// supervisor.
+func (s *Supervisor) SetMaxSpawnDepth(n int) { s.maxSpawnDepth = n }
+
+// SetMaxConcurrentChildren overrides the default per-parent
+// concurrency cap. Test-only knob.
+func (s *Supervisor) SetMaxConcurrentChildren(n int) { s.maxConcurrentChildren = n }
+
+// SetRestartIntensity overrides MaxR + MaxT. Test-only knob.
+func (s *Supervisor) SetRestartIntensity(maxR int, maxT time.Duration) {
+	s.restartMaxR = maxR
+	s.restartMaxT = maxT
+}
+
+// SetRunBudget installs the supervisor's run-wide Tracker. After this
+// call, every subsequent Spawn allocates a per-subtree Tracker whose
+// parent is the run-wide one, so per-subtree spend rolls up into the
+// per-run cap automatically. Passing nil disables enforcement again
+// (children spawned afterwards get no Tracker).
+//
+// Phase 5 slice 5a. The per-run Budget itself is supplied to the loop
+// via LoopOptions.Budget — Spawn pulls per-subtree caps from the
+// SpawnContract (MaxTokens, MaxWallClock). Foreground integration
+// (cmd/carlos) is responsible for setting the parent Budget on its
+// own top-level Run invocation.
+func (s *Supervisor) SetRunBudget(t *Tracker) {
+	s.mu.Lock()
+	s.parentTracker = t
+	s.mu.Unlock()
+}
+
+// RunTracker returns the supervisor's run-wide Tracker, or nil if
+// SetRunBudget hasn't been called. Useful for TUI runaway-cost views.
+// StartHeartbeat begins emitting heartbeat events for agentID under
+// the supervisor's existing ticker. Idempotent (per-id no-op if
+// already started). Used by cmd/carlos.runDefault to keep the
+// stable chat-default agent alive across user-idle periods — without
+// it, agent.Recover would orphan the chat agent on every restart.
+func (s *Supervisor) StartHeartbeat(ctx context.Context, agentID string) {
+	if s == nil || s.heartbeat == nil || agentID == "" {
+		return
+	}
+	s.heartbeat.Start(ctx, agentID)
+}
+
+func (s *Supervisor) RunTracker() *Tracker {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.parentTracker
+}
+
+// SetAgentWorktree registers w as the sandbox for agentID. The apply
+// handler looks up the entry on EvtApprovalAccepted / EvtApprovalRejected
+// to decide what to Apply or Discard. Calling SetAgentWorktree twice
+// for the same agentID overwrites the previous entry — the foreground
+// is the sole owner and is expected to call this once per session.
+//
+// Phase 7 slice 7e/7f. The map is in-memory only; see the worktrees
+// field doc for crash semantics.
+func (s *Supervisor) SetAgentWorktree(agentID string, w AgentWorktree) {
+	if agentID == "" {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if w == nil {
+		delete(s.worktrees, agentID)
+		return
+	}
+	s.worktrees[agentID] = w
+}
+
+// AgentWorktreeFor returns the registered worktree for agentID, or
+// (nil, false) if none has been set. Used by the apply handler to
+// look up the sandbox on an approval-resolution event.
+func (s *Supervisor) AgentWorktreeFor(agentID string) (AgentWorktree, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	w, ok := s.worktrees[agentID]
+	return w, ok
+}
+
+// ClearAgentWorktree drops the registered worktree for agentID. The
+// foreground calls this after the worktree has been Closed so the
+// supervisor doesn't hold a stale handle. No-op if no entry is
+// registered.
+func (s *Supervisor) ClearAgentWorktree(agentID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.worktrees, agentID)
+}

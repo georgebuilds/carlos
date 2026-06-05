@@ -1,0 +1,95 @@
+# goreleaser config for carlos
+# Run with `goreleaser release --clean` after tagging a release.
+# Run with `goreleaser build --snapshot --clean` to smoke-test without
+# publishing.
+#
+# Output: macOS (arm64 + amd64) + Linux (arm64 + amd64) tarballs in
+# dist/, with checksums + a draft GitHub release.
+#
+# Phase 10 slice 10e. Homebrew tap + Linux package manager integration
+# land in 10b / 10c when the public tap repo exists.
+
+version: 2
+
+project_name: carlos
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: carlos
+    main: ./cmd/carlos
+    binary: carlos
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    # Inject the version + commit + date into runtime/debug.BuildInfo
+    # so `carlos version` shows the tagged release name instead of
+    # the pseudo-version. -trimpath strips local file paths from
+    # binary metadata for reproducibility.
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+
+archives:
+  - id: carlos
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - README.md
+      - LICENSE*
+
+checksum:
+  name_template: 'checksums.txt'
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-dev"
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - 'merge:'
+      - 'Merge branch'
+      - '^chore:'
+
+release:
+  github:
+    owner: georgebuilds
+    name: carlos
+  # Draft so I can hand-edit the release notes before publishing.
+  draft: true
+  # Mark as prerelease until carlos hits v1.
+  prerelease: auto
+  name_template: "carlos {{ .Tag }}"
+  header: |
+    ## carlos {{ .Tag }}
+    A coding agent.
+  footer: |
+    ---
+    **Install** — extract the tarball for your platform and drop `carlos` into your `$PATH`.
+    A homebrew tap + Linux package-manager integration are tracked in [Phase 10](https://github.com/georgebuilds/carlos).
+
+# Reproducible builds: source-date-epoch from the commit timestamp so
+# rebuilding the same tag produces bit-identical artifacts.
+metadata:
+  mod_timestamp: '{{ .CommitTimestamp }}'

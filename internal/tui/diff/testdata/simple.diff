@@ -1,0 +1,12 @@
+diff --git a/hello.go b/hello.go
+index 1234567..89abcde 100644
+--- a/hello.go
++++ b/hello.go
+@@ -1,5 +1,6 @@
+ package main
+
+-import "fmt"
++import "fmt"
++import "os"
+
+ func main() {
