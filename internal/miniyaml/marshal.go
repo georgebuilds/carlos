@@ -131,10 +131,25 @@ func appendMap(buf []byte, m map[string]any, indent int) ([]byte, error) {
 // Used by appendMap to silently drop empty sub-containers so that
 // json-roundtripped omitempty-equivalent behavior holds even for
 // non-pointer struct fields (which encoding/json can't omit).
+//
+// "Empty" is recursive for maps: a map whose every entry is itself an
+// empty container (e.g. an outer `gateway: {ntfy: {}, telegram: {}}`
+// produced by serializing a zero-value struct with all-struct fields)
+// is treated as empty so the outer key is dropped. Slices are not
+// recursed because a slice with empty elements is still meaningful
+// data (lists of maps record the number of items).
 func isEmptyContainer(v any) bool {
 	switch x := v.(type) {
 	case map[string]any:
-		return len(x) == 0
+		if len(x) == 0 {
+			return true
+		}
+		for _, val := range x {
+			if !isEmptyContainer(val) {
+				return false
+			}
+		}
+		return true
 	case map[string]string:
 		return len(x) == 0
 	case []any:

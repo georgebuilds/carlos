@@ -51,6 +51,21 @@ const (
 	// helper wires the engine's OnPhaseStart/OnPhaseDone callbacks to
 	// append these to the agent's event stream.
 	EvtResearchPhase EventType = "research_phase"
+
+	// Gateway events — the messaging-broker integration. The broker
+	// owns the payload shapes (see internal/gateway/events.go); the
+	// constants live here so the event log knows the type strings and
+	// projections can filter for them without a circular import.
+	//
+	// EvtGatewayOutbound is written BEFORE the network call so a crash
+	// mid-send produces a "we tried, status unknown" row; the broker
+	// reconciles on restart.
+	EvtGatewayOutbound EventType = "gateway_outbound"
+	// EvtGatewayInbound is written after dedupe + validation, before
+	// downstream processing. Matches the in-TUI approval click shape so
+	// the approval-queue resolver doesn't care which surface produced
+	// the decision.
+	EvtGatewayInbound EventType = "gateway_inbound"
 )
 
 type Event struct {
