@@ -165,12 +165,17 @@ func renderSwitcherGrid(
 	tiles := make([]string, 0, visible)
 	for i := start; i < end; i++ {
 		name := ui.Available[i]
+		tileMode := ""
+		if ui.Active == name {
+			tileMode = ui.Mode
+		}
 		tile := renderSwitcherTile(
 			name,
 			ui.Glyph,        // active glyph; non-active tiles use DefaultGlyphFor inside
 			ui.Active == name,
 			i == cursor,
 			ui.Active,
+			tileMode,
 		)
 		tiles = append(tiles, tile)
 	}
@@ -215,7 +220,7 @@ func joinWithGap(tiles []string, gap string) []string {
 // Focused tiles (cursor) get a bold name. The activeName argument lets
 // us paint the active tile's border even when this is not the focused
 // tile.
-func renderSwitcherTile(name, activeGlyph string, isActive, isFocused bool, activeName string) string {
+func renderSwitcherTile(name, activeGlyph string, isActive, isFocused bool, activeName, mode string) string {
 	glyph := activeGlyph
 	if !isActive || glyph == "" {
 		glyph = frame.DefaultGlyphFor(name)
@@ -237,7 +242,11 @@ func renderSwitcherTile(name, activeGlyph string, isActive, isFocused bool, acti
 
 	var summary string
 	if isActive {
-		summary = lipgloss.NewStyle().Foreground(colorSubtle).Italic(true).Render("active")
+		label := "active"
+		if mode != "" && mode != "solo" {
+			label = "active · " + mode
+		}
+		summary = lipgloss.NewStyle().Foreground(colorSubtle).Italic(true).Render(label)
 	} else if isFocused {
 		summary = lipgloss.NewStyle().Foreground(colorSubtle).Italic(true).Render("press enter")
 	} else {
