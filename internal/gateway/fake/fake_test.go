@@ -95,9 +95,9 @@ func TestFake_Reset(t *testing.T) {
 }
 
 func TestFake_WithCapabilities(t *testing.T) {
-	c := gateway.Capabilities{Push: true, MaxActions: 2}
+	c := gateway.OutboundCapabilities{Push: true, MaxActions: 2}
 	f := fake.New(gateway.SourceFake, fake.WithCapabilities(c))
-	if got := f.Capabilities(); got != c {
+	if got := f.OutboundCapabilities(); got != c {
 		t.Errorf("caps: want %+v got %+v", c, got)
 	}
 }

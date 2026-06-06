@@ -102,8 +102,8 @@ func TestAdapter_NameAndCapabilities(t *testing.T) {
 	if a.Name() != gateway.SourceNtfy {
 		t.Errorf("name: %q", a.Name())
 	}
-	caps := a.Capabilities()
-	want := gateway.Capabilities{
+	caps := a.OutboundCapabilities()
+	want := gateway.OutboundCapabilities{
 		Push: true, FixedChoiceHITL: true, MaxActions: 3,
 		FreeFormTextInbound: false, FileImageInbound: false,
 		DiffRichApproval: false, NeedsPublicEndpoint: true,

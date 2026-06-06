@@ -12,7 +12,7 @@ import (
 
 // Action is one user-tap option attached to an ApprovalRequest envelope.
 // ntfy's three-button cap is the tightest constraint; broker truncates
-// per-adapter via Capabilities.MaxActions.
+// per-adapter via OutboundCapabilities.MaxActions.
 //
 // ID is the durable identifier the broker correlates back to a Decision
 // inbound — adapters pass it through verbatim ("approve" stays
@@ -72,7 +72,7 @@ type OutboundEnvelope struct {
 	Body string `json:"body,omitempty"`
 
 	// Actions are the buttons rendered with an ApprovalRequest.
-	// Truncated per Capabilities.MaxActions before send.
+	// Truncated per OutboundCapabilities.MaxActions before send.
 	Actions []Action `json:"actions,omitempty"`
 
 	// ArtifactID is the gateway's correlation key. Decision inbounds

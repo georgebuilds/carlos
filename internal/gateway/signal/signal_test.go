@@ -28,8 +28,8 @@ func TestCapabilitiesShape(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	caps := a.Capabilities()
-	want := gateway.Capabilities{
+	caps := a.OutboundCapabilities()
+	want := gateway.OutboundCapabilities{
 		Push:                true,
 		FixedChoiceHITL:     true,
 		MaxActions:          3,
@@ -39,7 +39,7 @@ func TestCapabilitiesShape(t *testing.T) {
 		NeedsPublicEndpoint: false,
 	}
 	if caps != want {
-		t.Fatalf("Capabilities() = %+v, want %+v", caps, want)
+		t.Fatalf("OutboundCapabilities() = %+v, want %+v", caps, want)
 	}
 }
 
@@ -48,7 +48,7 @@ func TestCapabilitiesSupportsKind(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	caps := a.Capabilities()
+	caps := a.OutboundCapabilities()
 	cases := []struct {
 		kind gateway.OutboundKind
 		want bool

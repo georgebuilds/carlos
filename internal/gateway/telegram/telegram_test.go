@@ -214,18 +214,18 @@ func TestNew_DefaultsApplied(t *testing.T) {
 	if a.Name() != gateway.SourceTelegram {
 		t.Errorf("Name: %q", a.Name())
 	}
-	caps := a.Capabilities()
+	caps := a.OutboundCapabilities()
 	if !caps.Push || !caps.FixedChoiceHITL || !caps.FreeFormTextInbound || !caps.FileImageInbound {
-		t.Errorf("Capabilities missing expected bits: %+v", caps)
+		t.Errorf("OutboundCapabilities missing expected bits: %+v", caps)
 	}
 	if caps.DiffRichApproval {
-		t.Errorf("Capabilities: DiffRichApproval should be false for Telegram")
+		t.Errorf("OutboundCapabilities: DiffRichApproval should be false for Telegram")
 	}
 	if caps.MaxActions != 3 {
 		t.Errorf("MaxActions = %d, want 3", caps.MaxActions)
 	}
 	if caps.NeedsPublicEndpoint {
-		t.Errorf("Capabilities: NeedsPublicEndpoint should be false")
+		t.Errorf("OutboundCapabilities: NeedsPublicEndpoint should be false")
 	}
 }
 

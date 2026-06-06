@@ -22,7 +22,7 @@ import (
 // with New.
 type Adapter struct {
 	name    gateway.Source
-	caps    gateway.Capabilities
+	caps    gateway.OutboundCapabilities
 	failFor map[string]error // envelope.ID → return error on Send
 	delay   time.Duration
 
@@ -39,10 +39,10 @@ type Adapter struct {
 // Option configures a fake adapter at construction.
 type Option func(*Adapter)
 
-// WithCapabilities overrides the default fully-capable Capabilities.
+// WithCapabilities overrides the default fully-capable OutboundCapabilities.
 // Tests that want to model a partial channel (e.g. ntfy-style with
 // MaxActions=3) pass a custom struct.
-func WithCapabilities(c gateway.Capabilities) Option {
+func WithCapabilities(c gateway.OutboundCapabilities) Option {
 	return func(a *Adapter) { a.caps = c }
 }
 
@@ -53,7 +53,7 @@ func WithSendDelay(d time.Duration) Option {
 }
 
 // New builds a fake adapter under the given Source name. Default
-// Capabilities accept every outbound kind (Push + FixedChoiceHITL +
+// OutboundCapabilities accept every outbound kind (Push + FixedChoiceHITL +
 // FreeFormTextInbound + MaxActions=3). Override via WithCapabilities.
 func New(name gateway.Source, opts ...Option) *Adapter {
 	if !name.Valid() {
@@ -63,7 +63,7 @@ func New(name gateway.Source, opts ...Option) *Adapter {
 	}
 	a := &Adapter{
 		name: name,
-		caps: gateway.Capabilities{
+		caps: gateway.OutboundCapabilities{
 			Push:                true,
 			FixedChoiceHITL:     true,
 			MaxActions:          3,
@@ -84,8 +84,8 @@ func New(name gateway.Source, opts ...Option) *Adapter {
 // Name returns the Source assigned at construction.
 func (a *Adapter) Name() gateway.Source { return a.name }
 
-// Capabilities returns the configured Capabilities struct.
-func (a *Adapter) Capabilities() gateway.Capabilities { return a.caps }
+// OutboundCapabilities returns the configured OutboundCapabilities struct.
+func (a *Adapter) OutboundCapabilities() gateway.OutboundCapabilities { return a.caps }
 
 // SetFailure tells the adapter to return err from the next Send whose
 // envelope.ID matches. Useful for testing the broker's retry loop

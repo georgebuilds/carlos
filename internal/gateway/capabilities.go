@@ -1,7 +1,7 @@
 package gateway
 
-// Capabilities is the struct-shape of the capability matrix in the
-// gateway architecture spec. The Broker reads these to:
+// OutboundCapabilities is the struct-shape of the capability matrix in
+// the gateway architecture spec. The Broker reads these to:
 //
 //  1. Reject a Send when the chosen adapter can't render the kind
 //     (e.g. routing config sends a ConversationReply to ntfy).
@@ -13,7 +13,7 @@ package gateway
 // The fields mirror the columns in the spec's capability matrix one for
 // one; add new dimensions here rather than introducing a parallel
 // capability registry.
-type Capabilities struct {
+type OutboundCapabilities struct {
 	// Push reports whether the adapter can deliver a Notification
 	// envelope at all. False makes the adapter useless as anything but
 	// an inbound source; the broker treats Send as an immediate failure.
@@ -56,7 +56,7 @@ type Capabilities struct {
 // SupportsKind reports whether the adapter can render an OutboundKind
 // faithfully. Used by Broker.Send to short-circuit a misrouted
 // envelope.
-func (c Capabilities) SupportsKind(k OutboundKind) bool {
+func (c OutboundCapabilities) SupportsKind(k OutboundKind) bool {
 	switch k {
 	case OutboundNotification:
 		return c.Push

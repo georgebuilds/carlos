@@ -159,14 +159,14 @@ func New(cfg Config) (*Adapter, error) {
 // Name reports gateway.SourceTelegram.
 func (a *Adapter) Name() gateway.Source { return gateway.SourceTelegram }
 
-// Capabilities reports what Telegram can render. Per the spec capability
+// OutboundCapabilities reports what Telegram can render. Per the spec capability
 // matrix: push + fixed-choice HITL (≤3 to match ntfy compat, though TG
 // could carry more) + free-form text + file/image inbound. Diff-rich
 // approval is false; the spec calls Telegram a "partial" diff renderer
 // and we collapse partial → false so the manage view can surface the
 // degradation.
-func (a *Adapter) Capabilities() gateway.Capabilities {
-	return gateway.Capabilities{
+func (a *Adapter) OutboundCapabilities() gateway.OutboundCapabilities {
+	return gateway.OutboundCapabilities{
 		Push:                true,
 		FixedChoiceHITL:     true,
 		MaxActions:          3,

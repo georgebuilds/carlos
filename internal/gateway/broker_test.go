@@ -129,7 +129,7 @@ func TestBroker_Send_AdapterMissingCapability(t *testing.T) {
 	log := newLog(t)
 	r := gateway.RoutingConfig{Conversations: []gateway.Source{gateway.SourceFake}}
 	b := newBroker(t, log, r)
-	caps := gateway.Capabilities{Push: true} // no FreeFormTextInbound
+	caps := gateway.OutboundCapabilities{Push: true} // no FreeFormTextInbound
 	f := fake.New(gateway.SourceFake, fake.WithCapabilities(caps))
 	_ = b.Register(f)
 	receipts, err := b.Send(context.Background(), gateway.OutboundEnvelope{
@@ -150,7 +150,7 @@ func TestBroker_Send_TruncatesActionsToMax(t *testing.T) {
 	log := newLog(t)
 	r := gateway.RoutingConfig{Approvals: []gateway.Source{gateway.SourceFake}}
 	b := newBroker(t, log, r)
-	caps := gateway.Capabilities{Push: true, FixedChoiceHITL: true, MaxActions: 2}
+	caps := gateway.OutboundCapabilities{Push: true, FixedChoiceHITL: true, MaxActions: 2}
 	f := fake.New(gateway.SourceFake, fake.WithCapabilities(caps))
 	_ = b.Register(f)
 	receipts, err := b.Send(context.Background(), gateway.OutboundEnvelope{
@@ -175,7 +175,7 @@ func TestBroker_Send_RetriesOnFailure(t *testing.T) {
 	log := newLog(t)
 	r := gateway.RoutingConfig{Notifications: []gateway.Source{gateway.SourceFake}}
 	b := newBroker(t, log, r)
-	f := &counterAdapter{name: gateway.SourceFake, caps: gateway.Capabilities{Push: true, FixedChoiceHITL: true, MaxActions: 3, FreeFormTextInbound: true}}
+	f := &counterAdapter{name: gateway.SourceFake, caps: gateway.OutboundCapabilities{Push: true, FixedChoiceHITL: true, MaxActions: 3, FreeFormTextInbound: true}}
 	f.failTimes = 2
 	if err := b.Register(f); err != nil {
 		t.Fatal(err)
@@ -198,7 +198,7 @@ func TestBroker_Send_GivesUpAfterMaxAttempts(t *testing.T) {
 	log := newLog(t)
 	r := gateway.RoutingConfig{Notifications: []gateway.Source{gateway.SourceFake}}
 	b := newBroker(t, log, r)
-	f := &counterAdapter{name: gateway.SourceFake, caps: gateway.Capabilities{Push: true}, failTimes: 10}
+	f := &counterAdapter{name: gateway.SourceFake, caps: gateway.OutboundCapabilities{Push: true}, failTimes: 10}
 	_ = b.Register(f)
 	receipts, _ := b.Send(context.Background(), gateway.OutboundEnvelope{
 		Kind: gateway.OutboundNotification, Title: "x",
@@ -215,7 +215,7 @@ func TestBroker_Send_ContextCancelStopsRetries(t *testing.T) {
 	log := newLog(t)
 	r := gateway.RoutingConfig{Notifications: []gateway.Source{gateway.SourceFake}}
 	b := newBroker(t, log, r)
-	f := &counterAdapter{name: gateway.SourceFake, caps: gateway.Capabilities{Push: true}, failTimes: 10}
+	f := &counterAdapter{name: gateway.SourceFake, caps: gateway.OutboundCapabilities{Push: true}, failTimes: 10}
 	_ = b.Register(f)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -462,7 +462,7 @@ func TestBroker_ConcurrentSendsAreSafe(t *testing.T) {
 // retry assertions.
 type counterAdapter struct {
 	name      gateway.Source
-	caps      gateway.Capabilities
+	caps      gateway.OutboundCapabilities
 	calls     int
 	failTimes int
 	mu        sync.Mutex
@@ -471,7 +471,7 @@ type counterAdapter struct {
 }
 
 func (a *counterAdapter) Name() gateway.Source               { return a.name }
-func (a *counterAdapter) Capabilities() gateway.Capabilities { return a.caps }
+func (a *counterAdapter) OutboundCapabilities() gateway.OutboundCapabilities { return a.caps }
 func (a *counterAdapter) Send(_ context.Context, env gateway.OutboundEnvelope) (gateway.DeliveryReceipt, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()

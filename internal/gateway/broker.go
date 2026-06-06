@@ -323,7 +323,7 @@ func (b *Broker) Send(ctx context.Context, env OutboundEnvelope) ([]DeliveryRece
 			})
 			continue
 		}
-		caps := a.Capabilities()
+		caps := a.OutboundCapabilities()
 		if !caps.SupportsKind(env.Kind) {
 			receipts = append(receipts, DeliveryReceipt{
 				Source: ch,

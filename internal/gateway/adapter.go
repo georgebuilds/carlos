@@ -45,9 +45,9 @@ type Adapter interface {
 	// adapters map and to route per-channel events.
 	Name() Source
 
-	// Capabilities reports what the adapter can render. See
-	// Capabilities for the field-level contract.
-	Capabilities() Capabilities
+	// OutboundCapabilities reports what the adapter can render. See
+	// OutboundCapabilities for the field-level contract.
+	OutboundCapabilities() OutboundCapabilities
 
 	// Send publishes env to the channel. The adapter does NOT retry on
 	// failure — broker owns that. The returned DeliveryReceipt's

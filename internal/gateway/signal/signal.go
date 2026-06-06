@@ -50,7 +50,7 @@ import (
 )
 
 // Config controls the Signal adapter. The zero value is a disabled
-// adapter — Name + Capabilities still report meaningfully so the broker
+// adapter — Name + OutboundCapabilities still report meaningfully so the broker
 // can register it, but Send returns a "disabled" failure receipt and
 // Start exits immediately. Enabling the adapter requires a configured
 // signal-cli socket path AND a sender E.164 number; both are validated
@@ -119,14 +119,14 @@ func New(cfg Config) (*Adapter, error) {
 // even when the channel is gated off.
 func (a *Adapter) Name() gateway.Source { return gateway.SourceSignal }
 
-// Capabilities reports the post-implementation capability set from the
+// OutboundCapabilities reports the post-implementation capability set from the
 // spec's capability matrix. We advertise the target shape even from the
 // stub so routing config written today keeps working unchanged when G6
 // lands. The broker will short-circuit Send with a "disabled" receipt
 // before any capability-driven render path runs, so over-advertising
 // here is safe.
-func (a *Adapter) Capabilities() gateway.Capabilities {
-	return gateway.Capabilities{
+func (a *Adapter) OutboundCapabilities() gateway.OutboundCapabilities {
+	return gateway.OutboundCapabilities{
 		Push:                true,
 		FixedChoiceHITL:     true,
 		MaxActions:          3,

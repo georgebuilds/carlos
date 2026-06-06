@@ -29,10 +29,10 @@
 // public TLS termination (the daemon, behind Tailscale Funnel) and
 // the adapter is library code.
 //
-// # Capabilities
+// # OutboundCapabilities
 //
 // ntfy's three-button cap and lack of any free-form inbound channel
-// are surfaced via Capabilities so the broker can route correctly:
+// are surfaced via OutboundCapabilities so the broker can route correctly:
 //
 //	Push:                true
 //	FixedChoiceHITL:     true
@@ -187,10 +187,10 @@ func New(cfg Config) (*Adapter, error) {
 // Name returns SourceNtfy.
 func (a *Adapter) Name() gateway.Source { return gateway.SourceNtfy }
 
-// Capabilities reports ntfy's per-channel capability matrix. See the
+// OutboundCapabilities reports ntfy's per-channel capability matrix. See the
 // package doc for the rationale behind each flag.
-func (a *Adapter) Capabilities() gateway.Capabilities {
-	return gateway.Capabilities{
+func (a *Adapter) OutboundCapabilities() gateway.OutboundCapabilities {
+	return gateway.OutboundCapabilities{
 		Push:                true,
 		FixedChoiceHITL:     true,
 		MaxActions:          3,

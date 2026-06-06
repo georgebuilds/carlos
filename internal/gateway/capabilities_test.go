@@ -7,19 +7,19 @@ import (
 )
 
 func TestCapabilities_SupportsKind(t *testing.T) {
-	full := gateway.Capabilities{
+	full := gateway.OutboundCapabilities{
 		Push:                true,
 		FixedChoiceHITL:     true,
 		FreeFormTextInbound: true,
 		MaxActions:          3,
 	}
-	notifyOnly := gateway.Capabilities{Push: true}
-	hitlOnly := gateway.Capabilities{Push: true, FixedChoiceHITL: true, MaxActions: 3}
-	convo := gateway.Capabilities{Push: true, FreeFormTextInbound: true}
+	notifyOnly := gateway.OutboundCapabilities{Push: true}
+	hitlOnly := gateway.OutboundCapabilities{Push: true, FixedChoiceHITL: true, MaxActions: 3}
+	convo := gateway.OutboundCapabilities{Push: true, FreeFormTextInbound: true}
 
 	cases := []struct {
 		name string
-		caps gateway.Capabilities
+		caps gateway.OutboundCapabilities
 		kind gateway.OutboundKind
 		want bool
 	}{
@@ -30,7 +30,7 @@ func TestCapabilities_SupportsKind(t *testing.T) {
 		{"notify-only-conversation", notifyOnly, gateway.OutboundConversationReply, false},
 		{"hitl-conversation", hitlOnly, gateway.OutboundConversationReply, false},
 		{"convo-approval", convo, gateway.OutboundApprovalRequest, false},
-		{"no-push-anything", gateway.Capabilities{}, gateway.OutboundNotification, false},
+		{"no-push-anything", gateway.OutboundCapabilities{}, gateway.OutboundNotification, false},
 		{"unknown-kind", full, gateway.OutboundKind("garbage"), false},
 	}
 	for _, tc := range cases {
