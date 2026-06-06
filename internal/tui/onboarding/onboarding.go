@@ -151,19 +151,19 @@ func rebuildStyles() {
 // time. We recompute per-frame from the latest WindowSizeMsg so the
 // border always hugs the screen edge.
 //
-// Height(height - 3) — not height - 2 — leaves a one-row top margin
-// before the border. Terminals with overlaid tab bars (Ghostty's
-// tabbed mode, iTerm2 with tabs visible, tmux/screen status lines,
-// etc.) draw their UI on top of row 0; without the margin those
-// chrome layers eat carlos's top border, making the frame look
-// broken. The wasted row in untabbed terminals is invisible (just
-// blank) and the trade is universal compatibility.
+// Height(height - 4) + a two-row leading margin in View leaves enough
+// breathing room for terminals with overlaid tab bars (Ghostty's
+// tabbed mode is the empirical motivator — its tab chrome overlaps
+// the first two cell rows; iTerm2 tabs + tmux status lines fit too).
+// One row of margin (the original v0.2.0 behavior) was not enough in
+// Ghostty. Two rows is universal — the cost in untabbed terminals is
+// two blank rows above the border, which is invisible to the eye.
 func outerBorderStyle(width, height int) lipgloss.Style {
 	return lipgloss.NewStyle().
 		Border(lipgloss.ThickBorder()).
 		BorderForeground(colorAccent).
 		Width(width - 2).
-		Height(height - 3).
+		Height(height - 4).
 		Padding(1, 2)
 }
 
@@ -367,10 +367,10 @@ func (f *Flow) View() string {
 
 	border := outerBorderStyle(w, h)
 	inner := f.renderInner(border.GetWidth(), border.GetHeight())
-	// Leading "\n" pushes the border down by one row so terminals
-	// with tab bars (Ghostty tabbed mode, etc.) don't eat the top
-	// edge. See outerBorderStyle for the matching Height(h - 3).
-	return "\n" + border.Render(inner)
+	// Leading "\n\n" pushes the border down by two rows so terminals
+	// with tab bars (Ghostty especially) don't eat the top edge. See
+	// outerBorderStyle for the matching Height(h - 4).
+	return "\n\n" + border.Render(inner)
 }
 
 // renderInner composes the persistent left rail and the active right pane

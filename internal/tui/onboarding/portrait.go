@@ -108,6 +108,16 @@ func DetectProtocol() RenderProtocol {
 	if os.Getenv("KITTY_WINDOW_ID") != "" || os.Getenv("TERM") == "xterm-kitty" {
 		return ProtoKitty
 	}
+	// Ghostty implements the Kitty graphics protocol natively. It
+	// advertises itself via $TERM_PROGRAM=ghostty (and sets
+	// $GHOSTTY_RESOURCES_DIR + $TERM=xterm-ghostty). Without this
+	// branch Ghostty falls through to the half-block sampler and the
+	// portrait reads as pixelated cells instead of a crisp PNG.
+	if os.Getenv("TERM_PROGRAM") == "ghostty" ||
+		os.Getenv("TERM") == "xterm-ghostty" ||
+		os.Getenv("GHOSTTY_RESOURCES_DIR") != "" {
+		return ProtoKitty
+	}
 	// WezTerm advertises both Kitty and iTerm graphics; Render() routes
 	// ProtoWezTerm through the Kitty path because it preserves alpha
 	// best. Keeping the distinct return value lets telemetry attribute

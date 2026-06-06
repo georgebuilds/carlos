@@ -63,6 +63,33 @@ func TestDetectProtocolOverride(t *testing.T) {
 	}
 }
 
+// TestDetectProtocol_Ghostty pins the env-var detection that routes
+// Ghostty through the Kitty graphics protocol. Without this, Ghostty
+// falls through to the half-block sampler and the portrait looks
+// pixelated even though the terminal can render PNGs natively.
+func TestDetectProtocol_Ghostty(t *testing.T) {
+	t.Setenv("CARLOS_PORTRAIT_PROTOCOL", "")
+	t.Setenv("KITTY_WINDOW_ID", "")
+	t.Setenv("WEZTERM_PANE", "")
+
+	// Each Ghostty env signal alone should be enough.
+	for _, kv := range []struct{ key, val string }{
+		{"TERM_PROGRAM", "ghostty"},
+		{"TERM", "xterm-ghostty"},
+		{"GHOSTTY_RESOURCES_DIR", "/Applications/Ghostty.app/Contents/Resources"},
+	} {
+		t.Run(kv.key, func(t *testing.T) {
+			t.Setenv("TERM_PROGRAM", "")
+			t.Setenv("TERM", "")
+			t.Setenv("GHOSTTY_RESOURCES_DIR", "")
+			t.Setenv(kv.key, kv.val)
+			if got := DetectProtocol(); got != ProtoKitty {
+				t.Errorf("Ghostty signal %s=%q: got %s, want kitty", kv.key, kv.val, got)
+			}
+		})
+	}
+}
+
 // TestKittyOutputShape verifies the kitty escape envelope is well-formed
 // enough that a terminal would at least try to parse it.
 func TestKittyOutputShape(t *testing.T) {
