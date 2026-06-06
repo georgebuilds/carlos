@@ -92,6 +92,13 @@ type Schedule struct {
 	// (state=done) or not. Daemon status surfaces this; it does NOT
 	// gate the next fire (a failing schedule keeps firing).
 	LastRunOK bool `json:"last_run_ok,omitempty"`
+
+	// Frame names the carlos frame this schedule should run in
+	// (Phase F-14). Empty falls back to the user's persisted active
+	// frame at fire time; explicit value sets the frame even when the
+	// user has switched in the meantime. The daemon honours this when
+	// constructing the per-run sysprompt + tool registry.
+	Frame string `json:"frame,omitempty"`
 }
 
 // Validate returns nil iff the schedule is well-formed: a non-empty
