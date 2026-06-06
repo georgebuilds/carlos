@@ -20,7 +20,7 @@ func NewNotesTaggedTool(env *notesEnv) *NotesTaggedTool {
 func (*NotesTaggedTool) Name() string { return "notes_tagged" }
 
 func (*NotesTaggedTool) Description() string {
-	return "List every note in the vault carrying the given tag, with title + a one-line description (from frontmatter `description:` or the first body paragraph). Sorted newest first. Pass an optional `vault:` field to query a different markdown vault than carlos's default."
+	return "List every note in your configured Obsidian vault carrying the given tag, with title + a one-line description. Sorted newest first. Use obsidian_tagged to query a different vault."
 }
 
 func (*NotesTaggedTool) Schema() []byte {
@@ -28,8 +28,7 @@ func (*NotesTaggedTool) Schema() []byte {
 		"type": "object",
 		"properties": {
 			"tag":   {"type": "string", "description": "Tag name with or without leading #."},
-			"limit": {"type": "integer", "description": "Default 50."},
-			"vault": {"type": "string", "description": "Optional absolute or ~-relative path to a different Obsidian-flavored markdown vault. Defaults to carlos's configured vault."}
+			"limit": {"type": "integer", "description": "Default 50."}
 		},
 		"required": ["tag"]
 	}`)
@@ -38,7 +37,6 @@ func (*NotesTaggedTool) Schema() []byte {
 type notesTaggedInput struct {
 	Tag   string `json:"tag"`
 	Limit int    `json:"limit"`
-	Vault string `json:"vault"`
 }
 
 type notesTaggedResponse struct {
@@ -63,7 +61,7 @@ func (t *NotesTaggedTool) Execute(_ context.Context, input []byte) ([]byte, erro
 	if in.Tag == "" {
 		return jsonErr("missing required field: %q", "tag")
 	}
-	abs, v, envelope, err := t.env.resolveOrError(in.Vault)
+	abs, v, envelope, err := t.env.resolveOrError("")
 	if envelope != nil {
 		return envelope, err
 	}

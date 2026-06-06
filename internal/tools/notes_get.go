@@ -22,7 +22,7 @@ func NewNotesGetTool(env *notesEnv) *NotesGetTool { return &NotesGetTool{env: en
 func (*NotesGetTool) Name() string { return "notes_get" }
 
 func (*NotesGetTool) Description() string {
-	return "Fetch an Obsidian note's structure: frontmatter, outline, link counts, modtime. Optionally pull the full body or a single section. Resolves `note` via Obsidian's shortest-unique-path. Pass an optional `vault:` field to query a different markdown vault than carlos's default."
+	return "Fetch a note's structure from your configured Obsidian vault: frontmatter, outline, link counts, modtime. Optionally pull the full body or a single section. Resolves `note` via Obsidian's shortest-unique-path. Always operates on your default vault — use obsidian_get to query a different vault."
 }
 
 func (*NotesGetTool) Schema() []byte {
@@ -31,8 +31,7 @@ func (*NotesGetTool) Schema() []byte {
 		"properties": {
 			"note":    {"type": "string", "description": "Note name or relpath; resolved via Obsidian's shortest-unique-path."},
 			"section": {"type": "string", "description": "Optional heading text. When set, body is the section's content only (skipping nested sub-sections)."},
-			"body":    {"type": "boolean", "description": "Include the full body. Default false: returns just frontmatter + outline."},
-			"vault":   {"type": "string", "description": "Optional absolute or ~-relative path to a different Obsidian-flavored markdown vault. Defaults to carlos's configured vault."}
+			"body":    {"type": "boolean", "description": "Include the full body. Default false: returns just frontmatter + outline."}
 		},
 		"required": ["note"]
 	}`)
@@ -42,7 +41,6 @@ type notesGetInput struct {
 	Note    string `json:"note"`
 	Section string `json:"section"`
 	Body    bool   `json:"body"`
-	Vault   string `json:"vault"`
 }
 
 // notesGetResponse is the success envelope. We omit Body when empty so
@@ -79,7 +77,7 @@ func (t *NotesGetTool) Execute(_ context.Context, input []byte) ([]byte, error) 
 	if in.Note == "" {
 		return jsonErr("missing required field: %q", "note")
 	}
-	abs, v, envelope, err := t.env.resolveOrError(in.Vault)
+	abs, v, envelope, err := t.env.resolveOrError("")
 	if envelope != nil {
 		return envelope, err
 	}

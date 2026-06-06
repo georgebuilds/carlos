@@ -137,14 +137,11 @@ func TestNotesGetMissingRequiredField(t *testing.T) {
 	}
 }
 
-// TestNotesGetPerCallVaultOverride — passing `vault:` redirects to a
-// different fixture vault.
-func TestNotesGetPerCallVaultOverride(t *testing.T) {
-	// Construct an env WITHOUT a default vault so the per-call
-	// override is the only path; this also exercises the "no cfg but
-	// per-call set" branch of ResolveVaultPath.
+// TestObsidianGetPerCallVault — Phase T-1 split: arbitrary vault
+// queries now go through obsidian_get, which REQUIRES a vault field.
+func TestObsidianGetPerCallVault(t *testing.T) {
 	env := newNotesEnv(config.VaultConfig{})
-	tool := NewNotesGetTool(env)
+	tool := NewObsidianGetTool(env)
 	input := []byte(`{"note": "only-here", "vault": "` + testAltVaultPath(t) + `"}`)
 	out, err := tool.Execute(context.Background(), input)
 	if err != nil {
@@ -160,25 +157,37 @@ func TestNotesGetPerCallVaultOverride(t *testing.T) {
 	}
 }
 
-// TestNotesGetSameNoteDifferentVaults — querying `carlos` against the
-// primary vs alt vaults yields different content. This is the
-// load-bearing per-vault isolation assertion at the tool layer.
-func TestNotesGetSameNoteDifferentVaults(t *testing.T) {
+// TestObsidianGetSameNoteDifferentVaults — obsidian_get against two
+// vault fixtures yields different content. T-1 isolation assertion.
+func TestObsidianGetSameNoteDifferentVaults(t *testing.T) {
 	env := newTestEnv(t)
-	tool := NewNotesGetTool(env)
-
-	primaryOut, _ := tool.Execute(context.Background(), []byte(`{"note": "carlos"}`))
+	primaryOut, _ := NewNotesGetTool(env).Execute(context.Background(), []byte(`{"note": "carlos"}`))
 	pm := asMap(t, primaryOut)
 	if pm["title"] != "carlos" {
 		t.Errorf("primary title: %v", pm["title"])
 	}
 
 	altInput := []byte(`{"note": "carlos", "vault": "` + testAltVaultPath(t) + `"}`)
-	altOut, _ := tool.Execute(context.Background(), altInput)
+	altOut, _ := NewObsidianGetTool(env).Execute(context.Background(), altInput)
 	am := asMap(t, altOut)
 	altTitle, _ := am["title"].(string)
 	if !strings.Contains(altTitle, "alt vault") {
 		t.Errorf("alt title should reflect alt fixture; got %v", am["title"])
+	}
+}
+
+// TestNotesGetIgnoresVaultField — notes_get is configured-vault-only.
+// A vault: field in the input is silently dropped (the model can no
+// longer redirect notes_get to an arbitrary path).
+func TestNotesGetIgnoresVaultField(t *testing.T) {
+	env := newTestEnv(t) // primary fixture wired
+	tool := NewNotesGetTool(env)
+	// Try to redirect to the alt vault via vault: — should be ignored.
+	out, _ := tool.Execute(context.Background(),
+		[]byte(`{"note": "carlos", "vault": "`+testAltVaultPath(t)+`"}`))
+	m := asMap(t, out)
+	if title, _ := m["title"].(string); strings.Contains(title, "alt vault") {
+		t.Errorf("notes_get should ignore vault: field; got title=%q (alt content leaked through)", title)
 	}
 }
 
@@ -194,8 +203,9 @@ func TestNotesGetNoVaultConfigured(t *testing.T) {
 	}
 }
 
-// TestNotesGetSchemaValid — schema parses as JSON and includes the
-// `vault` override field documented in the proposal.
+// TestNotesGetSchemaValid — schema parses as JSON and does NOT
+// expose a vault override field (T-1 split: notes_* is pinned to
+// the configured vault; obsidian_get is the family that takes vault).
 func TestNotesGetSchemaValid(t *testing.T) {
 	tool := NewNotesGetTool(newTestEnv(t))
 	var sch map[string]any
@@ -203,8 +213,8 @@ func TestNotesGetSchemaValid(t *testing.T) {
 		t.Fatalf("schema not JSON: %v", err)
 	}
 	props, _ := sch["properties"].(map[string]any)
-	if _, has := props["vault"]; !has {
-		t.Error("schema missing `vault` field")
+	if _, has := props["vault"]; has {
+		t.Error("notes_get schema MUST NOT include `vault` field after T-1 split")
 	}
 	if _, has := props["note"]; !has {
 		t.Error("schema missing `note` field")

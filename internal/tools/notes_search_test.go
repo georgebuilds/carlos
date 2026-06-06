@@ -39,16 +39,17 @@ func TestNotesSearchEmptyQueryRejected(t *testing.T) {
 	}
 }
 
-// TestNotesSearchVaultOverride — same query against two vaults yields
-// different totals.
-func TestNotesSearchVaultOverride(t *testing.T) {
-	tool := NewNotesSearchTool(newTestEnv(t))
-	primary, _ := tool.Execute(context.Background(), []byte(`{"query": "carlos"}`))
+// TestObsidianSearchVaultDifferentTotals — Phase T-1 split:
+// arbitrary vault queries go through obsidian_search.
+func TestObsidianSearchVaultDifferentTotals(t *testing.T) {
+	env := newTestEnv(t)
+	primary, _ := NewNotesSearchTool(env).Execute(context.Background(),
+		[]byte(`{"query": "carlos"}`))
 	pm := asMap(t, primary)
 	pTotal, _ := pm["total"].(float64)
 
 	altInput := []byte(`{"query": "carlos", "vault": "` + testAltVaultPath(t) + `"}`)
-	alt, _ := tool.Execute(context.Background(), altInput)
+	alt, _ := NewObsidianSearchTool(env).Execute(context.Background(), altInput)
 	am := asMap(t, alt)
 	aTotal, _ := am["total"].(float64)
 	if pTotal == aTotal {

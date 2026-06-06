@@ -1,0 +1,287 @@
+// Permissions policy engine (Phase T-1).
+//
+// Today's Approver decides per (tool, input) whether to ask the
+// user. That worked when every prompt was hand-y/N — but the same
+// noisy prompt fires for `notes_search` (reading your own configured
+// vault) and for `bash` (running arbitrary commands). Once auto-
+// approval lands we need a layered model that's auditable AND
+// reversible. This file is that policy engine.
+//
+// # Three layers, evaluated in order
+//
+//  1. **Built-in** (hardcoded): tools that are read-only against
+//     user-owned state. notes_* (configured vault only), read, grep,
+//     glob, ls. Always allowed without prompting.
+//  2. **Workspace trust** (Phase T-2 — placeholder hooks here): when
+//     the user marked the current cwd as trusted, a small set of
+//     read-only bash verbs (git status / diff / log, ls, cat, ...)
+//     run without prompting. Anything else still prompts.
+//  3. **Session "Always"** (today's behavior): the per-tool "Always"
+//     cache from the TUIApprover. Last resort — user explicitly
+//     opted in via "A" on a prompt this session.
+//
+// If none of the three matches, we fall through to the wrapped
+// Approver (typically TUIApprover) which asks the user.
+//
+// # Why a separate type
+//
+// The Approver interface stays the same. LayeredApprover wraps any
+// concrete Approver as its fallback — production wires
+// TUIApprover, tests can inject a recording fake. The chat loop
+// doesn't know layered-vs-single; it just calls ApproveToolCall.
+package agent
+
+import (
+	"encoding/json"
+	"strings"
+	"sync"
+)
+
+// LayeredApprover is the production approver wired by cmd/carlos.
+// Construct via NewLayeredApprover; wraps a fallback Approver (the
+// TUIApprover that owns the y/N overlay).
+type LayeredApprover struct {
+	// fallback is the Approver delegate when no built-in / workspace
+	// / session policy matches. Required.
+	fallback Approver
+
+	// builtinAllow is the set of tool names auto-approved without
+	// inspecting input. Hardcoded at construction; cannot be mutated
+	// at runtime (use the wrapping policy layers for that).
+	builtinAllow map[string]bool
+
+	// workspaceRoots is the set of absolute paths the user has
+	// trusted. Mutex-guarded so /trust slash + first-launch prompt
+	// can both write. Phase T-2 wires the load + write side; today
+	// the field is empty.
+	mu             sync.RWMutex
+	workspaceRoots map[string]bool
+
+	// auditLog optionally captures every decision (allow + reason +
+	// tool + input) so the manage view + /permissions overlay can
+	// show "what was auto-approved." nil disables; LayeredApprover
+	// works fine without it.
+	auditLog AuditSink
+}
+
+// AuditSink receives one notification per ApproveToolCall decision.
+// Implementations should be fast + non-blocking — the chat loop
+// calls into the approver synchronously.
+type AuditSink interface {
+	RecordDecision(d Decision)
+}
+
+// Decision is the audit-log entry. Reason names which layer fired;
+// the manage view + /permissions can group on it.
+type Decision struct {
+	Tool    string
+	Input   []byte
+	Allowed bool
+	Reason  DecisionReason
+}
+
+// DecisionReason is the structural why behind an Approve return.
+// Kept as an enum so future analytics can group cleanly.
+type DecisionReason string
+
+const (
+	// ReasonBuiltinAllow — tool is in the hardcoded read-only
+	// builtins set.
+	ReasonBuiltinAllow DecisionReason = "builtin-allow"
+	// ReasonWorkspaceAllow — tool + input matches the trusted-
+	// workspace policy (Phase T-2).
+	ReasonWorkspaceAllow DecisionReason = "workspace-allow"
+	// ReasonSessionAllow — wrapped Approver returned true (TUI
+	// "Always" cache OR user pressed y).
+	ReasonSessionAllow DecisionReason = "session-allow"
+	// ReasonSessionDeny — wrapped Approver returned false.
+	ReasonSessionDeny DecisionReason = "session-deny"
+)
+
+// DefaultBuiltinAllow is the initial hardcoded auto-approve set.
+// Discipline: every entry here is **read-only against user-owned
+// state**. Adding a new tool here MUST come with a justification
+// comment and a security review (today: just an issue, but the
+// principle stands).
+//
+// Configured-vault notes_* tools are scoped to cfg.Vault.Path by
+// construction (the schema doesn't accept a `vault:` field anymore)
+// so silent reads can't escape the user's intended boundary.
+var DefaultBuiltinAllow = []string{
+	// Configured-vault Obsidian tools — read-only on a path the
+	// user explicitly set during onboarding.
+	"notes_search",
+	"notes_get",
+	"notes_neighbors",
+	"notes_recent",
+	"notes_resolve",
+	"notes_backlinks",
+	"notes_tagged",
+	// Generic read-only filesystem tools.
+	"read",
+	"grep",
+	"glob",
+	"ls",
+	// Read-only git inspection.
+	"git_status",
+	"git_diff",
+	"git_log",
+	"git_blame",
+	"git_show",
+}
+
+// NewLayeredApprover wraps fallback with the layered policy. allow
+// is the hardcoded auto-approve set (typically DefaultBuiltinAllow);
+// pass an empty slice for tests that want strict prompting.
+func NewLayeredApprover(fallback Approver, allow []string, audit AuditSink) *LayeredApprover {
+	if fallback == nil {
+		// Defensive: an approver with no fallback would silently
+		// deny anything not in the allow list. AutoApprover is the
+		// least-surprising fallback.
+		fallback = AutoApprover{}
+	}
+	set := make(map[string]bool, len(allow))
+	for _, name := range allow {
+		set[name] = true
+	}
+	return &LayeredApprover{
+		fallback:       fallback,
+		builtinAllow:   set,
+		workspaceRoots: map[string]bool{},
+		auditLog:       audit,
+	}
+}
+
+// ApproveToolCall implements Approver. Walks the layers in order:
+// builtin → workspace → fallback. Audit log fires on every return.
+func (l *LayeredApprover) ApproveToolCall(name string, input []byte) bool {
+	if l.builtinAllow[name] {
+		l.record(name, input, true, ReasonBuiltinAllow)
+		return true
+	}
+	if l.workspaceAllows(name, input) {
+		l.record(name, input, true, ReasonWorkspaceAllow)
+		return true
+	}
+	ok := l.fallback.ApproveToolCall(name, input)
+	reason := ReasonSessionDeny
+	if ok {
+		reason = ReasonSessionAllow
+	}
+	l.record(name, input, ok, reason)
+	return ok
+}
+
+// record is a small helper so the call sites stay one line. Skips
+// when no audit sink is wired.
+func (l *LayeredApprover) record(name string, input []byte, allowed bool, reason DecisionReason) {
+	if l.auditLog == nil {
+		return
+	}
+	l.auditLog.RecordDecision(Decision{
+		Tool:    name,
+		Input:   input,
+		Allowed: allowed,
+		Reason:  reason,
+	})
+}
+
+// BuiltinAllowList returns a copy of the current builtin allow set
+// (sorted). Used by /permissions to render the layered view.
+func (l *LayeredApprover) BuiltinAllowList() []string {
+	out := make([]string, 0, len(l.builtinAllow))
+	for name := range l.builtinAllow {
+		out = append(out, name)
+	}
+	sortStrings(out)
+	return out
+}
+
+// TrustWorkspace adds root to the trusted workspaces set. Phase T-2
+// wires the disk persistence; today this just lives in-memory for
+// the session.
+func (l *LayeredApprover) TrustWorkspace(root string) {
+	if root == "" {
+		return
+	}
+	l.mu.Lock()
+	l.workspaceRoots[root] = true
+	l.mu.Unlock()
+}
+
+// UntrustWorkspace removes root from the trusted set.
+func (l *LayeredApprover) UntrustWorkspace(root string) {
+	l.mu.Lock()
+	delete(l.workspaceRoots, root)
+	l.mu.Unlock()
+}
+
+// TrustedWorkspaces returns a sorted snapshot of the trusted roots.
+func (l *LayeredApprover) TrustedWorkspaces() []string {
+	l.mu.RLock()
+	out := make([]string, 0, len(l.workspaceRoots))
+	for r := range l.workspaceRoots {
+		out = append(out, r)
+	}
+	l.mu.RUnlock()
+	sortStrings(out)
+	return out
+}
+
+// IsWorkspaceTrusted reports whether root is in the trusted set.
+// Used by the first-launch prompt to know whether to ask.
+func (l *LayeredApprover) IsWorkspaceTrusted(root string) bool {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+	return l.workspaceRoots[root]
+}
+
+// workspaceAllows is the Phase T-2 policy gate. Today it's a no-op
+// stub returning false; the next slice wires the bash-allowlist
+// + path-inside-workspace check. Kept as its own method so T-2
+// changes localize here.
+func (l *LayeredApprover) workspaceAllows(name string, input []byte) bool {
+	// Phase T-2 will populate this:
+	//  - resolve current cwd
+	//  - check workspaceRoots for a prefix match
+	//  - if bash and verb is in the read-only allowlist → allow
+	//  - if edit/write and target path is inside the trusted root
+	//    → allow
+	_ = name
+	_ = input
+	return false
+}
+
+// sortStrings — insertion sort; the slices we care about top out at
+// a couple dozen entries, so dragging in sort.Strings would be
+// overkill.
+func sortStrings(a []string) {
+	for i := 1; i < len(a); i++ {
+		for j := i; j > 0 && a[j-1] > a[j]; j-- {
+			a[j-1], a[j] = a[j], a[j-1]
+		}
+	}
+}
+
+// extractInputField is a small helper used by the workspace policy
+// to peek at common path-ish fields in a tool's input JSON without
+// declaring per-tool input structs in the policy package. Returns
+// "" when the field is missing or not a string.
+func extractInputField(input []byte, field string) string {
+	if len(input) == 0 {
+		return ""
+	}
+	var m map[string]any
+	if err := json.Unmarshal(input, &m); err != nil {
+		return ""
+	}
+	v, ok := m[field]
+	if !ok {
+		return ""
+	}
+	s, ok := v.(string)
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(s)
+}

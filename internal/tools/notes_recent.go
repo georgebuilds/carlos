@@ -18,7 +18,7 @@ func NewNotesRecentTool(env *notesEnv) *NotesRecentTool { return &NotesRecentToo
 func (*NotesRecentTool) Name() string { return "notes_recent" }
 
 func (*NotesRecentTool) Description() string {
-	return "Return the most-recently-modified notes in the vault. Optional `since` window (e.g. `24h`, `7d`). For \"what was I working on\" context recovery. Pass an optional `vault:` field to query a different markdown vault than carlos's default."
+	return "Return the most-recently-modified notes in your configured Obsidian vault. Optional `since` window (e.g. `24h`, `7d`). For \"what was I working on\" context recovery. Use obsidian_recent to query a different vault."
 }
 
 func (*NotesRecentTool) Schema() []byte {
@@ -26,8 +26,7 @@ func (*NotesRecentTool) Schema() []byte {
 		"type": "object",
 		"properties": {
 			"limit": {"type": "integer", "description": "Default 10."},
-			"since": {"type": "string", "description": "Optional duration like '24h' or '7d'. Default: no cutoff (newest N)."},
-			"vault": {"type": "string", "description": "Optional absolute or ~-relative path to a different Obsidian-flavored markdown vault. Defaults to carlos's configured vault."}
+			"since": {"type": "string", "description": "Optional duration like '24h' or '7d'. Default: no cutoff (newest N)."}
 		}
 	}`)
 }
@@ -35,7 +34,6 @@ func (*NotesRecentTool) Schema() []byte {
 type notesRecentInput struct {
 	Limit int    `json:"limit"`
 	Since string `json:"since"`
-	Vault string `json:"vault"`
 }
 
 type notesRecentResponse struct {
@@ -59,7 +57,7 @@ func (t *NotesRecentTool) Execute(_ context.Context, input []byte) ([]byte, erro
 			return jsonErr("parse input: %v", err)
 		}
 	}
-	abs, v, envelope, err := t.env.resolveOrError(in.Vault)
+	abs, v, envelope, err := t.env.resolveOrError("")
 	if envelope != nil {
 		return envelope, err
 	}

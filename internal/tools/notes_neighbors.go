@@ -22,23 +22,21 @@ func NewNotesNeighborsTool(env *notesEnv) *NotesNeighborsTool {
 func (*NotesNeighborsTool) Name() string { return "notes_neighbors" }
 
 func (*NotesNeighborsTool) Description() string {
-	return "Return a note's outgoing + incoming neighbors in one call, plus the list of unresolved (`ghost`) wikilinks. For \"what's connected to this note\" without two separate queries. Pass an optional `vault:` field to query a different markdown vault than carlos's default."
+	return "Return a note's outgoing + incoming neighbors in one call, plus the list of unresolved (`ghost`) wikilinks. Operates on your configured Obsidian vault. Use obsidian_neighbors to query a different vault."
 }
 
 func (*NotesNeighborsTool) Schema() []byte {
 	return []byte(`{
 		"type": "object",
 		"properties": {
-			"note":  {"type": "string"},
-			"vault": {"type": "string", "description": "Optional absolute or ~-relative path to a different Obsidian-flavored markdown vault. Defaults to carlos's configured vault."}
+			"note":  {"type": "string"}
 		},
 		"required": ["note"]
 	}`)
 }
 
 type notesNeighborsInput struct {
-	Note  string `json:"note"`
-	Vault string `json:"vault"`
+	Note string `json:"note"`
 }
 
 type notesNeighborsResponse struct {
@@ -67,7 +65,7 @@ func (t *NotesNeighborsTool) Execute(_ context.Context, input []byte) ([]byte, e
 	if in.Note == "" {
 		return jsonErr("missing required field: %q", "note")
 	}
-	abs, v, envelope, err := t.env.resolveOrError(in.Vault)
+	abs, v, envelope, err := t.env.resolveOrError("")
 	if envelope != nil {
 		return envelope, err
 	}

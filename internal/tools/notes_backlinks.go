@@ -22,7 +22,7 @@ func NewNotesBacklinksTool(env *notesEnv) *NotesBacklinksTool {
 func (*NotesBacklinksTool) Name() string { return "notes_backlinks" }
 
 func (*NotesBacklinksTool) Description() string {
-	return "List every note in the vault that wikilinks to the given target, with the line of context around each link. Replaces vault-wide grep for `[[target]]` style searches. Pass an optional `vault:` field to query a different markdown vault than carlos's default."
+	return "List every note in your configured Obsidian vault that wikilinks to the given target, with the line of context around each link. Replaces vault-wide grep for `[[target]]` style searches. Always operates on your default vault — use obsidian_backlinks to query a different vault."
 }
 
 func (*NotesBacklinksTool) Schema() []byte {
@@ -30,8 +30,7 @@ func (*NotesBacklinksTool) Schema() []byte {
 		"type": "object",
 		"properties": {
 			"note":  {"type": "string", "description": "Target note name or relpath."},
-			"limit": {"type": "integer", "description": "Default 50."},
-			"vault": {"type": "string", "description": "Optional absolute or ~-relative path to a different Obsidian-flavored markdown vault. Defaults to carlos's configured vault."}
+			"limit": {"type": "integer", "description": "Default 50."}
 		},
 		"required": ["note"]
 	}`)
@@ -40,7 +39,6 @@ func (*NotesBacklinksTool) Schema() []byte {
 type notesBacklinksInput struct {
 	Note  string `json:"note"`
 	Limit int    `json:"limit"`
-	Vault string `json:"vault"`
 }
 
 type notesBacklinksResponse struct {
@@ -66,7 +64,7 @@ func (t *NotesBacklinksTool) Execute(_ context.Context, input []byte) ([]byte, e
 	if in.Note == "" {
 		return jsonErr("missing required field: %q", "note")
 	}
-	abs, v, envelope, err := t.env.resolveOrError(in.Vault)
+	abs, v, envelope, err := t.env.resolveOrError("")
 	if envelope != nil {
 		return envelope, err
 	}

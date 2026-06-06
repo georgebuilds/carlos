@@ -651,6 +651,13 @@ func runHeadless(prompt string, opts pleaseOptions) error {
 	if !opts.autoApprove {
 		approver = newStdinApprover()
 	}
+	// Phase T-1: wrap the fallback in the LayeredApprover so the
+	// built-in read-only allowlist (notes_*, read, grep, glob, ls,
+	// git_status, …) bypasses any prompt. Same policy in the headless
+	// runDispatch path as in the chat path below — the model can't
+	// learn one set of approval rules from one entry point and a
+	// different set from another.
+	approver = agent.NewLayeredApprover(approver, agent.DefaultBuiltinAllow, nil)
 
 	// Surface which provider/model we're using on stderr so scripts and
 	// users both see it.
@@ -1116,11 +1123,18 @@ func runDefault(cfg *config.Config, sessionID string) error {
 	src := chat.NewMemTextSource()
 	approver := chat.NewTUIApprover()
 	defer approver.Close()
+	// Phase T-1: the loop sees a LayeredApprover that auto-approves
+	// the built-in read-only allowlist (notes_*, read/grep/glob/ls,
+	// git_status, …) and falls through to the TUI prompt for
+	// everything else. The TUI surface still gets the bare
+	// approver via WithTUIApprover so the in-process channel for
+	// user Y/N input stays wired.
+	layered := agent.NewLayeredApprover(approver, agent.DefaultBuiltinAllow, nil)
 	loop := chatglue.NewLoop(chatglue.Config{
 		Provider: d.provider,
 		Model:    d.model,
 		Tools:    baseReg,
-		Approver: approver,
+		Approver: layered,
 	}, log, src, defaultAgentID)
 	if err := loop.Start(ctx); err != nil {
 		return err

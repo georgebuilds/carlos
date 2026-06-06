@@ -22,23 +22,21 @@ func NewNotesResolveTool(env *notesEnv) *NotesResolveTool {
 func (*NotesResolveTool) Name() string { return "notes_resolve" }
 
 func (*NotesResolveTool) Description() string {
-	return "Resolve a wikilink (with or without `[[brackets]]`) to its target relpath in the vault. Returns the candidate list when the target title appears in multiple folders (Obsidian's shortest-unique-path wins, but the model sees the alternatives). Pass an optional `vault:` field to query a different markdown vault than carlos's default."
+	return "Resolve a wikilink (with or without `[[brackets]]`) to its target relpath in your configured Obsidian vault. Returns the candidate list when the target title appears in multiple folders. Use obsidian_resolve to query a different vault."
 }
 
 func (*NotesResolveTool) Schema() []byte {
 	return []byte(`{
 		"type": "object",
 		"properties": {
-			"link":  {"type": "string", "description": "Wikilink text, with or without [[brackets]]."},
-			"vault": {"type": "string", "description": "Optional absolute or ~-relative path to a different Obsidian-flavored markdown vault. Defaults to carlos's configured vault."}
+			"link":  {"type": "string", "description": "Wikilink text, with or without [[brackets]]."}
 		},
 		"required": ["link"]
 	}`)
 }
 
 type notesResolveInput struct {
-	Link  string `json:"link"`
-	Vault string `json:"vault"`
+	Link string `json:"link"`
 }
 
 type notesResolveResponse struct {
@@ -63,7 +61,7 @@ func (t *NotesResolveTool) Execute(_ context.Context, input []byte) ([]byte, err
 	if in.Link == "" {
 		return jsonErr("missing required field: %q", "link")
 	}
-	abs, v, envelope, err := t.env.resolveOrError(in.Vault)
+	abs, v, envelope, err := t.env.resolveOrError("")
 	if envelope != nil {
 		return envelope, err
 	}

@@ -144,11 +144,20 @@ func NewDefaultRegistryWithBaseDir(baseDir string, vaultCfg config.VaultConfig) 
 	// web_fetch so the two share one policy lever.
 	httpReq := NewHTTPRequestTool()
 	r.Register(httpReq)
-	// Phase 12: notes_* tool family. One *notes.Cache shared across
-	// the seven tools so a vault opened by one tool is reused by the
-	// next. When vaultCfg.Path is empty + no per-call override is
-	// supplied, each tool returns the "vault not configured"
-	// envelope rather than crashing.
+	// Phase 12 / T-1: two tool families share one *notes.Cache.
+	//
+	//   - notes_*    — hard-pinned to the user's configured vault.
+	//                  Schema doesn't accept a per-call `vault:` field.
+	//                  Auto-approved by LayeredApprover because the
+	//                  trust anchor is the configuration boundary set
+	//                  during onboarding.
+	//   - obsidian_* — generalized vault tools; `vault:` is required
+	//                  on every call. The model has to convince the
+	//                  user (via the approval prompt) to read each
+	//                  arbitrary vault.
+	//
+	// Both share the same notesEnv + Cache so opening any vault is
+	// memoized across both families.
 	nenv := newNotesEnv(vaultCfg)
 	r.Register(NewNotesGetTool(nenv))
 	r.Register(NewNotesSearchTool(nenv))
@@ -157,5 +166,12 @@ func NewDefaultRegistryWithBaseDir(baseDir string, vaultCfg config.VaultConfig) 
 	r.Register(NewNotesNeighborsTool(nenv))
 	r.Register(NewNotesRecentTool(nenv))
 	r.Register(NewNotesResolveTool(nenv))
+	r.Register(NewObsidianGetTool(nenv))
+	r.Register(NewObsidianSearchTool(nenv))
+	r.Register(NewObsidianBacklinksTool(nenv))
+	r.Register(NewObsidianTaggedTool(nenv))
+	r.Register(NewObsidianNeighborsTool(nenv))
+	r.Register(NewObsidianRecentTool(nenv))
+	r.Register(NewObsidianResolveTool(nenv))
 	return r
 }
