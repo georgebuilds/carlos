@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/oklog/ulid/v2"
@@ -202,12 +203,23 @@ type DeliveryReceipt struct {
 // stamp envelope IDs. ULID gives sortable IDs without needing a global
 // counter; monotonic-entropy guarantees uniqueness within the same
 // millisecond.
-var envelopeULIDEntropy = ulid.Monotonic(rand.Reader, 0)
+//
+// MonotonicEntropy is NOT safe for concurrent calls (its Read mutates
+// shared state without internal locking). The broker can be called
+// from many goroutines (one per fan-out adapter, one per inbound
+// callback), so we serialize through envelopeULIDMu — cheap because
+// minting one ULID is ~microseconds.
+var (
+	envelopeULIDMu      sync.Mutex
+	envelopeULIDEntropy = ulid.Monotonic(rand.Reader, 0)
+)
 
 // newEnvelopeID mints a fresh ULID-encoded ID using the package
 // entropy. Exposed as a package-internal helper so the broker and the
 // adapters that pre-stamp inbound IDs share one source.
 func newEnvelopeID(now time.Time) (string, error) {
+	envelopeULIDMu.Lock()
+	defer envelopeULIDMu.Unlock()
 	u, err := ulid.New(uint64(now.UnixMilli()), envelopeULIDEntropy)
 	if err != nil {
 		return "", err
