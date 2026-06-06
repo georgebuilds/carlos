@@ -574,6 +574,25 @@ func (m *Manager) Foreground(id string) error {
 // Jobs returns a snapshot of every Job the Manager knows about, in
 // insertion order. Safe to call concurrently with Submit/Cancel —
 // the slice is a fresh copy each call.
+// Cwd returns the working directory new jobs will spawn in. Used by
+// the chat surface's Phase F-8 footer hint check after an in-band `!cd`
+// has updated SetCwd.
+func (m *Manager) Cwd() string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.cwd
+}
+
+// SetCwd updates the working directory new jobs spawn in. Used by the
+// chat surface to intercept `!cd <path>` so the cwd actually persists
+// across foreground shell calls instead of dying with each subshell.
+// Already-queued jobs keep the cwd they captured at Submit time.
+func (m *Manager) SetCwd(path string) {
+	m.mu.Lock()
+	m.cwd = path
+	m.mu.Unlock()
+}
+
 func (m *Manager) Jobs() []Snapshot {
 	m.mu.RLock()
 	defer m.mu.RUnlock()

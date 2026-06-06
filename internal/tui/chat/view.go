@@ -308,6 +308,13 @@ func (m *Model) renderFooter(w int) string {
 		statusStyle := lipgloss.NewStyle().Foreground(statusColor(m.statusKind))
 		return statusStyle.Render(m.status) + "\n" + row
 	}
+	// Phase F-8 cwd-hint footer: dim line above the keybind row when
+	// the chat has detected an in-band cd into another frame's
+	// territory and the user hasn't muted with Ctrl+L.
+	if m.footerHint != "" {
+		hintLine := lipgloss.NewStyle().Foreground(colorSubtle).Render(m.footerHint)
+		return hintLine + "\n" + row
+	}
 	return row
 }
 

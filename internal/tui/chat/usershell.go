@@ -119,6 +119,17 @@ func (m *Model) submitUserShellCmd(cmd string, mode usershell.Mode) tea.Cmd {
 			}
 		}
 	}
+	// Phase F-8: intercept `cd <path>` so the cwd persists across
+	// foreground jobs AND so the hint check has a reliable trigger.
+	// Compound commands and shell metacharacters fall through to the
+	// shell so the user's pipeline still runs.
+	if handled, msg := m.tryInterceptCdCommand(cmd); handled {
+		if m.shellHistory != nil {
+			_ = m.shellHistory.Add(cmd)
+			m.shellHistory.Reset()
+		}
+		return statusCmd(msg, statusInfo)
+	}
 	if m.shellHistory != nil {
 		_ = m.shellHistory.Add(cmd)
 		m.shellHistory.Reset()

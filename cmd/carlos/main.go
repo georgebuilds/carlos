@@ -1410,6 +1410,19 @@ func runDefault(cfg *config.Config, sessionID string) error {
 					return config.Save(config.DefaultPath(), cfg)
 				},
 				Capabilities: extractCapabilityBackends(activeFrame),
+				MatchCwd: func(cwd string) string {
+					res, ok := frame.ResolveActive(&cfg.Frames, frame.Input{Cwd: cwd})
+					if !ok {
+						return ""
+					}
+					if res.Reason != frame.ReasonCwdHintExact && res.Reason != frame.ReasonCwdHintMultiple {
+						return ""
+					}
+					if res.Frame == activeFrame.Name {
+						return ""
+					}
+					return res.Frame
+				},
 			}
 		}
 	}

@@ -306,6 +306,16 @@ type Model struct {
 	switcherCursor    int
 	switcherPage      int
 	switcherHelp      bool
+
+	// Phase F-8 cwd-hint footer state. footerHint is the text shown
+	// when an in-band `!cd` lands the user in a path that matches a
+	// non-active frame's cwd_hints. hintsLocked is set by Ctrl+L for
+	// the rest of the session so the hint stops bothering the user
+	// on repeated cd's. hintSeen tracks "once per unrecognized path"
+	// so the hint doesn't redraw on every `!ls` after the cd.
+	footerHint  string
+	hintsLocked bool
+	hintSeen    map[string]bool
 }
 
 // FrameUI is the Phase F display + switch contract the chat Model
@@ -341,6 +351,12 @@ type FrameUI struct {
 	// SwitchMode persists a mode change on the active frame. nil
 	// makes /mode <name> echo "not wired" rather than failing.
 	SwitchMode func(mode string) error
+	// MatchCwd resolves a cwd to a frame name when one of the
+	// configured frames' cwd_hints matches the path. Returns "" when
+	// nothing matches or when the match is the active frame. Used by
+	// the Phase F-8 in-band `!cd` interception to surface a footer
+	// hint suggesting Ctrl+F. nil disables the hint entirely.
+	MatchCwd func(cwd string) string
 }
 
 type statusKind int
@@ -651,6 +667,15 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// the slash echo from /frame already covers that path.
 			if m.frame.Active != "" {
 				m.openFrameSwitcher()
+				return m, nil
+			}
+		case "ctrl+l":
+			// Phase F-8: mute cwd-hint footer for the rest of the
+			// session. Idempotent — second press just keeps the lock
+			// on. No-op when no hint is wired.
+			if m.frame.Active != "" && m.frame.MatchCwd != nil {
+				m.lockCwdHints()
+				m.rerenderViewport()
 				return m, nil
 			}
 		case "up":
