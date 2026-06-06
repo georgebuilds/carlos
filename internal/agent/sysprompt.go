@@ -60,9 +60,44 @@ Conventions:
 //
 // Returns chatBaseSystem unchanged when all dynamic fields are
 // empty (tests + the zero-config code path).
+//
+// For Phase F frame-aware composition, callers use SystemPromptWithFrame.
 func SystemPrompt(userName, cwd, projectCtx string) string {
+	return SystemPromptWithFrame(userName, cwd, projectCtx, FrameInfo{})
+}
+
+// FrameInfo carries the per-frame fields the system prompt needs.
+// Pulled out of internal/frame.Frame so this package stays free of the
+// frame import (avoids a cycle the chatglue layer would otherwise hit).
+//
+// All fields optional. An empty FrameInfo makes SystemPromptWithFrame
+// behave identically to the legacy SystemPrompt — the per-frame block is
+// emitted only when Name is non-empty.
+type FrameInfo struct {
+	// Name is the frame's user-visible identifier ("personal", "work").
+	Name string
+	// Append is the verbatim per-frame addition (e.g. "Personal frame.
+	// Tone: relaxed."). Trimmed and added under a "Frame:" header.
+	Append string
+}
+
+// SystemPromptWithFrame composes the runtime system prompt and folds in
+// the active frame's name + system_prompt_append. The frame sentence
+// lands BEFORE the Runtime block so the prefix-cache boundary is stable
+// across frame switches: the chatBaseSystem prefix stays cached even
+// when the frame changes.
+func SystemPromptWithFrame(userName, cwd, projectCtx string, fi FrameInfo) string {
 	var b strings.Builder
 	b.WriteString(chatBaseSystem)
+	if name := strings.TrimSpace(fi.Name); name != "" {
+		b.WriteString("\n\nFrame: ")
+		b.WriteString(name)
+		b.WriteString(".")
+		if app := strings.TrimSpace(fi.Append); app != "" {
+			b.WriteString("\n")
+			b.WriteString(app)
+		}
+	}
 	if userName != "" || cwd != "" {
 		b.WriteString("\n\nRuntime:\n")
 		if userName != "" {

@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/georgebuilds/carlos/internal/frame"
 )
 
 // TestSaveLoadRoundtrip is the happy-path: write a config, read it back,
@@ -381,5 +383,108 @@ func TestYAMLShape(t *testing.T) {
 		if !strings.Contains(s, key) {
 			t.Errorf("yaml output missing key %q\n--- got ---\n%s", key, s)
 		}
+	}
+}
+
+
+// TestLoad_MigratesLegacyConfigToPersonalFrame verifies the Phase F
+// migration: a pre-frames YAML loads with a synthetic personal frame
+// derived from default_provider + that providers entries default_model.
+func TestLoad_MigratesLegacyConfigToPersonalFrame(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+
+	legacy := []byte(`user_name: George
+providers:
+  anthropic:
+    api_key: sk-ant-legacy
+    default_model: claude-sonnet-4-6
+default_provider: anthropic
+daemon:
+  enabled: false
+skills:
+  convention: agents
+`)
+	if err := os.WriteFile(path, legacy, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(got.Frames.List) != 1 {
+		t.Fatalf("expected 1 synthesised frame, got %d", len(got.Frames.List))
+	}
+	personal := got.Frames.List[0]
+	if personal.Name != frame.DefaultPersonalName {
+		t.Errorf("Name = %q, want %q", personal.Name, frame.DefaultPersonalName)
+	}
+	if personal.Provider != "anthropic" {
+		t.Errorf("Provider = %q, want anthropic", personal.Provider)
+	}
+	if personal.Model != "claude-sonnet-4-6" {
+		t.Errorf("Model = %q, want claude-sonnet-4-6 (pulled from provider default_model)", personal.Model)
+	}
+	if got.Frames.Default != frame.DefaultPersonalName {
+		t.Errorf("Default = %q, want %q", got.Frames.Default, frame.DefaultPersonalName)
+	}
+	if got.Frames.Active != frame.DefaultPersonalName {
+		t.Errorf("Active = %q, want %q", got.Frames.Active, frame.DefaultPersonalName)
+	}
+}
+
+// TestLoad_PreservesExistingFramesBlock checks that the migration is a
+// no-op when the YAML already has a frames block — we never overwrite
+// user-edited frames.
+func TestLoad_PreservesExistingFramesBlock(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+
+	cfg := &Config{
+		UserName:        "George",
+		Providers:       map[string]ProviderConfig{"anthropic": {APIKey: "sk"}},
+		DefaultProvider: "anthropic",
+		Frames: frame.Config{
+			Default: "work",
+			Active:  "work",
+			List:    []frame.Frame{{Name: "work", Provider: "anthropic", Model: "claude-opus-4-7"}},
+		},
+	}
+	if err := Save(path, cfg); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Frames.List) != 1 || got.Frames.List[0].Name != "work" {
+		t.Errorf("Frames not roundtripped: %+v", got.Frames)
+	}
+	if got.Frames.Default != "work" || got.Frames.Active != "work" {
+		t.Errorf("Default/Active not roundtripped: %+v", got.Frames)
+	}
+}
+
+// TestLoad_MigratesEmptyDefaultProvider handles the edge case where the
+// legacy YAML had no default_provider — Frame migration still produces
+// a personal frame but with empty Provider/Model fields (caller is
+// expected to re-run onboarding via IsComplete=false).
+func TestLoad_MigratesEmptyDefaultProvider(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+
+	if err := os.WriteFile(path, []byte("user_name: George\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Frames.List) != 1 {
+		t.Fatalf("expected 1 synthesised frame, got %d", len(got.Frames.List))
+	}
+	p := got.Frames.List[0]
+	if p.Provider != "" || p.Model != "" {
+		t.Errorf("expected empty Provider/Model when default_provider unset; got %+v", p)
 	}
 }

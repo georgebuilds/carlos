@@ -60,3 +60,41 @@ func TestSystemPrompt_OmitsProjectContextWhenBlank(t *testing.T) {
 		t.Error("whitespace-only projectCtx should not produce a section")
 	}
 }
+
+func TestSystemPromptWithFrame_IncludesFrameBlockWhenNamed(t *testing.T) {
+	out := SystemPromptWithFrame("", "", "", FrameInfo{
+		Name:   "work",
+		Append: "Tone: precise. Brief mentions of stakeholders are fine.",
+	})
+	if !strings.Contains(out, "Frame: work.") {
+		t.Errorf("expected frame sentence, got:\n%s", out)
+	}
+	if !strings.Contains(out, "Tone: precise.") {
+		t.Errorf("expected frame append body, got:\n%s", out)
+	}
+}
+
+func TestSystemPromptWithFrame_OmitsBlockWhenNameEmpty(t *testing.T) {
+	out := SystemPromptWithFrame("", "", "", FrameInfo{Append: "ignored"})
+	if strings.Contains(out, "Frame:") {
+		t.Errorf("empty Name should suppress the frame block; got:\n%s", out)
+	}
+	if strings.Contains(out, "ignored") {
+		t.Errorf("empty Name should suppress the append body; got:\n%s", out)
+	}
+}
+
+func TestSystemPromptWithFrame_FrameBeforeRuntime(t *testing.T) {
+	// Cache stability: chatBaseSystem → Frame block → Runtime block →
+	// Project context. Reordering invalidates the per-frame cache
+	// boundary, so this order is asserted.
+	out := SystemPromptWithFrame("george", "/tmp", "", FrameInfo{Name: "personal"})
+	frameAt := strings.Index(out, "Frame: personal")
+	runtimeAt := strings.Index(out, "Runtime:")
+	if frameAt < 0 || runtimeAt < 0 {
+		t.Fatalf("missing markers; out:\n%s", out)
+	}
+	if !(frameAt < runtimeAt) {
+		t.Errorf("Frame block must come before Runtime block")
+	}
+}

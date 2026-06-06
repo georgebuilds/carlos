@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/georgebuilds/carlos/internal/frame"
 	"github.com/georgebuilds/carlos/internal/miniyaml"
 	"github.com/georgebuilds/carlos/internal/schedule"
 )
@@ -54,6 +55,13 @@ type Config struct {
 	// Emitted only when non-empty so older configs round-trip without
 	// a stray empty `gateway: {}` line.
 	Gateway GatewayConfig `json:"gateway,omitempty"`
+	// Frames is the user's set of session contexts (Phase F). When the
+	// block is absent or empty, Load() synthesises a single "personal"
+	// frame from DefaultProvider + the matching providers entry, so the
+	// rest of carlos can always assume a non-empty List. Emitted only
+	// when non-empty so older configs round-trip without a stray empty
+	// `frames: {}` line.
+	Frames frame.Config `json:"frames,omitempty"`
 }
 
 // GatewayConfig is the on-disk shape of the gateway: block. Adapters
@@ -239,6 +247,12 @@ func DefaultDir() string {
 // Load parses the YAML at path. Returns (nil, os.ErrNotExist) — wrapped — if
 // the file is absent, so callers can distinguish "no config yet, run
 // onboarding" from "config exists but failed to parse".
+//
+// On a successful parse, Load runs the Phase F migration: if cfg.Frames.List
+// is empty, a single "personal" frame is synthesised from DefaultProvider +
+// the matching ProviderConfig.DefaultModel. Pre-frames YAML therefore
+// loads forward without rewriting; the file gets a `frames:` block on the
+// next Save (which the onboarding flow + slash commands trigger).
 func Load(path string) (*Config, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -248,7 +262,21 @@ func Load(path string) (*Config, error) {
 	if err := miniyaml.UnmarshalStruct(b, &cfg); err != nil {
 		return nil, fmt.Errorf("config: parse %s: %w", path, err)
 	}
+	cfg.Frames = migrateFrames(cfg)
 	return &cfg, nil
+}
+
+// migrateFrames synthesises a "personal" frame from the legacy top-level
+// provider + model when the on-disk Config has no frames block. Pure
+// function so the same path covers both Load() and tests.
+func migrateFrames(cfg Config) frame.Config {
+	model := ""
+	if cfg.DefaultProvider != "" {
+		if pc, ok := cfg.Providers[cfg.DefaultProvider]; ok {
+			model = pc.DefaultModel
+		}
+	}
+	return frame.MigrateFromLegacy(cfg.Frames, cfg.DefaultProvider, model)
 }
 
 // Save writes cfg to path atomically: write to "<path>.tmp", fsync, rename
