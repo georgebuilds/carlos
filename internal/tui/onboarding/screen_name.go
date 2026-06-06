@@ -53,10 +53,15 @@ func (m nameModel) View() string {
 	// Title is owned by Flow.renderRightPane; here we render only the
 	// body (hint + input). Double-printing the title was the original
 	// "appears twice" bug.
-	hint := styleHint.Render("press enter to accept the default")
+	intro := styleHint.Render("setting up your personal frame, the one carlos opens by default.")
+	more := styleHint.Render("add work, side, or research frames later with /frame new or Ctrl+F.")
+	hint := styleHint.Render("press enter to continue")
 	return lipgloss.JoinVertical(lipgloss.Left,
-		hint,
+		intro,
+		more,
 		"",
 		m.input.View(),
+		"",
+		hint,
 	)
 }

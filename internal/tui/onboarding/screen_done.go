@@ -41,6 +41,19 @@ func (m doneModel) renderName(name string) string {
 		Bold(true).
 		Foreground(colorAccent).
 		Render(fmt.Sprintf("Ready, %s.", name))
-	sub := styleHint.Render("Config written to ~/.carlos/config.yaml.")
-	return lipgloss.JoinVertical(lipgloss.Left, headline, "", sub)
+	sub := styleHint.Render("Config written to ~/.carlos/config.yaml. Your personal frame is now live.")
+	nextHeader := styleHint.Render("next moves")
+	keyA := styleKey.Render("Ctrl+F")
+	keyB := styleKey.Render("/frame new")
+	hintA := styleHint.Render("  open the frame switcher")
+	hintB := styleHint.Render("  add a frame, optionally cloned from personal")
+	return lipgloss.JoinVertical(lipgloss.Left,
+		headline,
+		"",
+		sub,
+		"",
+		nextHeader,
+		keyA+hintA,
+		keyB+hintB,
+	)
 }

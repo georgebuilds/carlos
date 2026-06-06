@@ -617,6 +617,28 @@ func runHeadless(prompt string, opts pleaseOptions) error {
 	// retried — the user explicitly retries via the TUI.
 	home, _ := os.UserHomeDir()
 	migrateFrameLayout(home)
+	// Phase F-19: inline TTY frame picker. When the user didn't pass
+	// -f / --frame, didn't set CARLOS_FRAME, the run is interactive
+	// (stdin is a tty), and the config has multiple frames, prompt
+	// for one before the rest of the boot path resolves the frame.
+	// Single-frame configs get a one-line dim notice and skip the
+	// picker so non-TTY / cron runs keep their old quiet behavior.
+	if opts.frame == "" && os.Getenv("CARLOS_FRAME") == "" && stdinIsTTY() {
+		switch len(cfg.Frames.List) {
+		case 0:
+		case 1:
+			fmt.Fprintf(os.Stderr, "carlos: running in %s frame\n", cfg.Frames.List[0].Name)
+		default:
+			name, perr := RunInlineFramePicker("carlos please", prompt, &cfg.Frames)
+			if perr != nil {
+				if errors.Is(perr, errFramePickerCancelled) {
+					return perr
+				}
+				return fmt.Errorf("frame picker: %w", perr)
+			}
+			opts.frame = name
+		}
+	}
 	// Phase F-17: resolve the active frame NAME early so the worktree
 	// + usershell scoping below use frame-aware paths. The full
 	// FrameInfo (with SystemPromptAppend) is computed lower; this is
@@ -925,6 +947,25 @@ func runResearch(args []string) error {
 	rcwd, _ := os.Getwd()
 	if home, herr := os.UserHomeDir(); herr == nil {
 		migrateFrameLayout(home)
+	}
+	// Phase F-19: inline TTY frame picker. Same gate as runHeadless:
+	// no flag, no env override, interactive tty, more than one
+	// configured frame.
+	if frameOverride == "" && os.Getenv("CARLOS_FRAME") == "" && stdinIsTTY() {
+		switch len(cfg.Frames.List) {
+		case 0:
+		case 1:
+			fmt.Fprintf(os.Stderr, "carlos: running in %s frame\n", cfg.Frames.List[0].Name)
+		default:
+			name, perr := RunInlineFramePicker("carlos research", question, &cfg.Frames)
+			if perr != nil {
+				if errors.Is(perr, errFramePickerCancelled) {
+					return perr
+				}
+				return fmt.Errorf("frame picker: %w", perr)
+			}
+			frameOverride = name
+		}
 	}
 	researchFrameName := ""
 	if res, ok := frame.ResolveActive(&cfg.Frames, frame.Input{
@@ -1866,6 +1907,9 @@ Examples:
 }
 
 func exit(err error) {
+	if errors.Is(err, errFramePickerCancelled) {
+		os.Exit(130)
+	}
 	fmt.Fprintln(os.Stderr, "carlos:", err)
 	os.Exit(1)
 }
