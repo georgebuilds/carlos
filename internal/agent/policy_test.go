@@ -273,6 +273,127 @@ func TestSetWorkspacePolicy_BuiltinStillWins(t *testing.T) {
 	}
 }
 
+// Phase F-12 cross-frame approval. The detector intercepts write/edit
+// inputs whose path falls inside a non-active frame's subtree, forcing
+// the fallback to run and tagging the audit log with a cross-frame
+// reason. Verified across the four interesting cases below.
+
+func setupCrossFrame(t *testing.T) (*LayeredApprover, *recordingApprover, *recordingAuditSink) {
+	t.Helper()
+	rec := &recordingApprover{allow: true}
+	sink := &recordingAuditSink{}
+	la := NewLayeredApprover(rec, []string{"write", "edit", "read"}, sink)
+	la.SetFrameSubtrees("personal", map[string]string{
+		"personal": "/home/u/.carlos/frames/personal",
+		"work":     "/home/u/.carlos/frames/work",
+	})
+	return la, rec, sink
+}
+
+func TestLayered_CrossFrame_PathInActiveFrameSkipsDetector(t *testing.T) {
+	la, rec, sink := setupCrossFrame(t)
+	ok := la.ApproveToolCall("write", []byte(`{"path":"/home/u/.carlos/frames/personal/notes/a.md","content":"x"}`))
+	if !ok {
+		t.Error("active-frame write should auto-approve via the builtin allow")
+	}
+	if rec.wasCalled() {
+		t.Error("active-frame write should not hit the fallback")
+	}
+	d := sink.snapshot()
+	if len(d) != 1 || d[0].Reason != ReasonBuiltinAllow {
+		t.Errorf("want one builtin-allow decision; got %+v", d)
+	}
+}
+
+func TestLayered_CrossFrame_PathInOtherFrameForcesFallback(t *testing.T) {
+	la, rec, sink := setupCrossFrame(t)
+	ok := la.ApproveToolCall("write", []byte(`{"path":"/home/u/.carlos/frames/work/notes/a.md","content":"x"}`))
+	if !ok {
+		t.Error("recorded approver returns true; want true")
+	}
+	if !rec.wasCalled() {
+		t.Error("cross-frame write MUST consult the fallback even when builtin allow has the tool")
+	}
+	d := sink.snapshot()
+	if len(d) != 1 || d[0].Reason != ReasonCrossFrameAllow {
+		t.Errorf("want ReasonCrossFrameAllow; got %+v", d)
+	}
+}
+
+func TestLayered_CrossFrame_FallbackDenyRecordsCrossDeny(t *testing.T) {
+	rec := &recordingApprover{allow: false}
+	sink := &recordingAuditSink{}
+	la := NewLayeredApprover(rec, []string{"write"}, sink)
+	la.SetFrameSubtrees("personal", map[string]string{
+		"personal": "/home/u/.carlos/frames/personal",
+		"work":     "/home/u/.carlos/frames/work",
+	})
+	ok := la.ApproveToolCall("write", []byte(`{"path":"/home/u/.carlos/frames/work/notes/a.md","content":"x"}`))
+	if ok {
+		t.Error("rejected fallback should propagate")
+	}
+	d := sink.snapshot()
+	if len(d) != 1 || d[0].Reason != ReasonCrossFrameDeny {
+		t.Errorf("want ReasonCrossFrameDeny; got %+v", d)
+	}
+}
+
+func TestLayered_CrossFrame_NonMutatingToolIgnored(t *testing.T) {
+	la, rec, _ := setupCrossFrame(t)
+	if !la.ApproveToolCall("read", []byte(`{"path":"/home/u/.carlos/frames/work/notes/a.md"}`)) {
+		t.Error("read in cross-frame path should still be evaluated by other layers")
+	}
+	if rec.wasCalled() {
+		t.Error("read isn't on the cross-frame list; fallback should not be forced")
+	}
+}
+
+func TestLayered_CrossFrame_DisabledWhenNoSubtrees(t *testing.T) {
+	rec := &recordingApprover{allow: true}
+	sink := &recordingAuditSink{}
+	la := NewLayeredApprover(rec, []string{"write"}, sink)
+	// No SetFrameSubtrees call — detector stays off.
+	la.ApproveToolCall("write", []byte(`{"path":"/anything/at/all.md","content":"x"}`))
+	d := sink.snapshot()
+	if len(d) != 1 || d[0].Reason != ReasonBuiltinAllow {
+		t.Errorf("legacy single-shelf decision should be builtin-allow; got %+v", d)
+	}
+}
+
+func TestLayered_CrossFrame_BoundaryGuardsAgainstPrefixCollision(t *testing.T) {
+	rec := &recordingApprover{allow: true}
+	sink := &recordingAuditSink{}
+	la := NewLayeredApprover(rec, []string{"write"}, sink)
+	la.SetFrameSubtrees("personal", map[string]string{
+		"personal": "/root/a",
+		"shadow":   "/root/a-extra",
+	})
+	// /root/a-extra/x must NOT match the personal frame (no leading sep after prefix).
+	la.ApproveToolCall("write", []byte(`{"path":"/root/a-extra/x.md","content":"x"}`))
+	d := sink.snapshot()
+	if len(d) != 1 || d[0].Reason != ReasonCrossFrameAllow {
+		t.Errorf("want ReasonCrossFrameAllow (target is shadow frame); got %+v", d)
+	}
+}
+
+func TestPathInside(t *testing.T) {
+	cases := []struct {
+		path, root string
+		want       bool
+	}{
+		{"/root/a/x.md", "/root/a", true},
+		{"/root/a", "/root/a", true},
+		{"/root/a-extra/x.md", "/root/a", false},
+		{"/root/b/x.md", "/root/a", false},
+		{"/elsewhere", "/root/a", false},
+	}
+	for _, c := range cases {
+		if got := pathInside(c.path, c.root); got != c.want {
+			t.Errorf("pathInside(%q,%q) = %v, want %v", c.path, c.root, got, c.want)
+		}
+	}
+}
+
 func TestSortStrings(t *testing.T) {
 	in := []string{"banana", "apple", "cherry", ""}
 	sortStrings(in)

@@ -746,6 +746,16 @@ func runHeadless(prompt string, opts pleaseOptions) error {
 			workspace.NewStore(workspace.DefaultPath()), cwd,
 		))
 	}
+	// Phase F-12: cross-frame write/edit detector. Same wiring as the
+	// chat path so a `carlos please` run sees the same boundary as
+	// the interactive surface.
+	if home != "" && len(cfg.Frames.List) > 0 {
+		subtrees := make(map[string]string, len(cfg.Frames.List))
+		for _, f := range cfg.Frames.List {
+			subtrees[f.Name] = frame.PathsFor(home, f.Name).Root
+		}
+		layered.SetFrameSubtrees(activeFrameName, subtrees)
+	}
 	approver = layered
 
 	// Surface which provider/model we're using on stderr so scripts and
@@ -1327,6 +1337,21 @@ func runDefault(cfg *config.Config, sessionID string) error {
 			workspace.NewStore(workspace.DefaultPath()), cwd,
 		)
 		layered.SetWorkspacePolicy(trustPolicy)
+	}
+	// Phase F-12: plug the cross-frame detector. Active frame name +
+	// every frame's on-disk root. write/edit calls landing in a
+	// non-active frame's subtree get forced through the prompt path
+	// with the cross-frame audit reason.
+	if home != "" && len(cfg.Frames.List) > 0 {
+		subtrees := make(map[string]string, len(cfg.Frames.List))
+		for _, f := range cfg.Frames.List {
+			subtrees[f.Name] = frame.PathsFor(home, f.Name).Root
+		}
+		activeName := cfg.Frames.Active
+		if activeName == "" {
+			activeName = cfg.Frames.Default
+		}
+		layered.SetFrameSubtrees(activeName, subtrees)
 	}
 	// Identity prompt: tells the model it is carlos (Gemini in
 	// particular otherwise answers "I am Gemini" to "what's your

@@ -33,6 +33,7 @@ package agent
 
 import (
 	"encoding/json"
+	"path/filepath"
 	"strings"
 	"sync"
 )
@@ -71,6 +72,17 @@ type LayeredApprover struct {
 	// show "what was auto-approved." nil disables; LayeredApprover
 	// works fine without it.
 	auditLog AuditSink
+
+	// Phase F-12 cross-frame detection. activeFrame names the frame
+	// the session is currently in; frameSubtrees maps every known
+	// frame name to its on-disk subtree (the per-frame paths.Root
+	// from internal/frame). When a write/edit lands inside a subtree
+	// that is NOT activeFrame's, the approval is forced through the
+	// fallback (skipping builtin + workspace allow) AND recorded with
+	// ReasonCrossFrameAllow/Deny. Empty subtrees disable the check
+	// (legacy single-shelf mode).
+	activeFrame   string
+	frameSubtrees map[string]string
 }
 
 // WorkspacePolicy is the layer-2 plug point. Implementations live
@@ -115,6 +127,13 @@ const (
 	ReasonSessionAllow DecisionReason = "session-allow"
 	// ReasonSessionDeny — wrapped Approver returned false.
 	ReasonSessionDeny DecisionReason = "session-deny"
+	// ReasonCrossFrameAllow — write/edit landed inside another frame's
+	// subtree and the user explicitly approved. Phase F-12. Bypasses
+	// the builtin + workspace shortcuts so the user always sees a
+	// cross-frame write distinctly.
+	ReasonCrossFrameAllow DecisionReason = "cross-frame-allow"
+	// ReasonCrossFrameDeny — same path but the user rejected.
+	ReasonCrossFrameDeny DecisionReason = "cross-frame-deny"
 )
 
 // DefaultBuiltinAllow is the initial hardcoded auto-approve set.
@@ -173,7 +192,22 @@ func NewLayeredApprover(fallback Approver, allow []string, audit AuditSink) *Lay
 
 // ApproveToolCall implements Approver. Walks the layers in order:
 // builtin → workspace → fallback. Audit log fires on every return.
+//
+// Phase F-12: when a mutating tool (write, edit) targets a path that
+// belongs to a non-active frame's subtree, the layered shortcuts are
+// skipped and the fallback prompts. The decision is recorded with the
+// cross-frame reason so the audit log and /permissions overlay can
+// surface the boundary crossing distinctly.
 func (l *LayeredApprover) ApproveToolCall(name string, input []byte) bool {
+	if cross := l.crossFrameTarget(name, input); cross != "" {
+		ok := l.fallback.ApproveToolCall(name, input)
+		reason := ReasonCrossFrameDeny
+		if ok {
+			reason = ReasonCrossFrameAllow
+		}
+		l.record(name, input, ok, reason)
+		return ok
+	}
 	if l.builtinAllow[name] {
 		l.record(name, input, true, ReasonBuiltinAllow)
 		return true
@@ -189,6 +223,78 @@ func (l *LayeredApprover) ApproveToolCall(name string, input []byte) bool {
 	}
 	l.record(name, input, ok, reason)
 	return ok
+}
+
+// SetFrameSubtrees plugs the Phase F-12 cross-frame detector. active
+// is the current session's frame name; subtrees maps every frame name
+// to its on-disk subtree root (typically frame.PathsFor(home,name).Root).
+// Pass a nil/empty map to disable the check entirely.
+func (l *LayeredApprover) SetFrameSubtrees(active string, subtrees map[string]string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.activeFrame = active
+	if subtrees == nil {
+		l.frameSubtrees = nil
+		return
+	}
+	cp := make(map[string]string, len(subtrees))
+	for k, v := range subtrees {
+		cp[k] = v
+	}
+	l.frameSubtrees = cp
+}
+
+// crossFrameTarget reports the frame name a write/edit input would
+// land in IF that frame is NOT the active one. Returns "" when the
+// target is in the active frame, when no frame mapping is configured,
+// or when the tool isn't one of the mutating-with-path family.
+func (l *LayeredApprover) crossFrameTarget(name string, input []byte) string {
+	if name != "write" && name != "edit" {
+		return ""
+	}
+	l.mu.RLock()
+	active := l.activeFrame
+	subtrees := l.frameSubtrees
+	l.mu.RUnlock()
+	if len(subtrees) == 0 {
+		return ""
+	}
+	var in struct {
+		Path string `json:"path"`
+	}
+	if err := json.Unmarshal(input, &in); err != nil || in.Path == "" {
+		return ""
+	}
+	absPath, err := filepath.Abs(in.Path)
+	if err != nil {
+		return ""
+	}
+	for fname, root := range subtrees {
+		if root == "" || fname == active {
+			continue
+		}
+		if pathInside(absPath, root) {
+			return fname
+		}
+	}
+	return ""
+}
+
+// pathInside reports whether path is inside root. Both must be
+// absolute and clean; uses a separator-anchored prefix check so
+// "/root/a" does not match "/root-other/...".
+func pathInside(path, root string) bool {
+	if path == root {
+		return true
+	}
+	if !strings.HasPrefix(path, root) {
+		return false
+	}
+	rest := path[len(root):]
+	if rest == "" {
+		return true
+	}
+	return rest[0] == filepath.Separator
 }
 
 // record is a small helper so the call sites stay one line. Skips
