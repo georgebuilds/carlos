@@ -25,6 +25,7 @@ type providerEntry struct {
 var providerEntries = []providerEntry{
 	{name: "anthropic", label: "Anthropic", secretLabel: "API key"},
 	{name: "openai", label: "OpenAI", secretLabel: "API key"},
+	{name: "gemini", label: "Google Gemini", secretLabel: "API key"},
 	{name: "openrouter", label: "OpenRouter", secretLabel: "API key"},
 	{name: "ollama", label: "Ollama", secretLabel: "base URL", isURL: true, urlDefault: "http://localhost:11434"},
 }

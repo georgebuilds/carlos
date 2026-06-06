@@ -49,6 +49,7 @@ import (
 	"github.com/georgebuilds/carlos/internal/memory"
 	"github.com/georgebuilds/carlos/internal/providers"
 	"github.com/georgebuilds/carlos/internal/providers/anthropic"
+	"github.com/georgebuilds/carlos/internal/providers/gemini"
 	"github.com/georgebuilds/carlos/internal/providers/ollama"
 	"github.com/georgebuilds/carlos/internal/providers/openai"
 	"github.com/georgebuilds/carlos/internal/providers/openrouter"
@@ -406,12 +407,14 @@ func buildDispatch(cfg *config.Config, opts pleaseOptions) (*dispatch, error) {
 		p = anthropic.New(pc.APIKey)
 	case "openai":
 		p = openai.New(pc.APIKey)
+	case "gemini":
+		p = gemini.New(pc.APIKey)
 	case "openrouter":
 		p = openrouter.New(pc.APIKey)
 	case "ollama":
 		p = ollama.New(pc.BaseURL)
 	default:
-		return nil, fmt.Errorf("unknown provider %q (expected anthropic | openai | openrouter | ollama)", name)
+		return nil, fmt.Errorf("unknown provider %q (expected anthropic | openai | gemini | openrouter | ollama)", name)
 	}
 
 	model := opts.model
@@ -433,6 +436,8 @@ func providerDefaultModel(name string) string {
 		return "claude-3-5-sonnet-latest"
 	case "openai":
 		return "gpt-4o"
+	case "gemini":
+		return "gemini-3.5-flash"
 	case "openrouter":
 		return "anthropic/claude-3.5-sonnet"
 	case "ollama":
