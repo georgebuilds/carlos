@@ -1,0 +1,59 @@
+# Release pipeline. Fires on a `v*` tag push, builds the four-arch
+# matrix with goreleaser, creates a draft GitHub release, and updates
+# the Homebrew formula in georgebuilds/homebrew-tap.
+#
+# Required secrets on this repo:
+#   - HOMEBREW_TAP_GITHUB_TOKEN — fine-grained PAT scoped to
+#     georgebuilds/homebrew-tap with Contents: read+write. Needed so
+#     goreleaser can push Formula/carlos.rb to the tap. The default
+#     GITHUB_TOKEN can't write to other repos.
+#
+# Manual trigger via workflow_dispatch is useful when re-running a
+# failed release without re-tagging.
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  goreleaser:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Full history + tags so goreleaser can compute the changelog
+          # and resolve the tag's commit metadata.
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          # Pin to the toolchain go.mod declares so the released binary
+          # matches what was tested.
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run tests
+        # Gate the release on a green suite. Race detector off because
+        # the build matrix runs CGO_ENABLED=0 and -race needs cgo on
+        # some platforms; the regular suite is the contract for release.
+        run: go test ./...
+
+      - name: Run goreleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: latest
+          args: release --clean
+        env:
+          # Default token writes the GitHub release.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # PAT writes Formula/carlos.rb to georgebuilds/homebrew-tap.
+          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}

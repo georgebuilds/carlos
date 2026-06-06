@@ -17,7 +17,15 @@ Alpha. Dogfood-ready, not yet v1. Site: [georgebuilds.github.io/carlos](https://
 - Cross-compiled for darwin + linux × amd64 + arm64
 - Pure Go, no CGO, single binary
 
-## Build
+## Install
+
+```
+brew install georgebuilds/tap/carlos
+```
+
+Or grab a tarball from [Releases](https://github.com/georgebuilds/carlos/releases) and drop `carlos` into your `$PATH`.
+
+## Build from source
 
 ```
 go build ./cmd/carlos
@@ -67,4 +75,4 @@ docs/            coming-soon site (served via GitHub Pages)
 
 ## License
 
-GPL-3 planned (LICENSE file lands with the v1 release).
+GPL-3.0-or-later. See [LICENSE](./LICENSE).

@@ -4,10 +4,11 @@
 # publishing.
 #
 # Output: macOS (arm64 + amd64) + Linux (arm64 + amd64) tarballs in
-# dist/, with checksums + a draft GitHub release.
+# dist/, with checksums + a draft GitHub release. Each release also
+# pushes a Formula/carlos.rb to georgebuilds/homebrew-tap so users can
+# `brew install georgebuilds/tap/carlos`.
 #
-# Phase 10 slice 10e. Homebrew tap + Linux package manager integration
-# land in 10b / 10c when the public tap repo exists.
+# CI: see .github/workflows/release.yml — runs on `v*` tag push.
 
 version: 2
 
@@ -86,8 +87,40 @@ release:
     A coding agent.
   footer: |
     ---
-    **Install** — extract the tarball for your platform and drop `carlos` into your `$PATH`.
-    A homebrew tap + Linux package-manager integration are tracked in [Phase 10](https://github.com/georgebuilds/carlos).
+    **Install**
+    - macOS / Linuxbrew: `brew install georgebuilds/tap/carlos`
+    - Other Linux: extract the tarball for your platform and drop `carlos` into your `$PATH`.
+
+# Homebrew tap integration. Each release pushes a fresh Formula/carlos.rb
+# to georgebuilds/homebrew-tap. Requires HOMEBREW_TAP_GITHUB_TOKEN —
+# a fine-grained PAT scoped to the tap repo with Contents: read+write.
+# CI workflow injects it via repo secret of the same name.
+#
+# Skip on prereleases so a `v0.1.0-rc1` tag doesn't overwrite a stable
+# formula. Toggle to false once carlos is post-v1 and stable releases
+# carry no prerelease suffix.
+brews:
+  - name: carlos
+    repository:
+      owner: georgebuilds
+      name: homebrew-tap
+      branch: main
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    directory: Formula
+    commit_author:
+      name: goreleaserbot
+      email: bot@goreleaser.com
+    commit_msg_template: "Brew formula update for {{ .ProjectName }} version {{ .Tag }}"
+    homepage: https://github.com/georgebuilds/carlos
+    description: "Pure-Go TUI agent with skill induction and sub-agent supervision."
+    license: "GPL-3.0-or-later"
+    # Skip prereleases so a `v0.1.0-rc1` tag doesn't clobber a stable
+    # formula. Stable tags (no -suffix) write through.
+    skip_upload: auto
+    test: |
+      system "#{bin}/carlos", "version"
+    install: |
+      bin.install "carlos"
 
 # Reproducible builds: source-date-epoch from the commit timestamp so
 # rebuilding the same tag produces bit-identical artifacts.
