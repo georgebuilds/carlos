@@ -74,15 +74,33 @@ func (m *Model) renderInner(innerW, innerH int) string {
 		inputH = lipgloss.Height(input)
 	}
 
-	// Approval prompt OR jobs overlay OR help overlay is a bordered
-	// panel above the input. Compute height first so we can reserve
-	// it from the transcript area. They're mutually exclusive —
-	// approval is modal (model is waiting), jobs / help are
-	// dismiss-on-keypress; precedence: approval > jobs > help.
+	// Approval prompt OR frame switcher OR jobs overlay OR help
+	// overlay is a bordered panel above the input. Compute height
+	// first so we can reserve it from the transcript area. They're
+	// mutually exclusive — approval is modal (model is waiting),
+	// jobs / perms / help / switcher are dismiss-on-keypress;
+	// precedence: approval > switcher > jobs > perms > help.
 	var approval string
 	approvalH := 0
 	if m.pendingApproval != nil {
 		approval = renderApprovalBox(m.pendingApproval, innerW)
+		approvalH = lipgloss.Height(approval)
+	} else if m.showFrameSwitcher {
+		// Phase F-5: the switcher is full-screen takeover so it gets
+		// the whole inner area (minus header/footer/input). We hand
+		// it the inner height so it can vertically center the grid.
+		switcherH := innerH - headerH - footerH - inputH - 1
+		if switcherH < 10 {
+			switcherH = 10
+		}
+		approval = renderFrameSwitcher(
+			m.frame,
+			m.switcherCursor,
+			m.switcherPage,
+			innerW,
+			switcherH,
+			m.switcherHelp,
+		)
 		approvalH = lipgloss.Height(approval)
 	} else if m.showJobs && m.usershell != nil {
 		approval = renderJobsOverlay(

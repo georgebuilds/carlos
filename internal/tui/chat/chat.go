@@ -294,6 +294,18 @@ type Model struct {
 	// switch updates the persisted active and prints a hint to
 	// restart for the new provider/model to take effect.
 	frame FrameUI
+
+	// Phase F-5: takeover frame switcher overlay (Ctrl+F). When
+	// showFrameSwitcher is true the chat content dims and a 3x2 grid
+	// of tiles renders above the transcript. switcherCursor is the
+	// focused tile (index into frame.Available); switcherPage flips
+	// between visible windows when more frames exist than tiles. The
+	// in-overlay ? toggle expands switcherHelp into a verbose
+	// keymap line.
+	showFrameSwitcher bool
+	switcherCursor    int
+	switcherPage      int
+	switcherHelp      bool
 }
 
 // FrameUI is the Phase F display + switch contract the chat Model
@@ -520,6 +532,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 		}
+		// Phase F-5: takeover frame switcher takes precedence over the
+		// jobs / permissions overlays so Ctrl+F always reaches it. The
+		// approval overlay is still modal above this — the model is
+		// waiting and a frame switch shouldn't interrupt that.
+		if m.showFrameSwitcher {
+			next, cmd, handled := m.handleFrameSwitcherKey(msg)
+			if handled {
+				return next, cmd
+			}
+		}
 		// Phase U S6: jobs overlay intercepts navigation + action
 		// keys while open. Ctrl+C still falls through so the user
 		// can quit even while browsing jobs.
@@ -621,6 +643,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.jobsFilterMode = false
 				}
 				m.rerenderViewport()
+				return m, nil
+			}
+		case "ctrl+f":
+			// Phase F-5: toggle the takeover frame switcher. No-op
+			// when frames aren't wired (legacy single-shelf mode);
+			// the slash echo from /frame already covers that path.
+			if m.frame.Active != "" {
+				m.openFrameSwitcher()
 				return m, nil
 			}
 		case "up":
