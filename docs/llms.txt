@@ -1,0 +1,74 @@
+# carlos
+
+> Pure-Go TUI agent. Single binary under 16 MB. Local-first, multi-provider, with autonomous skill induction and first-class sub-agent supervision.
+
+Carlos is a CLI tool that runs in your terminal. State persists to `~/.carlos/`. It speaks to Anthropic, OpenAI, OpenRouter, Ollama, and Gemini using the Anthropic tool-use schema as the canonical shape; adapters normalize the others. The event log is SQLite (FTS5 over markdown summaries for memory); the trusted-workspaces store, schedules, and user prefs are flat files. No CGO, cross-compiled for darwin + linux on amd64 + arm64.
+
+Two distinguishing bets. First, skill induction: carlos watches transcripts and proposes reusable skills, which the user reviews before they enter the library. Second, sub-agent supervision: delegated agents appear in a live manage view with intent, tool calls, progress, diffs, and spend, and the user can join, redirect, or stop any of them mid-flight.
+
+## Canonical references
+
+- [README.md](https://github.com/georgebuilds/carlos/blob/main/README.md): user-facing intro, install, layout
+- [SPEC.md](https://github.com/georgebuilds/carlos/blob/main/SPEC.md): full specification with line refs into the implementation
+- [Releases](https://github.com/georgebuilds/carlos/releases): version history and signed tarballs
+- [Issues](https://github.com/georgebuilds/carlos/issues): open work and discussion
+
+## Tool surface (28 registered by default)
+
+- Filesystem read: `read`, `grep`, `glob`, `ls`. Sandboxed by `BaseDir` when running inside a worktree.
+- Filesystem mutate: `write`, `edit`. Always prompt unless the session cached "Always".
+- Shell: `bash`. Non-PTY by default; `bash_pty` available as a separate registration.
+- Git read-only: `git_status`, `git_diff`, `git_log`, `git_blame`, `git_show`.
+- Web: `web_fetch` (HTML to text, configurable UA and robots policy), `web_search` (Brave, SearXNG, or DuckDuckGo HTML fallback), `http_request` (method-parametric for REST, GraphQL, webhooks).
+- Notes, pinned to the configured Obsidian vault: `notes_get`, `notes_search`, `notes_backlinks`, `notes_tagged`, `notes_neighbors`, `notes_recent`, `notes_resolve`. Schema does not accept `vault:`. These are auto-approved by layer 1 of the permission model.
+- Notes, arbitrary vault: `obsidian_get`, `obsidian_search`, `obsidian_backlinks`, `obsidian_tagged`, `obsidian_neighbors`, `obsidian_recent`, `obsidian_resolve`. Schema requires `vault:`. Always prompts.
+
+## Permission model
+
+Three layers, evaluated in order, in `internal/agent/policy.go`:
+
+1. Built-in allowlist. Hardcoded read-only tools (the configured-vault notes_*, plus `read`, `grep`, `glob`, `ls`, and the five `git_*` inspection tools). Auto-approved without inspecting input. Trust anchor is the configuration boundary set during onboarding.
+2. Workspace trust. When the current working directory is in `~/.carlos/trusted-workspaces.json`, a curated set of read-only bash verbs auto-approves: `ls`, `pwd`, `cat`, `head`, `tail`, `wc`, `file`, `which`, `echo`, and the read-only `git` subcommands (`status`, `diff`, `log`, `show`, `blame`, `branch`, `ls-files`, `ls-tree`, `rev-parse`, `describe`, `remote`, read-form `config`). Build, test, and install tools (cargo, npm, yarn, pnpm, go test, go build, make, cmake, bazel, ninja) are explicitly excluded. Mutating filesystem verbs are excluded. Shell metacharacters anywhere in the command disqualify the whole call. Implementation lives in `internal/workspace`.
+3. Session fallback. The bubbletea TUI overlay prompts the user; their answer can cache as a session "Always" entry.
+
+Every decision is captured by an optional `AuditSink`. Reasons: `ReasonBuiltinAllow`, `ReasonWorkspaceAllow`, `ReasonSessionAllow`, `ReasonSessionDeny`.
+
+## Slash commands
+
+Owned by `internal/tui/slash`. Mirrored from Claude Code: `/clear`, `/help`, `/exit` (alias `/quit`, `/q`), `/compact`, `/model`, `/review`. Carlos-specific: `/insights`, `/skills`, `/memory`, `/schedule`, `/daemon`, `/agents`, `/research`, `/resume`, `/shell`, `/jobs`, `/fg`, `/bg`, `/trust`, `/untrust`, `/trusts`.
+
+## Subsystems
+
+- [internal/agent](https://github.com/georgebuilds/carlos/tree/main/internal/agent): tool-use loop, event log, supervision, layered approval policy
+- [internal/tools](https://github.com/georgebuilds/carlos/tree/main/internal/tools): every registered tool
+- [internal/providers](https://github.com/georgebuilds/carlos/tree/main/internal/providers): anthropic, openai, openrouter, ollama, gemini, oacompat
+- [internal/notes](https://github.com/georgebuilds/carlos/tree/main/internal/notes): Obsidian vault index and cache (Goldmark plus miniyaml)
+- [internal/workspace](https://github.com/georgebuilds/carlos/tree/main/internal/workspace): trusted-workspaces store and read-only bash classifier
+- [internal/research](https://github.com/georgebuilds/carlos/tree/main/internal/research): decompose, search, fetch, read, synthesize, verify
+- [internal/skills](https://github.com/georgebuilds/carlos/tree/main/internal/skills): skill format, inducer, judge, replay-eval
+- [internal/usershell](https://github.com/georgebuilds/carlos/tree/main/internal/usershell): Phase U `!` prefix driver, jobs overlay, history
+- [internal/gateway](https://github.com/georgebuilds/carlos/tree/main/internal/gateway): ntfy, Telegram, Signal, custom adapters
+- [internal/daemon](https://github.com/georgebuilds/carlos/tree/main/internal/daemon): background scheduler under launchd or systemd
+- [internal/schedule](https://github.com/georgebuilds/carlos/tree/main/internal/schedule): cron plus natural language grammar
+- [internal/tui](https://github.com/georgebuilds/carlos/tree/main/internal/tui): bubbletea chat, manage, onboarding, slash registry
+
+## Provider capability map
+
+The `Capabilities()` accessor exposes per-provider feature flags: `ParallelToolUse`, `PromptCaching`, `Vision`, `StructuredOutput`. Anthropic is first-class. OpenAI and OpenRouter ride the `oacompat` Chat Completions wire shape. Gemini has a native provider plus `oacompat` for OpenAI-compatible Gemini endpoints. Ollama uses `/api/chat` with a leading system message.
+
+## Filesystem layout (`~/.carlos/`)
+
+- `config.yaml`: user prefs, provider keys, schedules, vault config
+- `state.db`: SQLite event log plus memory FTS5
+- `trusted-workspaces.json`: Phase T-2 trust store, 0600 with atomic writes
+- `shell-history`: Phase U history file
+- `jobs/<job-id>.log`: per-job shell output
+- `research/<slug>-<unix-ts>.md`: research reports
+- `skills/<name>.md`: user-approved skill library
+- `agent-pools/`: sub-agent worktrees and state
+
+Directory permissions are 0700; files containing secrets are 0600.
+
+## License
+
+GPL-3.0-or-later.

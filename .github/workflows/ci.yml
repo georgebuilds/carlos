@@ -1,0 +1,90 @@
+# CI gate for pull requests targeting main. Does NOT fire on pushes
+# to main: that path is the release pipeline (.github/workflows/
+# release.yml on `v*` tags). Manual `workflow_dispatch` is available
+# for re-runs from the Actions tab.
+#
+# # Job split
+#
+# Two parallel jobs:
+#   - `check`: vet + go.mod-tidy guard. Fast (<30s warm); surfaces
+#     style + dependency drift early so the PR status row shows the
+#     cheap signal before the test suite finishes.
+#   - `test`: full `go test ./...` suite (~38 packages, ~1800 tests,
+#     ~60s warm).
+#
+# Running them in parallel bounds wall time by the longer job, and
+# the setup-go cache makes the per-job spin-up cheap enough that the
+# wall-clock win beats running setup twice.
+#
+# # Caching
+#
+# actions/setup-go@v6's built-in `cache: true` covers GOMODCACHE +
+# the build cache, keyed off go.sum + Go toolchain version. No
+# explicit cache action needed.
+#
+# # Concurrency
+#
+# `cancel-in-progress` on a group keyed by `github.ref` drops
+# superseded runs when a new commit lands on the same PR head, so
+# the queue doesn't pile up.
+
+name: ci
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: vet + tidy
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          # Pin to the toolchain go.mod declares so CI uses exactly
+          # what was tested locally.
+          go-version-file: go.mod
+          cache: true
+
+      - name: go mod tidy is a no-op
+        # `go mod tidy` should leave go.mod and go.sum unchanged.
+        # If this step fails, run it locally and commit the result.
+        run: |
+          go mod tidy
+          git diff --exit-code go.mod go.sum
+
+      - name: Vet
+        run: go vet ./...
+
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Test
+        # `-count=1` disables the test cache so the run reflects the
+        # current code. `-timeout=5m` is generous given local wall
+        # time is ~40s.
+        run: go test ./... -count=1 -timeout=5m
