@@ -61,6 +61,7 @@ import (
 	"github.com/georgebuilds/carlos/internal/tui/chatglue"
 	"github.com/georgebuilds/carlos/internal/tui/manage"
 	"github.com/georgebuilds/carlos/internal/tui/onboarding"
+	"github.com/georgebuilds/carlos/internal/usershell"
 )
 
 // fallbackVersion is what we print when runtime/debug.ReadBuildInfo
@@ -1029,11 +1030,20 @@ func runDefault(cfg *config.Config) error {
 	// safety net for tests + dev-aid callers, not this path.
 	summarizer := memory.LLMSummarizer{Provider: d.provider, Model: d.model}
 
+	// Phase U: user-shell manager scoped to this chat session. The
+	// chat surface routes "!cmd" submissions here; the Manager writes
+	// EvtUserShellStart/End events into the same log the chat is
+	// already reading from, so the model context projection picks
+	// them up on the next turn for free.
+	shellMgr := usershell.New(usershell.Options{Log: log})
+	defer shellMgr.Close()
+
 	for {
 		opts := []chat.Option{
 			chat.WithTUIApprover(approver),
 			chat.WithUserName(cfg.UserName),
 			chat.WithSummarizer(summarizer),
+			chat.WithUserShell(shellMgr),
 		}
 		if researchEngine != nil {
 			opts = append(opts, chat.WithResearchEngine(researchEngine))

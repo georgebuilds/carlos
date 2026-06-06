@@ -192,6 +192,12 @@ func stateBadge(s agent.State) string {
 //
 // The status row shows slash-command echoes / errors and clears on the
 // next keystroke (handled in Update). The keybind row is always present.
+//
+// Phase U S4: when a usershell.Manager is wired AND the user is in any
+// of the three user-shell footer states (typing-shell, fg-running, or
+// bg-only), the right-aligned tip slot is replaced with the user-shell
+// hint line so the actionable next-keystroke information always
+// dominates the footer.
 func (m *Model) renderFooter(w int) string {
 	keyStyle := lipgloss.NewStyle().Foreground(colorAccent).Bold(true)
 	hintStyle := lipgloss.NewStyle().Foreground(colorMuted)
@@ -205,12 +211,25 @@ func (m *Model) renderFooter(w int) string {
 			keyStyle.Render("pgup/pgdn") + hintStyle.Render(" scroll  ") +
 			keyStyle.Render("ctrl-c") + hintStyle.Render(" quit")
 	}
+
+	// User-shell footer hint takes priority over the right-aligned
+	// /help tip. Idle state returns empty so we keep the existing
+	// tip behavior.
+	shellHint := renderUserShellFooter(m.computeUserShellFooterContext())
 	// Drop the right-aligned tip when there isn't enough room left
 	// after the keybind hints — wrapping it onto a second row pushes
 	// the leftover word ("commands") flush-left, which reads worse
 	// than just hiding the tip. The hints alone are the discoverable
 	// surface; /help is already there for the user who needs it.
-	tip := lipgloss.NewStyle().Foreground(colorSubtle).Render(footerTip(m.readOnly))
+	//
+	// User-shell hint, when present, replaces the tip — actionable
+	// "you can press X right now" beats "type /help" every time.
+	var tip string
+	if shellHint != "" {
+		tip = shellHint
+	} else {
+		tip = lipgloss.NewStyle().Foreground(colorSubtle).Render(footerTip(m.readOnly))
+	}
 	hintsW := lipgloss.Width(hints)
 	tipW := lipgloss.Width(tip)
 	var row string

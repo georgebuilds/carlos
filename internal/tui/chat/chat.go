@@ -19,6 +19,7 @@ import (
 	"github.com/georgebuilds/carlos/internal/schedule"
 	"github.com/georgebuilds/carlos/internal/theme"
 	"github.com/georgebuilds/carlos/internal/tui/slash"
+	"github.com/georgebuilds/carlos/internal/usershell"
 )
 
 // Brand palette — package-level vars populated by [ApplyPalette].
@@ -215,6 +216,16 @@ type Model struct {
 	// chat surface still works without an LLM-backed summarizer.
 	// Production wires memory.LLMSummarizer; tests inject a fake.
 	summarizer memory.Summarizer
+
+	// usershell is the Phase U "!"-prefix driver. When nil, the chat
+	// rejects "!cmd" submissions with a "not wired" status echo and
+	// the four-state footer collapses to its idle branch.
+	// Production wires a usershell.Manager scoped to the chat
+	// session; tests inject either a real Manager with a fake runner
+	// or leave it nil.
+	usershell      *usershell.Manager
+	userShellSubCh <-chan usershell.Update
+	userShellUnsub func()
 }
 
 type statusKind int
@@ -253,6 +264,17 @@ func WithUserName(name string) Option {
 			m.userName = name
 		}
 	}
+}
+
+// WithUserShell attaches a usershell.Manager so "!cmd" submissions
+// run as shell commands. Nil (or omitting this option entirely)
+// leaves the feature dormant — the composer treats "!ls" like any
+// other text and the footer collapses to its idle branch.
+// cmd/carlos.runDefault constructs the Manager scoped to the chat
+// session's event log; tests pass either a real Manager with a
+// fake runner or skip the option entirely.
+func WithUserShell(mgr *usershell.Manager) Option {
+	return func(m *Model) { m.usershell = mgr }
 }
 
 // New constructs a chat Model bound to the given event log + agent. The
@@ -323,6 +345,12 @@ func (m *Model) Init() tea.Cmd {
 	if m.approver != nil {
 		cmds = append(cmds, approvalPumpCmd(m.approver.Requests()))
 	}
+	if m.usershell != nil {
+		ch, unsub := m.usershell.Subscribe()
+		m.userShellSubCh = ch
+		m.userShellUnsub = unsub
+		cmds = append(cmds, pumpUserShellCmd(ch))
+	}
 	return tea.Batch(cmds...)
 }
 
@@ -392,11 +420,30 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		switch msg.String() {
 		case "ctrl+c":
+			// Ctrl+C means: cancel the running fg shell job if there
+			// is one (mirrors terminal SIGINT semantics); otherwise
+			// quit the chat. The TUI research note flags ctrl+c as
+			// terminal-reserved for cancel and we honor that — the
+			// chat-quit path keeps it as the second-class meaning so
+			// the user can still exit, just with no fg job parked.
+			if cmd := m.cancelForegroundCmd(); cmd != nil {
+				return m, cmd
+			}
 			m.quitting = true
 			if m.subCancel != nil {
 				m.subCancel()
 			}
+			if m.userShellUnsub != nil {
+				m.userShellUnsub()
+			}
 			return m, tea.Quit
+		case "ctrl+z":
+			// Mirror shell ^Z: background the running fg job. No-op
+			// if nothing is running in the fg slot.
+			if cmd := m.backgroundRunningCmd(); cmd != nil {
+				return m, cmd
+			}
+			return m, nil
 		case "pgup", "pgdown", "home", "end":
 			var cmd tea.Cmd
 			m.vp, cmd = m.vp.Update(msg)
@@ -406,6 +453,17 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			return m, m.submit()
+		case "ctrl+@":
+			// Ctrl+Enter on terminals that emit NUL (mac Terminal,
+			// many xterms). Treat as "submit as background shell
+			// job" — only when the input starts with "!", else
+			// fall through to the textarea so it stays a no-op.
+			if m.readOnly {
+				return m, nil
+			}
+			if hasShellPrefix(m.ta.Value()) {
+				return m, m.submitBackgroundShell()
+			}
 		}
 		// Default route: textarea owns the keystroke when input is enabled.
 		// In read-only mode we send arrow keys/etc to the viewport so the
@@ -470,6 +528,23 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case statusMsg:
 		m.status = msg.text
 		m.statusKind = msg.kind
+		return m, nil
+
+	case userShellUpdateMsg:
+		// S4: the footer needs to re-render whenever a job's state
+		// or output changes. We don't (yet) project the update into
+		// the transcript — S5 owns block rendering. Re-arm the pump
+		// so the next update flows in.
+		// Note: bubbletea redraws after every Update return; the
+		// recomputed footer state is picked up by view.go's call to
+		// computeUserShellFooterContext.
+		if m.userShellSubCh != nil {
+			return m, pumpUserShellCmd(m.userShellSubCh)
+		}
+		return m, nil
+
+	case userShellSubscriptionClosedMsg:
+		m.userShellSubCh = nil
 		return m, nil
 	}
 	return m, nil
@@ -666,6 +741,14 @@ func (m *Model) submit() tea.Cmd {
 	if raw == "" {
 		return nil
 	}
+
+	// Phase U: "!cmd" submissions short-circuit to the user-shell
+	// path before slash or model routing.
+	if isShellSubmission(raw) {
+		m.ta.Reset()
+		return m.submitUserShellCmd(extractShellCommand(raw), usershell.Foreground)
+	}
+
 	m.ta.Reset()
 
 	cmd, err := slash.Parse(raw)
@@ -681,6 +764,18 @@ func (m *Model) submit() tea.Cmd {
 		}
 	}
 	return m.appendUserMessage(raw)
+}
+
+// submitBackgroundShell extracts the "!cmd" body and submits it as
+// a Background job. Wired to Ctrl+Enter (ctrl+@). The textarea is
+// cleared on this path so the user can keep typing.
+func (m *Model) submitBackgroundShell() tea.Cmd {
+	raw := strings.TrimSpace(m.ta.Value())
+	if !isShellSubmission(raw) {
+		return nil
+	}
+	m.ta.Reset()
+	return m.submitUserShellCmd(extractShellCommand(raw), usershell.Background)
 }
 
 // dispatchSlash routes a parsed slash command. For Slice 1e, the only
