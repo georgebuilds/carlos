@@ -66,6 +66,22 @@ const (
 	// the approval-queue resolver doesn't care which surface produced
 	// the decision.
 	EvtGatewayInbound EventType = "gateway_inbound"
+
+	// User-shell events — Phase U "!"-prefix feature. The usershell
+	// Manager owns the payload shapes (internal/usershell/events.go);
+	// the constants live here for the same reason the gateway pair
+	// does — the event log + projections need to filter on them
+	// without a circular import.
+	//
+	// EvtUserShellStart is written when a job enters the running state
+	// (foreground OR background). Carries command, cwd, and start
+	// timestamp so a crash mid-run leaves a recoverable "we tried" row.
+	EvtUserShellStart EventType = "user_shell_start"
+	// EvtUserShellEnd is written when a job leaves running for a
+	// terminal state. Carries exit code, duration, cancelled/bg flags,
+	// inline-capped output for the model context, AND an artifact ref
+	// to the full output blob.
+	EvtUserShellEnd EventType = "user_shell_end"
 )
 
 type Event struct {
