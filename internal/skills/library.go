@@ -71,6 +71,81 @@ func (l *Library) Descriptions() []string {
 	return out
 }
 
+// ForFrame returns the active skills whose `frames:` frontmatter list
+// permits the named frame (empty list means "available everywhere", so
+// it always passes). Used by the skill-retrieval layer to scope what
+// the model sees per-frame without re-reading disk on every switch.
+//
+// Phase F-20.
+func (l *Library) ForFrame(frame string) []*Skill {
+	if l == nil {
+		return nil
+	}
+	out := make([]*Skill, 0, len(l.Active))
+	for _, s := range l.Active {
+		if s == nil {
+			continue
+		}
+		if skillAllowedInFrame(s, frame) {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// PickBackend resolves the right backend skill for a capability +
+// backend pair from the active library. The capability prefix is the
+// load-bearing convention — every bundled calendar skill carries
+// `name: calendar-<backend>` and `backend: <backend>` so we can match
+// either by name prefix or by the frontmatter field. The frontmatter
+// field wins when both are present.
+//
+// Returns nil when no skill matches. Callers handle the absence (e.g.
+// the /capabilities slash echoes "no backend wired").
+//
+// Phase C-4.
+func (l *Library) PickBackend(capability, backend string) *Skill {
+	if l == nil || capability == "" || backend == "" {
+		return nil
+	}
+	prefix := capability + "-"
+	for _, s := range l.Active {
+		if s == nil {
+			continue
+		}
+		if s.Backend == backend {
+			// Prefer explicit frontmatter when present — bundle skills
+			// rely on this so a file rename doesn't drop them off the
+			// capability map.
+			if s.Name == capability+"-"+backend || s.Name == prefix+backend || s.Backend == backend {
+				return s
+			}
+		}
+	}
+	// Fallback: name match against the capability- prefix.
+	for _, s := range l.Active {
+		if s != nil && s.Name == prefix+backend {
+			return s
+		}
+	}
+	return nil
+}
+
+// skillAllowedInFrame is the Phase F-20 frame-filter rule. Empty Frames
+// means "every frame"; non-empty means "only the listed frames". Split
+// out of ForFrame for clean test coverage.
+func skillAllowedInFrame(s *Skill, frame string) bool {
+	if len(s.Frames) == 0 {
+		return true
+	}
+	for _, f := range s.Frames {
+		if f == frame {
+			return true
+		}
+	}
+	return false
+}
+
 // LoadLibrary walks each rootDir, treats every subdirectory that
 // contains a SKILL.md file as one skill, and returns the deduplicated
 // active set. Later roots shadow earlier ones on `name` collision
@@ -118,26 +193,63 @@ func LoadLibrary(rootDirs []string) (*Library, error) {
 				continue
 			}
 			skillDir := filepath.Join(root, e.Name())
-			// Only treat as a skill if SKILL.md exists.
-			if _, err := os.Stat(filepath.Join(skillDir, skillMarkdownFile)); err != nil {
-				continue
+			loaded := loadSkillsAt(skillDir)
+			for _, s := range loaded {
+				if idx, ok := byName[s.Name]; ok {
+					// Later wins (project shadows user).
+					lib.Active[idx] = s
+					continue
+				}
+				byName[s.Name] = len(lib.Active)
+				lib.Active = append(lib.Active, s)
 			}
-			s, err := LoadSkill(skillDir)
-			if err != nil {
-				// Skip but keep loading. A bad SKILL.md should not nuke
-				// the whole library.
-				continue
-			}
-			if idx, ok := byName[s.Name]; ok {
-				// Later wins (project shadows user).
-				lib.Active[idx] = s
-				continue
-			}
-			byName[s.Name] = len(lib.Active)
-			lib.Active = append(lib.Active, s)
 		}
 	}
 	return lib, nil
+}
+
+// loadSkillsAt resolves a single subdirectory into zero, one, or many
+// Skill values. Two layouts are supported:
+//
+//   - Single-skill directory (the agentskills.io shape): `<dir>/SKILL.md`
+//     plus optional `scripts/` and `reference/` subdirs.
+//   - Bundle directory (Phase C-3 capability bundles): no SKILL.md, but
+//     one or more `*.md` files at the dir root, each carrying its own
+//     frontmatter + body. Used by the shipped calendar bundle so a
+//     single namespace ("calendar/") can carry multiple backend skills
+//     without forcing six sibling dirs in `skills/`.
+//
+// Errors loading any one skill are silently skipped — a single bad
+// SKILL.md should not nuke the whole library.
+func loadSkillsAt(dir string) []*Skill {
+	if _, err := os.Stat(filepath.Join(dir, skillMarkdownFile)); err == nil {
+		s, err := LoadSkill(dir)
+		if err != nil {
+			return nil
+		}
+		return []*Skill{s}
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	sort.Slice(entries, func(i, j int) bool { return entries[i].Name() < entries[j].Name() })
+	var out []*Skill
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		if filepath.Ext(name) != ".md" {
+			continue
+		}
+		s, err := LoadBundleSkill(filepath.Join(dir, name))
+		if err != nil {
+			continue
+		}
+		out = append(out, s)
+	}
+	return out
 }
 
 // LoadFromConfig resolves the 5 SPEC search paths against the user's

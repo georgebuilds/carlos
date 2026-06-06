@@ -103,6 +103,19 @@ type Skill struct {
 	Triggers []string `json:"triggers,omitempty"`
 	Tools    []string `json:"tools,omitempty"`
 
+	// Phase C-4: skill loader reads `backend` to pick the right
+	// implementation for a capability when the user has multiple
+	// backends available (e.g. calendar/ics-file.md vs
+	// calendar/caldav.md). Empty means "not part of a capability bundle".
+	Backend string `json:"backend,omitempty"`
+	// FrameDefault names the frame this skill should bind to when the
+	// user has no `capabilities.<name>.<frame>.backend` override. Empty
+	// falls through to the active frame at call time.
+	FrameDefault string `json:"frame_default,omitempty"`
+	// Phase F-20: when set, restrict this skill to the named frames.
+	// Empty means "available in every frame" (the default).
+	Frames []string `json:"frames,omitempty"`
+
 	// Body is the markdown that follows the frontmatter. Never serialized
 	// by miniyaml.MarshalStruct (json:"-"); written separately by WriteSkill.
 	Body string `json:"-"`
@@ -182,6 +195,44 @@ func LoadSkill(dir string) (*Skill, error) {
 
 	if err := s.Validate(); err != nil {
 		return nil, fmt.Errorf("skills: validate %s: %w", path, err)
+	}
+	return &s, nil
+}
+
+// LoadBundleSkill reads a single .md file as a skill. Used by the
+// bundle-directory layout (skills/calendar/ics-file.md, …) where one
+// directory hosts a namespace of related skills rather than a single
+// agentskills.io-shaped skill. The file's frontmatter must carry at
+// minimum `name` + `description`; absent frontmatter returns an error
+// rather than guessing because bundle skills have no defensible
+// fallback name (the file's basename includes the namespace prefix).
+func LoadBundleSkill(filePath string) (*Skill, error) {
+	if filePath == "" {
+		return nil, errors.New("skills: LoadBundleSkill called with empty path")
+	}
+	absPath, err := filepath.Abs(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("skills: abs %s: %w", filePath, err)
+	}
+	raw, err := os.ReadFile(absPath)
+	if err != nil {
+		return nil, fmt.Errorf("skills: read %s: %w", absPath, err)
+	}
+	fm, body, found, err := miniyaml.SplitFrontmatter(raw)
+	if err != nil {
+		return nil, fmt.Errorf("skills: parse %s: %w", absPath, err)
+	}
+	if !found {
+		return nil, fmt.Errorf("skills: %s has no frontmatter — bundle skills require name + description", absPath)
+	}
+	var s Skill
+	if err := miniyaml.UnmarshalStruct(fm, &s); err != nil {
+		return nil, fmt.Errorf("skills: yaml %s: %w", absPath, err)
+	}
+	s.Body = string(body)
+	s.Path = absPath
+	if err := s.Validate(); err != nil {
+		return nil, fmt.Errorf("skills: validate %s: %w", absPath, err)
 	}
 	return &s, nil
 }
