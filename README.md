@@ -9,11 +9,25 @@ Not strictly a coding agent. General-purpose: file system, shell, web, notes, sc
 
 Plays nice with Claude Code: loads its skill library, honors your `CLAUDE.md`, familiar slash commands. Skills you write in either tool show up in both.
 
+## Frames
+
+Personal, work, side projects. Each has its own glyph, color, rules, and provider. Switch with Ctrl+F. He never writes across the line unless you ask.
+
+A frame bundles a glyph, an accent from an eight-name palette, a provider and model, and a `system_prompt_append` line that shifts tone. The active frame paints a colored pill in the chat header. Resolution at session boot walks `CARLOS_FRAME`, then `-f <name>`, then `cwd_hints`, then the persisted active, then the default. Cross-frame reads are free; cross-frame writes prompt.
+
+## Permissions
+
+Three layers, evaluated in order. A built-in allowlist auto-approves the read-only tools (notes, read, grep, glob, ls, git inspection). A workspace-trust layer adds a curated read-only bash classifier when the cwd is trusted via `/trust`. Anything else falls through to a session prompt, with "Always" choices remembered until you `/clear`. The `/permissions` overlay shows the layered state, the audit log, and the trusted-workspaces file.
+
+## Gateway
+
+The daemon owns the gateway broker. Four adapters: ntfy and Telegram ship today, Signal is a stub, custom is a pluggable seam. Routing lives under `gateway:` in `~/.carlos/config.yaml` with per-event channel rules. `/schedule` adds cron entries with a small natural-language grammar (`every weekday at 9am`); the daemon runs them and posts results through whichever adapter the routing block selects. See the vault SPEC for the wire shapes.
+
 ## Status
 
 Alpha. Dogfood-ready, not yet v1. Site: [georgebuilds.github.io/carlos](https://georgebuilds.github.io/carlos/).
 
-- ~1170 tests across 28 packages
+- ~1900 tests across 39 packages
 - Cross-compiled for darwin + linux × amd64 + arm64
 - Pure Go, no CGO, single binary
 
@@ -43,7 +57,7 @@ Anthropic, OpenAI, OpenRouter, Ollama. All first-class from day one. Tool-use ca
 1. A single binary, under 16 MB.
 2. Four providers, one shape.
 3. A memory that lives in plain markdown. Read it in Obsidian, grep it in your shell. Specialized tools query it 10× to 100× more token-efficiently than grepping and globbing.
-4. Work and life on separate shelves. Two contexts, never crossed.
+4. Many frames, one carlos. Personal, work, side projects with their own glyphs, colors, rules, and providers. Cross-frame writes always prompt.
 5. Research that goes hard. Many readers fan out, one synthesis returns, every source on file.
 6. Proposes new skills, never publishes them. Learned from use, kept only if you approve.
 7. Plays nice with Claude Code.
@@ -55,22 +69,26 @@ Anthropic, OpenAI, OpenRouter, Ollama. All first-class from day one. Tool-use ca
 cmd/carlos/      main TUI binary + daemon
 internal/
   agent/         tool-use loop, event log, supervision, approval queue
+  frame/         per-session frames (personal + N user-defined)
   tui/           bubbletea chat / manage / onboarding views
-  providers/     anthropic, openai, openrouter, ollama
+  providers/     anthropic, openai, openrouter, ollama, gemini
   tools/         bash, file, grep, web_fetch, web_search, http_request, notes_*
   skills/        skill format, loader, induction + replay-eval
   memory/        SQLite FTS5, summarizer, user model
   notes/         Obsidian-aware vault tools (Goldmark + miniyaml)
-  research/      decompose → search → fetch → read → synthesize → verify
+  research/      decompose, search, fetch, read, synthesize, verify
   sandbox/       local + git-worktree
   schedule/      cron + NL grammar + scheduled-run execution
   config/        onboarding state, provider keys, user prefs
   theme/         light / dark / NO_COLOR / configurable accent
   daemon/        background scheduler (UDS + launchd/systemd)
+  workspace/     trusted-workspaces store + read-only bash classifier
   miniyaml/      tiny hand-rolled YAML for frontmatter
   projectctx/    per-project context (CLAUDE.md, working tree)
-  gateway/       chat surface adapter
-docs/            coming-soon site (served via GitHub Pages)
+  gateway/       chat-surface adapters (ntfy, Telegram, Signal stub, custom)
+  usershell/     ! prefix shell driver, jobs overlay, history
+skills/          bundled starter skills (calendar/, ...)
+docs/            GitHub Pages site + llms.txt
 ```
 
 ## License

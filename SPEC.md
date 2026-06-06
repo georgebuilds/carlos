@@ -123,7 +123,7 @@ The classifier is at `internal/workspace/bash.go:IsReadOnly`. Bias is "deny on u
 
 The wrapped `Approver`. In the chat path that is the bubbletea TUI overlay. The user's response is cached as a session "Always" entry inside the TUIApprover, so repeated calls to the same tool don't re-prompt.
 
-Every decision (allow + reason + tool + truncated input) can be captured by an `AuditSink` passed at construction. Reasons: `ReasonBuiltinAllow`, `ReasonWorkspaceAllow`, `ReasonSessionAllow`, `ReasonSessionDeny`. The `/permissions` overlay (Phase T-3, pending) renders this history.
+Every decision (allow + reason + tool + truncated input) can be captured by an `AuditSink` passed at construction. Reasons: `ReasonBuiltinAllow`, `ReasonWorkspaceAllow`, `ReasonSessionAllow`, `ReasonSessionDeny`, `ReasonCrossFrameAllow`. The `/permissions` overlay (Phase T-3) renders this history.
 
 ## Slash commands
 
@@ -143,6 +143,9 @@ Carlos-specific:
 - `/resume` — past-session picker
 - `/shell <cmd>`, `/jobs`, `/fg <id>`, `/bg <id>` — Phase U user-shell (also accessible via `!` prefix)
 - `/trust`, `/untrust`, `/trusts` — Phase T-2 workspace trust
+- `/permissions` — Phase T-3 layered-policy overlay
+- `/frame [list|switch <name>]` — Phase F frame surface
+- `/capabilities` — Phase C-7 capability map for the active frame
 
 ## Onboarding
 
@@ -157,6 +160,61 @@ Six-screen flow on first launch, owned by `internal/tui/onboarding`. State persi
 7. Done
 
 Additional screens shown when relevant: gateway wizard (when daemon is enabled), skills enable.
+
+## Phase F, frames
+
+A frame is one row in `~/.carlos/config.yaml` under `frames.list`. Carlos always ships a `personal` frame; users add `work`, `research`, `writing`, side gigs as needed.
+
+### Data model
+
+Defined in `internal/frame/frame.go`. Per-frame fields: `name`, `glyph` (single visible char, defaults via `DefaultGlyphFor`), `accent` (one of `rust, slate, olive, teal, plum, cream, sand, navy`), `provider`, `model`, `provider_override` (pantry shadow), `cwd_hints` (glob prefixes), `vault_subtree`, `system_prompt_append`, `mode`, `capabilities`.
+
+### On-disk layout
+
+Today the frame list lives inline in `config.yaml`. The `~/.carlos/frames/<name>/` per-frame subtree (separate vault index, per-frame state) is pending (Phase F-17).
+
+### Config schema
+
+```
+frames:
+  default: personal
+  active: personal
+  list:
+    - name: personal
+      glyph: ◉
+      accent: cream
+      provider: anthropic
+      model: claude-sonnet-4-6
+      system_prompt_append: |
+        Personal frame. Tone: relaxed.
+    - name: work
+      glyph: ▣
+      accent: slate
+      cwd_hints: ["~/Code/ludus/*"]
+      vault_subtree: work/
+```
+
+A missing block is migrated at load time into a single synthetic `personal` frame from the legacy top-level `default_provider` + model. See `migrateFrames` in `internal/config/config.go:269`.
+
+### Resolution
+
+`internal/frame/policy.go:ResolveActive` walks signals in order: `CARLOS_FRAME` env, `-f|--frame` flag, `cwd_hints` glob match (exact-one wins, multiple falls through), persisted `active`, `default`, then `personal`. The CLI surfaces `carlos`, `carlos please`, and `carlos research` all accept `-f`.
+
+### Switcher UX
+
+Chat header paints a colored pill `<glyph><name>` in the frame's accent. Ctrl+F opens the full-screen takeover switcher (Phase F-5, pending). `/frame` echoes the active frame, lists all frames, and switches the persisted active. An inline picker (Phase F-19) is pending.
+
+### Sysprompt fold-in
+
+The active frame's `system_prompt_append` is appended verbatim to the chat system prompt at the provider boundary. Cached per-frame so swapping frames doesn't invalidate the rest of the prefix. See `internal/agent/sysprompt.go`.
+
+### Cross-frame approval
+
+Cross-frame READ is free (`notes_search` returns hits from every frame, labelled). Cross-frame WRITE prompts with reason `ReasonCrossFrameAllow` (wired in `internal/agent`).
+
+### Skill filter
+
+Skills carry a `frames:` frontmatter list. `internal/skills/library.go:ForFrame` filters the active skill set to those whose list contains the current frame name (or is empty, meaning all frames).
 
 ## Multi-provider
 
@@ -174,6 +232,37 @@ Implemented in `internal/providers/`. The Anthropic tool-use schema is canonical
 
 - **Memory**: SQLite FTS5 over markdown summaries. The `/compact` verb summarizes the current chat and replaces the model's context with the summary, freeing space for new turns.
 - **Skills**: `internal/skills`. The inducer watches transcripts and proposes new skills; the judge ranks proposals; the curator queues them for user review. Replay-eval (`internal/skills/skillwire`) runs the original conversation with and without the proposed skill to measure outcome delta. Skills you write in Claude Code show up in carlos and vice versa.
+
+## Phase C, capability taxonomy
+
+- **Tool**: a registered Go function the model can invoke (`bash`, `read`, `notes_search`).
+- **Skill**: a markdown file the loader exposes as guidance + optional tool wiring (`internal/skills`).
+- **Capability**: a user-facing verb like "calendar" or "email" that resolves to one backend skill per frame.
+
+### Calendar bundle
+
+`skills/calendar/` ships six markdown files: `INDEX.md` (capability shape, frontmatter contract), four backend skills (`apple-calendar.md`, `caldav.md`, `ics-file.md`, `mcp.md`), and `cross-frame-view.md` (read-all aggregator).
+
+### Per-frame backend selection
+
+A frame picks which backend handles a capability via `capabilities.<name>.<frame>.backend` in `~/.carlos/config.yaml`. Stored on the frame as `map[string]map[string]any` (see `internal/frame/frame.go:Frame.Capabilities`) so Phase C can grow fields without a schema break.
+
+```
+frames:
+  list:
+    - name: personal
+      capabilities:
+        calendar:
+          backend: apple-calendar
+    - name: work
+      capabilities:
+        calendar:
+          backend: caldav
+```
+
+### gateway rename
+
+`gateway.Capabilities` was renamed to `gateway.OutboundCapabilities` so the per-adapter outbound matrix doesn't collide with the new top-level user-facing `capabilities` config block. See `internal/gateway/capabilities.go` and `internal/gateway/ntfy/ntfy.go:OutboundCapabilities`.
 
 ## Research engine
 
@@ -232,8 +321,10 @@ Permissions: directory 0700, files containing secrets 0600.
 
 ## Pending
 
-- **Phase T-3**: `/permissions` overlay rendering the layered policy state, audit log, and the workspace-trust file. Designed against the TUI research notes (command-palette pattern, three-tier visual hierarchy, "/" filter, always-visible footer, semantic color, empty states with CTA).
-- First-launch trust prompt overlay: lives alongside T-3 so the two share styling and key-binding conventions.
+- First-launch trust prompt overlay: shares styling and key-binding conventions with the `/permissions` overlay.
+- **Phase F-5**: full-screen takeover switcher bound to Ctrl+F (3x2 tile grid, accent-coloured borders, cwd-hint candidates pre-highlighted).
+- **Phase F-19**: inline frame picker (lightweight one-line switcher rendered below the composer).
+- **Phase F-17**: on-disk layout move from inline `frames.list` in `config.yaml` to `~/.carlos/frames/<name>/` per-frame subtrees.
 
 ## Build + release
 
