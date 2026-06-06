@@ -307,11 +307,16 @@ func runOnboard(force bool) error {
 		return fmt.Errorf("save config: %w", err)
 	}
 	if cfg.Daemon.Enabled {
+		// We record the preference here; the platform unit install
+		// (launchd / systemd) happens behind `carlos daemon enable`
+		// because it may need to ask the user about an autostart slot.
 		fmt.Fprintln(os.Stderr,
-			"note: daemon install is Phase 8 — your preference was recorded but no unit was written yet.")
+			"note: daemon preference saved — run `carlos daemon enable` to install the autostart unit.")
 	}
-	fmt.Printf("ready, %s — TUI not wired yet\n", cfg.UserName)
-	return nil
+	// Drop straight into the TUI so the user doesn't have to re-launch
+	// to start working. This mirrors what the default-mode path does
+	// when config already exists.
+	return runDefault(cfg)
 }
 
 // pleaseOptions collects parsed flags from `carlos please [flags] <prompt>`.
