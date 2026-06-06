@@ -61,7 +61,7 @@ func TestAppendEnd_Persists(t *testing.T) {
 		Cancelled:    false,
 		Backgrounded: false,
 		OutputInline: "hello\n",
-		OutputRef:    "sha256:beef",
+		OutputPath:   "/tmp/usershell/j-1.log",
 	}
 	if _, err := AppendEnd(ctx, log, p); err != nil {
 		t.Fatal(err)
@@ -165,7 +165,7 @@ func TestPayloadJSONRoundTrip(t *testing.T) {
 		Cancelled:      true,
 		OutputInline:   "boom",
 		TruncatedBytes: 9000,
-		OutputRef:      "sha256:cafe",
+		OutputPath:     "/tmp/usershell/j-rt.log",
 	}
 	raw, err := json.Marshal(in)
 	if err != nil {

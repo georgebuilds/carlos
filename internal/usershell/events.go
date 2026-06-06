@@ -53,11 +53,16 @@ type EndPayload struct {
 	OutputInline   string `json:"output_inline,omitempty"`
 	TruncatedBytes int    `json:"truncated_bytes,omitempty"`
 
-	// OutputRef points at the artifact carrying the full output. Empty
-	// when there was no output to persist (e.g. silent commands).
-	// Loaded on demand by the TUI when the user expands a job's
-	// detail view.
-	OutputRef string `json:"output_ref,omitempty"`
+	// OutputPath is the on-disk path to the full output log. Empty
+	// when there was no output to persist (silent commands). Lives
+	// under <OutputDir>/<job-id>.log — see Options.OutputDir. The TUI
+	// reads this on-demand when the user expands a job's detail view.
+	//
+	// We persist to a file rather than the agent artifact store
+	// because user-shell output is user-authored, not agent-authored
+	// — the artifact store's FK is to the agents table, and inventing
+	// a synthetic "user-shell" agent row would muddy that schema.
+	OutputPath string `json:"output_path,omitempty"`
 }
 
 // AppendStart writes the start event under EventAgentID. Returns the

@@ -5,10 +5,14 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
 	"github.com/oklog/ulid/v2"
+
+	"github.com/georgebuilds/carlos/internal/agent"
 )
 
 // DefaultBackgroundParallelism is how many background jobs may run
@@ -44,6 +48,19 @@ type Options struct {
 	// RingBufferCap is the output buffer's byte capacity per job.
 	// <=0 uses the package default (64 KiB).
 	RingBufferCap int
+
+	// Log is the SQLite event log to write EvtUserShellStart +
+	// EvtUserShellEnd rows into. nil disables persistence — the
+	// Manager still runs jobs and surfaces them in Jobs(), but the
+	// model context projection won't see them. Tests pass nil for
+	// pure lifecycle exercises; production wires the chat
+	// session's log.
+	Log *agent.SQLiteEventLog
+
+	// OutputDir is the on-disk directory where full per-job output
+	// logs land (<id>.log files). Empty falls back to
+	// ~/.carlos/usershell/. Tests inject a tempdir.
+	OutputDir string
 }
 
 // Manager owns the user-shell job lifecycle for one chat session:
@@ -58,11 +75,13 @@ type Options struct {
 type Manager struct {
 	mu sync.RWMutex
 
-	cwd     string
-	bgLimit int
-	now     func() time.Time
-	runner  runner
-	bufCap  int
+	cwd       string
+	bgLimit   int
+	now       func() time.Time
+	runner    runner
+	bufCap    int
+	log       *agent.SQLiteEventLog
+	outputDir string
 
 	// jobs holds every Job the Manager has seen, keyed by ID. Stays
 	// around after termination so the jobs overlay can render
@@ -146,17 +165,33 @@ func New(opts Options) *Manager {
 	if r == nil {
 		r = ptyRunner{}
 	}
+	outputDir := opts.OutputDir
+	if outputDir == "" {
+		outputDir = defaultOutputDir()
+	}
 	return &Manager{
 		cwd:         opts.Cwd,
 		bgLimit:     bg,
 		now:         now,
 		runner:      r,
 		bufCap:      opts.RingBufferCap,
+		log:         opts.Log,
+		outputDir:   outputDir,
 		jobs:        map[string]*Job{},
 		outputs:     map[string]*RingBuffer{},
 		bgRunning:   map[string]struct{}{},
 		ulidEntropy: ulid.Monotonic(rand.Reader, 0),
 	}
+}
+
+// defaultOutputDir returns ~/.carlos/usershell/ for the per-job log
+// files. Falls back to a relative path if the home dir isn't
+// resolvable (same recipe agent/artifacts.go uses).
+func defaultOutputDir() string {
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		return filepath.Join(home, ".carlos", "usershell")
+	}
+	return filepath.Join(".carlos", "usershell")
 }
 
 // Submit enqueues a new shell command and immediately advances the
@@ -253,6 +288,21 @@ func (m *Manager) startLocked(parent context.Context, job *Job) {
 	}
 	m.publishStateLocked(job.ID, StateRunning)
 
+	// Persist the start event. We do this OUTSIDE the goroutine
+	// (still under m.mu) so the start row is in the log before the
+	// run goroutine has a chance to write the end row — projection
+	// scans rely on start-before-end ordering.
+	if m.log != nil {
+		_, _ = AppendStart(context.Background(), m.log, StartPayload{
+			JobID:      job.ID,
+			Command:    job.Command,
+			Cwd:        job.Cwd,
+			Mode:       job.Mode.String(),
+			Background: job.Mode == Background,
+			StartedAt:  job.StartedAt,
+		})
+	}
+
 	// Per-job context: descendant of the parent + Manager-cancellable.
 	jobCtx, cancel := context.WithCancel(parent)
 	job.cancel = cancel
@@ -265,9 +315,7 @@ func (m *Manager) startLocked(parent context.Context, job *Job) {
 func (m *Manager) runJob(ctx context.Context, job *Job, rb *RingBuffer) {
 	reader, wait, kill, err := m.runner.Start(ctx, job.Command, job.Cwd)
 	if err != nil {
-		_ = job.setOutcome(StateFailed, -1, err)
-		m.publishState(job.ID, StateFailed)
-		m.onJobTerminal(job.ID)
+		m.finalize(job, rb, StateFailed, -1, err)
 		return
 	}
 
@@ -314,10 +362,8 @@ func (m *Manager) runJob(ctx context.Context, job *Job, rb *RingBuffer) {
 		case ec := <-exitCh:
 			exit = ec
 		case werr := <-errCh:
-			_ = job.setOutcome(StateFailed, -1, werr)
-			m.publishState(job.ID, StateFailed)
-			m.onJobTerminal(job.ID)
 			<-readDone
+			m.finalize(job, rb, StateFailed, -1, werr)
 			return
 		case <-ctx.Done():
 			cancelled = true
@@ -341,9 +387,88 @@ func (m *Manager) runJob(ctx context.Context, job *Job, rb *RingBuffer) {
 	default:
 		next = StateFailed
 	}
-	_ = job.setOutcome(next, exit, nil)
+	m.finalize(job, rb, next, exit, nil)
+}
+
+// finalize is the single terminal-transition path: writes the per-
+// job output log to disk, persists the end event, transitions the
+// Job state, publishes the state update, and drains the queue.
+//
+// All persistence side effects are best-effort — a missing OutputDir
+// or a sick event log degrade to "job finished, but the model won't
+// see it" rather than crashing the chat session.
+func (m *Manager) finalize(job *Job, rb *RingBuffer, next State, exit int, failErr error) {
+	output := rb.Snapshot()
+	var outputPath string
+	if len(output) > 0 {
+		outputPath = m.writeOutputLog(job.ID, output)
+	}
+
+	// Atomic-with-the-lock outcome stamp so the End event observes
+	// EndedAt + ExitCode internally consistent.
+	_ = job.setOutcome(next, exit, failErr)
+	snap := job.Snapshot()
+
+	if m.log != nil {
+		inline, dropped := TruncateForInline(string(output))
+		failMsg := ""
+		if failErr != nil {
+			failMsg = failErr.Error()
+		}
+		_, _ = AppendEnd(context.Background(), m.log, EndPayload{
+			JobID:          job.ID,
+			ExitCode:       exit,
+			Duration:       snap.Duration(),
+			Cancelled:      next == StateCancelled,
+			Backgrounded:   snap.Backgrounded,
+			FailErrMsg:     failMsg,
+			OutputInline:   inline,
+			TruncatedBytes: dropped,
+			OutputPath:     outputPath,
+		})
+	}
+
 	m.publishState(job.ID, next)
 	m.onJobTerminal(job.ID)
+}
+
+// writeOutputLog persists output under <OutputDir>/<job-id>.log via
+// temp + rename so a crash mid-write doesn't leave a partial file.
+// Returns the final path on success, "" on failure (the caller
+// gracefully degrades — the End event simply lacks an OutputPath).
+//
+// Mode 0600 because user-shell output may include secrets the user
+// echoed (env vars, paths under home dir, etc.); mode 0700 on the
+// directory matches the rest of ~/.carlos.
+func (m *Manager) writeOutputLog(jobID string, output []byte) string {
+	if err := os.MkdirAll(m.outputDir, 0o700); err != nil {
+		return ""
+	}
+	dest := filepath.Join(m.outputDir, jobID+".log")
+	tmp := dest + ".tmp"
+	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	if err != nil {
+		return ""
+	}
+	if _, err := f.Write(output); err != nil {
+		_ = f.Close()
+		_ = os.Remove(tmp)
+		return ""
+	}
+	if err := f.Sync(); err != nil {
+		_ = f.Close()
+		_ = os.Remove(tmp)
+		return ""
+	}
+	if err := f.Close(); err != nil {
+		_ = os.Remove(tmp)
+		return ""
+	}
+	if err := os.Rename(tmp, dest); err != nil {
+		_ = os.Remove(tmp)
+		return ""
+	}
+	return dest
 }
 
 // onJobTerminal removes the job from running slots + drains the
