@@ -25,6 +25,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/georgebuilds/carlos/internal/notes"
@@ -34,7 +35,57 @@ import (
 // VALUE (not the key). Each obsidian_* tool writes the key in its
 // schema literal and interpolates this const as the value, keeping the
 // wording consistent across the seven schemas.
-const vaultRequired = `{"type": "string", "description": "Absolute or ~-relative path to the target Obsidian-flavored markdown vault. Required — use notes_* tools to query the user's configured vault."}`
+//
+// Phase F-11 adds the parallel `frame:` shorthand. When both are
+// passed the explicit `vault:` wins (explicit beats sugar). When only
+// `frame:` is set the obsidian_* tool resolves it against the
+// configured frame list and uses that frame's vault_subtree joined
+// against the configured vault path.
+const vaultRequired = `{"type": "string", "description": "Absolute or ~-relative path to the target Obsidian-flavored markdown vault. Required unless the frame field is set, use notes_* tools to query the user's configured vault."}`
+
+// frameShorthand is the schema fragment for the optional `frame:` field
+// on obsidian_*. Lives here so every obsidian_* tool can interpolate
+// the same wording without going out of sync.
+const frameShorthand = `{"type": "string", "description": "Optional frame name. When set without vault, resolves to the configured vault path joined with that frame's vault_subtree. When vault is also set, the explicit path wins; frame then only labels results in cross-frame fan outs."}`
+
+// resolveObsidianVault picks the effective (path, subtree, name) trio
+// for an obsidian_* tool call given the optional vault + frame args.
+// Returns:
+//
+//   - explicit `vault:` -> (vault, "", "") regardless of frame.
+//   - `frame:` only -> (cfg.Vault.Path, frame.VaultSubtree, frame.Name).
+//   - neither -> error envelope is delegated to the caller via the
+//     standard "missing required field" check (we return zeros + nil
+//     err so the caller's existing `if in.Vault == ""` short-circuit
+//     still fires).
+//
+// Unknown frame name surfaces as an error so the model sees a clean
+// envelope.
+func (e *notesEnv) resolveObsidianVault(vaultArg, frameArg string) (vault, subtree, name string, err error) {
+	vaultArg = strings.TrimSpace(vaultArg)
+	frameArg = strings.TrimSpace(frameArg)
+	if vaultArg != "" {
+		// Explicit vault wins. Still resolve the frame name for
+		// downstream prefix labelling if the caller threaded it.
+		if frameArg != "" {
+			n, sub, ferr := e.resolveFrameArg(frameArg)
+			if ferr != nil {
+				return "", "", "", ferr
+			}
+			return vaultArg, sub, n, nil
+		}
+		return vaultArg, "", "", nil
+	}
+	if frameArg == "" {
+		return "", "", "", nil
+	}
+	// Frame-only path: use the configured vault + frame's subtree.
+	n, sub, ferr := e.resolveFrameArg(frameArg)
+	if ferr != nil {
+		return "", "", "", ferr
+	}
+	return e.cfg.Path, sub, n, nil
+}
 
 // --- obsidian_get -------------------------------------------------
 
@@ -45,7 +96,7 @@ func NewObsidianGetTool(env *notesEnv) *ObsidianGetTool { return &ObsidianGetToo
 func (*ObsidianGetTool) Name() string { return "obsidian_get" }
 
 func (*ObsidianGetTool) Description() string {
-	return "Fetch a note's structure from an arbitrary Obsidian vault: frontmatter, outline, link counts, modtime. Requires `vault:` — for the user's configured vault use notes_get instead."
+	return "Fetch a note's structure from an arbitrary Obsidian vault: frontmatter, outline, link counts, modtime. Requires `vault:` (or `frame:` shorthand to target the configured vault's frame subtree). For the user's configured vault use notes_get instead."
 }
 
 func (*ObsidianGetTool) Schema() []byte {
@@ -55,9 +106,10 @@ func (*ObsidianGetTool) Schema() []byte {
 			"vault":   ` + vaultRequired + `,
 			"note":    {"type": "string", "description": "Note name or relpath."},
 			"section": {"type": "string"},
-			"body":    {"type": "boolean"}
+			"body":    {"type": "boolean"},
+			"frame":   ` + frameShorthand + `
 		},
-		"required": ["vault", "note"]
+		"required": ["note"]
 	}`)
 }
 
@@ -66,6 +118,7 @@ type obsidianGetInput struct {
 	Note    string `json:"note"`
 	Section string `json:"section"`
 	Body    bool   `json:"body"`
+	Frame   string `json:"frame"`
 }
 
 func (t *ObsidianGetTool) Execute(_ context.Context, input []byte) ([]byte, error) {
@@ -73,13 +126,17 @@ func (t *ObsidianGetTool) Execute(_ context.Context, input []byte) ([]byte, erro
 	if err := json.Unmarshal(input, &in); err != nil {
 		return jsonErr("parse input: %v", err)
 	}
-	if in.Vault == "" {
+	vault, subtree, _, verr := t.env.resolveObsidianVault(in.Vault, in.Frame)
+	if verr != nil {
+		return jsonErr("obsidian_get: %v", verr)
+	}
+	if vault == "" {
 		return jsonErr("missing required field: %q", "vault")
 	}
 	if in.Note == "" {
 		return jsonErr("missing required field: %q", "note")
 	}
-	abs, v, envelope, err := t.env.resolveOrError(in.Vault)
+	abs, v, envelope, err := t.env.resolveOrError(vault)
 	if envelope != nil {
 		return envelope, err
 	}
@@ -92,6 +149,9 @@ func (t *ObsidianGetTool) Execute(_ context.Context, input []byte) ([]byte, erro
 			return notFoundResponse(in.Note)
 		}
 		return jsonErr("obsidian_get: %v", err)
+	}
+	if !inSubtree(n.Path, subtree) {
+		return notFoundResponse(in.Note)
 	}
 	resp := notesGetResponse{
 		Path:        n.Path,
@@ -132,7 +192,7 @@ func NewObsidianSearchTool(env *notesEnv) *ObsidianSearchTool {
 func (*ObsidianSearchTool) Name() string { return "obsidian_search" }
 
 func (*ObsidianSearchTool) Description() string {
-	return "Search an arbitrary Obsidian vault by free-text query, returning paragraph snippets. Requires `vault:` — for the user's configured vault use notes_search instead."
+	return "Search an arbitrary Obsidian vault by free-text query, returning paragraph snippets. Requires `vault:` (or `frame:` shorthand to target the configured vault's frame subtree). For the user's configured vault use notes_search instead."
 }
 
 func (*ObsidianSearchTool) Schema() []byte {
@@ -143,9 +203,10 @@ func (*ObsidianSearchTool) Schema() []byte {
 			"query": {"type": "string"},
 			"tag":   {"type": "string"},
 			"where": {"type": "object"},
-			"limit": {"type": "integer"}
+			"limit": {"type": "integer"},
+			"frame": ` + frameShorthand + `
 		},
-		"required": ["vault", "query"]
+		"required": ["query"]
 	}`)
 }
 
@@ -155,6 +216,7 @@ type obsidianSearchInput struct {
 	Tag   string         `json:"tag"`
 	Where map[string]any `json:"where"`
 	Limit int            `json:"limit"`
+	Frame string         `json:"frame"`
 }
 
 func (t *ObsidianSearchTool) Execute(_ context.Context, input []byte) ([]byte, error) {
@@ -162,13 +224,17 @@ func (t *ObsidianSearchTool) Execute(_ context.Context, input []byte) ([]byte, e
 	if err := json.Unmarshal(input, &in); err != nil {
 		return jsonErr("parse input: %v", err)
 	}
-	if in.Vault == "" {
+	vault, subtree, frameName, verr := t.env.resolveObsidianVault(in.Vault, in.Frame)
+	if verr != nil {
+		return jsonErr("obsidian_search: %v", verr)
+	}
+	if vault == "" {
 		return jsonErr("missing required field: %q", "vault")
 	}
 	if in.Query == "" {
 		return jsonErr("missing required field: %q", "query")
 	}
-	abs, v, envelope, err := t.env.resolveOrError(in.Vault)
+	abs, v, envelope, err := t.env.resolveOrError(vault)
 	if envelope != nil {
 		return envelope, err
 	}
@@ -184,18 +250,33 @@ func (t *ObsidianSearchTool) Execute(_ context.Context, input []byte) ([]byte, e
 	if err != nil {
 		return jsonErr("obsidian_search: %v", err)
 	}
+	matches := make([]notesSearchMatch, 0, len(hits))
+	filteredTotal := 0
+	for _, h := range hits {
+		if !inSubtree(h.Path, subtree) {
+			continue
+		}
+		filteredTotal++
+		matches = append(matches, notesSearchMatch{
+			Frame:   frameName,
+			Path:    h.Path,
+			Title:   h.Title,
+			Snippet: h.Snippet,
+			Line:    h.Line,
+			Score:   h.Score,
+		})
+	}
+	if subtree != "" {
+		// Subtree restricted: trust the filtered count, the index's
+		// total over-counts here.
+		total = filteredTotal
+	}
 	resp := notesSearchResponse{
 		Query:     in.Query,
 		Vault:     abs,
-		Matches:   make([]notesSearchMatch, 0, len(hits)),
+		Matches:   matches,
 		Total:     total,
-		Truncated: total > len(hits),
-	}
-	for _, h := range hits {
-		resp.Matches = append(resp.Matches, notesSearchMatch{
-			Path: h.Path, Title: h.Title, Snippet: h.Snippet,
-			Line: h.Line, Score: h.Score,
-		})
+		Truncated: total > len(matches),
 	}
 	return jsonOK(resp)
 }
@@ -222,9 +303,10 @@ func (*ObsidianBacklinksTool) Schema() []byte {
 		"properties": {
 			"vault": ` + vaultRequired + `,
 			"note":  {"type": "string"},
-			"limit": {"type": "integer"}
+			"limit": {"type": "integer"},
+			"frame": ` + frameShorthand + `
 		},
-		"required": ["vault", "note"]
+		"required": ["note"]
 	}`)
 }
 
@@ -232,6 +314,7 @@ type obsidianBacklinksInput struct {
 	Vault string `json:"vault"`
 	Note  string `json:"note"`
 	Limit int    `json:"limit"`
+	Frame string `json:"frame"`
 }
 
 func (t *ObsidianBacklinksTool) Execute(_ context.Context, input []byte) ([]byte, error) {
@@ -239,18 +322,26 @@ func (t *ObsidianBacklinksTool) Execute(_ context.Context, input []byte) ([]byte
 	if err := json.Unmarshal(input, &in); err != nil {
 		return jsonErr("parse input: %v", err)
 	}
-	if in.Vault == "" {
+	vault, subtree, _, verr := t.env.resolveObsidianVault(in.Vault, in.Frame)
+	if verr != nil {
+		return jsonErr("obsidian_backlinks: %v", verr)
+	}
+	if vault == "" {
 		return jsonErr("missing required field: %q", "vault")
 	}
 	if in.Note == "" {
 		return jsonErr("missing required field: %q", "note")
 	}
-	abs, v, envelope, err := t.env.resolveOrError(in.Vault)
+	abs, v, envelope, err := t.env.resolveOrError(vault)
 	if envelope != nil {
 		return envelope, err
 	}
 	if err != nil {
 		return jsonErr("obsidian_backlinks: %v", err)
+	}
+	resolved, _, _ := v.Resolve(in.Note)
+	if resolved != "" && !inSubtree(resolved, subtree) {
+		return notFoundResponse(in.Note)
 	}
 	bl, err := v.Backlinks(in.Note, in.Limit)
 	if err != nil {
@@ -259,7 +350,6 @@ func (t *ObsidianBacklinksTool) Execute(_ context.Context, input []byte) ([]byte
 		}
 		return jsonErr("obsidian_backlinks: %v", err)
 	}
-	resolved, _, _ := v.Resolve(in.Note)
 	target, _ := v.Get(resolved)
 	resp := notesBacklinksResponse{
 		Target:    resolved,
@@ -300,9 +390,10 @@ func (*ObsidianTaggedTool) Schema() []byte {
 		"properties": {
 			"vault": ` + vaultRequired + `,
 			"tag":   {"type": "string"},
-			"limit": {"type": "integer"}
+			"limit": {"type": "integer"},
+			"frame": ` + frameShorthand + `
 		},
-		"required": ["vault", "tag"]
+		"required": ["tag"]
 	}`)
 }
 
@@ -310,6 +401,7 @@ type obsidianTaggedInput struct {
 	Vault string `json:"vault"`
 	Tag   string `json:"tag"`
 	Limit int    `json:"limit"`
+	Frame string `json:"frame"`
 }
 
 func (t *ObsidianTaggedTool) Execute(_ context.Context, input []byte) ([]byte, error) {
@@ -317,35 +409,52 @@ func (t *ObsidianTaggedTool) Execute(_ context.Context, input []byte) ([]byte, e
 	if err := json.Unmarshal(input, &in); err != nil {
 		return jsonErr("parse input: %v", err)
 	}
-	if in.Vault == "" {
+	vault, subtree, frameName, verr := t.env.resolveObsidianVault(in.Vault, in.Frame)
+	if verr != nil {
+		return jsonErr("obsidian_tagged: %v", verr)
+	}
+	if vault == "" {
 		return jsonErr("missing required field: %q", "vault")
 	}
 	if in.Tag == "" {
 		return jsonErr("missing required field: %q", "tag")
 	}
-	abs, v, envelope, err := t.env.resolveOrError(in.Vault)
+	abs, v, envelope, err := t.env.resolveOrError(vault)
 	if envelope != nil {
 		return envelope, err
 	}
 	if err != nil {
 		return jsonErr("obsidian_tagged: %v", err)
 	}
-	hits, err := v.Tagged(in.Tag, in.Limit)
+	hits, err := v.Tagged(in.Tag, 0)
 	if err != nil {
 		return jsonErr("obsidian_tagged: %v", err)
+	}
+	limit := in.Limit
+	if limit <= 0 {
+		limit = 50
+	}
+	entries := make([]taggedEntry, 0, len(hits))
+	for _, n := range hits {
+		if !inSubtree(n.Path, subtree) {
+			continue
+		}
+		entries = append(entries, taggedEntry{
+			Frame: frameName,
+			Path:  n.Path, Title: n.Title,
+			Description: notes.Description(n),
+			Modified:    n.ModTime.UTC().Format("2006-01-02T15:04:05Z"),
+		})
+	}
+	total := len(entries)
+	if len(entries) > limit {
+		entries = entries[:limit]
 	}
 	resp := notesTaggedResponse{
 		Tag:   in.Tag,
 		Vault: abs,
-		Notes: make([]taggedEntry, 0, len(hits)),
-		Total: len(hits),
-	}
-	for _, n := range hits {
-		resp.Notes = append(resp.Notes, taggedEntry{
-			Path: n.Path, Title: n.Title,
-			Description: notes.Description(n),
-			Modified:    n.ModTime.UTC().Format("2006-01-02T15:04:05Z"),
-		})
+		Notes: entries,
+		Total: total,
 	}
 	return jsonOK(resp)
 }
@@ -371,15 +480,17 @@ func (*ObsidianNeighborsTool) Schema() []byte {
 		"type": "object",
 		"properties": {
 			"vault": ` + vaultRequired + `,
-			"note":  {"type": "string"}
+			"note":  {"type": "string"},
+			"frame": ` + frameShorthand + `
 		},
-		"required": ["vault", "note"]
+		"required": ["note"]
 	}`)
 }
 
 type obsidianNeighborsInput struct {
 	Vault string `json:"vault"`
 	Note  string `json:"note"`
+	Frame string `json:"frame"`
 }
 
 func (t *ObsidianNeighborsTool) Execute(_ context.Context, input []byte) ([]byte, error) {
@@ -387,18 +498,26 @@ func (t *ObsidianNeighborsTool) Execute(_ context.Context, input []byte) ([]byte
 	if err := json.Unmarshal(input, &in); err != nil {
 		return jsonErr("parse input: %v", err)
 	}
-	if in.Vault == "" {
+	vault, subtree, _, verr := t.env.resolveObsidianVault(in.Vault, in.Frame)
+	if verr != nil {
+		return jsonErr("obsidian_neighbors: %v", verr)
+	}
+	if vault == "" {
 		return jsonErr("missing required field: %q", "vault")
 	}
 	if in.Note == "" {
 		return jsonErr("missing required field: %q", "note")
 	}
-	abs, v, envelope, err := t.env.resolveOrError(in.Vault)
+	abs, v, envelope, err := t.env.resolveOrError(vault)
 	if envelope != nil {
 		return envelope, err
 	}
 	if err != nil {
 		return jsonErr("obsidian_neighbors: %v", err)
+	}
+	resolved, _, _ := v.Resolve(in.Note)
+	if resolved != "" && !inSubtree(resolved, subtree) {
+		return notFoundResponse(in.Note)
 	}
 	out, incoming, unres, err := v.Neighbors(in.Note)
 	if err != nil {
@@ -407,7 +526,6 @@ func (t *ObsidianNeighborsTool) Execute(_ context.Context, input []byte) ([]byte
 		}
 		return jsonErr("obsidian_neighbors: %v", err)
 	}
-	resolved, _, _ := v.Resolve(in.Note)
 	resp := notesNeighborsResponse{
 		Note:          resolved,
 		Vault:         abs,
@@ -449,9 +567,9 @@ func (*ObsidianRecentTool) Schema() []byte {
 		"properties": {
 			"vault": ` + vaultRequired + `,
 			"limit": {"type": "integer"},
-			"since": {"type": "string"}
-		},
-		"required": ["vault"]
+			"since": {"type": "string"},
+			"frame": ` + frameShorthand + `
+		}
 	}`)
 }
 
@@ -459,6 +577,7 @@ type obsidianRecentInput struct {
 	Vault string `json:"vault"`
 	Limit int    `json:"limit"`
 	Since string `json:"since"`
+	Frame string `json:"frame"`
 }
 
 func (t *ObsidianRecentTool) Execute(_ context.Context, input []byte) ([]byte, error) {
@@ -468,10 +587,14 @@ func (t *ObsidianRecentTool) Execute(_ context.Context, input []byte) ([]byte, e
 			return jsonErr("parse input: %v", err)
 		}
 	}
-	if in.Vault == "" {
+	vault, subtree, frameName, verr := t.env.resolveObsidianVault(in.Vault, in.Frame)
+	if verr != nil {
+		return jsonErr("obsidian_recent: %v", verr)
+	}
+	if vault == "" {
 		return jsonErr("missing required field: %q", "vault")
 	}
-	abs, v, envelope, err := t.env.resolveOrError(in.Vault)
+	abs, v, envelope, err := t.env.resolveOrError(vault)
 	if envelope != nil {
 		return envelope, err
 	}
@@ -486,18 +609,30 @@ func (t *ObsidianRecentTool) Execute(_ context.Context, input []byte) ([]byte, e
 		}
 		since = d
 	}
-	hits := v.Recent(in.Limit, since)
-	resp := notesRecentResponse{
-		Since: in.Since,
-		Vault: abs,
-		Notes: make([]notesRecentEntry, 0, len(hits)),
+	limit := in.Limit
+	if limit <= 0 {
+		limit = 10
 	}
+	hits := v.Recent(1<<31-1, since)
+	entries := make([]notesRecentEntry, 0, len(hits))
 	for _, n := range hits {
-		resp.Notes = append(resp.Notes, notesRecentEntry{
-			Path: n.Path, Title: n.Title,
+		if !inSubtree(n.Path, subtree) {
+			continue
+		}
+		entries = append(entries, notesRecentEntry{
+			Frame: frameName,
+			Path:  n.Path, Title: n.Title,
 			Modified: n.ModTime.UTC().Format("2006-01-02T15:04:05Z"),
 			Tags:     n.Tags,
 		})
+		if len(entries) >= limit {
+			break
+		}
+	}
+	resp := notesRecentResponse{
+		Since: in.Since,
+		Vault: abs,
+		Notes: entries,
 	}
 	return jsonOK(resp)
 }
@@ -523,15 +658,17 @@ func (*ObsidianResolveTool) Schema() []byte {
 		"type": "object",
 		"properties": {
 			"vault": ` + vaultRequired + `,
-			"link":  {"type": "string"}
+			"link":  {"type": "string"},
+			"frame": ` + frameShorthand + `
 		},
-		"required": ["vault", "link"]
+		"required": ["link"]
 	}`)
 }
 
 type obsidianResolveInput struct {
 	Vault string `json:"vault"`
 	Link  string `json:"link"`
+	Frame string `json:"frame"`
 }
 
 func (t *ObsidianResolveTool) Execute(_ context.Context, input []byte) ([]byte, error) {
@@ -539,13 +676,17 @@ func (t *ObsidianResolveTool) Execute(_ context.Context, input []byte) ([]byte, 
 	if err := json.Unmarshal(input, &in); err != nil {
 		return jsonErr("parse input: %v", err)
 	}
-	if in.Vault == "" {
+	vault, subtree, _, verr := t.env.resolveObsidianVault(in.Vault, in.Frame)
+	if verr != nil {
+		return jsonErr("obsidian_resolve: %v", verr)
+	}
+	if vault == "" {
 		return jsonErr("missing required field: %q", "vault")
 	}
 	if in.Link == "" {
 		return jsonErr("missing required field: %q", "link")
 	}
-	abs, v, envelope, err := t.env.resolveOrError(in.Vault)
+	abs, v, envelope, err := t.env.resolveOrError(vault)
 	if envelope != nil {
 		return envelope, err
 	}
@@ -558,6 +699,19 @@ func (t *ObsidianResolveTool) Execute(_ context.Context, input []byte) ([]byte, 
 			return notFoundResponse(in.Link)
 		}
 		return jsonErr("obsidian_resolve: %v", err)
+	}
+	if subtree != "" {
+		filtered := cands[:0]
+		for _, c := range cands {
+			if inSubtree(c.Path, subtree) {
+				filtered = append(filtered, c)
+			}
+		}
+		cands = filtered
+		if len(cands) == 0 {
+			return notFoundResponse(in.Link)
+		}
+		resolved = cands[0].Path
 	}
 	target, _ := v.Get(resolved)
 	resp := notesResolveResponse{

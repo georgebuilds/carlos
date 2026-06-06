@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/georgebuilds/carlos/internal/config"
+	"github.com/georgebuilds/carlos/internal/frame"
 )
 
 type Tool interface {
@@ -105,6 +106,39 @@ func NewDefaultRegistry() *Registry {
 // Empty baseDir + zero VaultConfig → backwards-compatible behavior
 // for legacy call sites.
 func NewDefaultRegistryWithBaseDir(baseDir string, vaultCfg config.VaultConfig) *Registry {
+	return NewDefaultRegistryWithBaseDirAndFrames(baseDir, vaultCfg, frame.Config{}, "")
+}
+
+// NewDefaultRegistryWithBaseDirAndFrames is the Phase F-11 variant that
+// also threads the configured frame list + active frame name through to
+// the notes_* and obsidian_* tools.
+//
+// When `frames.List` is empty (legacy single shelf mode), the tools
+// behave byte for byte the same as before F-11: no `frame:` defaulting,
+// no prefix labels on search/recent/tagged results.
+//
+// When frames are configured, the seven notes_* tools honor an optional
+// `frame:` argument:
+//
+//   - notes_get / notes_neighbors / notes_backlinks / notes_resolve are
+//     point queries; they restrict resolution to the frame's
+//     vault_subtree (default to the active frame's subtree on omission).
+//   - notes_search / notes_recent / notes_tagged are fan out queries; an
+//     omitted `frame:` sweeps every frame and labels each hit with its
+//     source frame in a new `frame` result field.
+//
+// The seven obsidian_* tools take `frame:` as a shorthand for "use the
+// configured vault + this frame's subtree"; explicit `vault:` still
+// wins when both are passed.
+//
+// active is the in-session active frame name (e.g. from a recent
+// /frame switch). Empty means "honor the on-disk frames.Active".
+func NewDefaultRegistryWithBaseDirAndFrames(
+	baseDir string,
+	vaultCfg config.VaultConfig,
+	frames frame.Config,
+	active string,
+) *Registry {
 	r := NewRegistry()
 	bash := NewBashTool()
 	bash.BaseDir = baseDir
@@ -158,7 +192,7 @@ func NewDefaultRegistryWithBaseDir(baseDir string, vaultCfg config.VaultConfig) 
 	//
 	// Both share the same notesEnv + Cache so opening any vault is
 	// memoized across both families.
-	nenv := newNotesEnv(vaultCfg)
+	nenv := newNotesEnvWithFrames(vaultCfg, frames, active)
 	r.Register(NewNotesGetTool(nenv))
 	r.Register(NewNotesSearchTool(nenv))
 	r.Register(NewNotesBacklinksTool(nenv))

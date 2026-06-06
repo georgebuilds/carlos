@@ -22,7 +22,7 @@ func NewNotesBacklinksTool(env *notesEnv) *NotesBacklinksTool {
 func (*NotesBacklinksTool) Name() string { return "notes_backlinks" }
 
 func (*NotesBacklinksTool) Description() string {
-	return "List every note in your configured Obsidian vault that wikilinks to the given target, with the line of context around each link. Replaces vault-wide grep for `[[target]]` style searches. Always operates on your default vault — use obsidian_backlinks to query a different vault."
+	return "List every note in your configured Obsidian vault that wikilinks to the given target, with the line of context around each link. Replaces vault-wide grep for `[[target]]` style searches. Always operates on your default vault, use obsidian_backlinks to query a different vault. Pass `frame:` to restrict the target note to that frame's vault_subtree; when omitted, defaults to the active frame's subtree."
 }
 
 func (*NotesBacklinksTool) Schema() []byte {
@@ -30,7 +30,8 @@ func (*NotesBacklinksTool) Schema() []byte {
 		"type": "object",
 		"properties": {
 			"note":  {"type": "string", "description": "Target note name or relpath."},
-			"limit": {"type": "integer", "description": "Default 50."}
+			"limit": {"type": "integer", "description": "Default 50."},
+			"frame": {"type": "string", "description": "Optional frame name. Restricts the target note to that frame's vault_subtree. When omitted, defaults to the active frame's subtree."}
 		},
 		"required": ["note"]
 	}`)
@@ -39,6 +40,7 @@ func (*NotesBacklinksTool) Schema() []byte {
 type notesBacklinksInput struct {
 	Note  string `json:"note"`
 	Limit int    `json:"limit"`
+	Frame string `json:"frame"`
 }
 
 type notesBacklinksResponse struct {
@@ -71,6 +73,14 @@ func (t *NotesBacklinksTool) Execute(_ context.Context, input []byte) ([]byte, e
 	if err != nil {
 		return jsonErr("notes_backlinks: %v", err)
 	}
+	_, subtree, ferr := t.env.resolveFrameArg(in.Frame)
+	if ferr != nil {
+		return jsonErr("notes_backlinks: %v", ferr)
+	}
+	resolved, _, _ := v.Resolve(in.Note)
+	if resolved != "" && !inSubtree(resolved, subtree) {
+		return notFoundResponse(in.Note)
+	}
 
 	bl, err := v.Backlinks(in.Note, in.Limit)
 	if err != nil {
@@ -79,9 +89,9 @@ func (t *NotesBacklinksTool) Execute(_ context.Context, input []byte) ([]byte, e
 		}
 		return jsonErr("notes_backlinks: %v", err)
 	}
-	// Resolve target for the response header — we already know it
-	// resolved (Backlinks errored otherwise).
-	resolved, _, _ := v.Resolve(in.Note)
+	// Target for the response header — we already know it resolved
+	// (Backlinks would have errored otherwise) and we computed
+	// `resolved` above for the subtree gate.
 	target, _ := v.Get(resolved)
 
 	resp := notesBacklinksResponse{

@@ -22,7 +22,7 @@ func NewNotesGetTool(env *notesEnv) *NotesGetTool { return &NotesGetTool{env: en
 func (*NotesGetTool) Name() string { return "notes_get" }
 
 func (*NotesGetTool) Description() string {
-	return "Fetch a note's structure from your configured Obsidian vault: frontmatter, outline, link counts, modtime. Optionally pull the full body or a single section. Resolves `note` via Obsidian's shortest-unique-path. Always operates on your default vault — use obsidian_get to query a different vault."
+	return "Fetch a note's structure from your configured Obsidian vault: frontmatter, outline, link counts, modtime. Optionally pull the full body or a single section. Resolves `note` via Obsidian's shortest-unique-path. Always operates on your default vault, use obsidian_get to query a different vault. Pass `frame:` to restrict resolution to that frame's vault_subtree; when omitted, defaults to the active frame's subtree."
 }
 
 func (*NotesGetTool) Schema() []byte {
@@ -31,7 +31,8 @@ func (*NotesGetTool) Schema() []byte {
 		"properties": {
 			"note":    {"type": "string", "description": "Note name or relpath; resolved via Obsidian's shortest-unique-path."},
 			"section": {"type": "string", "description": "Optional heading text. When set, body is the section's content only (skipping nested sub-sections)."},
-			"body":    {"type": "boolean", "description": "Include the full body. Default false: returns just frontmatter + outline."}
+			"body":    {"type": "boolean", "description": "Include the full body. Default false: returns just frontmatter + outline."},
+			"frame":   {"type": "string", "description": "Optional frame name. Restricts note resolution to that frame's vault_subtree. When omitted, defaults to the active frame's subtree."}
 		},
 		"required": ["note"]
 	}`)
@@ -41,6 +42,7 @@ type notesGetInput struct {
 	Note    string `json:"note"`
 	Section string `json:"section"`
 	Body    bool   `json:"body"`
+	Frame   string `json:"frame"`
 }
 
 // notesGetResponse is the success envelope. We omit Body when empty so
@@ -84,6 +86,10 @@ func (t *NotesGetTool) Execute(_ context.Context, input []byte) ([]byte, error) 
 	if err != nil {
 		return jsonErr("notes_get: %v", err)
 	}
+	_, subtree, ferr := t.env.resolveFrameArg(in.Frame)
+	if ferr != nil {
+		return jsonErr("notes_get: %v", ferr)
+	}
 
 	n, err := v.Get(in.Note)
 	if err != nil {
@@ -91,6 +97,12 @@ func (t *NotesGetTool) Execute(_ context.Context, input []byte) ([]byte, error) 
 			return notFoundResponse(in.Note)
 		}
 		return jsonErr("notes_get: %v", err)
+	}
+	// Frame restriction: a hit outside the requested subtree is
+	// reported as not-found so the model gets a clean envelope rather
+	// than a surprise cross-frame leak.
+	if !inSubtree(n.Path, subtree) {
+		return notFoundResponse(in.Note)
 	}
 
 	resp := notesGetResponse{

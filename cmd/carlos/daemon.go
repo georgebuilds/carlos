@@ -77,7 +77,7 @@ func runDaemonRun() error {
 		StateDBPath:  dbPath,
 		SocketPath:   daemon.DefaultSocketPath(),
 		Provider:     d.provider,
-		BaseTools:    tools.NewDefaultRegistryWithBaseDir("", cfg.Vault),
+		BaseTools:    tools.NewDefaultRegistryWithBaseDirAndFrames("", cfg.Vault, cfg.Frames, cfg.Frames.Active),
 		TickInterval: 30 * time.Second,
 		Notifier:     &daemon.SystemNotifier{}, // slice 8d: desktop banners on fire
 	})

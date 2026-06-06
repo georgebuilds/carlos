@@ -22,21 +22,23 @@ func NewNotesResolveTool(env *notesEnv) *NotesResolveTool {
 func (*NotesResolveTool) Name() string { return "notes_resolve" }
 
 func (*NotesResolveTool) Description() string {
-	return "Resolve a wikilink (with or without `[[brackets]]`) to its target relpath in your configured Obsidian vault. Returns the candidate list when the target title appears in multiple folders. Use obsidian_resolve to query a different vault."
+	return "Resolve a wikilink (with or without `[[brackets]]`) to its target relpath in your configured Obsidian vault. Returns the candidate list when the target title appears in multiple folders. Use obsidian_resolve to query a different vault. Pass `frame:` to restrict resolution to that frame's vault_subtree; when omitted, defaults to the active frame's subtree."
 }
 
 func (*NotesResolveTool) Schema() []byte {
 	return []byte(`{
 		"type": "object",
 		"properties": {
-			"link":  {"type": "string", "description": "Wikilink text, with or without [[brackets]]."}
+			"link":  {"type": "string", "description": "Wikilink text, with or without [[brackets]]."},
+			"frame": {"type": "string", "description": "Optional frame name. Restricts candidate resolution to that frame's vault_subtree. When omitted, defaults to the active frame's subtree."}
 		},
 		"required": ["link"]
 	}`)
 }
 
 type notesResolveInput struct {
-	Link string `json:"link"`
+	Link  string `json:"link"`
+	Frame string `json:"frame"`
 }
 
 type notesResolveResponse struct {
@@ -68,6 +70,10 @@ func (t *NotesResolveTool) Execute(_ context.Context, input []byte) ([]byte, err
 	if err != nil {
 		return jsonErr("notes_resolve: %v", err)
 	}
+	_, subtree, ferr := t.env.resolveFrameArg(in.Frame)
+	if ferr != nil {
+		return jsonErr("notes_resolve: %v", ferr)
+	}
 
 	resolved, cands, err := v.Resolve(in.Link)
 	if err != nil {
@@ -76,6 +82,26 @@ func (t *NotesResolveTool) Execute(_ context.Context, input []byte) ([]byte, err
 		}
 		return jsonErr("notes_resolve: %v", err)
 	}
+
+	// Filter candidates to the subtree, then pick the new resolved
+	// note as the shortest path among the remaining set (mirroring
+	// VaultIndex.resolveLink's tiebreak). If nothing survives the
+	// filter we report not-found so the model sees a deterministic
+	// envelope instead of a cross-frame leak.
+	if subtree != "" {
+		filtered := cands[:0]
+		for _, c := range cands {
+			if inSubtree(c.Path, subtree) {
+				filtered = append(filtered, c)
+			}
+		}
+		cands = filtered
+		if len(cands) == 0 {
+			return notFoundResponse(in.Link)
+		}
+		resolved = cands[0].Path
+	}
+
 	target, _ := v.Get(resolved)
 
 	resp := notesResolveResponse{

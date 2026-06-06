@@ -19,19 +19,29 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path"
 	"strings"
 
 	"github.com/georgebuilds/carlos/internal/config"
+	"github.com/georgebuilds/carlos/internal/frame"
 	"github.com/georgebuilds/carlos/internal/notes"
 )
 
 // notesEnv is the shared dependency every notes_* tool holds. The same
 // *notes.Cache flows through all seven tools so a vault opened by
-// notes_get is reused by notes_search etc. — the lazy build cost is
+// notes_get is reused by notes_search etc., the lazy build cost is
 // paid at most once per (vault, process) tuple.
+//
+// Phase F-11 adds the frame slice: frames is the configured set of
+// frames the session knows about, active names which one is currently
+// in focus. When frames.List is empty the env is in "legacy single
+// shelf mode" and the per-tool frame plumbing degrades to a no-op so
+// older call sites keep their pre-frames behavior byte for byte.
 type notesEnv struct {
-	cache *notes.Cache
-	cfg   config.VaultConfig
+	cache  *notes.Cache
+	cfg    config.VaultConfig
+	frames frame.Config
+	active string
 }
 
 // newNotesEnv wires the cache + cfg pair. Constructed once by
@@ -42,6 +52,153 @@ func newNotesEnv(cfg config.VaultConfig) *notesEnv {
 		cache: notes.NewCache(cfg.Exclude),
 		cfg:   cfg,
 	}
+}
+
+// newNotesEnvWithFrames is the Phase F-11 constructor: same as
+// newNotesEnv but also carries the configured frame list + the active
+// frame name. Used by NewDefaultRegistryWithBaseDirAndFrames; the
+// older constructor still works for call sites that never wired
+// frames.
+func newNotesEnvWithFrames(cfg config.VaultConfig, frames frame.Config, active string) *notesEnv {
+	return &notesEnv{
+		cache:  notes.NewCache(cfg.Exclude),
+		cfg:    cfg,
+		frames: frames,
+		active: active,
+	}
+}
+
+// hasFrames reports whether the env was wired with at least one frame.
+// Tools branch on this to decide between legacy single shelf mode (no
+// prefix, no subtree restriction) and the new frame aware paths.
+func (e *notesEnv) hasFrames() bool {
+	return e != nil && len(e.frames.List) > 0
+}
+
+// activeFrame returns the active frame pointer or nil. nil means the
+// active frame name didn't resolve OR no frames are wired. The fan-out
+// helpers fall back to "no restriction" in that case.
+func (e *notesEnv) activeFrame() *frame.Frame {
+	if !e.hasFrames() {
+		return nil
+	}
+	name := e.active
+	if name == "" {
+		name = e.frames.Active
+	}
+	if name == "" {
+		name = e.frames.Default
+	}
+	return e.frames.Find(name)
+}
+
+// resolveFrameArg picks the subtree filter for a tool call given the
+// optional `frame:` arg. Rules:
+//
+//  1. No frames wired ANYWHERE in the env -> ("", "", nil). Caller skips
+//     any filtering. This is the legacy single shelf path.
+//  2. `frameArg` non-empty -> look it up. Unknown name returns an
+//     error so the tool surfaces a clean envelope instead of falling
+//     back to the active frame and confusing the model.
+//  3. `frameArg` empty + a single resolved active frame -> default to
+//     that frame's name + subtree.
+//  4. `frameArg` empty + frames wired but the active didn't resolve
+//     (config mid-edit, picker not yet run) -> ("", "", nil). Treat as
+//     no restriction so READ stays free; the model can re-issue with
+//     an explicit frame: if it wants targeting.
+//
+// The returned `name` is the frame's name (for prefix labels); the
+// returned `subtree` is the cleaned forward-slash relpath inside the
+// vault root, "" for whole-vault frames.
+func (e *notesEnv) resolveFrameArg(frameArg string) (name, subtree string, err error) {
+	frameArg = strings.TrimSpace(frameArg)
+	if frameArg == "" {
+		if !e.hasFrames() {
+			return "", "", nil
+		}
+		af := e.activeFrame()
+		if af == nil {
+			return "", "", nil
+		}
+		return af.Name, cleanSubtree(af.VaultSubtree), nil
+	}
+	// Explicit frame: arg. Must exist; we don't fall back so the model
+	// gets a deterministic error rather than silently querying the
+	// wrong subtree.
+	f := e.frames.Find(frameArg)
+	if f == nil {
+		return "", "", fmt.Errorf("unknown frame: %q", frameArg)
+	}
+	return f.Name, cleanSubtree(f.VaultSubtree), nil
+}
+
+// frameFanout returns the ordered (name, subtree) pairs a cross-frame
+// query should sweep. Empty frame list -> a single ("", "") pair so the
+// caller's loop body still runs once without prefixing or filtering
+// (legacy single shelf mode). Honors the explicit `frameArg` first
+// (single-entry slice) before falling back to all frames.
+func (e *notesEnv) frameFanout(frameArg string) ([]frameTarget, error) {
+	frameArg = strings.TrimSpace(frameArg)
+	if frameArg != "" {
+		name, subtree, err := e.resolveFrameArg(frameArg)
+		if err != nil {
+			return nil, err
+		}
+		return []frameTarget{{Name: name, Subtree: subtree}}, nil
+	}
+	if !e.hasFrames() {
+		// Legacy single shelf: one empty target so the caller's loop
+		// runs once without prefix or restriction.
+		return []frameTarget{{}}, nil
+	}
+	out := make([]frameTarget, 0, len(e.frames.List))
+	for _, f := range e.frames.List {
+		out = append(out, frameTarget{
+			Name:    f.Name,
+			Subtree: cleanSubtree(f.VaultSubtree),
+		})
+	}
+	return out, nil
+}
+
+// frameTarget is one row in a fan-out plan. Name labels prefix-bearing
+// results; Subtree is the relpath filter applied to result paths.
+type frameTarget struct {
+	Name    string
+	Subtree string
+}
+
+// cleanSubtree normalises a frame.VaultSubtree to the canonical "no
+// trailing slash, forward slashes only, no leading slash" form Notes
+// paths use. Empty in, empty out.
+func cleanSubtree(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+	// path.Clean normalises ./, //, trailing slash; we also strip a
+	// leading slash so users who write "/work" in YAML get the same
+	// result as "work".
+	s = strings.TrimPrefix(s, "/")
+	s = path.Clean(s)
+	if s == "." {
+		return ""
+	}
+	return s
+}
+
+// inSubtree reports whether relpath sits inside subtree. Empty subtree
+// matches everything. Treats subtree as a directory prefix (so
+// "work/notes.md" matches subtree "work" but "workshop/notes.md" does
+// NOT).
+func inSubtree(relpath, subtree string) bool {
+	if subtree == "" {
+		return true
+	}
+	if relpath == subtree {
+		return true
+	}
+	return strings.HasPrefix(relpath, subtree+"/")
 }
 
 // openVault resolves the effective vault path for a tool call + opens

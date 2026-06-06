@@ -684,7 +684,7 @@ func runHeadless(prompt string, opts pleaseOptions) error {
 	// tool set: bash + file ops + git read-only. The Agent tool
 	// itself is added to the PARENT'S registry only (below), NOT the
 	// base — children at depth 1 (the v0 cap) can't further spawn.
-	baseReg := tools.NewDefaultRegistryWithBaseDir(baseDir, cfg.Vault)
+	baseReg := tools.NewDefaultRegistryWithBaseDirAndFrames(baseDir, cfg.Vault, cfg.Frames, cfg.Frames.Active)
 
 	// Supervisor takes the resolved provider + base registry. Its
 	// goroutine sweep + per-agent heartbeats run for the lifetime of
@@ -1286,7 +1286,11 @@ func runDefault(cfg *config.Config, sessionID string) error {
 		return err
 	}
 
-	baseReg := tools.NewDefaultRegistryWithBaseDir("", cfg.Vault)
+	// Phase F-11: thread the frame list + active frame through so the
+	// notes_* / obsidian_* tools can default to the active frame's
+	// vault_subtree and fan out across every configured frame on
+	// cross-frame queries.
+	baseReg := tools.NewDefaultRegistryWithBaseDirAndFrames("", cfg.Vault, cfg.Frames, cfg.Frames.Active)
 	sup := agent.NewSupervisor(log, d.provider, baseReg)
 	sup.Run(ctx)
 	defer sup.Shutdown()
