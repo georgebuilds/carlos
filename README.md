@@ -1,6 +1,6 @@
 # carlos
 
-A pure-Go TUI agent. Single binary, under 15 MB.
+A pure-Go TUI agent. Single binary, under 16 MB.
 
 Not strictly a coding agent. General-purpose: file system, shell, web, notes, schedules. Two headline features:
 
@@ -40,7 +40,7 @@ Anthropic, OpenAI, OpenRouter, Ollama. All first-class from day one. Tool-use ca
 
 ## What's inside v0
 
-1. A single binary, under 15 MB.
+1. A single binary, under 16 MB.
 2. Four providers, one shape.
 3. A memory that lives in plain markdown. Read it in Obsidian, grep it in your shell. Specialized tools query it 10× to 100× more token-efficiently than grepping and globbing.
 4. Work and life on separate shelves. Two contexts, never crossed.
