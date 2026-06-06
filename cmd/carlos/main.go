@@ -794,11 +794,14 @@ func runResearch(args []string) error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	fmt.Fprintf(os.Stderr, "carlos: researching: %s\n", question)
-	fmt.Fprintf(os.Stderr, "carlos: provider=%s model=%s search=%s (may take 1-2 min)\n",
+	fmt.Fprintf(os.Stderr, "carlos: provider=%s model=%s search=%s\n",
 		d.name, d.model, searchTool.Backend.Name())
 
-	report, runErr := engine.Run(ctx, question)
+	// Live status panel via bubbletea inline (no AltScreen) —
+	// matches the TUI feel without taking over the terminal. On
+	// completion the panel clears itself and the rendered report
+	// prints inline below.
+	report, runErr := runResearchWithStatus(ctx, engine, question)
 	if runErr != nil && errors.Is(runErr, context.Canceled) {
 		return nil
 	}
@@ -1224,6 +1227,20 @@ func ensureDefaultAgent(ctx context.Context, log *agent.SQLiteEventLog, id, prov
 		AgentID: id, TS: now, Type: agent.EvtStateChange, Payload: payload,
 	}); err != nil {
 		return err
+	}
+	// Created leaves the projection in StateSpawning. Append the
+	// transition to Running immediately so the chat header reflects
+	// "active" instead of staying stuck at "◐ spawning" forever.
+	// Same recipe the resume branch above uses — without this, every
+	// fresh Phase R session showed the wrong badge.
+	trans, err := agent.NewStateChangeTransition(agent.StateRunning)
+	if err != nil {
+		return fmt.Errorf("marshal initial transition: %w", err)
+	}
+	if _, err := log.Append(ctx, agent.Event{
+		AgentID: id, TS: now, Type: agent.EvtStateChange, Payload: trans,
+	}); err != nil {
+		return fmt.Errorf("append initial transition: %w", err)
 	}
 	return log.InsertAgent(ctx, agent.AgentRow{
 		ID: id, RootID: id, State: agent.StateRunning, Attempt: 1,

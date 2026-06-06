@@ -658,7 +658,7 @@ func (m *Model) rerenderViewport() {
 		// Fresh session or post-/clear. Render a centered welcome
 		// instead of an empty viewport so the first frame feels
 		// inviting and the user knows what to do.
-		content = renderEmptyState(m.userName, m.vp.Width, m.vp.Height)
+		content = renderEmptyState(m.userName, m.vp.Width, m.vp.Height, m.readOnly)
 	} else {
 		content = composeTranscript(m.transcript, m.source.Get(m.agentID), m.vp.Width)
 	}
@@ -671,7 +671,10 @@ func (m *Model) rerenderViewport() {
 // renderEmptyState is the welcome panel shown when the transcript is
 // empty. Centered cap + greeting + a few example prompts. Vertically
 // padded so the content sits roughly in the middle of the viewport.
-func renderEmptyState(userName string, width, height int) string {
+//
+// readOnly tweaks the input hint — a viewer-only surface (manage
+// preview, snapshot tests) should not imply input capability.
+func renderEmptyState(userName string, width, height int, readOnly bool) string {
 	if userName == "" {
 		userName = "Boss"
 	}
@@ -682,6 +685,9 @@ func renderEmptyState(userName string, width, height int) string {
 	cap := accent.Render("🧢")
 	greeting := cap + "  " + accent.Render("Hey "+userName+" — what are we working on?")
 	hint := muted.Render("type a message below and hit enter")
+	if readOnly {
+		hint = muted.Render("(viewer mode — transcript is read-only)")
+	}
 
 	examples := []string{
 		example.Render("• what's on my calendar today?"),

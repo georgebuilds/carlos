@@ -435,7 +435,7 @@ func countUserMessages(t *testing.T, log *agent.SQLiteEventLog, agentID string) 
 // as the brand-voice default) and surfaces the example prompts so a
 // fresh /clear or first launch doesn't paint a dead-empty viewport.
 func TestRenderEmptyState_GreetsByUserName(t *testing.T) {
-	out := renderEmptyState("Ada", 80, 30)
+	out := renderEmptyState("Ada", 80, 30, false)
 	if !strings.Contains(out, "Hey Ada") {
 		t.Errorf("empty state missing name greeting: %q", out)
 	}
@@ -448,7 +448,7 @@ func TestRenderEmptyState_GreetsByUserName(t *testing.T) {
 }
 
 func TestRenderEmptyState_DefaultsToBoss(t *testing.T) {
-	out := renderEmptyState("", 80, 30)
+	out := renderEmptyState("", 80, 30, false)
 	if !strings.Contains(out, "Hey Boss") {
 		t.Errorf("empty userName should default to Boss; got %q", out)
 	}

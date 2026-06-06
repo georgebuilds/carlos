@@ -758,16 +758,11 @@ func (m *Model) applyEvent(ev agent.Event) {
 			text: p.Text,
 		})
 	case agent.EvtStateChange:
-		// Render only spawn — transitions show up in the header badge.
-		var sp agent.StateChangePayload
-		_ = json.Unmarshal(ev.Payload, &sp)
-		if sp.Kind == agent.StateChangeCreated && sp.Created != nil {
-			m.transcript = append(m.transcript, transcriptEntry{
-				kind: entryStateChange,
-				ts:   ev.TS,
-				text: fmt.Sprintf("agent %s spawned (model=%s)", sp.Created.ID, sp.Created.Model),
-			})
-		}
+		// No transcript entry — the header's id + state badge + model
+		// already conveys session identity and current activity. The
+		// older "agent <full-ulid> spawned (model=...)" line was
+		// pure duplication and read as noise the user actively had
+		// to skip past on every session open.
 	case agent.EvtSessionReset:
 		// Conversational fresh-start. Drop the rendered transcript;
 		// the same event tells chatglue.buildHistory to start its
