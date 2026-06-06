@@ -20,6 +20,7 @@ import (
 	"github.com/georgebuilds/carlos/internal/theme"
 	"github.com/georgebuilds/carlos/internal/tui/slash"
 	"github.com/georgebuilds/carlos/internal/usershell"
+	"github.com/georgebuilds/carlos/internal/workspace"
 )
 
 // Brand palette — package-level vars populated by [ApplyPalette].
@@ -265,6 +266,14 @@ type Model struct {
 	// handle arrow keys natively (cursor up/down within
 	// multi-line input).
 	shellHistory *usershell.History
+
+	// Phase T-2: workspace-trust policy for /trust + /untrust +
+	// /trusts slash commands. nil means trust isn't wired (tests,
+	// the headless `please` path); the slashes echo a "not wired"
+	// status when missing. The Policy is shared with the
+	// LayeredApprover in the chat path, so SetTrusted updates
+	// here reach the next tool-call decision.
+	workspace *workspace.Policy
 }
 
 type statusKind int
@@ -322,6 +331,16 @@ func WithUserShell(mgr *usershell.Manager) Option {
 // rooted at ~/.carlos/shell-history.
 func WithShellHistory(h *usershell.History) Option {
 	return func(m *Model) { m.shellHistory = h }
+}
+
+// WithWorkspacePolicy attaches the Phase T-2 workspace-trust policy so
+// the /trust + /untrust + /trusts slash commands can flip the in-
+// session trust state. The Policy should be the same instance wired
+// into the LayeredApprover; setting trust here also updates the
+// approver's view for the very next tool call. nil leaves the
+// commands echoing "not wired".
+func WithWorkspacePolicy(p *workspace.Policy) Option {
+	return func(m *Model) { m.workspace = p }
 }
 
 // New constructs a chat Model bound to the given event log + agent. The
@@ -1173,6 +1192,12 @@ func (m *Model) dispatchSlash(c slash.Command) tea.Cmd {
 		return m.shellSlashForeground(strings.TrimSpace(c.Args))
 	case "bg":
 		return m.shellSlashBackground(strings.TrimSpace(c.Args))
+	case "trust":
+		return m.trustSlashEnable()
+	case "untrust":
+		return m.trustSlashDisable()
+	case "trusts":
+		return m.trustSlashList()
 	}
 	if _, ok := slash.Lookup(c.Name); ok {
 		return func() tea.Msg {

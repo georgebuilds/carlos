@@ -51,17 +51,36 @@ type LayeredApprover struct {
 	builtinAllow map[string]bool
 
 	// workspaceRoots is the set of absolute paths the user has
-	// trusted. Mutex-guarded so /trust slash + first-launch prompt
-	// can both write. Phase T-2 wires the load + write side; today
-	// the field is empty.
+	// trusted *for this session only*. Mutex-guarded so /trust slash
+	// + first-launch prompt can both write. The disk side lives in
+	// internal/workspace via the WorkspacePolicy plug below; this map
+	// is just the in-memory snapshot LayeredApprover can read without
+	// a disk hop on every tool call.
 	mu             sync.RWMutex
 	workspaceRoots map[string]bool
+
+	// workspacePolicy is the Phase T-2 plug. When non-nil, layer 2
+	// delegates to it. cmd/carlos wires a workspace.Policy here; the
+	// agent package only sees the interface so internal/workspace can
+	// own the disk schema + bash classifier without dragging file I/O
+	// into the policy engine.
+	workspacePolicy WorkspacePolicy
 
 	// auditLog optionally captures every decision (allow + reason +
 	// tool + input) so the manage view + /permissions overlay can
 	// show "what was auto-approved." nil disables; LayeredApprover
 	// works fine without it.
 	auditLog AuditSink
+}
+
+// WorkspacePolicy is the layer-2 plug point. Implementations live
+// in internal/workspace; the interface stays here so the agent
+// package doesn't import the disk schema.
+type WorkspacePolicy interface {
+	// Allows reports whether (tool, input) is permitted by the
+	// workspace-trust layer. False is the safe default — any
+	// uncertainty falls through to the prompt path.
+	Allows(tool string, input []byte) bool
 }
 
 // AuditSink receives one notification per ApproveToolCall decision.
@@ -236,20 +255,27 @@ func (l *LayeredApprover) IsWorkspaceTrusted(root string) bool {
 	return l.workspaceRoots[root]
 }
 
-// workspaceAllows is the Phase T-2 policy gate. Today it's a no-op
-// stub returning false; the next slice wires the bash-allowlist
-// + path-inside-workspace check. Kept as its own method so T-2
-// changes localize here.
+// workspaceAllows is the Phase T-2 policy gate. Delegates to the
+// plugged WorkspacePolicy (typically a *workspace.Policy from
+// internal/workspace). When no policy is wired the layer is a no-op
+// and the call falls through to the fallback approver.
 func (l *LayeredApprover) workspaceAllows(name string, input []byte) bool {
-	// Phase T-2 will populate this:
-	//  - resolve current cwd
-	//  - check workspaceRoots for a prefix match
-	//  - if bash and verb is in the read-only allowlist → allow
-	//  - if edit/write and target path is inside the trusted root
-	//    → allow
-	_ = name
-	_ = input
-	return false
+	l.mu.RLock()
+	policy := l.workspacePolicy
+	l.mu.RUnlock()
+	if policy == nil {
+		return false
+	}
+	return policy.Allows(name, input)
+}
+
+// SetWorkspacePolicy plugs a Phase T-2 policy into layer 2. Pass nil
+// to clear (tests + the headless code path do this). Safe to call
+// at any time; subsequent ApproveToolCall hits see the new policy.
+func (l *LayeredApprover) SetWorkspacePolicy(p WorkspacePolicy) {
+	l.mu.Lock()
+	l.workspacePolicy = p
+	l.mu.Unlock()
 }
 
 // sortStrings — insertion sort; the slices we care about top out at

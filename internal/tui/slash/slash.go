@@ -85,6 +85,13 @@ var Builtins = []Spec{
 	{Name: "fg", ArgsHint: "<job-id>", Description: "foreground a background shell job"},
 	{Name: "bg", ArgsHint: "<job-id>", Description: "background the running shell job (same as Ctrl+Z)"},
 	{Name: "resume", Description: "pick a past chat session to resume (Phase R)"},
+
+	// Phase T-2 — workspace trust. Trust enables auto-approval for
+	// a curated set of read-only bash verbs (git status/diff/log/…,
+	// ls, pwd, cat, head, tail, …). Everything else still prompts.
+	{Name: "trust", Description: "trust the current workspace for read-only bash auto-approval"},
+	{Name: "untrust", Description: "remove trust from the current workspace"},
+	{Name: "trusts", Description: "list trusted workspaces"},
 }
 
 // Lookup returns the Spec for name (case-insensitive), or (Spec{}, false).

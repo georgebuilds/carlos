@@ -62,6 +62,7 @@ import (
 	"github.com/georgebuilds/carlos/internal/tui/manage"
 	"github.com/georgebuilds/carlos/internal/tui/onboarding"
 	"github.com/georgebuilds/carlos/internal/usershell"
+	"github.com/georgebuilds/carlos/internal/workspace"
 )
 
 // fallbackVersion is what we print when runtime/debug.ReadBuildInfo
@@ -657,7 +658,18 @@ func runHeadless(prompt string, opts pleaseOptions) error {
 	// runDispatch path as in the chat path below — the model can't
 	// learn one set of approval rules from one entry point and a
 	// different set from another.
-	approver = agent.NewLayeredApprover(approver, agent.DefaultBuiltinAllow, nil)
+	layered := agent.NewLayeredApprover(approver, agent.DefaultBuiltinAllow, nil)
+	// Phase T-2: wire workspace-trust. When the cwd is in the
+	// trusted-workspaces store the policy allows a small set of
+	// read-only bash verbs (git status/diff/log/…, ls, pwd, cat,
+	// head, tail, wc, file, which, echo). cwd is normalized at
+	// policy construction and held for the run's lifetime.
+	if cwd, err := os.Getwd(); err == nil {
+		layered.SetWorkspacePolicy(workspace.NewPolicy(
+			workspace.NewStore(workspace.DefaultPath()), cwd,
+		))
+	}
+	approver = layered
 
 	// Surface which provider/model we're using on stderr so scripts and
 	// users both see it.
@@ -1123,13 +1135,23 @@ func runDefault(cfg *config.Config, sessionID string) error {
 	src := chat.NewMemTextSource()
 	approver := chat.NewTUIApprover()
 	defer approver.Close()
-	// Phase T-1: the loop sees a LayeredApprover that auto-approves
-	// the built-in read-only allowlist (notes_*, read/grep/glob/ls,
-	// git_status, …) and falls through to the TUI prompt for
-	// everything else. The TUI surface still gets the bare
-	// approver via WithTUIApprover so the in-process channel for
-	// user Y/N input stays wired.
+	// Phase T-1/T-2: the loop sees a LayeredApprover that auto-
+	// approves the hardcoded read-only allowlist (notes_*,
+	// read/grep/glob/ls, git_status, …) AND — when the cwd is
+	// trusted via the workspace store — a small set of read-only
+	// bash verbs (git status/diff/log/…, ls, pwd, cat, head, tail,
+	// wc, file, which, echo). Everything else falls through to the
+	// TUI prompt. The TUI surface still gets the bare approver via
+	// WithTUIApprover so the in-process y/N channel stays wired.
 	layered := agent.NewLayeredApprover(approver, agent.DefaultBuiltinAllow, nil)
+	var trustPolicy *workspace.Policy
+	cwd, err := os.Getwd()
+	if err == nil {
+		trustPolicy = workspace.NewPolicy(
+			workspace.NewStore(workspace.DefaultPath()), cwd,
+		)
+		layered.SetWorkspacePolicy(trustPolicy)
+	}
 	loop := chatglue.NewLoop(chatglue.Config{
 		Provider: d.provider,
 		Model:    d.model,
@@ -1167,6 +1189,9 @@ func runDefault(cfg *config.Config, sessionID string) error {
 			chat.WithSummarizer(summarizer),
 			chat.WithUserShell(shellMgr),
 			chat.WithShellHistory(shellHistory),
+		}
+		if trustPolicy != nil {
+			opts = append(opts, chat.WithWorkspacePolicy(trustPolicy))
 		}
 		if researchEngine != nil {
 			opts = append(opts, chat.WithResearchEngine(researchEngine))

@@ -206,6 +206,73 @@ func TestExtractInputField(t *testing.T) {
 	}
 }
 
+// stubWorkspacePolicy lets layer-2 tests inject decisions without
+// dragging in the internal/workspace package.
+type stubWorkspacePolicy struct {
+	allow      bool
+	calledWith []string
+}
+
+func (s *stubWorkspacePolicy) Allows(tool string, _ []byte) bool {
+	s.calledWith = append(s.calledWith, tool)
+	return s.allow
+}
+
+func TestSetWorkspacePolicy_AllowBypassesFallback(t *testing.T) {
+	rec := &recordingApprover{allow: false}
+	audit := &recordingAuditSink{}
+	la := NewLayeredApprover(rec, nil, audit)
+	la.SetWorkspacePolicy(&stubWorkspacePolicy{allow: true})
+
+	if ok := la.ApproveToolCall("bash", []byte(`{"cmd":"git status"}`)); !ok {
+		t.Errorf("workspace-allow should bypass fallback")
+	}
+	if rec.wasCalled() {
+		t.Errorf("workspace-allow should NOT consult fallback")
+	}
+	snap := audit.snapshot()
+	if len(snap) != 1 || snap[0].Reason != ReasonWorkspaceAllow {
+		t.Errorf("audit reason = %v, want ReasonWorkspaceAllow", snap)
+	}
+}
+
+func TestSetWorkspacePolicy_DenyFallsThrough(t *testing.T) {
+	rec := &recordingApprover{allow: false}
+	la := NewLayeredApprover(rec, nil, nil)
+	la.SetWorkspacePolicy(&stubWorkspacePolicy{allow: false})
+
+	if ok := la.ApproveToolCall("bash", []byte(`{"cmd":"git push"}`)); ok {
+		t.Errorf("workspace-deny + fallback-deny should not allow")
+	}
+	if !rec.wasCalled() {
+		t.Error("workspace-deny should fall through to fallback")
+	}
+}
+
+func TestSetWorkspacePolicy_NilPolicySafe(t *testing.T) {
+	rec := &recordingApprover{allow: false}
+	la := NewLayeredApprover(rec, nil, nil)
+	la.SetWorkspacePolicy(nil)
+	if ok := la.ApproveToolCall("bash", []byte(`{"cmd":"ls"}`)); ok {
+		t.Errorf("nil workspace policy + denying fallback should not allow")
+	}
+}
+
+func TestSetWorkspacePolicy_BuiltinStillWins(t *testing.T) {
+	// Layer-1 (builtin allow) must short-circuit before layer-2
+	// is consulted — same tool name shouldn't be evaluated twice.
+	rec := &recordingApprover{allow: false}
+	ws := &stubWorkspacePolicy{allow: false}
+	la := NewLayeredApprover(rec, []string{"notes_search"}, nil)
+	la.SetWorkspacePolicy(ws)
+	if !la.ApproveToolCall("notes_search", []byte(`{}`)) {
+		t.Error("builtin should allow without consulting workspace")
+	}
+	if len(ws.calledWith) != 0 {
+		t.Errorf("workspace policy should NOT see builtin-allowed tools; got %v", ws.calledWith)
+	}
+}
+
 func TestSortStrings(t *testing.T) {
 	in := []string{"banana", "apple", "cherry", ""}
 	sortStrings(in)
