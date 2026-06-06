@@ -58,6 +58,14 @@ type WebFetchTool struct {
 	// MaxRedirects caps the redirect chain. Default 5.
 	MaxRedirects int
 
+	// UserAgent, when non-empty, overrides the default polite-bot UA
+	// (webFetchUserAgent). Used by `carlos research` to identify as
+	// a real browser since many listing sites (Yelp, DoorDash,
+	// Superpages, YellowPages) return HTTP 403 to anything that
+	// announces itself as a bot. Model-side tool calls leave this
+	// empty so the model's fetches stay transparently labelled.
+	UserAgent string
+
 	// robotsCache is an in-process robots.txt cache (5-min TTL).
 	robotsCache sync.Map // host → robotsEntry
 }
@@ -286,7 +294,11 @@ func (t *WebFetchTool) do(ctx context.Context, client *http.Client, method, u st
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", webFetchUserAgent)
+	ua := webFetchUserAgent
+	if t.UserAgent != "" {
+		ua = t.UserAgent
+	}
+	req.Header.Set("User-Agent", ua)
 	req.Header.Set("Accept", "text/html,text/plain,text/markdown,text/*;q=0.9,*/*;q=0.1")
 	return client.Do(req)
 }

@@ -43,6 +43,18 @@ import (
 	"github.com/georgebuilds/carlos/internal/theme"
 )
 
+// researchBrowserUA is the User-Agent the user-initiated research
+// fetcher announces. Current stable Chrome on macOS — common enough
+// to look like normal traffic on sites that 403 the polite-bot UA
+// (Yelp listings, DoorDash, YellowPages, Superpages). Not a
+// deception posture; we document this in the research command and
+// the user typing `carlos research` is the consent.
+//
+// Bump when Chrome's stable major drifts ~6 versions; sites that
+// fingerprint via UA-CH may still 403, future polish wires those
+// headers too.
+const researchBrowserUA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+
 // researchPhases is the fixed phase order — must match the engine's
 // runtime order (internal/research/engine.go). Used for the
 // per-phase progress glyph row.

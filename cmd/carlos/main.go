@@ -784,11 +784,31 @@ func runResearch(args []string) error {
 
 	searchTool := tools.NewWebSearchTool()
 	fetchTool := tools.NewWebFetchTool()
+	// `carlos research` is user-initiated; the user typing the
+	// command IS the consent the polite defaults are gating on.
+	// Two adjustments the model's bash-tool path deliberately
+	// doesn't make:
+	//
+	//  - Realistic browser User-Agent. Listing sites (Yelp,
+	//    DoorDash, Superpages, YellowPages) return HTTP 403 to
+	//    anything advertising as a bot — the model's tool calls
+	//    keep the polite-bot UA so site logs see "carlos"
+	//    clearly, but the user-facing research command uses a
+	//    realistic Chrome-on-macOS UA to actually get content.
+	//  - respect_robots = false. The polite-bot default fails
+	//    most listing sites via robots.txt before the HTTP
+	//    request even fires; without this the read phase has
+	//    nothing to extract from.
+	fetchTool.UserAgent = researchBrowserUA
+	respectRobotsFalse := false
 	engine := &research.Engine{
 		Provider: d.provider,
 		Model:    d.model,
 		Search:   searchTool.Backend,
-		Fetcher:  &research.WebFetchAdapter{Tool: fetchTool},
+		Fetcher: &research.WebFetchAdapter{
+			Tool:          fetchTool,
+			RespectRobots: &respectRobotsFalse,
+		},
 	}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

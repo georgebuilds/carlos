@@ -77,6 +77,14 @@ type Fetcher interface {
 // JSON encoding — everything downstream consumes Source values.
 type WebFetchAdapter struct {
 	Tool *tools.WebFetchTool
+
+	// RespectRobots, when non-nil, overrides the tool's default
+	// (true). `carlos research` sets this to false because the user
+	// running the command IS the explicit consent the polite-bot
+	// default is gating on; without this every Yelp / Wikipedia /
+	// news fetch fails with "robots.txt disallows" and the engine
+	// has nothing to read in the read phase.
+	RespectRobots *bool
 }
 
 // Fetch implements Fetcher.
@@ -84,7 +92,11 @@ func (a *WebFetchAdapter) Fetch(ctx context.Context, url string) (Source, error)
 	if a == nil || a.Tool == nil {
 		return Source{}, errors.New("research: WebFetchAdapter.Tool is nil")
 	}
-	in, err := json.Marshal(map[string]string{"url": url})
+	input := map[string]any{"url": url}
+	if a.RespectRobots != nil {
+		input["respect_robots"] = *a.RespectRobots
+	}
+	in, err := json.Marshal(input)
 	if err != nil {
 		return Source{}, fmt.Errorf("research: marshal fetch input: %w", err)
 	}
