@@ -272,6 +272,90 @@ func TestVaultOmittedWhenEmpty(t *testing.T) {
 	}
 }
 
+// TestGatewayRoundtrip pins the post-v1 GatewayConfig serialization: the
+// per-channel sub-blocks, routing, and retry survive a Save+Load cycle,
+// and a zero-value GatewayConfig stays omitted from the on-disk YAML
+// for forward-compat with older configs.
+func TestGatewayRoundtrip(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	want := &Config{
+		UserName: "Boss",
+		Gateway: GatewayConfig{
+			Enabled: true,
+			Ntfy: NtfyGatewayConfig{
+				Enabled:        true,
+				Server:         "https://ntfy.example",
+				Topic:          "carlos-george-deadbeef",
+				ActionEndpoint: "https://carlos-cronus.ts.net/gateway/ntfy/action",
+				PriorityMap:    map[string]int{"default": 3, "high": 5},
+				SigningKey:     "env:CARLOS_NTFY_SIGNING_KEY",
+			},
+			Telegram: TelegramConfig{
+				Enabled:        true,
+				BotToken:       "env:CARLOS_TELEGRAM_TOKEN",
+				AllowedChatIDs: []int64{123456789},
+				ParseMode:      "MarkdownV2",
+				PollTimeoutSec: 30,
+			},
+			Signal: SignalConfig{Enabled: false, SignalCLISocket: "/run/signal-cli/socket"},
+			Custom: CustomGatewayConfig{Enabled: false, ListenAddr: "tailscale://carlos:8443"},
+			Routing: GatewayRouting{
+				Notifications: []string{"ntfy", "telegram"},
+				Approvals:     []string{"telegram", "ntfy"},
+				Conversations: []string{"telegram"},
+			},
+			Retry: GatewayRetry{MaxAttempts: 5, BackoffInitial: "1s", BackoffMax: "60s"},
+		},
+	}
+	if err := Save(path, want); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Gateway.Enabled {
+		t.Error("Gateway.Enabled not roundtripped")
+	}
+	if got.Gateway.Telegram.BotToken != want.Gateway.Telegram.BotToken {
+		t.Errorf("Telegram.BotToken: want %q got %q", want.Gateway.Telegram.BotToken, got.Gateway.Telegram.BotToken)
+	}
+	if len(got.Gateway.Telegram.AllowedChatIDs) != 1 || got.Gateway.Telegram.AllowedChatIDs[0] != 123456789 {
+		t.Errorf("Telegram.AllowedChatIDs: want [123456789] got %v", got.Gateway.Telegram.AllowedChatIDs)
+	}
+	if got.Gateway.Ntfy.PriorityMap["high"] != 5 {
+		t.Errorf("Ntfy.PriorityMap[high]: want 5 got %v", got.Gateway.Ntfy.PriorityMap["high"])
+	}
+	if len(got.Gateway.Routing.Notifications) != 2 {
+		t.Errorf("Routing.Notifications: want 2 entries got %d", len(got.Gateway.Routing.Notifications))
+	}
+	if got.Gateway.Retry.MaxAttempts != 5 {
+		t.Errorf("Retry.MaxAttempts: want 5 got %d", got.Gateway.Retry.MaxAttempts)
+	}
+	b, _ := os.ReadFile(path)
+	for _, key := range []string{"gateway:", "ntfy:", "telegram:", "routing:", "retry:"} {
+		if !strings.Contains(string(b), key) {
+			t.Errorf("gateway yaml missing key %q\n--- got ---\n%s", key, string(b))
+		}
+	}
+}
+
+// TestGatewayOmittedWhenEmpty — a zero-value Gateway must not emit a
+// stray `gateway: {}` line so older configs without the field
+// round-trip cleanly through a write.
+func TestGatewayOmittedWhenEmpty(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	if err := Save(path, &Config{UserName: "Boss"}); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(path)
+	if strings.Contains(string(b), "gateway:") {
+		t.Errorf("empty Gateway should be omitted; got:\n%s", string(b))
+	}
+}
+
 // TestYAMLShape pins the on-disk YAML keys so future schema additions stay
 // backward-compatible (no silent renames).
 func TestYAMLShape(t *testing.T) {

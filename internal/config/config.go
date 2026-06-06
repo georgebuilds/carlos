@@ -48,6 +48,93 @@ type Config struct {
 	// Emitted only when non-empty so older configs round-trip
 	// without a stray empty `vault: {}` line.
 	Vault VaultConfig `json:"vault,omitempty"`
+	// Gateway is the messaging-broker config (Post-v1 phase G). All
+	// adapters default to disabled; the broker fan-out is a no-op
+	// until at least one channel is enabled + routing references it.
+	// Emitted only when non-empty so older configs round-trip without
+	// a stray empty `gateway: {}` line.
+	Gateway GatewayConfig `json:"gateway,omitempty"`
+}
+
+// GatewayConfig is the on-disk shape of the gateway: block. Adapters
+// each get a sub-block; routing maps OutboundKind → ordered channel
+// preference; retry controls send-attempt cadence.
+//
+// The structs are mirrored 1:1 from the spec § Config shape; new
+// fields land here, get a YAML round-trip test, and then are read by
+// the daemon's gateway-construction path.
+type GatewayConfig struct {
+	// Enabled is the master switch. When false, the daemon does not
+	// construct a Broker; the in-process CLI gateway still runs.
+	Enabled  bool                `json:"enabled,omitempty"`
+	Ntfy     NtfyGatewayConfig   `json:"ntfy,omitempty"`
+	Telegram TelegramConfig      `json:"telegram,omitempty"`
+	Signal   SignalConfig        `json:"signal,omitempty"`
+	Custom   CustomGatewayConfig `json:"custom,omitempty"`
+	Routing  GatewayRouting      `json:"routing,omitempty"`
+	Retry    GatewayRetry        `json:"retry,omitempty"`
+}
+
+// NtfyGatewayConfig captures the ntfy adapter's per-instance state.
+// Server may point at the public ntfy.sh or a self-hosted instance
+// behind Tailscale Funnel; ActionEndpoint is the public URL the
+// adapter exposes for action-button callbacks (signed by SigningKey).
+type NtfyGatewayConfig struct {
+	Enabled        bool              `json:"enabled,omitempty"`
+	Server         string            `json:"server,omitempty"`
+	Topic          string            `json:"topic,omitempty"`
+	ActionEndpoint string            `json:"action_endpoint,omitempty"`
+	Token          string            `json:"token,omitempty"`
+	SigningKey     string            `json:"signing_key,omitempty"`
+	PriorityMap    map[string]int    `json:"priority_map,omitempty"`
+	ListenAddr     string            `json:"listen_addr,omitempty"`
+	Headers        map[string]string `json:"headers,omitempty"`
+}
+
+// TelegramConfig captures the Telegram Bot API adapter state. BotToken
+// may be inlined or expressed as env:VARNAME for indirection (the
+// daemon resolves this at load time).
+type TelegramConfig struct {
+	Enabled        bool    `json:"enabled,omitempty"`
+	BotToken       string  `json:"bot_token,omitempty"`
+	APIBaseURL     string  `json:"api_base_url,omitempty"`
+	AllowedChatIDs []int64 `json:"allowed_chat_ids,omitempty"`
+	ParseMode      string  `json:"parse_mode,omitempty"`
+	PollTimeoutSec int     `json:"poll_timeout_sec,omitempty"`
+}
+
+// SignalConfig captures the signal-cli adapter state. Post-v1; the
+// stub adapter ships disabled by default.
+type SignalConfig struct {
+	Enabled         bool   `json:"enabled,omitempty"`
+	SignalCLISocket string `json:"signal_cli_socket,omitempty"`
+	SenderNumber    string `json:"sender_number,omitempty"`
+}
+
+// CustomGatewayConfig captures the post-v1 custom-app adapter state.
+// The Tailscale listen addr keeps the surface off the public internet.
+type CustomGatewayConfig struct {
+	Enabled    bool   `json:"enabled,omitempty"`
+	ListenAddr string `json:"listen_addr,omitempty"`
+	AuthToken  string `json:"auth_token,omitempty"`
+}
+
+// GatewayRouting is the YAML shape of the routing block. Mirror of
+// gateway.RoutingConfig with string-typed channels (so the YAML is
+// human-editable and the Source type stays in the gateway package).
+type GatewayRouting struct {
+	Notifications []string `json:"notifications,omitempty"`
+	Approvals     []string `json:"approvals,omitempty"`
+	Conversations []string `json:"conversations,omitempty"`
+}
+
+// GatewayRetry is the YAML shape of the retry block. Durations are
+// strings ("1s", "60s") parsed via time.ParseDuration at the daemon
+// boundary so the on-disk format stays readable.
+type GatewayRetry struct {
+	MaxAttempts    int    `json:"max_attempts,omitempty"`
+	BackoffInitial string `json:"backoff_initial,omitempty"`
+	BackoffMax     string `json:"backoff_max,omitempty"`
 }
 
 // VaultConfig captures the user's primary vault location + the glob
