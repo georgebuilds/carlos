@@ -162,6 +162,9 @@ func (m *Model) renderHeader(w int) string {
 	}
 	if m.frame.Active != "" {
 		left += " " + framePillSep + " " + framePill(m.frame)
+		if mode := m.frame.Mode; mode != "" && mode != "solo" {
+			left += " " + framePillSep + " " + lipgloss.NewStyle().Foreground(colorSubtle).Render(mode)
+		}
 	}
 	right := lipgloss.NewStyle().Foreground(colorMuted).Render("carlos chat")
 

@@ -79,6 +79,10 @@ type FrameInfo struct {
 	// Append is the verbatim per-frame addition (e.g. "Personal frame.
 	// Tone: relaxed."). Trimmed and added under a "Frame:" header.
 	Append string
+	// Mode is the orchestrator-mode default for the frame: "solo",
+	// "tight", or "orchestrator". Surfaced in the Frame block so the
+	// model knows whether to delegate aggressively or stay single-track.
+	Mode string
 }
 
 // SystemPromptWithFrame composes the runtime system prompt and folds in
@@ -92,7 +96,20 @@ func SystemPromptWithFrame(userName, cwd, projectCtx string, fi FrameInfo) strin
 	if name := strings.TrimSpace(fi.Name); name != "" {
 		b.WriteString("\n\nFrame: ")
 		b.WriteString(name)
+		if mode := strings.TrimSpace(fi.Mode); mode != "" {
+			b.WriteString(" (")
+			b.WriteString(mode)
+			b.WriteString(" mode)")
+		}
 		b.WriteString(".")
+		switch strings.TrimSpace(fi.Mode) {
+		case "orchestrator":
+			b.WriteString("\nDelegate aggressively: split large problems across sub-agents (Agent tool) and synthesize the results. Prefer parallel sub-agents over sequential self-work when the task has independent parts.")
+		case "tight":
+			b.WriteString("\nSingle-task focus: do not chase tangents. Surface side-quests as notes for the user instead of pursuing them.")
+		case "solo":
+			b.WriteString("\nDo the work yourself. Sub-agent delegation is opt-in: only spawn an Agent when the user explicitly asks or the task is plainly beyond a single session.")
+		}
 		if app := strings.TrimSpace(fi.Append); app != "" {
 			b.WriteString("\n")
 			b.WriteString(app)

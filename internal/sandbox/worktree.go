@@ -64,6 +64,15 @@ type Worktree struct {
 // — the caller does not have to worry about orphaned directories or
 // branches.
 func NewWorktree(repoRoot, baseBranch string) (*Worktree, error) {
+	return NewWorktreeIn(repoRoot, baseBranch, "")
+}
+
+// NewWorktreeIn is the Phase F-17 variant that lets the caller specify
+// the parent directory the worktree is created under. Empty baseDir
+// falls back to `<home>/.carlos/worktrees/` (legacy behavior).
+// Frame-aware callers pass the active frame's WorktreesDir so each
+// frame's sub-agent sandboxes live alongside its other artifacts.
+func NewWorktreeIn(repoRoot, baseBranch, baseDir string) (*Worktree, error) {
 	if _, err := exec.LookPath("git"); err != nil {
 		return nil, fmt.Errorf("sandbox/worktree: git not found on PATH: %w", err)
 	}
@@ -87,11 +96,14 @@ func NewWorktree(repoRoot, baseBranch string) (*Worktree, error) {
 	}
 	branch := "carlos/" + id
 
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return nil, fmt.Errorf("sandbox/worktree: home dir: %w", err)
+	base := baseDir
+	if base == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return nil, fmt.Errorf("sandbox/worktree: home dir: %w", err)
+		}
+		base = filepath.Join(home, ".carlos", "worktrees")
 	}
-	base := filepath.Join(home, ".carlos", "worktrees")
 	if err := os.MkdirAll(base, 0o755); err != nil {
 		return nil, fmt.Errorf("sandbox/worktree: mkdir base: %w", err)
 	}

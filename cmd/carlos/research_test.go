@@ -58,7 +58,7 @@ func TestSaveResearchReport(t *testing.T) {
 
 	ts := time.Date(2026, 6, 5, 10, 30, 0, 0, time.UTC)
 	body := "# my report\n\nbody text\n"
-	path, err := saveResearchReport("What is Go?", body, ts)
+	path, err := saveResearchReport("What is Go?", body, "", ts)
 	if err != nil {
 		t.Fatalf("saveResearchReport: %v", err)
 	}
@@ -114,12 +114,26 @@ func TestSaveResearchReport_DirCreationFails(t *testing.T) {
 	}
 	t.Setenv("HOME", fakeHome)
 
-	_, err := saveResearchReport("hi", "body", time.Now())
+	_, err := saveResearchReport("hi", "body", "", time.Now())
 	if err == nil {
 		t.Fatal("expected error when HOME isn't a dir, got nil")
 	}
 	if !strings.Contains(err.Error(), "mkdir") {
 		t.Errorf("error text should mention mkdir: %v", err)
+	}
+}
+
+func TestSaveResearchReport_FrameScopedPath(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+	ts := time.Date(2026, 6, 6, 15, 0, 0, 0, time.UTC)
+	path, err := saveResearchReport("alpha", "body", "work", ts)
+	if err != nil {
+		t.Fatalf("saveResearchReport: %v", err)
+	}
+	wantDir := filepath.Join(tmp, ".carlos", "frames", "work", "research")
+	if !strings.HasPrefix(path, wantDir+string(filepath.Separator)) {
+		t.Errorf("path = %q, want under %q", path, wantDir)
 	}
 }
 

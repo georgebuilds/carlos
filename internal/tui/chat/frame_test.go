@@ -247,6 +247,97 @@ func TestCapabilitiesSlash_EmptyMapEchoesCTA(t *testing.T) {
 	}
 }
 
+func TestModeSlash_NoArgsEchoesCurrent(t *testing.T) {
+	m := newFramedModel(t, FrameUI{Active: "work", Mode: "orchestrator"})
+	s := runStatusCmd(t, m.modeSlash(""))
+	if !strings.Contains(s.text, "orchestrator") {
+		t.Errorf("missing current mode in echo: %q", s.text)
+	}
+	if !strings.Contains(s.text, "work") {
+		t.Errorf("missing frame name: %q", s.text)
+	}
+}
+
+func TestModeSlash_RejectsUnknownMode(t *testing.T) {
+	m := newFramedModel(t, FrameUI{Active: "personal", Mode: "solo"})
+	s := runStatusCmd(t, m.modeSlash("rocket"))
+	if s.kind != statusWarn {
+		t.Errorf("kind = %v, want statusWarn", s.kind)
+	}
+	if !strings.Contains(s.text, "rocket") {
+		t.Errorf("error should name the bad input: %q", s.text)
+	}
+}
+
+func TestModeSlash_SwitchPersistsAndUpdatesMode(t *testing.T) {
+	var captured string
+	m := newFramedModel(t, FrameUI{
+		Active: "work",
+		Mode:   "solo",
+		SwitchMode: func(mode string) error {
+			captured = mode
+			return nil
+		},
+	})
+	s := runStatusCmd(t, m.modeSlash("orchestrator"))
+	if captured != "orchestrator" {
+		t.Errorf("SwitchMode captured %q, want orchestrator", captured)
+	}
+	if m.frame.Mode != "orchestrator" {
+		t.Errorf("in-process Mode = %q, want orchestrator", m.frame.Mode)
+	}
+	if !strings.Contains(s.text, "orchestrator") {
+		t.Errorf("expected confirmation; got %q", s.text)
+	}
+}
+
+func TestModeSlash_NoOpOnSameMode(t *testing.T) {
+	called := false
+	m := newFramedModel(t, FrameUI{
+		Active:     "personal",
+		Mode:       "solo",
+		SwitchMode: func(string) error { called = true; return nil },
+	})
+	runStatusCmd(t, m.modeSlash("solo"))
+	if called {
+		t.Error("SwitchMode should not fire when target equals current")
+	}
+}
+
+func TestModeSlash_UnwiredWhenHookNil(t *testing.T) {
+	m := newFramedModel(t, FrameUI{Active: "work", Mode: "solo"})
+	s := runStatusCmd(t, m.modeSlash("orchestrator"))
+	if s.kind != statusWarn {
+		t.Errorf("kind = %v, want statusWarn", s.kind)
+	}
+}
+
+func TestRenderHeader_IncludesModeWhenNonSolo(t *testing.T) {
+	m := newFramedModel(t, FrameUI{
+		Active: "work",
+		Glyph:  "▣",
+		Accent: "rust",
+		Mode:   "orchestrator",
+	})
+	out := m.renderHeader(120)
+	if !strings.Contains(out, "orchestrator") {
+		t.Errorf("expected mode pill in header; got:\n%s", out)
+	}
+}
+
+func TestRenderHeader_OmitsModeWhenSolo(t *testing.T) {
+	m := newFramedModel(t, FrameUI{
+		Active: "personal",
+		Glyph:  "◉",
+		Accent: "cream",
+		Mode:   "solo",
+	})
+	out := m.renderHeader(120)
+	if strings.Contains(out, "solo") {
+		t.Errorf("solo mode should be suppressed (it's the default); got:\n%s", out)
+	}
+}
+
 func TestCapabilitiesSlash_RendersWiredCapabilities(t *testing.T) {
 	m := newFramedModel(t, FrameUI{
 		Active: "work",

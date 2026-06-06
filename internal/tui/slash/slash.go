@@ -107,6 +107,10 @@ var Builtins = []Spec{
 	// Phase C-7 — list user-facing capabilities wired in the active
 	// frame: capability -> backend -> skills that deliver it.
 	{Name: "capabilities", Description: "list wired capabilities (calendar, etc.) in the active frame"},
+
+	// Orchestrator-mode: show or switch the active frame's mode
+	// (solo / tight / orchestrator). Persisted alongside the frame.
+	{Name: "mode", ArgsHint: "[solo|tight|orchestrator]", Description: "show or set the active frame's orchestrator mode"},
 }
 
 // Lookup returns the Spec for name (case-insensitive), or (Spec{}, false).

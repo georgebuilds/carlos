@@ -41,6 +41,37 @@ func TestDefaultGlyphFor(t *testing.T) {
 	}
 }
 
+func TestIsValidMode(t *testing.T) {
+	for _, ok := range []string{ModeSolo, ModeTight, ModeOrchestrator} {
+		if !IsValidMode(ok) {
+			t.Errorf("IsValidMode(%q) = false, want true", ok)
+		}
+	}
+	for _, no := range []string{"", "auto", "FAST", "ORCHESTRATOR"} {
+		if IsValidMode(no) {
+			t.Errorf("IsValidMode(%q) = true, want false", no)
+		}
+	}
+}
+
+func TestEffectiveMode(t *testing.T) {
+	if m := EffectiveMode(Frame{}); m != ModeSolo {
+		t.Errorf("zero-frame default = %q, want %q", m, ModeSolo)
+	}
+	if m := EffectiveMode(Frame{Mode: "garbage"}); m != ModeSolo {
+		t.Errorf("invalid mode should fall back to solo; got %q", m)
+	}
+	if m := EffectiveMode(Frame{Mode: ModeOrchestrator}); m != ModeOrchestrator {
+		t.Errorf("valid mode = %q, want %q", m, ModeOrchestrator)
+	}
+}
+
+func TestNewPersonal_DefaultsToSoloMode(t *testing.T) {
+	if f := NewPersonal("a", "b"); f.Mode != ModeSolo {
+		t.Errorf("NewPersonal Mode = %q, want %q", f.Mode, ModeSolo)
+	}
+}
+
 func TestIsValidAccent(t *testing.T) {
 	for _, ok := range []string{"rust", "slate", "olive", "teal", "plum", "cream", "sand", "navy"} {
 		if !IsValidAccent(ok) {

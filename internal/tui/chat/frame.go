@@ -93,6 +93,42 @@ func statusCmd(text string, kind statusKind) tea.Cmd {
 	}
 }
 
+// modeSlash echoes the active frame's orchestrator mode, or sets it
+// when called with one of the three names. The persisted SwitchMode
+// hook is responsible for writing the config; the in-process Model
+// updates immediately so the header pill reflects the new mode.
+func (m *Model) modeSlash(args string) tea.Cmd {
+	if m.frame.Active == "" {
+		return statusCmd("frames not wired (legacy single-shelf mode)", statusWarn)
+	}
+	args = strings.TrimSpace(args)
+	current := m.frame.Mode
+	if current == "" {
+		current = "solo"
+	}
+	if args == "" {
+		return statusCmd("mode in "+m.frame.Active+": "+current+" (try /mode solo|tight|orchestrator)", statusInfo)
+	}
+	switch args {
+	case "solo", "tight", "orchestrator":
+		// fall through
+	default:
+		return statusCmd("unknown mode "+args+"; want solo, tight, or orchestrator", statusWarn)
+	}
+	if args == current {
+		return statusCmd("mode already "+args, statusInfo)
+	}
+	if m.frame.SwitchMode == nil {
+		return statusCmd("mode switching not wired in this session", statusWarn)
+	}
+	if err := m.frame.SwitchMode(args); err != nil {
+		return statusCmd("mode switch failed: "+err.Error(), statusWarn)
+	}
+	m.frame.Mode = args
+	m.rerenderViewport()
+	return statusCmd("mode is now "+args+" in "+m.frame.Active, statusInfo)
+}
+
 // capabilitiesSlash echoes the wired capability -> backend map for the
 // active frame. Phase C-7. Empty map prints a CTA pointing the user at
 // the config block they need to populate.

@@ -616,6 +616,21 @@ func runHeadless(prompt string, opts pleaseOptions) error {
 	// from a prior process kill into `orphaned`. Logged but not auto-
 	// retried — the user explicitly retries via the TUI.
 	home, _ := os.UserHomeDir()
+	migrateFrameLayout(home)
+	// Phase F-17: resolve the active frame NAME early so the worktree
+	// + usershell scoping below use frame-aware paths. The full
+	// FrameInfo (with SystemPromptAppend) is computed lower; this is
+	// just the name for path construction.
+	activeFrameName := ""
+	if dispatchCwd, derr := os.Getwd(); derr == nil {
+		if res, ok := frame.ResolveActive(&cfg.Frames, frame.Input{
+			Env:  os.Getenv("CARLOS_FRAME"),
+			Flag: opts.frame,
+			Cwd:  dispatchCwd,
+		}); ok {
+			activeFrameName = res.Frame
+		}
+	}
 	dbPath := filepath.Join(home, ".carlos", "state.db")
 	log, err := agent.OpenStateDB(dbPath)
 	if err != nil {
@@ -642,7 +657,14 @@ func runHeadless(prompt string, opts pleaseOptions) error {
 		if err != nil {
 			return fmt.Errorf("--worktree: %w", err)
 		}
-		wt, err = sandbox.NewWorktree(repoRoot, "HEAD")
+		// F-17: scope the worktree base to the active frame so each
+		// frame's sub-agent sandboxes live alongside its other artifacts.
+		// Empty frame falls back to the legacy location.
+		wtBase := ""
+		if activeFrameName != "" && home != "" {
+			wtBase = frame.PathsFor(home, activeFrameName).WorktreesDir
+		}
+		wt, err = sandbox.NewWorktreeIn(repoRoot, "HEAD", wtBase)
 		if err != nil {
 			return fmt.Errorf("--worktree: open sandbox: %w", err)
 		}
@@ -873,7 +895,6 @@ func runResearch(args []string) error {
 		fmt.Fprintln(os.Stderr, `carlos: research needs a question — e.g. carlos research "what is the current state of WebGPU in Safari?"`)
 		os.Exit(2)
 	}
-	_ = frameOverride // research output lives under ~/.carlos/research today; F-17 moves it under frames/<name>/research/.
 	path := config.DefaultPath()
 	cfg, err := config.Load(path)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -886,6 +907,22 @@ func runResearch(args []string) error {
 	if !config.IsComplete(cfg) {
 		fmt.Fprintln(os.Stderr, "carlos: config incomplete — run `carlos onboard`.")
 		os.Exit(1)
+	}
+	// F-17: resolve the active frame so the saved report lands under
+	// ~/.carlos/frames/<frame>/research/. Also run the one-shot
+	// migration so a standalone `carlos research` call before any chat
+	// session still folds the legacy layout into the personal frame.
+	rcwd, _ := os.Getwd()
+	if home, herr := os.UserHomeDir(); herr == nil {
+		migrateFrameLayout(home)
+	}
+	researchFrameName := ""
+	if res, ok := frame.ResolveActive(&cfg.Frames, frame.Input{
+		Env:  os.Getenv("CARLOS_FRAME"),
+		Flag: frameOverride,
+		Cwd:  rcwd,
+	}); ok {
+		researchFrameName = res.Frame
 	}
 	d, err := buildDispatch(cfg, pleaseOptions{})
 	if err != nil {
@@ -950,11 +987,11 @@ func runResearch(args []string) error {
 	rendered := chat.RenderReportMarkdown(report)
 	fmt.Print(rendered)
 
-	// Persist the markdown to ~/.carlos/research/<slug>-<ts>.md so the
+	// Persist the markdown under the active frame's research dir so the
 	// user has a stable artifact to share or revisit. Errors here are
 	// surfaced but don't fail the whole command — the rendered report
 	// is already on stdout and the user got what they asked for.
-	saved, saveErr := saveResearchReport(question, rendered, time.Now())
+	saved, saveErr := saveResearchReport(question, rendered, researchFrameName, time.Now())
 	if saveErr != nil {
 		fmt.Fprintf(os.Stderr, "\ncarlos: could not save report to disk: %v\n", saveErr)
 	} else {
@@ -1010,17 +1047,20 @@ func buildResearchEngine(provider providers.Provider, model string, reg *tools.R
 }
 
 // saveResearchReport writes the rendered markdown to
-// ~/.carlos/research/<slug>-<unix-ts>.md (0600 perms inside a 0700
-// directory) and returns the absolute path. The slug + timestamp combo
-// keeps successive runs of the same question distinguishable without
-// requiring a per-run UUID — humans recognize the question text first
-// and use the timestamp to pick the right version.
-func saveResearchReport(question, markdown string, now time.Time) (string, error) {
+// ~/.carlos/frames/<frame>/research/<slug>-<unix-ts>.md (0600 perms
+// inside a 0700 directory) and returns the absolute path. When
+// frameName is empty, falls back to the legacy ~/.carlos/research/
+// path so tests + callers that haven't been threaded through Phase F-17
+// keep working. The slug + timestamp combo keeps successive runs of the
+// same question distinguishable without requiring a per-run UUID —
+// humans recognize the question text first and use the timestamp to
+// pick the right version.
+func saveResearchReport(question, markdown, frameName string, now time.Time) (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("user home: %w", err)
 	}
-	dir := filepath.Join(home, ".carlos", "research")
+	dir := researchDirFor(home, frameName)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", fmt.Errorf("mkdir: %w", err)
 	}
@@ -1030,6 +1070,45 @@ func saveResearchReport(question, markdown string, now time.Time) (string, error
 		return "", fmt.Errorf("write: %w", err)
 	}
 	return path, nil
+}
+
+// researchDirFor returns the per-frame research output directory, or
+// the legacy ~/.carlos/research/ path when frameName is empty.
+func researchDirFor(home, frameName string) string {
+	if frameName == "" {
+		return filepath.Join(home, ".carlos", "research")
+	}
+	return frame.PathsFor(home, frameName).ResearchDir
+}
+
+// migrateFrameLayout runs the one-shot Phase F-17 migration that moves
+// legacy ~/.carlos/{research,usershell,worktrees}/ into the personal
+// frame's subtree. Idempotent: a re-run on already-migrated state is a
+// silent no-op. Migrations that touch files emit a single stderr line
+// so the user knows what carlos just did to their home dir.
+//
+// Empty home (UserHomeDir failed) is a hard skip: there's nothing to
+// migrate and we shouldn't fabricate a path. Errors during migration
+// are surfaced but never fatal — every file we can't move stays where
+// it was and the user can re-run carlos after fixing the cause.
+func migrateFrameLayout(home string) {
+	if home == "" {
+		return
+	}
+	report, err := frame.Migrate(home, frame.DefaultPersonalName)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "carlos: frame migration error: %v\n", err)
+		return
+	}
+	if report.HasMovement() {
+		fmt.Fprintf(os.Stderr,
+			"carlos: migrated to per-frame layout (research:%d jobs:%d worktrees:%d)\n",
+			report.ResearchMoved, report.JobsMoved, report.WorktreesMoved,
+		)
+	}
+	for _, e := range report.Errors {
+		fmt.Fprintf(os.Stderr, "carlos: %v\n", e)
+	}
 }
 
 // slugifyQuestion turns a free-form question into a filesystem-safe
@@ -1170,6 +1249,7 @@ func runDefault(cfg *config.Config, sessionID string) error {
 	applyTheme(cfg)
 	warnGatewayOrphaned(cfg)
 	home, _ := os.UserHomeDir()
+	migrateFrameLayout(home)
 	dbPath := filepath.Join(home, ".carlos", "state.db")
 	log, err := agent.OpenStateDB(dbPath)
 	if err != nil {
@@ -1277,17 +1357,27 @@ func runDefault(cfg *config.Config, sessionID string) error {
 			frameInfo = agent.FrameInfo{
 				Name:   activeFrame.Name,
 				Append: activeFrame.SystemPromptAppend,
+				Mode:   frame.EffectiveMode(activeFrame),
 			}
 			frameUI = chat.FrameUI{
 				Active:    activeFrame.Name,
 				Glyph:     activeFrame.Glyph,
 				Accent:    activeFrame.Accent,
+				Mode:      frame.EffectiveMode(activeFrame),
 				Available: cfg.Frames.Names(),
 				SwitchActive: func(name string) error {
 					if cfg.Frames.Find(name) == nil {
 						return fmt.Errorf("unknown frame: %s", name)
 					}
 					cfg.Frames.Active = name
+					return config.Save(config.DefaultPath(), cfg)
+				},
+				SwitchMode: func(mode string) error {
+					f := cfg.Frames.Find(activeFrame.Name)
+					if f == nil {
+						return fmt.Errorf("active frame %q vanished", activeFrame.Name)
+					}
+					f.Mode = mode
 					return config.Save(config.DefaultPath(), cfg)
 				},
 				Capabilities: extractCapabilityBackends(activeFrame),
@@ -1321,8 +1411,15 @@ func runDefault(cfg *config.Config, sessionID string) error {
 	// chat surface routes "!cmd" submissions here; the Manager writes
 	// EvtUserShellStart/End events into the same log the chat is
 	// already reading from, so the model context projection picks
-	// them up on the next turn for free.
-	shellMgr := usershell.New(usershell.Options{Log: log})
+	// them up on the next turn for free. F-17: per-job logs land
+	// under the active frame's JobsDir.
+	shellOpts := usershell.Options{Log: log}
+	if activeFrame.Name != "" {
+		if home, herr := os.UserHomeDir(); herr == nil {
+			shellOpts.OutputDir = frame.PathsFor(home, activeFrame.Name).JobsDir
+		}
+	}
+	shellMgr := usershell.New(shellOpts)
 	defer shellMgr.Close()
 	// Phase U S7: separate ~/.carlos/shell-history file walked via
 	// ↑/↓ in shell mode. Created lazily on first Add; reads on

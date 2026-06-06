@@ -320,6 +320,15 @@ type FrameUI struct {
 	// the active frame's Capabilities config at boot. Surfaced by the
 	// /capabilities slash; empty map is fine and prints a hint.
 	Capabilities map[string]string
+	// Mode is the orchestrator-mode of the active frame: one of
+	// "solo", "tight", "orchestrator". Empty falls back to "solo" at
+	// render time. Surfaced in the chat header pill and as the answer
+	// to /mode (no arg). The /mode <name> form rewrites the active
+	// frame's mode through the SwitchMode hook.
+	Mode string
+	// SwitchMode persists a mode change on the active frame. nil
+	// makes /mode <name> echo "not wired" rather than failing.
+	SwitchMode func(mode string) error
 }
 
 type statusKind int
@@ -1277,6 +1286,8 @@ func (m *Model) dispatchSlash(c slash.Command) tea.Cmd {
 		return m.frameSlash(strings.TrimSpace(c.Args))
 	case "capabilities":
 		return m.capabilitiesSlash()
+	case "mode":
+		return m.modeSlash(strings.TrimSpace(c.Args))
 	}
 	if _, ok := slash.Lookup(c.Name); ok {
 		return func() tea.Msg {

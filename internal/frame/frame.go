@@ -162,7 +162,47 @@ func NewPersonal(provider, model string) Frame {
 		Accent:   DefaultPersonalAccent,
 		Provider: provider,
 		Model:    model,
+		Mode:     ModeSolo,
 	}
+}
+
+// Orchestrator-mode constants (per the 2026-06-06 orchestrator mode
+// proposal). A frame's `mode` field accepts one of these three strings.
+// Empty falls back to ModeSolo at consumption time so a pre-modes config
+// behaves predictably.
+const (
+	// ModeSolo means carlos does the work itself; sub-agent delegation
+	// is opt-in (the user explicitly invokes /agents). Best fit for
+	// personal frames and small focused tasks.
+	ModeSolo = "solo"
+	// ModeTight means single-task focus. Like solo but with a hint to
+	// the model that side-quests and tangents should be deferred. A
+	// good fit for "I am pairing on one specific bug" sessions.
+	ModeTight = "tight"
+	// ModeOrchestrator means carlos delegates aggressively — large
+	// problems get split across child agents that report back to the
+	// parent. Best fit for work frames coordinating multiple workstreams.
+	ModeOrchestrator = "orchestrator"
+)
+
+// IsValidMode reports whether the supplied string is one of the three
+// supported modes. Used by the /mode slash to gate user input.
+func IsValidMode(m string) bool {
+	switch m {
+	case ModeSolo, ModeTight, ModeOrchestrator:
+		return true
+	}
+	return false
+}
+
+// EffectiveMode returns the mode the consumer should treat as active
+// for a frame: the frame's own Mode when set, else the package default
+// (ModeSolo). Pulled out so callers don't reimplement the fallback.
+func EffectiveMode(f Frame) string {
+	if IsValidMode(f.Mode) {
+		return f.Mode
+	}
+	return ModeSolo
 }
 
 // MigrateFromLegacy returns a Config with a synthetic personal frame
