@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/georgebuilds/carlos/internal/agent"
+	"github.com/georgebuilds/carlos/internal/frame"
 	"github.com/georgebuilds/carlos/internal/theme"
 	"github.com/georgebuilds/carlos/internal/tui/slash"
 )
@@ -144,8 +145,10 @@ func (m *Model) renderInput(w int) string {
 	return sep + "\n" + m.ta.View()
 }
 
-// renderHeader shows the agent ID + state badge + model name. State
-// comes from the projection — single source of truth.
+// renderHeader shows the agent ID + state badge + model name + (Phase F)
+// frame pill. State comes from the projection — single source of truth.
+// Pill suppressed when no frame is wired (legacy single-shelf mode) so
+// the header stays compatible with tests built before Phase F.
 func (m *Model) renderHeader(w int) string {
 	id := shortID(m.agentID)
 	state, model := m.headerState()
@@ -157,6 +160,9 @@ func (m *Model) renderHeader(w int) string {
 	if model != "" {
 		left += " " + modelStyle.Render("("+model+")")
 	}
+	if m.frame.Active != "" {
+		left += " " + framePillSep + " " + framePill(m.frame)
+	}
 	right := lipgloss.NewStyle().Foreground(colorMuted).Render("carlos chat")
 
 	gap := w - lipgloss.Width(left) - lipgloss.Width(right)
@@ -164,6 +170,25 @@ func (m *Model) renderHeader(w int) string {
 		gap = 1
 	}
 	return left + strings.Repeat(" ", gap) + right
+}
+
+// framePillSep is the dim middle-dot we use everywhere else in the
+// chrome (footer, status echo) so the header stays visually consistent.
+var framePillSep = lipgloss.NewStyle().Foreground(colorSubtle).Render("·")
+
+// framePill renders the active frame's glyph + name. Color comes from
+// the curated palette in internal/frame.AccentColor.
+func framePill(f FrameUI) string {
+	return frame.Pill(f.Glyph, f.Active, f.Accent, isNoColor())
+}
+
+// isNoColor returns true when the lipgloss color profile is the empty
+// (uncoloured) profile, which is how this codebase signals NO_COLOR /
+// non-TTY. The frame.Pill helper takes a bool so it stays standalone.
+func isNoColor() bool {
+	// colorAccent is rendered by the theme package which already honours
+	// NO_COLOR — if the accent has no foreground, we're monochrome.
+	return colorAccent == ""
 }
 
 // headerState reads the projection for the active agent. If the agent

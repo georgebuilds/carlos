@@ -284,6 +284,37 @@ type Model struct {
 	permsCursor     int
 	permsFilter     string
 	permsFilterMode bool
+
+	// Phase F: per-frame view + switch hook. frame is the resolved
+	// active frame for this session; surface in the header pill and
+	// served read-only to /frame. frame.SwitchActive is a callback
+	// the slash dispatch uses to persist a switch; nil means /frame
+	// switch echoes "not wired" rather than failing. The full
+	// mid-session provider/model swap is its own slice — for now a
+	// switch updates the persisted active and prints a hint to
+	// restart for the new provider/model to take effect.
+	frame FrameUI
+}
+
+// FrameUI is the Phase F display + switch contract the chat Model
+// consumes. Pulled out of internal/frame so chat doesn't have to know
+// about Config — it just needs the active frame's render fields plus
+// the list of names to offer in /frame list.
+type FrameUI struct {
+	// Active is the name of the frame this session resolved to. Empty
+	// disables the header pill (legacy single-shelf mode).
+	Active string
+	// Glyph is the single-character symbol painted in Accent in the
+	// header pill. Empty falls back to internal/frame.DefaultGlyphFor.
+	Glyph string
+	// Accent is one of the curated palette names; empty disables color.
+	Accent string
+	// Available is the ordered list of frame names for /frame list.
+	Available []string
+	// SwitchActive persists a frame switch (writes config.yaml). When
+	// nil, /frame switch echoes "not wired"; in the production wire-up
+	// cmd/carlos passes a closure that calls config.Save.
+	SwitchActive func(name string) error
 }
 
 type statusKind int
@@ -351,6 +382,13 @@ func WithShellHistory(h *usershell.History) Option {
 // commands echoing "not wired".
 func WithWorkspacePolicy(p *workspace.Policy) Option {
 	return func(m *Model) { m.workspace = p }
+}
+
+// WithFrame surfaces the Phase F active-frame state in the chat header
+// and powers the /frame slash command. When ui.Active is empty the
+// header pill is suppressed entirely (legacy single-shelf mode).
+func WithFrame(ui FrameUI) Option {
+	return func(m *Model) { m.frame = ui }
 }
 
 // New constructs a chat Model bound to the given event log + agent. The
@@ -1230,6 +1268,8 @@ func (m *Model) dispatchSlash(c slash.Command) tea.Cmd {
 		}
 		m.rerenderViewport()
 		return nil
+	case "frame":
+		return m.frameSlash(strings.TrimSpace(c.Args))
 	}
 	if _, ok := slash.Lookup(c.Name); ok {
 		return func() tea.Msg {

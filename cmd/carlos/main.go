@@ -46,6 +46,7 @@ import (
 
 	"github.com/georgebuilds/carlos/internal/agent"
 	"github.com/georgebuilds/carlos/internal/config"
+	"github.com/georgebuilds/carlos/internal/frame"
 	"github.com/georgebuilds/carlos/internal/memory"
 	"github.com/georgebuilds/carlos/internal/providers"
 	"github.com/georgebuilds/carlos/internal/providers/anthropic"
@@ -1180,7 +1181,44 @@ func runDefault(cfg *config.Config, sessionID string) error {
 			chatProjectCtx = pc.Combined
 		}
 	}
-	systemPrompt := agent.SystemPrompt(cfg.UserName, chatCwd, chatProjectCtx)
+
+	// Phase F: resolve the session's active frame. ResolveActive walks
+	// CARLOS_FRAME env -> -f flag (TODO F-18) -> cwd_hint match ->
+	// persisted active -> default. The frame supplies the sysprompt
+	// append + the header pill. When migration has just synthesised a
+	// personal frame, this always returns it.
+	resolution, frameOK := frame.ResolveActive(&cfg.Frames, frame.Input{
+		Env: os.Getenv("CARLOS_FRAME"),
+		Cwd: cwd,
+	})
+	var activeFrame frame.Frame
+	frameInfo := agent.FrameInfo{}
+	frameUI := chat.FrameUI{}
+	if frameOK {
+		if f := cfg.Frames.Find(resolution.Frame); f != nil {
+			activeFrame = *f
+			frameInfo = agent.FrameInfo{
+				Name:   activeFrame.Name,
+				Append: activeFrame.SystemPromptAppend,
+			}
+			frameUI = chat.FrameUI{
+				Active:    activeFrame.Name,
+				Glyph:     activeFrame.Glyph,
+				Accent:    activeFrame.Accent,
+				Available: cfg.Frames.Names(),
+				SwitchActive: func(name string) error {
+					if cfg.Frames.Find(name) == nil {
+						return fmt.Errorf("unknown frame: %s", name)
+					}
+					cfg.Frames.Active = name
+					return config.Save(config.DefaultPath(), cfg)
+				},
+			}
+		}
+	}
+	_ = activeFrame // referenced by Phase F-9 provider re-resolution slice
+
+	systemPrompt := agent.SystemPromptWithFrame(cfg.UserName, chatCwd, chatProjectCtx, frameInfo)
 
 	loop := chatglue.NewLoop(chatglue.Config{
 		Provider: d.provider,
@@ -1220,6 +1258,9 @@ func runDefault(cfg *config.Config, sessionID string) error {
 			chat.WithSummarizer(summarizer),
 			chat.WithUserShell(shellMgr),
 			chat.WithShellHistory(shellHistory),
+		}
+		if frameUI.Active != "" {
+			opts = append(opts, chat.WithFrame(frameUI))
 		}
 		if trustPolicy != nil {
 			opts = append(opts, chat.WithWorkspacePolicy(trustPolicy))

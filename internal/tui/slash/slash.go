@@ -97,6 +97,12 @@ var Builtins = []Spec{
 	// allowlist plus trusted workspaces, with tab to switch and /
 	// to filter.
 	{Name: "permissions", Description: "open the permissions overlay (built-in + workspace-trust state)"},
+
+	// Phase F — frames. `/frame` echoes the active frame; `/frame
+	// list` enumerates available frames; `/frame switch <name>`
+	// persists a new active frame (provider/model take effect at
+	// next session start until the live-swap slice lands).
+	{Name: "frame", ArgsHint: "[list|switch <name>]", Description: "show or switch the active frame (Phase F)"},
 }
 
 // Lookup returns the Spec for name (case-insensitive), or (Spec{}, false).
