@@ -26,14 +26,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           # Full history + tags so goreleaser can compute the changelog
           # and resolve the tag's commit metadata.
           fetch-depth: 0
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           # Pin to the toolchain go.mod declares so the released binary
           # matches what was tested.
@@ -47,10 +47,13 @@ jobs:
         run: go test ./...
 
       - name: Run goreleaser
-        uses: goreleaser/goreleaser-action@v6
+        uses: goreleaser/goreleaser-action@v7
         with:
           distribution: goreleaser
-          version: latest
+          # Pin to the v2 line. `latest` works but the action warns
+          # about implicit lockstep; explicit pinning future-proofs us
+          # against a surprise v3 major-version bump.
+          version: '~> v2'
           args: release --clean
         env:
           # Default token writes the GitHub release.
