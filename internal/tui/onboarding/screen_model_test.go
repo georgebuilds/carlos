@@ -45,6 +45,25 @@ func TestModelScreen_ViewSurvivesAdvanceFrame(t *testing.T) {
 	}
 }
 
+// TestSuggestedDefaultModel pins the per-provider defaults so a future
+// "let's bump the suggestion" change is a deliberate code edit + a
+// test update rather than a silent drift the user only notices at
+// onboarding.
+func TestSuggestedDefaultModel(t *testing.T) {
+	cases := map[string]string{
+		"anthropic":  "claude-sonnet-4-6",
+		"openai":     "gpt-5",
+		"openrouter": "google/gemini-3.5-flash",
+		"ollama":     "llama3.1:8b",
+		"unknown":    "",
+	}
+	for provider, want := range cases {
+		if got := suggestedDefaultModel(provider); got != want {
+			t.Errorf("suggestedDefaultModel(%q) = %q, want %q", provider, got, want)
+		}
+	}
+}
+
 // TestModelScreen_HappyPathThreeProviders just exercises the normal
 // flow so the defensive guard doesn't mask regressions elsewhere.
 func TestModelScreen_HappyPathThreeProviders(t *testing.T) {

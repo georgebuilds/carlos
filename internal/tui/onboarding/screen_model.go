@@ -18,14 +18,17 @@ import (
 func suggestedDefaultModel(provider string) string {
 	switch provider {
 	case "anthropic":
-		return "claude-opus-4-7"
+		// Latest Sonnet — the workhorse tier. Opus is overkill for the
+		// typical TUI session; Sonnet is what most users want pre-filled
+		// and still trivially overridden via /model or config.
+		return "claude-sonnet-4-6"
 	case "openai":
 		return "gpt-5"
 	case "openrouter":
-		// OpenRouter encourages explicit provider/model addressing;
-		// we point at the same Claude flagship for parity with the
-		// Anthropic default — easy mental model.
-		return "anthropic/claude-opus-4-7"
+		// OpenRouter is the "cheap and fast" lane for users who want a
+		// different price/perf point than Anthropic's flagship. Gemini
+		// 3.5 Flash is the current best-in-class for that role.
+		return "google/gemini-3.5-flash"
 	case "ollama":
 		// Local default that ships in most ollama installs. The user
 		// will almost always override; this is just "something works
