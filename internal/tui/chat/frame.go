@@ -32,9 +32,15 @@ func (m *Model) frameSlash(args string) tea.Cmd {
 	case "switch", "use":
 		// `use` kept short for muscle memory. Same semantics as switch.
 		return m.frameSwitchCmd(rest)
+	case "new":
+		// Phase F-10: opens the wizard with optional name pre-fill.
+		// Works even from the bare chat (no switcher takeover) since
+		// the wizard is its own overlay slot.
+		m.openNewFrameWizard(rest)
+		return nil
 	default:
 		return statusCmd(
-			"/frame   show active · /frame list · /frame switch <name>",
+			"/frame   show active · /frame list · /frame switch <name> · /frame new [name]",
 			statusInfo,
 		)
 	}

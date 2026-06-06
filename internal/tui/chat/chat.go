@@ -15,6 +15,7 @@ import (
 
 	"github.com/georgebuilds/carlos/internal/agent"
 	"github.com/georgebuilds/carlos/internal/config"
+	"github.com/georgebuilds/carlos/internal/frame"
 	"github.com/georgebuilds/carlos/internal/memory"
 	"github.com/georgebuilds/carlos/internal/schedule"
 	"github.com/georgebuilds/carlos/internal/theme"
@@ -316,6 +317,17 @@ type Model struct {
 	footerHint  string
 	hintsLocked bool
 	hintSeen    map[string]bool
+
+	// Phase F-10: new-frame wizard overlay. When showNewFrame is true
+	// a form panel takes over the switcher slot so the user can compose
+	// a fresh Frame and persist it via FrameUI.AddFrame.
+	showNewFrame    bool
+	newFrame        frame.Frame
+	newFrameField   int
+	newFrameAccent  int  // index into frame.AccentPalette
+	newFrameCopy    bool // true = copy personal; false = blank
+	newFrameGlyphEd bool // user touched the glyph field
+	newFrameError   string
 }
 
 // FrameUI is the Phase F display + switch contract the chat Model
@@ -354,9 +366,21 @@ type FrameUI struct {
 	// MatchCwd resolves a cwd to a frame name when one of the
 	// configured frames' cwd_hints matches the path. Returns "" when
 	// nothing matches or when the match is the active frame. Used by
-	// the Phase F-8 in-band `!cd` interception to surface a footer
+	// the Phase F-8 in-band `cd` interception to surface a footer
 	// hint suggesting Ctrl+F. nil disables the hint entirely.
 	MatchCwd func(cwd string) string
+	// AddFrame appends a new frame to the user's config and persists
+	// the change. Wired by the Phase F-10 new-frame wizard (Ctrl+F →
+	// switcher → "+ new frame" tile, or `n` while the switcher is
+	// open, or `/frame new [name]`). nil makes the wizard echo "not
+	// wired" rather than failing.
+	AddFrame func(f frame.Frame) error
+	// PersonalTemplate returns the field bundle the new-frame wizard
+	// uses when the user picks "copy personal" on the start-from
+	// toggle. Returning a zero Frame is fine — the wizard treats that
+	// the same as "blank". nil is also fine; the wizard hides the
+	// copy-personal option and falls back to blank.
+	PersonalTemplate func() frame.Frame
 }
 
 type statusKind int
@@ -546,6 +570,15 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.showHelp = false
 				m.rerenderViewport()
 				return m, nil
+			}
+		}
+		// Phase F-10: new-frame wizard sits above the switcher. While
+		// it's up, every key (except ctrl+c) routes here so the form
+		// edits aren't double-handled by the switcher.
+		if m.showNewFrame {
+			next, cmd, handled := m.handleNewFrameKey(msg)
+			if handled {
+				return next, cmd
 			}
 		}
 		// Phase F-5: takeover frame switcher takes precedence over the

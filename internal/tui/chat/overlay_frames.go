@@ -346,7 +346,18 @@ func (m *Model) handleFrameSwitcherKey(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool
 		m.closeFrameSwitcher()
 		return m, nil, true
 	case "enter":
+		// Enter on the "+ new frame" tile opens the F-10 wizard;
+		// enter on a regular tile commits a switch as before.
+		if m.switcherCursorOnNewTile() {
+			m.openNewFrameWizard("")
+			return m, nil, true
+		}
 		return m, m.frameSwitcherCommit(), true
+	case "n", "N":
+		// Phase F-10: shortcut to the wizard from anywhere in the
+		// switcher; mirrors gmail/vim's "n" for new.
+		m.openNewFrameWizard("")
+		return m, nil, true
 	case "up", "k":
 		m.switcherMoveVertical(-1)
 		return m, nil, true
@@ -375,6 +386,13 @@ func (m *Model) handleFrameSwitcherKey(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool
 		return m, nil, true
 	}
 	return m, nil, true
+}
+
+// switcherCursorOnNewTile reports whether the focused index is the
+// trailing "+ new frame" placeholder. The placeholder lives at
+// len(Available) — one slot past the last real frame.
+func (m *Model) switcherCursorOnNewTile() bool {
+	return m.switcherCursor == len(m.frame.Available)
 }
 
 // closeFrameSwitcher resets the overlay state. Idempotent.
@@ -411,11 +429,13 @@ func (m *Model) frameSwitcherCommit() tea.Cmd {
 }
 
 // switcherMoveVertical moves the cursor by one row in the responsive
-// grid. Clamps at the bounds; arrow keys do not wrap.
+// grid. Clamps at the bounds; arrow keys do not wrap. The "+ new
+// frame" placeholder counts as one extra slot at index len(Available)
+// so cursor nav can reach it.
 func (m *Model) switcherMoveVertical(delta int) {
 	cols := switcherColumns(m.switcherInnerW())
 	target := m.switcherCursor + delta*cols
-	if target < 0 || target >= len(m.frame.Available) {
+	if target < 0 || target > len(m.frame.Available) {
 		return
 	}
 	m.switcherCursor = target
@@ -424,7 +444,8 @@ func (m *Model) switcherMoveVertical(delta int) {
 }
 
 // switcherMoveHorizontal moves the cursor by one column. Clamps at the
-// row boundary so arrow keys do not jump across rows.
+// row boundary so arrow keys do not jump across rows. The "+ new
+// frame" tile counts as one extra slot at index len(Available).
 func (m *Model) switcherMoveHorizontal(delta int) {
 	cols := switcherColumns(m.switcherInnerW())
 	row := m.switcherCursor / cols
@@ -433,7 +454,7 @@ func (m *Model) switcherMoveHorizontal(delta int) {
 		return
 	}
 	target := row*cols + col
-	if target >= len(m.frame.Available) {
+	if target > len(m.frame.Available) {
 		return
 	}
 	m.switcherCursor = target

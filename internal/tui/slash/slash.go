@@ -102,7 +102,7 @@ var Builtins = []Spec{
 	// list` enumerates available frames; `/frame switch <name>`
 	// persists a new active frame (provider/model take effect at
 	// next session start until the live-swap slice lands).
-	{Name: "frame", ArgsHint: "[list|switch <name>]", Description: "show or switch the active frame (Phase F)"},
+	{Name: "frame", ArgsHint: "[list|switch <name>|new [name]]", Description: "show or switch the active frame (Phase F)"},
 
 	// Phase C-7 — list user-facing capabilities wired in the active
 	// frame: capability -> backend -> skills that deliver it.

@@ -85,6 +85,15 @@ func (m *Model) renderInner(innerW, innerH int) string {
 	if m.pendingApproval != nil {
 		approval = renderApprovalBox(m.pendingApproval, innerW)
 		approvalH = lipgloss.Height(approval)
+	} else if m.showNewFrame {
+		// Phase F-10: new-frame wizard renders in the same slot as
+		// the switcher; precedence handled in chat.Update.
+		wizH := innerH - headerH - footerH - inputH - 1
+		if wizH < 10 {
+			wizH = 10
+		}
+		approval = renderNewFrameOverlay(m, innerW, wizH)
+		approvalH = lipgloss.Height(approval)
 	} else if m.showFrameSwitcher {
 		// Phase F-5: the switcher is full-screen takeover so it gets
 		// the whole inner area (minus header/footer/input). We hand

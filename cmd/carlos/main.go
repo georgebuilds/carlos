@@ -1423,6 +1423,19 @@ func runDefault(cfg *config.Config, sessionID string) error {
 					}
 					return res.Frame
 				},
+				AddFrame: func(f frame.Frame) error {
+					if cfg.Frames.Find(f.Name) != nil {
+						return fmt.Errorf("frame %q already exists", f.Name)
+					}
+					cfg.Frames.List = append(cfg.Frames.List, f)
+					return config.Save(config.DefaultPath(), cfg)
+				},
+				PersonalTemplate: func() frame.Frame {
+					if p := cfg.Frames.Find(frame.DefaultPersonalName); p != nil {
+						return *p
+					}
+					return frame.Frame{}
+				},
 			}
 		}
 	}
