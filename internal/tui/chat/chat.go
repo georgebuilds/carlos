@@ -274,6 +274,16 @@ type Model struct {
 	// LayeredApprover in the chat path, so SetTrusted updates
 	// here reach the next tool-call decision.
 	workspace *workspace.Policy
+
+	// Phase T-3: /permissions overlay state. showPerms toggles via
+	// the slash; permsTab is the active tab (Built-in / Workspace);
+	// permsCursor is the highlighted row within the tab + filter;
+	// permsFilter / permsFilterMode mirror the jobs-overlay sub-REPL.
+	showPerms       bool
+	permsTab        permsTab
+	permsCursor     int
+	permsFilter     string
+	permsFilterMode bool
 }
 
 type statusKind int
@@ -463,6 +473,15 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// can quit even while browsing jobs.
 		if m.showJobs {
 			next, cmd, handled := m.handleJobsOverlayKey(msg)
+			if handled {
+				return next, cmd
+			}
+		}
+		// Phase T-3: /permissions overlay. Same routing pattern:
+		// the overlay swallows nav + action keys, ctrl+c falls
+		// through to the quit handler.
+		if m.showPerms {
+			next, cmd, handled := m.handlePermsOverlayKey(msg)
 			if handled {
 				return next, cmd
 			}
@@ -1198,6 +1217,19 @@ func (m *Model) dispatchSlash(c slash.Command) tea.Cmd {
 		return m.trustSlashDisable()
 	case "trusts":
 		return m.trustSlashList()
+	case "permissions":
+		// Phase T-3: toggle the layered-policy overlay. Mirrors
+		// /jobs's toggle pattern; ESC inside the overlay also
+		// closes.
+		m.showPerms = !m.showPerms
+		if m.showPerms {
+			m.permsTab = permsTabBuiltin
+			m.permsCursor = 0
+			m.permsFilter = ""
+			m.permsFilterMode = false
+		}
+		m.rerenderViewport()
+		return nil
 	}
 	if _, ok := slash.Lookup(c.Name); ok {
 		return func() tea.Msg {

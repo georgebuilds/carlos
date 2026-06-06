@@ -92,6 +92,16 @@ func (m *Model) renderInner(innerW, innerH int) string {
 			innerW,
 		)
 		approvalH = lipgloss.Height(approval)
+	} else if m.showPerms {
+		approval = renderPermissionsOverlay(
+			m.permsTab,
+			m.workspace,
+			m.permsFilter,
+			m.permsFilterMode,
+			m.permsCursor,
+			innerW,
+		)
+		approvalH = lipgloss.Height(approval)
 	} else if m.showHelp {
 		approval = renderHelpBox(innerW)
 		approvalH = lipgloss.Height(approval)

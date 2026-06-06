@@ -92,6 +92,11 @@ var Builtins = []Spec{
 	{Name: "trust", Description: "trust the current workspace for read-only bash auto-approval"},
 	{Name: "untrust", Description: "remove trust from the current workspace"},
 	{Name: "trusts", Description: "list trusted workspaces"},
+
+	// Phase T-3 — open the layered-policy overlay: built-in
+	// allowlist plus trusted workspaces, with tab to switch and /
+	// to filter.
+	{Name: "permissions", Description: "open the permissions overlay (built-in + workspace-trust state)"},
 }
 
 // Lookup returns the Spec for name (case-insensitive), or (Spec{}, false).

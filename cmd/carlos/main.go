@@ -53,6 +53,7 @@ import (
 	"github.com/georgebuilds/carlos/internal/providers/ollama"
 	"github.com/georgebuilds/carlos/internal/providers/openai"
 	"github.com/georgebuilds/carlos/internal/providers/openrouter"
+	"github.com/georgebuilds/carlos/internal/projectctx"
 	"github.com/georgebuilds/carlos/internal/research"
 	"github.com/georgebuilds/carlos/internal/sandbox"
 	"github.com/georgebuilds/carlos/internal/theme"
@@ -680,11 +681,25 @@ func runHeadless(prompt string, opts pleaseOptions) error {
 		fmt.Fprintf(os.Stderr, "carlos: worktree=%s branch=%s\n", wt.Root, wt.Branch)
 	}
 
+	// Identity prompt: same builder the chat path uses so headless
+	// `carlos please ...` runs see the same "you are carlos"
+	// framing and the same AGENTS.md / CLAUDE.md context.
+	hcwd := ""
+	hctx := ""
+	if dispatchCwd, err := os.Getwd(); err == nil {
+		hcwd = dispatchCwd
+		if pc, err := projectctx.LoadFromCwd(dispatchCwd); err == nil && pc != nil {
+			hctx = pc.Combined
+		}
+	}
+	system := agent.SystemPrompt(cfg.UserName, hcwd, hctx)
+
 	initial := []providers.Message{
 		{Role: "user", Content: []providers.Block{{Kind: "text", Text: prompt}}},
 	}
 	_, err = agent.Run(ctx, d.provider, parentReg, agent.LoopOptions{
 		Model:    d.model,
+		System:   system,
 		Tools:    toolSpecs,
 		Approver: approver,
 		TextSink: os.Stdout,
@@ -1152,11 +1167,27 @@ func runDefault(cfg *config.Config, sessionID string) error {
 		)
 		layered.SetWorkspacePolicy(trustPolicy)
 	}
+	// Identity prompt: tells the model it is carlos (Gemini in
+	// particular otherwise answers "I am Gemini" to "what's your
+	// name?"). Also folds in AGENTS.md / CLAUDE.md from cwd up to
+	// the git root via projectctx so the model sees house rules
+	// without the user having to paste them per session.
+	chatCwd := ""
+	chatProjectCtx := ""
+	if cwd != "" {
+		chatCwd = cwd
+		if pc, err := projectctx.LoadFromCwd(cwd); err == nil && pc != nil {
+			chatProjectCtx = pc.Combined
+		}
+	}
+	systemPrompt := agent.SystemPrompt(cfg.UserName, chatCwd, chatProjectCtx)
+
 	loop := chatglue.NewLoop(chatglue.Config{
 		Provider: d.provider,
 		Model:    d.model,
 		Tools:    baseReg,
 		Approver: layered,
+		System:   systemPrompt,
 	}, log, src, defaultAgentID)
 	if err := loop.Start(ctx); err != nil {
 		return err
