@@ -248,6 +248,23 @@ type Model struct {
 	usershell      *usershell.Manager
 	userShellSubCh <-chan usershell.Update
 	userShellUnsub func()
+
+	// Phase U S6: jobs overlay (Ctrl+J). When true, a bordered
+	// palette panel sits above the input listing every shell job
+	// grouped by state. jobsCursor is the highlighted row in the
+	// flattened list; jobsFilter mirrors the picker pattern with
+	// "/" entering filter-mode.
+	showJobs       bool
+	jobsCursor     int
+	jobsFilter     string
+	jobsFilterMode bool
+
+	// Phase U S7: separate shell-history file walked via ↑/↓ when
+	// the composer is in shell mode (input starts with "!"). nil
+	// disables — composer falls back to letting the textarea
+	// handle arrow keys natively (cursor up/down within
+	// multi-line input).
+	shellHistory *usershell.History
 }
 
 type statusKind int
@@ -297,6 +314,14 @@ func WithUserName(name string) Option {
 // fake runner or skip the option entirely.
 func WithUserShell(mgr *usershell.Manager) Option {
 	return func(m *Model) { m.usershell = mgr }
+}
+
+// WithShellHistory wires the shell-mode ↑/↓ history walker. Pair
+// with WithUserShell; nil disables shell history without affecting
+// any other behavior. cmd/carlos.runDefault constructs a History
+// rooted at ~/.carlos/shell-history.
+func WithShellHistory(h *usershell.History) Option {
+	return func(m *Model) { m.shellHistory = h }
 }
 
 // New constructs a chat Model bound to the given event log + agent. The
@@ -414,6 +439,15 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 		}
+		// Phase U S6: jobs overlay intercepts navigation + action
+		// keys while open. Ctrl+C still falls through so the user
+		// can quit even while browsing jobs.
+		if m.showJobs {
+			next, cmd, handled := m.handleJobsOverlayKey(msg)
+			if handled {
+				return next, cmd
+			}
+		}
 		// Approval overlay intercepts y/n/A before the textarea sees
 		// them. Other keys (esp. ctrl-c) still flow through so the
 		// user can cancel the session even while a prompt is active.
@@ -485,6 +519,41 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			if hasShellPrefix(m.ta.Value()) {
 				return m, m.submitBackgroundShell()
+			}
+		case "ctrl+j":
+			// Phase U S6: toggle the jobs overlay. No-op when no
+			// usershell manager is wired.
+			if m.usershell != nil {
+				m.showJobs = !m.showJobs
+				if m.showJobs {
+					m.jobsCursor = 0
+					m.jobsFilter = ""
+					m.jobsFilterMode = false
+				}
+				m.rerenderViewport()
+				return m, nil
+			}
+		case "up":
+			// Phase U S7: in shell mode, ↑ walks shell history
+			// instead of moving the textarea cursor. Outside shell
+			// mode the textarea handles it natively.
+			if !m.readOnly && m.shellHistory != nil && hasShellPrefix(m.ta.Value()) {
+				if prev := m.shellHistory.Prev(); prev != "" {
+					m.ta.SetValue("!" + prev)
+					m.ta.CursorEnd()
+				}
+				return m, nil
+			}
+		case "down":
+			if !m.readOnly && m.shellHistory != nil && hasShellPrefix(m.ta.Value()) {
+				next := m.shellHistory.Next()
+				if next == "" {
+					m.ta.SetValue("!")
+				} else {
+					m.ta.SetValue("!" + next)
+				}
+				m.ta.CursorEnd()
+				return m, nil
 			}
 		}
 		// Default route: textarea owns the keystroke when input is enabled.
@@ -877,6 +946,92 @@ func (m *Model) submitBackgroundShell() tea.Cmd {
 	return m.submitUserShellCmd(extractShellCommand(raw), usershell.Background)
 }
 
+// shellSlashForeground handles "/fg <id>". Accepts either the full
+// ULID or the short j<id>/<8-char-suffix> form.
+func (m *Model) shellSlashForeground(arg string) tea.Cmd {
+	if m.usershell == nil {
+		return func() tea.Msg {
+			return statusMsg{text: "/fg: user-shell not wired", kind: statusWarn}
+		}
+	}
+	id := resolveShellJobID(m.usershell, arg)
+	if id == "" {
+		return func() tea.Msg {
+			return statusMsg{
+				text: fmt.Sprintf("/fg: no job matches %q", arg),
+				kind: statusWarn,
+			}
+		}
+	}
+	mgr := m.usershell
+	return func() tea.Msg {
+		if err := mgr.Foreground(id); err != nil {
+			return statusMsg{
+				text: fmt.Sprintf("/fg %s: %v", shortID(id), err),
+				kind: statusWarn,
+			}
+		}
+		return statusMsg{
+			text: fmt.Sprintf("shell: j%s moved to foreground", shortID(id)),
+			kind: statusInfo,
+		}
+	}
+}
+
+// shellSlashBackground handles "/bg" (no arg → background the current
+// fg job, same as Ctrl+Z) and "/bg <id>" (background a specific
+// running job).
+func (m *Model) shellSlashBackground(arg string) tea.Cmd {
+	if m.usershell == nil {
+		return func() tea.Msg {
+			return statusMsg{text: "/bg: user-shell not wired", kind: statusWarn}
+		}
+	}
+	if arg == "" {
+		return m.backgroundRunningCmd()
+	}
+	id := resolveShellJobID(m.usershell, arg)
+	if id == "" {
+		return func() tea.Msg {
+			return statusMsg{
+				text: fmt.Sprintf("/bg: no job matches %q", arg),
+				kind: statusWarn,
+			}
+		}
+	}
+	mgr := m.usershell
+	return func() tea.Msg {
+		if err := mgr.Background(id); err != nil {
+			return statusMsg{
+				text: fmt.Sprintf("/bg %s: %v", shortID(id), err),
+				kind: statusWarn,
+			}
+		}
+		return statusMsg{
+			text: fmt.Sprintf("shell: j%s moved to background", shortID(id)),
+			kind: statusInfo,
+		}
+	}
+}
+
+// resolveShellJobID accepts the user's arg (raw ULID, "j<short>",
+// or just the suffix) and returns the matching full ULID — or "" if
+// no job matches. Case-insensitive substring match across job IDs.
+func resolveShellJobID(mgr *usershell.Manager, arg string) string {
+	arg = strings.TrimSpace(arg)
+	arg = strings.TrimPrefix(arg, "j")
+	if arg == "" {
+		return ""
+	}
+	arg = strings.ToLower(arg)
+	for _, s := range mgr.Jobs() {
+		if strings.Contains(strings.ToLower(s.ID), arg) {
+			return s.ID
+		}
+	}
+	return ""
+}
+
 // dispatchSlash routes a parsed slash command. For Slice 1e, the only
 // commands wired to real behavior are `/exit` (quit) and `/clear`
 // (drop the in-memory transcript without touching the log, per SPEC:
@@ -993,6 +1148,36 @@ func (m *Model) dispatchSlash(c slash.Command) tea.Cmd {
 			}
 		}
 		return m.runCompactCmd()
+	case "shell":
+		// Phase U S7: explicit slash entry to the user-shell. Same
+		// effect as typing "!cmd" — for users who prefer the slash
+		// vocabulary or have keyboards that fight the "!" key.
+		body := strings.TrimSpace(c.Args)
+		if body == "" {
+			return func() tea.Msg {
+				return statusMsg{text: "usage: /shell <cmd>", kind: statusWarn}
+			}
+		}
+		return m.submitUserShellCmd(body, usershell.Foreground)
+	case "jobs":
+		// Phase U S7: toggle the jobs overlay. Mirrors Ctrl+J.
+		if m.usershell == nil {
+			return func() tea.Msg {
+				return statusMsg{text: "/jobs: user-shell not wired", kind: statusWarn}
+			}
+		}
+		m.showJobs = !m.showJobs
+		if m.showJobs {
+			m.jobsCursor = 0
+			m.jobsFilter = ""
+			m.jobsFilterMode = false
+		}
+		m.rerenderViewport()
+		return nil
+	case "fg":
+		return m.shellSlashForeground(strings.TrimSpace(c.Args))
+	case "bg":
+		return m.shellSlashBackground(strings.TrimSpace(c.Args))
 	}
 	if _, ok := slash.Lookup(c.Name); ok {
 		return func() tea.Msg {

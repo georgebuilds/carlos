@@ -106,6 +106,10 @@ type userShellSubscriptionClosedMsg struct{}
 // The returned Cmd may emit an error message if Submit rejects the
 // input (empty command, manager closed). State and output updates
 // land asynchronously via the Subscribe pump.
+//
+// Also records the command in the shell-history file (Phase U S7) so
+// ↑/↓ in shell mode can recall it next time. History writes are
+// best-effort — a disk error doesn't fail the submit.
 func (m *Model) submitUserShellCmd(cmd string, mode usershell.Mode) tea.Cmd {
 	if m.usershell == nil {
 		return func() tea.Msg {
@@ -114,6 +118,10 @@ func (m *Model) submitUserShellCmd(cmd string, mode usershell.Mode) tea.Cmd {
 				kind: statusWarn,
 			}
 		}
+	}
+	if m.shellHistory != nil {
+		_ = m.shellHistory.Add(cmd)
+		m.shellHistory.Reset()
 	}
 	mgr := m.usershell
 	return func() tea.Msg {

@@ -73,16 +73,24 @@ func (m *Model) renderInner(innerW, innerH int) string {
 		inputH = lipgloss.Height(input)
 	}
 
-	// Approval prompt OR help overlay is a bordered panel above the
-	// input. Compute height first so we can reserve it from the
-	// transcript area. They're mutually exclusive — approval is
-	// modal (model is waiting); help is dismiss-on-keypress; if
-	// somehow both became active, approval wins because the
-	// approval-blocking goroutine is paused.
+	// Approval prompt OR jobs overlay OR help overlay is a bordered
+	// panel above the input. Compute height first so we can reserve
+	// it from the transcript area. They're mutually exclusive —
+	// approval is modal (model is waiting), jobs / help are
+	// dismiss-on-keypress; precedence: approval > jobs > help.
 	var approval string
 	approvalH := 0
 	if m.pendingApproval != nil {
 		approval = renderApprovalBox(m.pendingApproval, innerW)
+		approvalH = lipgloss.Height(approval)
+	} else if m.showJobs && m.usershell != nil {
+		approval = renderJobsOverlay(
+			m.usershell.Jobs(),
+			m.jobsFilter,
+			m.jobsFilterMode,
+			m.jobsCursor,
+			innerW,
+		)
 		approvalH = lipgloss.Height(approval)
 	} else if m.showHelp {
 		approval = renderHelpBox(innerW)

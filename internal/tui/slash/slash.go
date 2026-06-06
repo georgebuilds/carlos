@@ -77,6 +77,14 @@ var Builtins = []Spec{
 	{Name: "daemon", ArgsHint: "[enable|disable|status]", Description: "manage the background daemon"},
 	{Name: "agents", Description: "switch focus to the manage-mode supervisor view"},
 	{Name: "research", ArgsHint: "<question>", Description: "deep-research a question; web-searches, fetches sources, synthesizes a cited report"},
+
+	// Phase U — user-shell verbs. Provide a slash alternative to
+	// the "!"-prefix submit so users who prefer slashes get parity.
+	{Name: "shell", ArgsHint: "<cmd>", Description: "run a shell command in your context (same as !cmd)"},
+	{Name: "jobs", Description: "toggle the shell-jobs overlay (same as Ctrl+J)"},
+	{Name: "fg", ArgsHint: "<job-id>", Description: "foreground a background shell job"},
+	{Name: "bg", ArgsHint: "<job-id>", Description: "background the running shell job (same as Ctrl+Z)"},
+	{Name: "resume", Description: "pick a past chat session to resume (Phase R)"},
 }
 
 // Lookup returns the Spec for name (case-insensitive), or (Spec{}, false).

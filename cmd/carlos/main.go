@@ -1118,6 +1118,10 @@ func runDefault(cfg *config.Config, sessionID string) error {
 	// them up on the next turn for free.
 	shellMgr := usershell.New(usershell.Options{Log: log})
 	defer shellMgr.Close()
+	// Phase U S7: separate ~/.carlos/shell-history file walked via
+	// ↑/↓ in shell mode. Created lazily on first Add; reads on
+	// startup so previous-session entries are available.
+	shellHistory := usershell.NewHistory("")
 
 	for {
 		opts := []chat.Option{
@@ -1125,6 +1129,7 @@ func runDefault(cfg *config.Config, sessionID string) error {
 			chat.WithUserName(cfg.UserName),
 			chat.WithSummarizer(summarizer),
 			chat.WithUserShell(shellMgr),
+			chat.WithShellHistory(shellHistory),
 		}
 		if researchEngine != nil {
 			opts = append(opts, chat.WithResearchEngine(researchEngine))
