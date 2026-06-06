@@ -137,6 +137,22 @@ func applyTheme(cfg *config.Config) {
 
 func main() {
 	args := os.Args[1:]
+	// Phase R — session resume flags. Strip before the verb switch
+	// so `carlos -c` / `carlos -r` land in the default chat path
+	// instead of falling through to the help case. The flag is
+	// ignored when followed by a verb (`carlos -c onboard` runs
+	// onboarding); the default chat path is where it has meaning.
+	resumeMode := ""
+	if len(args) > 0 {
+		switch args[0] {
+		case "-c", "--continue":
+			resumeMode = "continue"
+			args = args[1:]
+		case "-r", "--resume":
+			resumeMode = "resume"
+			args = args[1:]
+		}
+	}
 	if len(args) > 0 {
 		switch args[0] {
 		case "version", "-v", "--version":
@@ -273,9 +289,64 @@ func main() {
 
 	// Default-mode TUI: chat backed by the configured provider, with
 	// `/agents` swapping to the manage TUI on the same state.db.
-	if err := runDefault(cfg); err != nil {
+	//
+	// Phase R: resolve the session BEFORE entering chat. Fresh by
+	// default (empty sessionID → runDefault mints a new ULID); -c
+	// resumes the most recent; -r opens a picker.
+	sessionID, err := resolveSessionFromFlag(resumeMode)
+	if err != nil {
+		if errors.Is(err, errPickerCancelled) {
+			// User backed out of the picker — exit 0, no message.
+			return
+		}
 		exit(err)
 	}
+	if err := runDefault(cfg, sessionID); err != nil {
+		exit(err)
+	}
+}
+
+// resolveSessionFromFlag turns the -c / -r flag into an agent ID.
+// Empty mode (default) returns "" so runDefault mints a fresh ULID.
+// "continue" resolves the most recent session; "resume" opens the
+// interactive picker. ErrNoSessions on either path degrades silently
+// to "" so the user gets a fresh session without an annoying error.
+func resolveSessionFromFlag(mode string) (string, error) {
+	if mode == "" {
+		return "", nil
+	}
+	ctx := context.Background()
+	switch mode {
+	case "continue":
+		home, _ := os.UserHomeDir()
+		dbPath := filepath.Join(home, ".carlos", "state.db")
+		if _, err := os.Stat(dbPath); errors.Is(err, fs.ErrNotExist) {
+			fmt.Fprintln(os.Stderr, "carlos: no past sessions — starting a fresh one")
+			return "", nil
+		}
+		log, err := agent.OpenStateDB(dbPath)
+		if err != nil {
+			return "", err
+		}
+		defer log.Close()
+		sess, err := agent.MostRecentUserSession(ctx, log)
+		if errors.Is(err, agent.ErrNoSessions) {
+			fmt.Fprintln(os.Stderr, "carlos: no past sessions — starting a fresh one")
+			return "", nil
+		}
+		if err != nil {
+			return "", err
+		}
+		return sess.ID, nil
+	case "resume":
+		id, err := runSessionPicker(ctx)
+		if errors.Is(err, agent.ErrNoSessions) {
+			fmt.Fprintln(os.Stderr, "carlos: no past sessions — starting a fresh one")
+			return "", nil
+		}
+		return id, err
+	}
+	return "", nil
 }
 
 // runOnboard runs the six-screen flow and persists the resulting config.
@@ -317,8 +388,9 @@ func runOnboard(force bool) error {
 	}
 	// Drop straight into the TUI so the user doesn't have to re-launch
 	// to start working. This mirrors what the default-mode path does
-	// when config already exists.
-	return runDefault(cfg)
+	// when config already exists. Fresh-session — onboarding just
+	// finished, the user's first launch deserves a clean slate.
+	return runDefault(cfg, "")
 }
 
 // pleaseOptions collects parsed flags from `carlos please [flags] <prompt>`.
@@ -959,7 +1031,7 @@ func (a *stdinApprover) ApproveToolCall(name string, input []byte) bool {
 // composed-single-program TUI (chat + manage + plan in one bubbletea
 // Program) is a future polish slice; today's swap-on-/agents loop is
 // the functional bridge.
-func runDefault(cfg *config.Config) error {
+func runDefault(cfg *config.Config, sessionID string) error {
 	// Phase 9 slice 9a: load the user's theme before anything renders.
 	applyTheme(cfg)
 	warnGatewayOrphaned(cfg)
@@ -983,10 +1055,19 @@ func runDefault(cfg *config.Config) error {
 		fmt.Fprintf(os.Stderr, "carlos: recovered %d orphaned agent(s) from prior session\n", len(report.Orphaned))
 	}
 
-	// Stable default agent id per user — keeps the conversation
-	// continuous across `carlos` invocations until they explicitly
-	// reset. Future slice: `/clear-history` or onboarding option.
-	const defaultAgentID = "01HVDEFAULTDEFAULTDEFAULT1"
+	// Phase R: fresh session per invocation by default. -c/-r flag
+	// path resolved sessionID upstream; empty means "mint a new
+	// ULID-keyed session". The conversation persists in the event
+	// log forever; the user picks which one to continue via the
+	// `carlos -r` picker or `/resume` slash command in chat.
+	defaultAgentID := sessionID
+	if defaultAgentID == "" {
+		minted, err := mintSessionID(time.Now().UTC())
+		if err != nil {
+			return fmt.Errorf("mint session id: %w", err)
+		}
+		defaultAgentID = minted
+	}
 	if err := ensureDefaultAgent(ctx, log, defaultAgentID, d.name, d.model, cfg.UserName); err != nil {
 		return err
 	}
