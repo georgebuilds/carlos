@@ -115,12 +115,15 @@ type Router struct {
 	bodyTemplate func(agent.PendingApproval) string
 	now          func() time.Time
 
-	// sent is the in-memory dedupe set keyed by ArtifactID. We add on
-	// successful Send dispatch and never remove — the artifact is
-	// "in flight" forever from this Router's POV until process restart
-	// (at which point the next poll re-sends; see package doc).
-	mu   sync.Mutex
-	sent map[string]struct{}
+	// sent is the in-memory dedupe set keyed by ArtifactID. Entries are
+	// added by dispatch (one envelope per pending) and removed by gc
+	// when the artifact disappears from the pending list — which
+	// happens when ANY surface (TUI click, scheduled auto-approve, or
+	// the gateway router itself) resolved the approval. Without the
+	// GC, a TUI-side accept leaves the watcher dangling forever.
+	mu       sync.Mutex
+	sent     map[string]struct{}
+	watchers map[string]context.CancelFunc
 }
 
 // New validates cfg and constructs a Router. Returns an error if Log
@@ -140,6 +143,7 @@ func New(cfg Config) (*Router, error) {
 		bodyTemplate: cfg.BodyTemplate,
 		now:          cfg.Now,
 		sent:         map[string]struct{}{},
+		watchers:     map[string]context.CancelFunc{},
 	}
 	if r.pollInterval <= 0 {
 		r.pollInterval = defaultPollInterval
@@ -202,8 +206,9 @@ func (r *Router) Run(ctx context.Context) error {
 }
 
 // poll runs one scan of the approval queue. Each new pending approval
-// gets a Send + a watcher goroutine. Errors are logged-but-not-fatal;
-// the next tick gets another shot.
+// gets a Send + a watcher goroutine; artifacts that have left the
+// pending list since last tick get their watchers GC'd. Errors are
+// logged-but-not-fatal; the next tick gets another shot.
 func (r *Router) poll(ctx context.Context, wg *sync.WaitGroup) {
 	pending, err := agent.ListPendingApprovals(ctx, r.log)
 	if err != nil {
@@ -213,6 +218,11 @@ func (r *Router) poll(ctx context.Context, wg *sync.WaitGroup) {
 		// *slog.Logger through Config.
 		return
 	}
+	stillPending := make(map[string]struct{}, len(pending))
+	for _, p := range pending {
+		stillPending[p.Ref.ID] = struct{}{}
+	}
+	r.gc(stillPending)
 	for _, p := range pending {
 		if r.markSent(p.Ref.ID) {
 			continue
@@ -223,6 +233,30 @@ func (r *Router) poll(ctx context.Context, wg *sync.WaitGroup) {
 		// immediately rather than retrying every tick forever.
 		r.dispatch(ctx, wg, p)
 	}
+}
+
+// gc cancels any watchers whose artifact has left the pending list
+// (resolved out-of-band, typically by a TUI click) and clears their
+// sent-set entries. Without this the router would leak one goroutine +
+// one broker subscriber per TUI-resolved approval for the lifetime of
+// the daemon process. Cheap O(watchers); typical N is a handful.
+func (r *Router) gc(stillPending map[string]struct{}) {
+	r.mu.Lock()
+	var dead []string
+	for id, cancel := range r.watchers {
+		if _, ok := stillPending[id]; ok {
+			continue
+		}
+		dead = append(dead, id)
+		// Cancel under the lock so a concurrent Run-exit doesn't race
+		// the unsubscribe path.
+		cancel()
+	}
+	for _, id := range dead {
+		delete(r.watchers, id)
+		delete(r.sent, id)
+	}
+	r.mu.Unlock()
 }
 
 // markSent atomically records artifactID as in-flight. Returns true if
@@ -266,11 +300,25 @@ func (r *Router) dispatch(ctx context.Context, wg *sync.WaitGroup, p agent.Pendi
 		return
 	}
 
+	// Per-watcher cancel lets gc cull a watcher whose artifact was
+	// resolved out-of-band (TUI click). Derived from ctx so a Run-
+	// exit still tears everything down.
+	watchCtx, cancel := context.WithCancel(ctx)
+	r.mu.Lock()
+	r.watchers[p.Ref.ID] = cancel
+	r.mu.Unlock()
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		defer unsub()
-		r.waitForDecision(ctx, p.Ref.ID, decCh)
+		defer cancel()
+		r.waitForDecision(watchCtx, p.Ref.ID, decCh)
+		// We don't self-clean watcher / sent map entries here — the
+		// next poll's gc handles it once the resolved artifact drops
+		// out of ListPendingApprovals. Leaving a stale cancel in the
+		// map between Decision-landed and next-gc costs one entry
+		// (the cancel is harmless to call twice).
 	}()
 }
 

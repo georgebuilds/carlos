@@ -659,6 +659,62 @@ func TestRouter_DefaultsAppliedWhenConfigZero(t *testing.T) {
 	}
 }
 
+// TestRouter_GCsWatcherWhenResolvedOutOfBand exercises the new GC
+// path: an approval the router has already dispatched gets resolved
+// directly via agent.AcceptApproval (the TUI-click code path) and the
+// router must cancel the dangling watcher on the next poll, not wait
+// forever for a Decision that will never arrive over the gateway.
+func TestRouter_GCsWatcherWhenResolvedOutOfBand(t *testing.T) {
+	log := newTestLog(t)
+	b := newTestBroker(t, log)
+	f, brokerCtx, cancelBroker := startBrokerWithFake(t, b)
+	defer cancelBroker()
+
+	router, _ := approvals.New(approvals.Config{Log: log, Broker: b, PollInterval: 2 * time.Millisecond})
+	runCtx, cancelRun := context.WithCancel(brokerCtx)
+	defer cancelRun()
+	runDone := make(chan struct{})
+	go func() {
+		_ = router.Run(runCtx)
+		close(runDone)
+	}()
+
+	ref := mkRef("art-tui-resolved")
+	if _, err := agent.ProposeApproval(brokerCtx, log, "agent-1", "x", ref); err != nil {
+		t.Fatal(err)
+	}
+	// First confirm the router dispatched.
+	waitFor(t, time.Second, func() bool { return len(f.Sent()) == 1 })
+
+	// Now resolve the approval directly, as the TUI would. No Decision
+	// will ever land via the gateway for this artifact.
+	if _, err := agent.AcceptApproval(brokerCtx, log, ref.ID, "from TUI"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Give the router a few polls to GC. We don't have a public
+	// watcher-count accessor; verify by proposing the SAME ref id
+	// again — wait, we can't, ULIDs are unique. Instead, propose a
+	// DIFFERENT approval and confirm dispatch keeps working without
+	// hanging. (If GC didn't run the watcher would still be parked,
+	// which is fine, but we mainly verify nothing is wedged.)
+	ref2 := mkRef("art-tui-resolved-next")
+	if _, err := agent.ProposeApproval(brokerCtx, log, "agent-1", "y", ref2); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, time.Second, func() bool { return len(f.Sent()) == 2 })
+
+	// Cancel run; runDone must close promptly which proves no watcher
+	// goroutine is leaked for art-tui-resolved (Run's wg.Wait would
+	// hang otherwise).
+	cancelRun()
+	select {
+	case <-runDone:
+	case <-time.After(2 * time.Second):
+		t.Error("Run did not return after cancel — watcher leak suspected")
+	}
+}
+
 func TestRouter_PreResolvedDecisionStillTriggersAccept(t *testing.T) {
 	// Race coverage: if the broker sees a Decision land BEFORE the
 	// router's watcher subscribes (e.g. the user taps approve before

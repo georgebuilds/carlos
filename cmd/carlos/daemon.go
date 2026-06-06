@@ -143,6 +143,32 @@ func runDaemonDisable() error {
 	return nil
 }
 
+// warnGatewayOrphaned writes a one-line banner to stderr when the
+// user has configured cfg.Gateway.Enabled but the daemon isn't
+// running to act on it. Called from the TUI + `carlos please` entry
+// points so the user doesn't silently miss notifications.
+//
+// We probe by dialing the daemon UDS. A successful dial implies a
+// running daemon — that's enough; we don't need to round-trip a
+// status request just to render the banner. Silent on success.
+//
+// Honest about the limitation: the gateway is single-owner by design
+// (see internal/daemon/gateway.go), so a TUI-only session can't pick
+// up the slack. The user has to start the daemon.
+func warnGatewayOrphaned(cfg *config.Config) {
+	if cfg == nil || !cfg.Gateway.Enabled {
+		return
+	}
+	conn, err := daemon.Dial("")
+	if err == nil {
+		_ = conn.Close()
+		return
+	}
+	fmt.Fprintln(os.Stderr,
+		"carlos: gateway is configured but the daemon isn't running — push/HITL routing is off. "+
+			"Start it with `carlos daemon enable` (installs auto-start) or `carlos daemon run` (foreground).")
+}
+
 // runDaemonStatus dials the running daemon's UDS and prints a human-
 // readable summary. If no daemon is running, surfaces that cleanly.
 func runDaemonStatus() error {

@@ -464,6 +464,7 @@ func runHeadless(prompt string, opts pleaseOptions) error {
 	// before anything renders. please-mode shows the chat-approver
 	// prompt with these colors.
 	applyTheme(cfg)
+	warnGatewayOrphaned(cfg)
 
 	d, err := buildDispatch(cfg, opts)
 	if err != nil {
@@ -950,6 +951,7 @@ func (a *stdinApprover) ApproveToolCall(name string, input []byte) bool {
 func runDefault(cfg *config.Config) error {
 	// Phase 9 slice 9a: load the user's theme before anything renders.
 	applyTheme(cfg)
+	warnGatewayOrphaned(cfg)
 	home, _ := os.UserHomeDir()
 	dbPath := filepath.Join(home, ".carlos", "state.db")
 	log, err := agent.OpenStateDB(dbPath)
