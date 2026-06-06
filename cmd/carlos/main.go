@@ -405,6 +405,30 @@ type pleaseOptions struct {
 	// PlanTool. Off by default in v0 — opt-in until field experience
 	// (Slice 7e/7f) shakes out the rough edges of the apply gate.
 	worktree bool
+	// Phase F-18: frame override for this invocation. "" falls through to
+	// CARLOS_FRAME, then to the cwd-hint match, then to the persisted
+	// active frame.
+	frame string
+}
+
+// parseLeadingFrameFlag pulls a single optional "-f <name>" / "--frame
+// <name>" off the front of args. Returns the resolved frame name (or ""
+// when no flag was passed), the remaining args, and any error if the
+// flag was used without a value. Used by subcommands whose only Phase F
+// surface is the frame selector (e.g. carlos research). Subcommands
+// with richer flag sets (please) parse -f inline in their own parser.
+func parseLeadingFrameFlag(args []string) (string, []string, error) {
+	if len(args) == 0 {
+		return "", args, nil
+	}
+	switch args[0] {
+	case "-f", "--frame":
+		if len(args) < 2 {
+			return "", nil, errors.New("--frame requires a name (e.g. personal, work)")
+		}
+		return args[1], args[2:], nil
+	}
+	return "", args, nil
 }
 
 // parsePleaseArgs strips recognized leading flags from args and returns
@@ -433,6 +457,12 @@ func parsePleaseArgs(args []string) (pleaseOptions, string, error) {
 		case "-w", "--worktree":
 			opts.worktree = true
 			args = args[1:]
+		case "-f", "--frame":
+			if len(args) < 2 {
+				return opts, "", errors.New("--frame requires a name (e.g. personal, work)")
+			}
+			opts.frame = args[1]
+			args = args[2:]
 		default:
 			return opts, strings.Join(args, " "), nil
 		}
@@ -693,7 +723,24 @@ func runHeadless(prompt string, opts pleaseOptions) error {
 			hctx = pc.Combined
 		}
 	}
-	system := agent.SystemPrompt(cfg.UserName, hcwd, hctx)
+	// Phase F-18: resolve the active frame for this please run. Honours
+	// CARLOS_FRAME, then --frame, then cwd-hint match, then persisted
+	// active. Headless run, no TTY picker — the persisted active is
+	// the canonical fallback for cron / pipe invocations.
+	pleaseFrameInfo := agent.FrameInfo{}
+	if res, ok := frame.ResolveActive(&cfg.Frames, frame.Input{
+		Env:  os.Getenv("CARLOS_FRAME"),
+		Flag: opts.frame,
+		Cwd:  hcwd,
+	}); ok {
+		if f := cfg.Frames.Find(res.Frame); f != nil {
+			pleaseFrameInfo = agent.FrameInfo{Name: f.Name, Append: f.SystemPromptAppend}
+			if opts.frame != "" || os.Getenv("CARLOS_FRAME") != "" {
+				fmt.Fprintf(os.Stderr, "carlos: frame=%s (via %s)\n", res.Frame, res.Reason)
+			}
+		}
+	}
+	system := agent.SystemPromptWithFrame(cfg.UserName, hcwd, hctx, pleaseFrameInfo)
 
 	initial := []providers.Message{
 		{Role: "user", Content: []providers.Block{{Kind: "text", Text: prompt}}},
@@ -793,11 +840,17 @@ func runResearchInternal(args []string) error {
 // nothing else competing for the terminal — the user explicitly asked
 // for a research arc.
 func runResearch(args []string) error {
-	question := strings.TrimSpace(strings.Join(args, " "))
+	frameOverride, rest, ferr := parseLeadingFrameFlag(args)
+	if ferr != nil {
+		fmt.Fprintln(os.Stderr, "carlos:", ferr)
+		os.Exit(2)
+	}
+	question := strings.TrimSpace(strings.Join(rest, " "))
 	if question == "" {
 		fmt.Fprintln(os.Stderr, `carlos: research needs a question — e.g. carlos research "what is the current state of WebGPU in Safari?"`)
 		os.Exit(2)
 	}
+	_ = frameOverride // research output lives under ~/.carlos/research today; F-17 moves it under frames/<name>/research/.
 	path := config.DefaultPath()
 	cfg, err := config.Load(path)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -1182,11 +1235,12 @@ func runDefault(cfg *config.Config, sessionID string) error {
 		}
 	}
 
-	// Phase F: resolve the session's active frame. ResolveActive walks
-	// CARLOS_FRAME env -> -f flag (TODO F-18) -> cwd_hint match ->
-	// persisted active -> default. The frame supplies the sysprompt
-	// append + the header pill. When migration has just synthesised a
-	// personal frame, this always returns it.
+	// Phase F: resolve the session's active frame. The chat path has no
+	// CLI flag of its own (users switch with /frame), so ResolveActive
+	// here walks CARLOS_FRAME env -> cwd_hint match -> persisted
+	// active -> default. The frame supplies the sysprompt append + the
+	// header pill. When migration has just synthesised a personal
+	// frame, this always returns it.
 	resolution, frameOK := frame.ResolveActive(&cfg.Frames, frame.Input{
 		Env: os.Getenv("CARLOS_FRAME"),
 		Cwd: cwd,
