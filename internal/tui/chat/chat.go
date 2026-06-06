@@ -315,6 +315,11 @@ type FrameUI struct {
 	// nil, /frame switch echoes "not wired"; in the production wire-up
 	// cmd/carlos passes a closure that calls config.Save.
 	SwitchActive func(name string) error
+	// Capabilities maps capability name (e.g. "calendar") to the
+	// backend selected in this frame (e.g. "caldav"). Populated from
+	// the active frame's Capabilities config at boot. Surfaced by the
+	// /capabilities slash; empty map is fine and prints a hint.
+	Capabilities map[string]string
 }
 
 type statusKind int
@@ -1270,6 +1275,8 @@ func (m *Model) dispatchSlash(c slash.Command) tea.Cmd {
 		return nil
 	case "frame":
 		return m.frameSlash(strings.TrimSpace(c.Args))
+	case "capabilities":
+		return m.capabilitiesSlash()
 	}
 	if _, ok := slash.Lookup(c.Name); ok {
 		return func() tea.Msg {

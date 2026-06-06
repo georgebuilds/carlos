@@ -227,3 +227,45 @@ func TestRenderHeader_OmitsFramePillWhenInactive(t *testing.T) {
 		t.Errorf("header should not paint a frame pill when Active is empty; got:\n%s", out)
 	}
 }
+
+func TestCapabilitiesSlash_NoFrame(t *testing.T) {
+	m := newFramedModel(t, FrameUI{})
+	s := runStatusCmd(t, m.capabilitiesSlash())
+	if s.kind != statusWarn {
+		t.Errorf("kind = %v, want statusWarn", s.kind)
+	}
+}
+
+func TestCapabilitiesSlash_EmptyMapEchoesCTA(t *testing.T) {
+	m := newFramedModel(t, FrameUI{Active: "personal"})
+	s := runStatusCmd(t, m.capabilitiesSlash())
+	if !strings.Contains(s.text, "no capabilities") {
+		t.Errorf("expected empty-state CTA; got %q", s.text)
+	}
+	if !strings.Contains(s.text, "config.yaml") {
+		t.Errorf("expected config.yaml pointer; got %q", s.text)
+	}
+}
+
+func TestCapabilitiesSlash_RendersWiredCapabilities(t *testing.T) {
+	m := newFramedModel(t, FrameUI{
+		Active: "work",
+		Capabilities: map[string]string{
+			"calendar": "caldav",
+			"email":    "fastmail-imap",
+		},
+	})
+	s := runStatusCmd(t, m.capabilitiesSlash())
+	if !strings.Contains(s.text, "calendar=caldav") {
+		t.Errorf("missing calendar=caldav; got %q", s.text)
+	}
+	if !strings.Contains(s.text, "email=fastmail-imap") {
+		t.Errorf("missing email entry; got %q", s.text)
+	}
+	// Sort assertion: calendar should come before email (alphabetic).
+	calAt := strings.Index(s.text, "calendar")
+	emailAt := strings.Index(s.text, "email")
+	if !(calAt < emailAt) {
+		t.Errorf("expected alphabetical order; got %q", s.text)
+	}
+}

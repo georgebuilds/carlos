@@ -2,6 +2,7 @@ package chat
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -90,4 +91,29 @@ func statusCmd(text string, kind statusKind) tea.Cmd {
 	return func() tea.Msg {
 		return statusMsg{text: text, kind: kind}
 	}
+}
+
+// capabilitiesSlash echoes the wired capability -> backend map for the
+// active frame. Phase C-7. Empty map prints a CTA pointing the user at
+// the config block they need to populate.
+func (m *Model) capabilitiesSlash() tea.Cmd {
+	if m.frame.Active == "" {
+		return statusCmd("frames not wired (legacy single-shelf mode)", statusWarn)
+	}
+	if len(m.frame.Capabilities) == 0 {
+		return statusCmd(
+			"no capabilities wired in frame "+m.frame.Active+
+				"; add `capabilities.<name>."+m.frame.Active+".backend` to config.yaml",
+			statusInfo,
+		)
+	}
+	parts := make([]string, 0, len(m.frame.Capabilities))
+	for k, v := range m.frame.Capabilities {
+		parts = append(parts, k+"="+v)
+	}
+	sort.Strings(parts)
+	return statusCmd(
+		"frame "+m.frame.Active+": "+strings.Join(parts, ", "),
+		statusInfo,
+	)
 }

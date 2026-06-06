@@ -103,6 +103,10 @@ var Builtins = []Spec{
 	// persists a new active frame (provider/model take effect at
 	// next session start until the live-swap slice lands).
 	{Name: "frame", ArgsHint: "[list|switch <name>]", Description: "show or switch the active frame (Phase F)"},
+
+	// Phase C-7 — list user-facing capabilities wired in the active
+	// frame: capability -> backend -> skills that deliver it.
+	{Name: "capabilities", Description: "list wired capabilities (calendar, etc.) in the active frame"},
 }
 
 // Lookup returns the Spec for name (case-insensitive), or (Spec{}, false).

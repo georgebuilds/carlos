@@ -533,6 +533,29 @@ func buildDispatch(cfg *config.Config, opts pleaseOptions) (*dispatch, error) {
 	return &dispatch{provider: p, name: name, model: model}, nil
 }
 
+// extractCapabilityBackends collapses a frame's full Capabilities map
+// (capability name -> per-frame settings) into the flat
+// capability->backend lookup the chat FrameUI needs for /capabilities.
+// Settings without a `backend` key are dropped. Phase C-7.
+func extractCapabilityBackends(f frame.Frame) map[string]string {
+	if len(f.Capabilities) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(f.Capabilities))
+	for name, settings := range f.Capabilities {
+		if settings == nil {
+			continue
+		}
+		if v, ok := settings["backend"].(string); ok && v != "" {
+			out[name] = v
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
 // providerDefaultModel is the last-resort model when neither --model nor
 // cfg.Providers[name].DefaultModel is set. Onboarding already prompts for
 // one; this is a belt-and-braces guard for a brand-new config.
@@ -1267,6 +1290,7 @@ func runDefault(cfg *config.Config, sessionID string) error {
 					cfg.Frames.Active = name
 					return config.Save(config.DefaultPath(), cfg)
 				},
+				Capabilities: extractCapabilityBackends(activeFrame),
 			}
 		}
 	}
