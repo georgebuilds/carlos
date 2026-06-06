@@ -739,6 +739,10 @@ func renderEntry(e transcriptEntry, width int) string {
 		return renderAvatarBlock("👤", colon, e.text, colorUser, width)
 	case entryAssistantMessage:
 		return renderAvatarBlock("🧢", colon, e.text, colorAgent, width)
+	case entryUserShell:
+		// Phase U S5 block: $-prompt, output body, status badge.
+		// Renderer is in internal/tui/chat/usershell_render.go.
+		return body.Render(renderUserShellEntry(e, width))
 	case entryToolCall:
 		// Bordered tool card (collapsed-by-default). Combines the
 		// preceding tool_call + the folded-in tool_result into a

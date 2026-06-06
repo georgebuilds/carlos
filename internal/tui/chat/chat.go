@@ -92,6 +92,22 @@ type transcriptEntry struct {
 	hasResult  bool   // true once the EvtToolResult has been folded in (distinguishes "no output" from "still running")
 	isError    bool   // tool_result was an error (rejection or tool err)
 	subAgentID string // collapse key for entryResearchProgress (slice 11e)
+
+	// User-shell (Phase U S5) fields. Active when kind == entryUserShell.
+	// shellJobID is the collapse key so EvtUserShellEnd folds into the
+	// row created by EvtUserShellStart instead of appending a fresh row.
+	// shellOutput streams in via the Manager Subscribe pump until the
+	// End event lands the canonical inline-truncated copy.
+	shellJobID       string
+	shellCommand     string
+	shellOutput      string
+	shellExitCode    int
+	shellDuration    time.Duration
+	shellRunning     bool // true between Start and End
+	shellCancelled   bool
+	shellBackgrounded bool
+	shellTruncated   int // bytes dropped from the inline output
+	shellFailErr     string
 }
 
 type entryKind int
@@ -111,6 +127,12 @@ const (
 	// row to a "research done · <elapsed>" summary; an err transitions
 	// it to a warn-colored "research failed: <err>".
 	entryResearchProgress
+	// entryUserShell is a "!cmd"-prefixed shell command (Phase U S5).
+	// Created by EvtUserShellStart with shellRunning=true; updated in
+	// place when EvtUserShellEnd lands AND when the Manager's
+	// Subscribe pump streams an output chunk. Renders as a styled
+	// block: prompt line, monospace output body, status badge.
+	entryUserShell
 )
 
 // Model is the bubbletea Model for the single-agent chat view.
@@ -531,13 +553,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case userShellUpdateMsg:
-		// S4: the footer needs to re-render whenever a job's state
-		// or output changes. We don't (yet) project the update into
-		// the transcript — S5 owns block rendering. Re-arm the pump
-		// so the next update flows in.
-		// Note: bubbletea redraws after every Update return; the
-		// recomputed footer state is picked up by view.go's call to
-		// computeUserShellFooterContext.
+		// S5: stream live output chunks into the matching transcript
+		// entry. State-only updates (no Output bytes) just re-arm the
+		// pump — the transcript row was created by EvtUserShellStart
+		// and will be sealed by EvtUserShellEnd via applyEvent.
+		if len(msg.u.Output) > 0 {
+			if idx := m.findUserShellEntry(msg.u.JobID); idx != -1 {
+				m.transcript[idx].shellOutput += string(msg.u.Output)
+				m.rerenderViewport()
+			}
+		}
 		if m.userShellSubCh != nil {
 			return m, pumpUserShellCmd(m.userShellSubCh)
 		}
@@ -720,7 +745,81 @@ func (m *Model) applyEvent(ev agent.Event) {
 		} else {
 			m.transcript[idx] = entry
 		}
+	case agent.EvtUserShellStart:
+		var p usershell.StartPayload
+		if err := json.Unmarshal(ev.Payload, &p); err != nil {
+			m.transcript = append(m.transcript, transcriptEntry{
+				kind: entrySystemNote,
+				ts:   ev.TS,
+				text: fmt.Sprintf("user_shell_start: bad payload on seq=%d: %v", ev.Seq, err),
+			})
+			return
+		}
+		m.transcript = append(m.transcript, transcriptEntry{
+			kind:              entryUserShell,
+			ts:                ev.TS,
+			shellJobID:        p.JobID,
+			shellCommand:      p.Command,
+			shellRunning:      true,
+			shellBackgrounded: p.Background,
+		})
+	case agent.EvtUserShellEnd:
+		var p usershell.EndPayload
+		if err := json.Unmarshal(ev.Payload, &p); err != nil {
+			m.transcript = append(m.transcript, transcriptEntry{
+				kind: entrySystemNote,
+				ts:   ev.TS,
+				text: fmt.Sprintf("user_shell_end: bad payload on seq=%d: %v", ev.Seq, err),
+			})
+			return
+		}
+		idx := m.findUserShellEntry(p.JobID)
+		if idx == -1 {
+			// Orphan end (replay-truncated log): synthesize a row
+			// so the user sees SOMETHING rather than silently
+			// dropping the event.
+			m.transcript = append(m.transcript, transcriptEntry{
+				kind:              entryUserShell,
+				ts:                ev.TS,
+				shellJobID:        p.JobID,
+				shellCommand:      "(unknown — start event missing)",
+				shellOutput:       p.OutputInline,
+				shellExitCode:     p.ExitCode,
+				shellDuration:     p.Duration,
+				shellCancelled:    p.Cancelled,
+				shellBackgrounded: p.Backgrounded,
+				shellTruncated:    p.TruncatedBytes,
+				shellFailErr:      p.FailErrMsg,
+			})
+			return
+		}
+		m.transcript[idx].shellRunning = false
+		m.transcript[idx].shellExitCode = p.ExitCode
+		m.transcript[idx].shellDuration = p.Duration
+		m.transcript[idx].shellCancelled = p.Cancelled
+		m.transcript[idx].shellBackgrounded = p.Backgrounded
+		m.transcript[idx].shellTruncated = p.TruncatedBytes
+		m.transcript[idx].shellFailErr = p.FailErrMsg
+		// Prefer the canonical inline output from the End event over
+		// whatever streamed during the run — the End event's copy is
+		// what the model sees, so the transcript should match.
+		if p.OutputInline != "" {
+			m.transcript[idx].shellOutput = p.OutputInline
+		}
 	}
+}
+
+// findUserShellEntry returns the transcript index for the running
+// user-shell block matching jobID, or -1 if none. Used both by the
+// EvtUserShellEnd case (fold final state into the running block) and
+// by the Subscribe-pump path that streams live output chunks.
+func (m *Model) findUserShellEntry(jobID string) int {
+	for i := len(m.transcript) - 1; i >= 0; i-- {
+		if m.transcript[i].kind == entryUserShell && m.transcript[i].shellJobID == jobID {
+			return i
+		}
+	}
+	return -1
 }
 
 // submit captures the current textarea value and routes it to the
