@@ -114,10 +114,12 @@ type Daemon struct {
 
 	listener net.Listener
 
-	mu        sync.Mutex
-	schedules []schedule.Schedule
-	startedAt time.Time
-	reloadAt  time.Time
+	mu         sync.Mutex
+	schedules  []schedule.Schedule
+	gatewayCfg config.GatewayConfig
+	gw         *gatewayRuntime
+	startedAt  time.Time
+	reloadAt   time.Time
 
 	// activeCount tracks in-flight scheduled spawns so the status
 	// response can surface "n schedules running right now".
@@ -226,6 +228,31 @@ func (d *Daemon) Run(ctx context.Context) error {
 		defer d.supervisor.Shutdown()
 	}
 
+	// 5.5 Gateway (broker + adapters + approvals router). Skipped when
+	// the config block is disabled OR when no event log is available
+	// (test mode). A construction failure aborts startup so a
+	// misconfigured gateway surfaces loudly at boot rather than
+	// silently fanning out into nothing.
+	d.mu.Lock()
+	gwCfg := d.gatewayCfg
+	d.mu.Unlock()
+	if d.log != nil && gwCfg.Enabled {
+		gw, err := startGateway(runCtx, d.log, gwCfg)
+		if err != nil {
+			_ = d.listener.Close()
+			_ = d.log.Close()
+			return fmt.Errorf("daemon: gateway: %w", err)
+		}
+		d.mu.Lock()
+		d.gw = gw
+		d.mu.Unlock()
+		defer func() {
+			stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_ = gw.Stop(stopCtx)
+		}()
+	}
+
 	// 6. IPC accept goroutine.
 	go d.acceptLoop(runCtx)
 
@@ -299,6 +326,10 @@ func (d *Daemon) Reload() error {
 // loadConfig reads ConfigPath, validates each schedule, and replaces
 // d.schedules. A single malformed schedule is non-fatal — we log it to
 // stderr and skip it so one bad entry doesn't disable the whole daemon.
+//
+// The gateway block is cached on d so Run() can construct the broker
+// after this returns. Reload (SIGHUP) refreshes the cache but does
+// NOT rebuild the gateway — see internal/daemon/gateway.go for why.
 func (d *Daemon) loadConfig() error {
 	cfg, err := config.Load(d.opts.ConfigPath)
 	if err != nil {
@@ -314,6 +345,7 @@ func (d *Daemon) loadConfig() error {
 	}
 	d.mu.Lock()
 	d.schedules = good
+	d.gatewayCfg = cfg.Gateway
 	d.mu.Unlock()
 	return nil
 }
