@@ -26,11 +26,13 @@ const (
 	ScreenProvider
 	ScreenModel
 	ScreenSkills
+	ScreenVault
 	ScreenDaemon
+	ScreenGateway
 	ScreenDone
 )
 
-const totalScreens = 6
+const totalScreens = 8
 
 // screenTitle is the heading shown above each right-pane form.
 func screenTitle(s Screen) string {
@@ -43,8 +45,12 @@ func screenTitle(s Screen) string {
 		return "Pick default models"
 	case ScreenSkills:
 		return "Skills convention"
+	case ScreenVault:
+		return "Notes vault"
 	case ScreenDaemon:
 		return "Background daemon"
+	case ScreenGateway:
+		return "Messaging gateway"
 	case ScreenDone:
 		return "Ready"
 	}
@@ -177,7 +183,9 @@ type Flow struct {
 	provider providerModel
 	model    modelModel
 	skills   skillsModel
+	vault    vaultModel
 	daemon   daemonModel
+	gateway  gatewayModel
 	done     doneModel
 
 	// portrait is rendered once (fixed-size left rail) and cached.
@@ -210,7 +218,9 @@ func New() *Flow {
 		provider: newProviderModel(),
 		model:    newModelModel(),
 		skills:   newSkillsModel(),
+		vault:    newVaultModel(),
 		daemon:   newDaemonModel(),
+		gateway:  newGatewayModel(),
 		done:     newDoneModel(),
 		portrait: rememberRail(portraitCols, portraitRows),
 	}
@@ -269,6 +279,11 @@ func (f *Flow) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "shift+tab":
 			if f.current > ScreenName {
 				f.current--
+				// Mirror the advance() auto-skip: never let back-nav
+				// land on Gateway when the daemon is off.
+				if f.current == ScreenGateway && !f.cfg.Daemon.Enabled {
+					f.current--
+				}
 				return f, nil
 			}
 			return f, nil
@@ -315,9 +330,17 @@ func (f *Flow) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		updated, cmd := f.skills.Update(msg)
 		f.skills = updated.(skillsModel)
 		return f, cmd
+	case ScreenVault:
+		updated, cmd := f.vault.Update(msg)
+		f.vault = updated.(vaultModel)
+		return f, cmd
 	case ScreenDaemon:
 		updated, cmd := f.daemon.Update(msg)
 		f.daemon = updated.(daemonModel)
+		return f, cmd
+	case ScreenGateway:
+		updated, cmd := f.gateway.Update(msg)
+		f.gateway = updated.(gatewayModel)
 		return f, cmd
 	case ScreenDone:
 		updated, cmd := f.done.Update(msg)
@@ -444,8 +467,12 @@ func (f *Flow) renderRightPane(w, _ int) string {
 		body = f.model.View()
 	case ScreenSkills:
 		body = f.skills.View()
+	case ScreenVault:
+		body = f.vault.View()
 	case ScreenDaemon:
 		body = f.daemon.View()
+	case ScreenGateway:
+		body = f.gateway.View()
 	case ScreenDone:
 		body = f.done.renderName(f.cfg.UserName)
 	}
@@ -498,8 +525,19 @@ func schedulePulseTick() tea.Cmd {
 
 // advance is called by Update when a child screen returns nextScreenMsg.
 // At the Done screen, advance is a no-op — Done returns quitMsg separately.
+//
+// Conditional skip: the gateway is daemon-owned (see
+// internal/daemon/gateway.go), so when the user declined the daemon
+// the gateway screen has nothing to configure. We jump past it
+// directly to Done. The step-counter still shows totalScreens=8 so
+// users notice the dot pattern; the skip is a UX nicety, not a
+// statement about the flow's structural length.
 func (f *Flow) advance() {
-	if f.current < ScreenDone {
+	if f.current >= ScreenDone {
+		return
+	}
+	f.current++
+	if f.current == ScreenGateway && !f.cfg.Daemon.Enabled {
 		f.current++
 	}
 }
@@ -526,6 +564,16 @@ func (f *Flow) applyChildPayload(p any) {
 		f.cfg.Daemon.Enabled = v.enabled
 	case skillsResult:
 		f.cfg.Skills.Convention = v.convention
+	case vaultResult:
+		f.cfg.Vault.Path = v.path
+	case gatewayResult:
+		f.cfg.Gateway.Enabled = v.enabled
+		if v.ntfy.Enabled {
+			f.cfg.Gateway.Ntfy = v.ntfy
+		}
+		if v.telegram.Enabled {
+			f.cfg.Gateway.Telegram = v.telegram
+		}
 	}
 }
 
