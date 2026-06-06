@@ -269,6 +269,30 @@ func (j *Job) markBackgrounded(bg bool) error {
 	return nil
 }
 
+// setOutcome atomically writes the post-execution outcome (exit
+// code + optional spawn-time error) and transitions to next. Used
+// by the Manager's runJob goroutine so the write happens under the
+// same lock Snapshot() takes — no race on ExitCode / FailErr reads.
+//
+// Returns ErrInvalidTransition if next isn't reachable from the
+// current state. On error, ExitCode + FailErr are NOT updated so
+// the Job's externally-observable state stays internally consistent.
+func (j *Job) setOutcome(next State, exitCode int, failErr error) error {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	allowed, ok := validTransitions[j.state]
+	if !ok || !allowed[next] {
+		return ErrInvalidTransition
+	}
+	j.ExitCode = exitCode
+	j.FailErr = failErr
+	j.state = next
+	if next.IsTerminal() {
+		j.EndedAt = time.Now().UTC().Truncate(time.Millisecond)
+	}
+	return nil
+}
+
 // Snapshot returns a value-copy of the Job's externally-visible
 // fields. TUI and projection callers consume Snapshots so a stale
 // concurrent read doesn't expose a half-transitioned Job.

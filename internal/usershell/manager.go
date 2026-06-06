@@ -34,6 +34,16 @@ type Options struct {
 	// falls back to time.Now. Tests inject a fake clock to make
 	// snapshots deterministic.
 	Now func() time.Time
+
+	// Runner is the subprocess driver. nil falls back to the
+	// production PTY runner. Tests substitute a deterministic
+	// in-process runner to exercise queue + lifecycle without
+	// shelling out.
+	Runner runner
+
+	// RingBufferCap is the output buffer's byte capacity per job.
+	// <=0 uses the package default (64 KiB).
+	RingBufferCap int
 }
 
 // Manager owns the user-shell job lifecycle for one chat session:
@@ -51,15 +61,28 @@ type Manager struct {
 	cwd     string
 	bgLimit int
 	now     func() time.Time
+	runner  runner
+	bufCap  int
 
 	// jobs holds every Job the Manager has seen, keyed by ID. Stays
 	// around after termination so the jobs overlay can render
 	// "recent" history; size-bounded by a future GC pass.
 	jobs map[string]*Job
 
+	// outputs holds the per-job ring buffer. Populated when a job
+	// transitions to running. Kept in this map (not on Job) so the
+	// Job struct stays pure data + readers don't have to chase a
+	// pointer.
+	outputs map[string]*RingBuffer
+
 	// fgQueue is the foreground waiting list (FIFO). Index 0 is up
 	// next. When a foreground slot opens, the Manager pops index 0.
 	fgQueue []string
+
+	// bgQueue is the background waiting list — analog of fgQueue for
+	// the bg pool. Used when Submit Background lands while the pool
+	// is full; popped FIFO as bg slots free.
+	bgQueue []string
 
 	// fgRunning is the ID of the single foreground job currently
 	// executing, or "" if the slot is open.
@@ -73,6 +96,13 @@ type Manager struct {
 	// calls return ErrClosed.
 	closed bool
 
+	// subscribers is the in-process fan-out for state changes. Each
+	// Subscribe call appends a channel; publish sends best-effort
+	// (non-blocking) to all of them. Used by the TUI to drive
+	// transcript redraws without polling.
+	subMu       sync.Mutex
+	subscribers []chan Update
+
 	// ulidEntropy is the monotonic-random reader for fresh job IDs.
 	// Guarded by ulidMu — ulid.MonotonicEntropy is not safe for
 	// concurrent reads.
@@ -80,10 +110,15 @@ type Manager struct {
 	ulidEntropy *ulid.MonotonicEntropy
 }
 
-// ErrNotImplemented is returned from Submit until S1 wires the PTY
-// spawn path. Caller-visible so tests can pin the staged delivery
-// without having to compile-toggle the feature.
-var ErrNotImplemented = errors.New("usershell: spawn not implemented in S0")
+// Update is the notification a TUI subscriber receives when a job's
+// state or output changes. Output is empty for state-only events;
+// non-empty when new bytes arrived from the PTY (chunked at the
+// reader's natural cadence).
+type Update struct {
+	JobID  string
+	State  State
+	Output []byte // non-nil iff this is an output chunk
+}
 
 // ErrClosed is returned from Submit (and related verbs) after Close
 // has been called on the Manager. The chat surface calls Close when
@@ -107,29 +142,34 @@ func New(opts Options) *Manager {
 	if now == nil {
 		now = time.Now
 	}
+	r := opts.Runner
+	if r == nil {
+		r = ptyRunner{}
+	}
 	return &Manager{
 		cwd:         opts.Cwd,
 		bgLimit:     bg,
 		now:         now,
+		runner:      r,
+		bufCap:      opts.RingBufferCap,
 		jobs:        map[string]*Job{},
+		outputs:     map[string]*RingBuffer{},
 		bgRunning:   map[string]struct{}{},
 		ulidEntropy: ulid.Monotonic(rand.Reader, 0),
 	}
 }
 
-// Submit enqueues a new shell command. Returns the freshly-minted
-// Job so callers can subscribe to its state OR look up its short
-// ID. The Manager mints a ULID, stamps SubmittedAt, captures cwd,
-// and adds to the appropriate queue/pool — but does NOT spawn the
-// PTY in S0 (that's S1).
+// Submit enqueues a new shell command and immediately advances the
+// queue. Returns the freshly-minted Job so callers can subscribe to
+// its state OR look up its short ID. If a slot is open the job is
+// already running by the time Submit returns; otherwise it sits in
+// the appropriate queue.
 //
-// On the foreground path: if no foreground job is running, the
-// caller's expectation is that the Manager picks this one up
-// immediately. S0 just records "ready to run"; S2 wires the actual
-// pickup.
+// Foreground path: if no foreground job is running, this submission
+// is picked up immediately. Otherwise it joins the FIFO and waits.
 //
-// On the background path: the job joins the bg pool. S2 enforces
-// the bgLimit; S0 just records the intent.
+// Background path: if the bg pool has room (< bgLimit running), this
+// submission spawns immediately in parallel. Otherwise it queues.
 func (m *Manager) Submit(ctx context.Context, command string, mode Mode) (*Job, error) {
 	command = trimCommand(command)
 	if command == "" {
@@ -145,7 +185,7 @@ func (m *Manager) Submit(ctx context.Context, command string, mode Mode) (*Job, 
 		m.mu.Unlock()
 		return nil, fmt.Errorf("usershell: mint job id: %w", err)
 	}
-	_, cancel := context.WithCancel(ctx)
+	jobCtx, cancel := context.WithCancel(ctx)
 	job := NewJob(id, command, m.cwd, mode, cancel)
 	job.SubmittedAt = m.now().UTC().Truncate(time.Millisecond)
 	m.jobs[id] = job
@@ -153,11 +193,169 @@ func (m *Manager) Submit(ctx context.Context, command string, mode Mode) (*Job, 
 	case Foreground:
 		m.fgQueue = append(m.fgQueue, id)
 	case Background:
-		// S2 will gate this on bgLimit + actually spawn; S0 just
-		// records the intent so Jobs() reports it as "pending".
+		m.bgQueue = append(m.bgQueue, id)
 	}
+	// Pick up jobs while there's capacity. This is a no-op when
+	// the queues are empty AND every slot is full; the same loop
+	// runs after every terminal transition to drain backlog.
+	m.advanceLocked(jobCtx)
 	m.mu.Unlock()
-	return job, ErrNotImplemented
+	return job, nil
+}
+
+// advanceLocked promotes pending jobs to running while there's
+// room. Caller must hold m.mu.
+//
+// We pass spawnCtx so the very first promotion of a freshly-
+// submitted job inherits the caller's context. Subsequent
+// promotions (driven by other jobs ending) use context.Background()
+// — the Manager outlives the Submit caller; we don't want a Submit
+// caller cancelling its ctx to also kill jobs queued behind it.
+func (m *Manager) advanceLocked(spawnCtx context.Context) {
+	// Foreground: at most one running.
+	for m.fgRunning == "" && len(m.fgQueue) > 0 {
+		id := m.fgQueue[0]
+		m.fgQueue = m.fgQueue[1:]
+		job, ok := m.jobs[id]
+		if !ok || job.State() != StatePending {
+			// Cancelled-before-pickup or stale entry; skip.
+			continue
+		}
+		m.fgRunning = id
+		m.startLocked(spawnCtx, job)
+		spawnCtx = context.Background() // only the first uses caller ctx
+	}
+	// Background: fill up to bgLimit.
+	for len(m.bgRunning) < m.bgLimit && len(m.bgQueue) > 0 {
+		id := m.bgQueue[0]
+		m.bgQueue = m.bgQueue[1:]
+		job, ok := m.jobs[id]
+		if !ok || job.State() != StatePending {
+			continue
+		}
+		m.bgRunning[id] = struct{}{}
+		m.startLocked(spawnCtx, job)
+		spawnCtx = context.Background()
+	}
+}
+
+// startLocked spawns the runner for a job and wires the reader/wait
+// goroutines. Caller must hold m.mu. Failure to start transitions
+// the job to Failed inline.
+func (m *Manager) startLocked(parent context.Context, job *Job) {
+	// Allocate the per-job ring buffer + transition to running.
+	rb := NewRingBuffer(m.bufCap)
+	m.outputs[job.ID] = rb
+	if err := job.transition(StateRunning); err != nil {
+		// Shouldn't happen — the queues are supposed to only hold
+		// pending jobs — but be defensive.
+		return
+	}
+	m.publishStateLocked(job.ID, StateRunning)
+
+	// Per-job context: descendant of the parent + Manager-cancellable.
+	jobCtx, cancel := context.WithCancel(parent)
+	job.cancel = cancel
+
+	go m.runJob(jobCtx, job, rb)
+}
+
+// runJob is the per-job goroutine that drives the subprocess
+// lifecycle. NOT lock-held — it runs concurrently with the manager.
+func (m *Manager) runJob(ctx context.Context, job *Job, rb *RingBuffer) {
+	reader, wait, kill, err := m.runner.Start(ctx, job.Command, job.Cwd)
+	if err != nil {
+		_ = job.setOutcome(StateFailed, -1, err)
+		m.publishState(job.ID, StateFailed)
+		m.onJobTerminal(job.ID)
+		return
+	}
+
+	// Reader goroutine: copy PTY → ring buffer + publish chunks.
+	readDone := make(chan struct{})
+	go func() {
+		defer close(readDone)
+		buf := make([]byte, 4096)
+		for {
+			n, err := reader.Read(buf)
+			if n > 0 {
+				_, _ = rb.Write(buf[:n])
+				chunk := make([]byte, n)
+				copy(chunk, buf[:n])
+				m.publish(Update{JobID: job.ID, State: StateRunning, Output: chunk})
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
+
+	exit := 0
+	cancelled := false
+	select {
+	case <-ctx.Done():
+		cancelled = true
+		kill()
+	default:
+	}
+
+	if !cancelled {
+		exitCh := make(chan int, 1)
+		errCh := make(chan error, 1)
+		go func() {
+			ec, werr := wait()
+			if werr != nil {
+				errCh <- werr
+				return
+			}
+			exitCh <- ec
+		}()
+		select {
+		case ec := <-exitCh:
+			exit = ec
+		case werr := <-errCh:
+			_ = job.setOutcome(StateFailed, -1, werr)
+			m.publishState(job.ID, StateFailed)
+			m.onJobTerminal(job.ID)
+			<-readDone
+			return
+		case <-ctx.Done():
+			cancelled = true
+			kill()
+			ec, _ := wait()
+			exit = ec
+		}
+	} else {
+		ec, _ := wait()
+		exit = ec
+	}
+
+	<-readDone
+
+	var next State
+	switch {
+	case cancelled:
+		next = StateCancelled
+	case exit == 0:
+		next = StateDone
+	default:
+		next = StateFailed
+	}
+	_ = job.setOutcome(next, exit, nil)
+	m.publishState(job.ID, next)
+	m.onJobTerminal(job.ID)
+}
+
+// onJobTerminal removes the job from running slots + drains the
+// queue. Called from runJob; takes the lock internally.
+func (m *Manager) onJobTerminal(id string) {
+	m.mu.Lock()
+	if m.fgRunning == id {
+		m.fgRunning = ""
+	}
+	delete(m.bgRunning, id)
+	m.advanceLocked(context.Background())
+	m.mu.Unlock()
 }
 
 // Cancel requests termination of the named job. If the job is
@@ -298,6 +496,71 @@ func (m *Manager) Get(id string) (Snapshot, error) {
 		return Snapshot{}, ErrUnknownJob
 	}
 	return j.Snapshot(), nil
+}
+
+// Subscribe returns a channel that receives Update notifications
+// for every job state change + output chunk. The channel buffer is
+// generous (256) but non-blocking sends mean a slow consumer will
+// drop events — callers that need exact-once delivery should also
+// poll Jobs() / Output().
+//
+// The unsubscribe func must be called when the consumer is done so
+// the Manager can free the slot. Safe to call after Manager.Close.
+func (m *Manager) Subscribe() (<-chan Update, func()) {
+	ch := make(chan Update, 256)
+	m.subMu.Lock()
+	m.subscribers = append(m.subscribers, ch)
+	m.subMu.Unlock()
+	unsub := func() {
+		m.subMu.Lock()
+		defer m.subMu.Unlock()
+		for i, c := range m.subscribers {
+			if c == ch {
+				m.subscribers = append(m.subscribers[:i], m.subscribers[i+1:]...)
+				return
+			}
+		}
+	}
+	return ch, unsub
+}
+
+// Output returns a snapshot of the named job's captured output, or
+// nil if no buffer exists yet (job still pending, or unknown id).
+// The returned slice is freshly allocated; caller may mutate it.
+func (m *Manager) Output(id string) []byte {
+	m.mu.RLock()
+	rb, ok := m.outputs[id]
+	m.mu.RUnlock()
+	if !ok {
+		return nil
+	}
+	return rb.Snapshot()
+}
+
+// publish best-effort fans an Update out to every subscriber. A
+// full channel drops; we never block the runJob goroutine.
+func (m *Manager) publish(u Update) {
+	m.subMu.Lock()
+	subs := make([]chan Update, len(m.subscribers))
+	copy(subs, m.subscribers)
+	m.subMu.Unlock()
+	for _, c := range subs {
+		select {
+		case c <- u:
+		default:
+		}
+	}
+}
+
+// publishState is the convenience wrapper for state-only updates.
+func (m *Manager) publishState(id string, st State) {
+	m.publish(Update{JobID: id, State: st})
+}
+
+// publishStateLocked is called from advanceLocked which already
+// holds m.mu. We still take subMu inside publish.
+func (m *Manager) publishStateLocked(id string, st State) {
+	m.publish(Update{JobID: id, State: st})
 }
 
 // Close cancels every still-running job and prevents further

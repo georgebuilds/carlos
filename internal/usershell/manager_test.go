@@ -40,27 +40,32 @@ func TestNew_ClockOverride(t *testing.T) {
 	}
 }
 
-// TestSubmit_ReturnsJobAndErrNotImplemented exercises the S0
-// contract: Submit lands the Job in the registry but the spawn
-// path is intentionally stubbed.
-func TestSubmit_ReturnsJobAndErrNotImplemented(t *testing.T) {
-	m := New(Options{Cwd: "/tmp"})
+// TestSubmit_RunsViaInjectedRunner verifies the happy-path: a
+// fake runner produces deterministic output + exit code, the
+// Manager promotes the job to running, captures output into the
+// ring buffer, and transitions to Done.
+func TestSubmit_RunsViaInjectedRunner(t *testing.T) {
+	fr := &fakeRunner{output: "hello\n", exit: 0}
+	m := New(Options{Cwd: "/tmp", Runner: fr})
 	defer m.Close()
 	job, err := m.Submit(context.Background(), "echo hi", Foreground)
-	if !errors.Is(err, ErrNotImplemented) {
-		t.Errorf("Submit should return ErrNotImplemented in S0; got %v", err)
+	if err != nil {
+		t.Fatal(err)
 	}
 	if job == nil {
-		t.Fatal("Submit should still return the Job")
+		t.Fatal("Submit returned nil job")
 	}
-	if job.Command != "echo hi" {
-		t.Errorf("Job command: %q", job.Command)
+	if job.Command != "echo hi" || job.Cwd != "/tmp" {
+		t.Errorf("Job fields: %+v", job)
 	}
-	if job.Cwd != "/tmp" {
-		t.Errorf("Job cwd: %q", job.Cwd)
+	if err := waitForState(t, m, job.ID, StateDone, time.Second); err != nil {
+		t.Fatal(err)
 	}
-	if job.State() != StatePending {
-		t.Errorf("Initial state: %v", job.State())
+	if got := string(m.Output(job.ID)); got != "hello\n" {
+		t.Errorf("captured output: want %q got %q", "hello\n", got)
+	}
+	if snap, _ := m.Get(job.ID); snap.ExitCode != 0 {
+		t.Errorf("exit code: %d", snap.ExitCode)
 	}
 }
 
@@ -90,14 +95,24 @@ func TestSubmit_AfterCloseErrors(t *testing.T) {
 }
 
 func TestSubmit_QueuesForegroundJobs(t *testing.T) {
-	m := New(Options{})
+	br := newBlockingRunner("", 0)
+	m := New(Options{Runner: br})
 	defer m.Close()
-	for range 3 {
-		_, _ = m.Submit(context.Background(), "echo", Foreground)
+	// Submit 3 fg jobs. First runs (blocked); other two queue.
+	a, _ := m.Submit(context.Background(), "a", Foreground)
+	b, _ := m.Submit(context.Background(), "b", Foreground)
+	c, _ := m.Submit(context.Background(), "c", Foreground)
+	if err := waitForState(t, m, a.ID, StateRunning, time.Second); err != nil {
+		t.Fatal(err)
 	}
-	if len(m.fgQueue) != 3 {
-		t.Errorf("fgQueue should hold 3, got %d", len(m.fgQueue))
+	if len(m.fgQueue) != 2 {
+		t.Errorf("fgQueue should hold the 2 waiting jobs, got %d", len(m.fgQueue))
 	}
+	// b and c should still be pending.
+	if b.State() != StatePending || c.State() != StatePending {
+		t.Errorf("b=%v c=%v; want both pending", b.State(), c.State())
+	}
+	br.release()
 }
 
 func TestCancel_UnknownJob(t *testing.T) {
@@ -109,52 +124,67 @@ func TestCancel_UnknownJob(t *testing.T) {
 }
 
 func TestCancel_PendingJob_TransitionsToCancelled(t *testing.T) {
-	m := New(Options{})
+	br := newBlockingRunner("", 0)
+	m := New(Options{Runner: br})
 	defer m.Close()
-	job, _ := m.Submit(context.Background(), "sleep 60", Foreground)
-	if err := m.Cancel(job.ID); err != nil {
+	// Job 1 runs and blocks; job 2 is the pending one we'll cancel.
+	a, _ := m.Submit(context.Background(), "head", Foreground)
+	pending, _ := m.Submit(context.Background(), "sleep 60", Foreground)
+	if err := waitForState(t, m, a.ID, StateRunning, time.Second); err != nil {
 		t.Fatal(err)
 	}
-	if job.State() != StateCancelled {
-		t.Errorf("pending cancel: want Cancelled, got %v", job.State())
+	if pending.State() != StatePending {
+		t.Fatalf("pending job state: %v", pending.State())
 	}
-	// Job removed from queue.
+	if err := m.Cancel(pending.ID); err != nil {
+		t.Fatal(err)
+	}
+	if pending.State() != StateCancelled {
+		t.Errorf("pending cancel: want Cancelled, got %v", pending.State())
+	}
 	for _, qid := range m.fgQueue {
-		if qid == job.ID {
+		if qid == pending.ID {
 			t.Error("cancelled job still in queue")
 		}
 	}
+	br.release()
 }
 
 func TestCancel_Idempotent(t *testing.T) {
-	m := New(Options{})
+	fr := &fakeRunner{output: "", exit: 0}
+	m := New(Options{Runner: fr})
 	defer m.Close()
 	job, _ := m.Submit(context.Background(), "echo", Foreground)
+	// Wait for natural completion, then double-cancel is a no-op.
+	_ = waitForState(t, m, job.ID, StateDone, time.Second)
 	if err := m.Cancel(job.ID); err != nil {
-		t.Fatal(err)
+		t.Errorf("cancel of done: %v", err)
 	}
 	if err := m.Cancel(job.ID); err != nil {
-		t.Errorf("second cancel should be a no-op; got %v", err)
+		t.Errorf("second cancel: %v", err)
 	}
 }
 
 func TestBackground_NotRunning(t *testing.T) {
-	m := New(Options{})
+	fr := &fakeRunner{output: "", exit: 0}
+	m := New(Options{Runner: fr})
 	defer m.Close()
 	job, _ := m.Submit(context.Background(), "echo", Foreground)
+	_ = waitForState(t, m, job.ID, StateDone, time.Second)
+	// Job has completed; not the fg runner anymore.
 	if err := m.Background(job.ID); !errors.Is(err, ErrInvalidTransition) {
-		t.Errorf("Background of pending job: want ErrInvalidTransition, got %v", err)
+		t.Errorf("Background of completed job: want ErrInvalidTransition, got %v", err)
 	}
 }
 
 func TestBackground_MovesRunningJob(t *testing.T) {
-	m := New(Options{})
+	br := newBlockingRunner("", 0)
+	m := New(Options{Runner: br})
 	defer m.Close()
 	job, _ := m.Submit(context.Background(), "echo", Foreground)
-	// Simulate the manager promoting it to the fgRunning slot — S2
-	// will do this automatically; for S0 we drive it manually.
-	m.fgRunning = job.ID
-	_ = job.transition(StateRunning)
+	if err := waitForState(t, m, job.ID, StateRunning, time.Second); err != nil {
+		t.Fatal(err)
+	}
 	if err := m.Background(job.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -167,47 +197,56 @@ func TestBackground_MovesRunningJob(t *testing.T) {
 	if !job.Backgrounded {
 		t.Error("Backgrounded flag not set")
 	}
+	br.release()
 }
 
 func TestBackground_PoolFull(t *testing.T) {
-	m := New(Options{BackgroundParallelism: 1})
+	br := newBlockingRunner("", 0)
+	m := New(Options{BackgroundParallelism: 1, Runner: br})
 	defer m.Close()
-	// Fill bg pool with a synthetic running job.
-	other, _ := m.Submit(context.Background(), "tail -f /tmp/x", Background)
-	_ = other.transition(StateRunning)
-	_ = other.markBackgrounded(true)
-	m.bgRunning[other.ID] = struct{}{}
-
-	job, _ := m.Submit(context.Background(), "echo", Foreground)
-	m.fgRunning = job.ID
-	_ = job.transition(StateRunning)
-	if err := m.Background(job.ID); err == nil {
+	// Fill bg pool: submit one bg job, wait until it's running.
+	other, _ := m.Submit(context.Background(), "tail", Background)
+	if err := waitForState(t, m, other.ID, StateRunning, time.Second); err != nil {
+		t.Fatal(err)
+	}
+	// Submit fg job; running blocked.
+	fg, _ := m.Submit(context.Background(), "echo", Foreground)
+	if err := waitForState(t, m, fg.ID, StateRunning, time.Second); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Background(fg.ID); err == nil {
 		t.Error("expected error when bg pool full")
 	}
+	br.release()
 }
 
 func TestForeground_NotInBackground(t *testing.T) {
-	m := New(Options{})
+	br := newBlockingRunner("", 0)
+	m := New(Options{Runner: br})
 	defer m.Close()
 	job, _ := m.Submit(context.Background(), "echo", Foreground)
+	if err := waitForState(t, m, job.ID, StateRunning, time.Second); err != nil {
+		t.Fatal(err)
+	}
+	// Job is fg-running, not bg.
 	if err := m.Foreground(job.ID); !errors.Is(err, ErrInvalidTransition) {
 		t.Errorf("Foreground of non-bg job: want ErrInvalidTransition, got %v", err)
 	}
+	br.release()
 }
 
 func TestForeground_SwapsIncumbent(t *testing.T) {
-	m := New(Options{BackgroundParallelism: 2})
+	br := newBlockingRunner("", 0)
+	m := New(Options{BackgroundParallelism: 2, Runner: br})
 	defer m.Close()
-
 	bg, _ := m.Submit(context.Background(), "tail", Background)
-	_ = bg.transition(StateRunning)
-	_ = bg.markBackgrounded(true)
-	m.bgRunning[bg.ID] = struct{}{}
-
 	fg, _ := m.Submit(context.Background(), "vim", Foreground)
-	_ = fg.transition(StateRunning)
-	m.fgRunning = fg.ID
-
+	if err := waitForState(t, m, bg.ID, StateRunning, time.Second); err != nil {
+		t.Fatal(err)
+	}
+	if err := waitForState(t, m, fg.ID, StateRunning, time.Second); err != nil {
+		t.Fatal(err)
+	}
 	if err := m.Foreground(bg.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -223,25 +262,31 @@ func TestForeground_SwapsIncumbent(t *testing.T) {
 	if bg.Backgrounded {
 		t.Error("promoted job should have Backgrounded=false")
 	}
+	br.release()
 }
 
 func TestJobs_StableOrder(t *testing.T) {
-	m := New(Options{})
+	br := newBlockingRunner("", 0)
+	m := New(Options{Runner: br})
 	defer m.Close()
-	// Queue some foreground jobs.
 	a, _ := m.Submit(context.Background(), "a", Foreground)
 	b, _ := m.Submit(context.Background(), "b", Foreground)
 	c, _ := m.Submit(context.Background(), "c", Foreground)
+	// a runs (blocked), b + c queue.
+	_ = waitForState(t, m, a.ID, StateRunning, time.Second)
 	got := m.Jobs()
 	if len(got) != 3 {
 		t.Fatalf("Jobs(): want 3, got %d", len(got))
 	}
-	wantOrder := []string{a.ID, b.ID, c.ID}
+	wantOrder := []string{b.ID, c.ID, a.ID}
+	// Jobs() emits queued first, then fgRunning. a is running, so
+	// it appears AFTER the queued entries. Validate accordingly.
 	for i, g := range got {
 		if g.ID != wantOrder[i] {
 			t.Errorf("Jobs()[%d]: want %q got %q", i, wantOrder[i], g.ID)
 		}
 	}
+	br.release()
 }
 
 func TestGet_UnknownJob(t *testing.T) {
@@ -263,24 +308,20 @@ func TestClose_Idempotent(t *testing.T) {
 }
 
 func TestClose_CancelsRunningJobs(t *testing.T) {
-	m := New(Options{})
-	job, _ := m.Submit(context.Background(), "echo", Foreground)
-	// Promote to running so Close has something to cancel.
-	_ = job.transition(StateRunning)
-	cancelled := make(chan struct{})
-	// Hand out a fresh cancel that signals when called.
-	_, c := context.WithCancel(context.Background())
-	job.cancel = func() {
-		c()
-		close(cancelled)
+	br := newBlockingRunner("", 0)
+	m := New(Options{Runner: br})
+	job, _ := m.Submit(context.Background(), "sleep-forever", Foreground)
+	if err := waitForState(t, m, job.ID, StateRunning, time.Second); err != nil {
+		t.Fatal(err)
 	}
 	if err := m.Close(); err != nil {
 		t.Fatal(err)
 	}
-	select {
-	case <-cancelled:
-	case <-time.After(time.Second):
-		t.Error("Close did not cancel running job")
+	// Close cancels the per-job ctx; the fake runner's wait sees
+	// the kill signal and returns "killed", which we map to
+	// StateCancelled.
+	if err := waitForState(t, m, job.ID, StateCancelled, time.Second); err != nil {
+		t.Errorf("Close did not cancel running job: %v", err)
 	}
 }
 
@@ -296,6 +337,142 @@ func TestTrimCommand(t *testing.T) {
 		if got := trimCommand(in); got != want {
 			t.Errorf("trimCommand(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+func TestManager_FailedRunnerStart(t *testing.T) {
+	fr := &fakeRunner{startErr: errors.New("shell missing")}
+	m := New(Options{Runner: fr})
+	defer m.Close()
+	job, err := m.Submit(context.Background(), "echo", Foreground)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := waitForState(t, m, job.ID, StateFailed, time.Second); err != nil {
+		t.Fatal(err)
+	}
+	snap, _ := m.Get(job.ID)
+	if snap.FailErrMsg == "" {
+		t.Error("expected FailErrMsg set on spawn failure")
+	}
+}
+
+func TestManager_NonZeroExitMapsToFailed(t *testing.T) {
+	fr := &fakeRunner{exit: 1}
+	m := New(Options{Runner: fr})
+	defer m.Close()
+	job, _ := m.Submit(context.Background(), "false", Foreground)
+	if err := waitForState(t, m, job.ID, StateFailed, time.Second); err != nil {
+		t.Fatal(err)
+	}
+	snap, _ := m.Get(job.ID)
+	if snap.ExitCode != 1 {
+		t.Errorf("exit code: got %d", snap.ExitCode)
+	}
+}
+
+func TestManager_QueueDrainsAfterEnd(t *testing.T) {
+	fr := &fakeRunner{output: "", exit: 0}
+	m := New(Options{Runner: fr})
+	defer m.Close()
+	a, _ := m.Submit(context.Background(), "a", Foreground)
+	b, _ := m.Submit(context.Background(), "b", Foreground)
+	c, _ := m.Submit(context.Background(), "c", Foreground)
+	for _, j := range []*Job{a, b, c} {
+		if err := waitForState(t, m, j.ID, StateDone, 2*time.Second); err != nil {
+			t.Fatalf("job %s: %v", j.ID, err)
+		}
+	}
+	if fr.startsRun != 3 {
+		t.Errorf("runner Start should have been called 3 times; got %d", fr.startsRun)
+	}
+}
+
+func TestManager_BackgroundParallelism(t *testing.T) {
+	br := newBlockingRunner("", 0)
+	m := New(Options{BackgroundParallelism: 2, Runner: br})
+	defer m.Close()
+	jobs := make([]*Job, 4)
+	for i := range jobs {
+		j, _ := m.Submit(context.Background(), "bg", Background)
+		jobs[i] = j
+	}
+	// First two should be running; last two queued.
+	for i, j := range jobs[:2] {
+		if err := waitForState(t, m, j.ID, StateRunning, time.Second); err != nil {
+			t.Errorf("bg[%d] not running: %v", i, err)
+		}
+	}
+	// Give the queued ones a beat — they should NOT have started.
+	time.Sleep(20 * time.Millisecond)
+	for i, j := range jobs[2:] {
+		if j.State() != StatePending {
+			t.Errorf("bg[%d] should still be pending; got %v", i+2, j.State())
+		}
+	}
+	br.release()
+}
+
+func TestManager_Subscribe_DeliversStateUpdates(t *testing.T) {
+	br := newBlockingRunner("", 0)
+	m := New(Options{Runner: br})
+	defer m.Close()
+	ch, unsub := m.Subscribe()
+	defer unsub()
+	job, _ := m.Submit(context.Background(), "x", Foreground)
+	gotRunning := false
+	deadline := time.After(time.Second)
+loop:
+	for {
+		select {
+		case u := <-ch:
+			if u.JobID == job.ID && u.State == StateRunning {
+				gotRunning = true
+				break loop
+			}
+		case <-deadline:
+			break loop
+		}
+	}
+	if !gotRunning {
+		t.Error("never received running-state Update")
+	}
+	br.release()
+}
+
+func TestManager_Subscribe_DeliversOutputChunks(t *testing.T) {
+	fr := &fakeRunner{output: "stream-me", exit: 0}
+	m := New(Options{Runner: fr})
+	defer m.Close()
+	ch, unsub := m.Subscribe()
+	defer unsub()
+	job, _ := m.Submit(context.Background(), "x", Foreground)
+	got := ""
+	deadline := time.After(time.Second)
+loop:
+	for {
+		select {
+		case u := <-ch:
+			if u.JobID == job.ID && len(u.Output) > 0 {
+				got += string(u.Output)
+				if got == "stream-me" {
+					break loop
+				}
+			}
+		case <-deadline:
+			break loop
+		}
+	}
+	if got != "stream-me" {
+		t.Errorf("captured chunks: want stream-me got %q", got)
+	}
+}
+
+func TestManager_Output_Empty(t *testing.T) {
+	m := New(Options{})
+	defer m.Close()
+	if got := m.Output("no-such"); got != nil {
+		t.Errorf("unknown id should return nil; got %v", got)
 	}
 }
 
