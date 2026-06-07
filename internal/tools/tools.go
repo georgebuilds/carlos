@@ -188,6 +188,7 @@ func NewDefaultRegistryWithIdentity(
 	// else DuckDuckGo HTML fallback).
 	r.Register(NewWebFetchTool())
 	r.Register(NewWebSearchTool())
+	r.Register(NewCodeSearchTool())
 	// http_request: method-parametric HTTP for API consumption.
 	// web_fetch handles human-readable web pages (GET + HTML→text);
 	// http_request handles JSON / REST / GraphQL / webhooks with raw
