@@ -35,7 +35,7 @@ Three layers, evaluated in order, in `internal/agent/policy.go`:
 2. Workspace trust. When the current working directory is in `~/.carlos/trusted-workspaces.json`, a curated set of read-only bash verbs auto-approves: `ls`, `pwd`, `cat`, `head`, `tail`, `wc`, `file`, `which`, `echo`, and the read-only `git` subcommands (`status`, `diff`, `log`, `show`, `blame`, `branch`, `ls-files`, `ls-tree`, `rev-parse`, `describe`, `remote`, read-form `config`). Build, test, and install tools (cargo, npm, yarn, pnpm, go test, go build, make, cmake, bazel, ninja) are explicitly excluded. Mutating filesystem verbs are excluded. Shell metacharacters anywhere in the command disqualify the whole call. Implementation lives in `internal/workspace`.
 3. Session fallback. The bubbletea TUI overlay prompts the user; their answer can cache as a session "Always" entry.
 
-Every decision is captured by an optional `AuditSink`. Reasons: `ReasonBuiltinAllow`, `ReasonWorkspaceAllow`, `ReasonSessionAllow`, `ReasonSessionDeny`, `ReasonCrossFrameAllow`, `ReasonCrossFrameDeny`. The cross-frame detector forces the prompt path on write/edit inputs whose path lands in a non-active frame's subtree.
+Every decision is captured by an optional `AuditSink`. Reasons: `ReasonBuiltinAllow`, `ReasonWorkspaceAllow`, `ReasonSessionAllow`, `ReasonSessionDeny`, `ReasonCrossFrameAllow`, `ReasonCrossFrameDeny`. The Phase F-12 cross-frame detector forces the prompt path on write/edit inputs whose path lands in a non-active frame's subtree.
 
 A first-launch trust prompt surfaces in the overlay slot when the cwd contains a project marker (.git, go.mod, package.json, etc.) and isn't already trusted. Y persists via the same store the /trust slash uses; N/Esc dismiss for the session.
 
@@ -55,7 +55,7 @@ Owned by `internal/tui/slash`. Mirrored from Claude Code: `/clear`, `/help`, `/e
 - [internal/workspace](https://github.com/georgebuilds/carlos/tree/main/internal/workspace): trusted-workspaces store and read-only bash classifier
 - [internal/research](https://github.com/georgebuilds/carlos/tree/main/internal/research): decompose, search, fetch, read, synthesize, verify
 - [internal/skills](https://github.com/georgebuilds/carlos/tree/main/internal/skills): skill format, inducer, judge, replay-eval, bundle-directory loader, frame filter
-- [internal/usershell](https://github.com/georgebuilds/carlos/tree/main/internal/usershell): `!` prefix driver, jobs overlay, history
+- [internal/usershell](https://github.com/georgebuilds/carlos/tree/main/internal/usershell): Phase U `!` prefix driver, jobs overlay, history
 - [internal/gateway](https://github.com/georgebuilds/carlos/tree/main/internal/gateway): ntfy, Telegram, Signal, custom adapters
 - [internal/daemon](https://github.com/georgebuilds/carlos/tree/main/internal/daemon): background scheduler under launchd or systemd (per-fire frame plumbing)
 - [internal/schedule](https://github.com/georgebuilds/carlos/tree/main/internal/schedule): cron plus natural language grammar (Schedule.Frame field)
@@ -70,8 +70,8 @@ The `Capabilities()` accessor exposes per-provider feature flags: `ParallelToolU
 
 - `config.yaml`: user prefs, provider keys, schedules, vault config, frames
 - `state.db`: SQLite event log plus memory FTS5 (`summaries.frame` column for per-frame scoping)
-- `trusted-workspaces.json`: trust store, 0600 with atomic writes
-- `shell-history`: history file (shared across frames)
+- `trusted-workspaces.json`: Phase T-2 trust store, 0600 with atomic writes
+- `shell-history`: Phase U history file (shared across frames)
 - `frames/<name>/research/<slug>-<unix-ts>.md`: research reports
 - `frames/<name>/usershell/<job-id>.log`: per-job shell output
 - `frames/<name>/worktrees/<id>/`: sub-agent worktrees
