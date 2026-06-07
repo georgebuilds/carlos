@@ -39,15 +39,21 @@ const (
 	stageReviewing // after all four, deciding to advance or loop
 )
 
-// providerModel is screen 3. It walks the provider list, asks y/n, on yes
-// prompts for the secret, and loops until at least one is configured.
+// providerModel is screen 3. It walks the provider list, asks y/l/n, on yes
+// prompts for the secret, and loops until at least one is configured (or
+// at least one row exists with a "set later" placeholder).
 type providerModel struct {
 	idx     int
 	stage   providerStage
 	enabled map[string]bool
 	keys    map[string]string
-	input   textinput.Model
-	warn    string // non-fatal validation message shown above the prompt
+	// setLater marks providers the user chose to configure later.
+	// Distinct from skipped providers (which don't get a config row
+	// at all): set-later providers land in cfg.Providers with no
+	// secret, enabled=false, so `/provider <name>` can fill them in.
+	setLater map[string]bool
+	input    textinput.Model
+	warn     string // non-fatal validation message shown above the prompt
 }
 
 // providerResult is the payload emitted on advance.
@@ -62,11 +68,12 @@ func newProviderModel() providerModel {
 	ti.Width = 60
 	ti.Prompt = "> "
 	return providerModel{
-		idx:     0,
-		stage:   stageAsking,
-		enabled: map[string]bool{},
-		keys:    map[string]string{},
-		input:   ti,
+		idx:      0,
+		stage:    stageAsking,
+		enabled:  map[string]bool{},
+		keys:     map[string]string{},
+		setLater: map[string]bool{},
+		input:    ti,
 	}
 }
 
@@ -98,9 +105,19 @@ func (m providerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.stage = stageEntering
 				m.warn = ""
 				return m, textinput.Blink
+			case "l":
+				// Set later: writes a disabled placeholder row so
+				// `/provider <name>` (or `carlos onboard --only
+				// providers`) can fill in the secret without
+				// re-running the full onboarding.
+				name := providerEntries[m.idx].name
+				m.enabled[name] = false
+				m.setLater[name] = true
+				return m.nextProvider(), nil
 			case "n", "enter":
-				// Skip this provider, move to the next.
+				// Skip this provider entirely (no config row).
 				m.enabled[providerEntries[m.idx].name] = false
+				m.setLater[providerEntries[m.idx].name] = false
 				return m.nextProvider(), nil
 			}
 		}
@@ -113,7 +130,7 @@ func (m providerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				value := strings.TrimSpace(m.input.Value())
 				entry := providerEntries[m.idx]
 				if value == "" {
-					m.warn = fmt.Sprintf("%s cannot be empty — press [n] on the previous step to skip", entry.secretLabel)
+					m.warn = fmt.Sprintf("%s cannot be empty. Press esc to back out and pick [l] to set later, or [n] to skip.", entry.secretLabel)
 					return m, nil
 				}
 				m.enabled[entry.name] = true
@@ -179,25 +196,34 @@ func (m providerModel) anyConfigured() bool {
 }
 
 // toResult converts the per-key collected state into a providerResult
-// suitable for merging into the config.
+// suitable for merging into the config. Both configured and
+// "set-later" providers land in the map; only configured ones can
+// claim the default-provider slot since the default needs a working
+// secret to dispatch through.
 func (m providerModel) toResult() providerResult {
 	r := providerResult{providers: map[string]config.ProviderConfig{}}
 	for _, e := range providerEntries {
-		if !m.enabled[e.name] {
-			continue
-		}
-		pc := config.ProviderConfig{}
-		if e.isURL {
-			pc.BaseURL = m.keys[e.name]
-		} else {
-			pc.APIKey = m.keys[e.name]
-		}
-		r.providers[e.name] = pc
-		if r.defaultProvider == "" {
-			// First-configured wins as default. The model picker
-			// screen can present this to the user later if we add
-			// a "change default" affordance.
-			r.defaultProvider = e.name
+		switch {
+		case m.enabled[e.name]:
+			pc := config.ProviderConfig{}
+			if e.isURL {
+				pc.BaseURL = m.keys[e.name]
+			} else {
+				pc.APIKey = m.keys[e.name]
+			}
+			r.providers[e.name] = pc
+			if r.defaultProvider == "" {
+				// First-configured wins as default. The model picker
+				// screen can present this to the user later if we add
+				// a "change default" affordance.
+				r.defaultProvider = e.name
+			}
+		case m.setLater[e.name]:
+			// Placeholder row with no secret. config.IsComplete
+			// rejects this until the user fills in a key, so the
+			// next launch will re-trigger onboarding if no other
+			// provider was configured.
+			r.providers[e.name] = config.ProviderConfig{}
 		}
 	}
 	return r
@@ -219,10 +245,16 @@ func (m providerModel) View() string {
 			mark = lipgloss.NewStyle().Foreground(colorAccent).Bold(true).Render("[>]")
 		case m.enabled[e.name]:
 			mark = lipgloss.NewStyle().Foreground(colorSuccess).Render("[x]")
+		case m.setLater[e.name]:
+			mark = lipgloss.NewStyle().Foreground(colorWarn).Render("[~]")
 		default:
 			mark = lipgloss.NewStyle().Foreground(colorMuted).Render("[-]")
 		}
-		sb.WriteString(fmt.Sprintf("  %s  %s\n", mark, e.label))
+		suffix := ""
+		if m.setLater[e.name] {
+			suffix = " " + styleHint.Render("(set later)")
+		}
+		sb.WriteString(fmt.Sprintf("  %s  %s%s\n", mark, e.label, suffix))
 	}
 	sb.WriteString("\n")
 
@@ -234,12 +266,18 @@ func (m providerModel) View() string {
 	switch m.stage {
 	case stageAsking:
 		e := providerEntries[m.idx]
-		sb.WriteString(fmt.Sprintf("Enable %s? %s",
-			lipgloss.NewStyle().Bold(true).Render(e.label),
-			styleHint.Render("[y/N]")))
+		sb.WriteString(fmt.Sprintf("Enable %s?\n",
+			lipgloss.NewStyle().Bold(true).Render(e.label)))
+		sb.WriteString("  ")
+		sb.WriteString(styleKey.Render("[y]"))
+		sb.WriteString(styleHint.Render(" configure now   "))
+		sb.WriteString(styleKey.Render("[l]"))
+		sb.WriteString(styleHint.Render(" set later   "))
+		sb.WriteString(styleKey.Render("[n]"))
+		sb.WriteString(styleHint.Render(" skip"))
 	case stageEntering:
 		e := providerEntries[m.idx]
-		sb.WriteString(fmt.Sprintf("%s — %s:\n", e.label, e.secretLabel))
+		sb.WriteString(fmt.Sprintf("%s %s:\n", e.label, e.secretLabel))
 		sb.WriteString(m.input.View())
 		sb.WriteString("\n")
 		sb.WriteString(styleHint.Render("  [enter] save   [esc] skip this provider"))
