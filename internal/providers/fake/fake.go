@@ -11,6 +11,7 @@ package fake
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/georgebuilds/carlos/internal/providers"
 )
@@ -27,6 +28,12 @@ type Provider struct {
 	script Script
 	// optional: stop after this many events to simulate truncation; 0 = full
 	stopAfter int
+
+	// mu guards lastReq. The agent loop calls Stream from a single
+	// goroutine per turn, but successive turns + the test inspecting
+	// LastRequest from the test goroutine make the access concurrent.
+	mu      sync.Mutex
+	lastReq providers.Request
 }
 
 // New constructs a Provider that emits the given script.
@@ -36,16 +43,41 @@ func New(name string, script Script) *Provider {
 
 // WithStopAfter returns a copy that halts emission after n events. Used to
 // simulate provider stream truncation in the kill-and-resume test.
+//
+// The mutex + lastReq aren't copied — each derived provider gets a fresh
+// LastRequest tracker so concurrent runs over the same script don't fight
+// over the same buffer. (sync.Mutex is non-copyable; vet flags a struct
+// copy of *p as a result.)
 func (p *Provider) WithStopAfter(n int) *Provider {
-	cp := *p
-	cp.stopAfter = n
-	return &cp
+	return &Provider{
+		name:      p.name,
+		caps:      p.caps,
+		script:    p.script,
+		stopAfter: n,
+	}
 }
 
 func (p *Provider) Name() string                       { return p.name }
 func (p *Provider) Capabilities() providers.Capabilities { return p.caps }
 
-func (p *Provider) Stream(ctx context.Context, _ providers.Request) (<-chan providers.Event, error) {
+// LastRequest returns a copy of the most recent providers.Request the
+// agent loop handed to Stream. Tests use this to assert the System
+// field was pinned through the chat -> chatglue -> agent.Run pipeline
+// without being displaced by injection-style user content.
+//
+// Returns the zero providers.Request when Stream has not been called
+// yet.
+func (p *Provider) LastRequest() providers.Request {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.lastReq
+}
+
+func (p *Provider) Stream(ctx context.Context, req providers.Request) (<-chan providers.Event, error) {
+	p.mu.Lock()
+	p.lastReq = req
+	p.mu.Unlock()
+
 	ch := make(chan providers.Event, len(p.script))
 	go func() {
 		defer close(ch)
