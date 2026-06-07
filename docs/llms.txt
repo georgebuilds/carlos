@@ -6,6 +6,10 @@ Carlos is a CLI tool that runs in your terminal. State persists to `~/.carlos/`.
 
 Two distinguishing bets. First, skill induction: carlos watches transcripts and proposes reusable skills, which the user reviews before they enter the library. Second, sub-agent supervision: delegated agents appear in a live manage view with intent, tool calls, progress, diffs, and spend, and the user can join, redirect, or stop any of them mid-flight.
 
+## Frames + modes
+
+Sessions run inside a frame (personal + N user-defined: work, research, side projects, etc.). Each frame carries its own glyph, accent from an 8-name palette, provider + model, vault subtree, `system_prompt_append`, cwd_hints (auto-pick at fresh launch), capabilities, and orchestrator `mode` (solo / tight / orchestrator). Per-frame on-disk layout under `~/.carlos/frames/<name>/{research,usershell,worktrees,digest}/`. Cross-frame READ is free; cross-frame WRITE prompts with a distinct audit reason. Ctrl+F opens the full-screen 3×2 takeover switcher; `/frame switch <name>` swaps the live provider/model without losing the transcript. `/mode <name>` flips the orchestrator mode, which gates the supervisor's spawn cap (solo=0, tight=1, orchestrator=5). `/whoami` echoes the current frame + mode + provider + model.
+
 ## Canonical references
 
 - [README.md](https://github.com/georgebuilds/carlos/blob/main/README.md): user-facing intro, install, layout
@@ -31,26 +35,28 @@ Three layers, evaluated in order, in `internal/agent/policy.go`:
 2. Workspace trust. When the current working directory is in `~/.carlos/trusted-workspaces.json`, a curated set of read-only bash verbs auto-approves: `ls`, `pwd`, `cat`, `head`, `tail`, `wc`, `file`, `which`, `echo`, and the read-only `git` subcommands (`status`, `diff`, `log`, `show`, `blame`, `branch`, `ls-files`, `ls-tree`, `rev-parse`, `describe`, `remote`, read-form `config`). Build, test, and install tools (cargo, npm, yarn, pnpm, go test, go build, make, cmake, bazel, ninja) are explicitly excluded. Mutating filesystem verbs are excluded. Shell metacharacters anywhere in the command disqualify the whole call. Implementation lives in `internal/workspace`.
 3. Session fallback. The bubbletea TUI overlay prompts the user; their answer can cache as a session "Always" entry.
 
-Every decision is captured by an optional `AuditSink`. Reasons: `ReasonBuiltinAllow`, `ReasonWorkspaceAllow`, `ReasonSessionAllow`, `ReasonSessionDeny`.
+Every decision is captured by an optional `AuditSink`. Reasons: `ReasonBuiltinAllow`, `ReasonWorkspaceAllow`, `ReasonSessionAllow`, `ReasonSessionDeny`, `ReasonCrossFrameAllow`, `ReasonCrossFrameDeny`. The Phase F-12 cross-frame detector forces the prompt path on write/edit inputs whose path lands in a non-active frame's subtree.
 
 ## Slash commands
 
-Owned by `internal/tui/slash`. Mirrored from Claude Code: `/clear`, `/help`, `/exit` (alias `/quit`, `/q`), `/compact`, `/model`, `/review`. Carlos-specific: `/insights`, `/skills`, `/memory`, `/schedule`, `/daemon`, `/agents`, `/research`, `/resume`, `/shell`, `/jobs`, `/fg`, `/bg`, `/trust`, `/untrust`, `/trusts`.
+Owned by `internal/tui/slash`. Mirrored from Claude Code: `/clear`, `/help`, `/exit` (alias `/quit`, `/q`), `/compact`, `/model`, `/review`. Carlos-specific: `/insights`, `/skills`, `/memory`, `/schedule`, `/daemon`, `/agents`, `/research`, `/resume`, `/shell`, `/jobs`, `/fg`, `/bg`, `/trust`, `/untrust`, `/trusts`, `/permissions`, `/frame`, `/mode`, `/capabilities`, `/whoami`.
 
 ## Subsystems
 
-- [internal/agent](https://github.com/georgebuilds/carlos/tree/main/internal/agent): tool-use loop, event log, supervision, layered approval policy
-- [internal/tools](https://github.com/georgebuilds/carlos/tree/main/internal/tools): every registered tool
+- [internal/agent](https://github.com/georgebuilds/carlos/tree/main/internal/agent): tool-use loop, event log, supervision, layered approval policy (cross-frame detector + mode-aware spawn cap)
+- [internal/frame](https://github.com/georgebuilds/carlos/tree/main/internal/frame): Frame + Config + Policy, accent palette, paths, migration, modes, render helpers
+- [internal/tools](https://github.com/georgebuilds/carlos/tree/main/internal/tools): every registered tool (`NewDefaultRegistryWithBaseDirAndFrames` is the canonical constructor)
 - [internal/providers](https://github.com/georgebuilds/carlos/tree/main/internal/providers): anthropic, openai, openrouter, ollama, gemini, oacompat
 - [internal/notes](https://github.com/georgebuilds/carlos/tree/main/internal/notes): Obsidian vault index and cache (Goldmark plus miniyaml)
 - [internal/workspace](https://github.com/georgebuilds/carlos/tree/main/internal/workspace): trusted-workspaces store and read-only bash classifier
 - [internal/research](https://github.com/georgebuilds/carlos/tree/main/internal/research): decompose, search, fetch, read, synthesize, verify
-- [internal/skills](https://github.com/georgebuilds/carlos/tree/main/internal/skills): skill format, inducer, judge, replay-eval
+- [internal/skills](https://github.com/georgebuilds/carlos/tree/main/internal/skills): skill format, inducer, judge, replay-eval, bundle-directory loader, frame filter
 - [internal/usershell](https://github.com/georgebuilds/carlos/tree/main/internal/usershell): Phase U `!` prefix driver, jobs overlay, history
 - [internal/gateway](https://github.com/georgebuilds/carlos/tree/main/internal/gateway): ntfy, Telegram, Signal, custom adapters
-- [internal/daemon](https://github.com/georgebuilds/carlos/tree/main/internal/daemon): background scheduler under launchd or systemd
-- [internal/schedule](https://github.com/georgebuilds/carlos/tree/main/internal/schedule): cron plus natural language grammar
-- [internal/tui](https://github.com/georgebuilds/carlos/tree/main/internal/tui): bubbletea chat, manage, onboarding, slash registry
+- [internal/daemon](https://github.com/georgebuilds/carlos/tree/main/internal/daemon): background scheduler under launchd or systemd (per-fire frame plumbing)
+- [internal/schedule](https://github.com/georgebuilds/carlos/tree/main/internal/schedule): cron plus natural language grammar (Schedule.Frame field)
+- [internal/memory](https://github.com/georgebuilds/carlos/tree/main/internal/memory): SQLite FTS5 over summaries (per-frame search + recent helpers)
+- [internal/tui](https://github.com/georgebuilds/carlos/tree/main/internal/tui): bubbletea chat, manage, onboarding, slash registry, frame switcher, new-frame wizard, /permissions, /capabilities
 
 ## Provider capability map
 
@@ -58,14 +64,17 @@ The `Capabilities()` accessor exposes per-provider feature flags: `ParallelToolU
 
 ## Filesystem layout (`~/.carlos/`)
 
-- `config.yaml`: user prefs, provider keys, schedules, vault config
-- `state.db`: SQLite event log plus memory FTS5
+- `config.yaml`: user prefs, provider keys, schedules, vault config, frames
+- `state.db`: SQLite event log plus memory FTS5 (`summaries.frame` column for per-frame scoping)
 - `trusted-workspaces.json`: Phase T-2 trust store, 0600 with atomic writes
-- `shell-history`: Phase U history file
-- `jobs/<job-id>.log`: per-job shell output
-- `research/<slug>-<unix-ts>.md`: research reports
-- `skills/<name>.md`: user-approved skill library
-- `agent-pools/`: sub-agent worktrees and state
+- `shell-history`: Phase U history file (shared across frames)
+- `frames/<name>/research/<slug>-<unix-ts>.md`: research reports
+- `frames/<name>/usershell/<job-id>.log`: per-job shell output
+- `frames/<name>/worktrees/<id>/`: sub-agent worktrees
+- `frames/<name>/digest/`: scheduled-digest artifacts
+- `skills/<name>.md`: user-approved skill library (shared)
+
+Legacy `~/.carlos/{research,usershell,worktrees}/*` paths are idempotently migrated into `frames/personal/<dir>/` on first launch.
 
 Directory permissions are 0700; files containing secrets are 0600.
 

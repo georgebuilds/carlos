@@ -50,12 +50,12 @@ First launch runs a six-screen onboarding (welcome, name, provider, model, daemo
 
 ## Multi-provider
 
-Anthropic, OpenAI, OpenRouter, Ollama. All first-class from day one. Tool-use canonical shape is Anthropic's; adapters normalize others. Capability map honestly exposes what's lost when downgrading (caching, parallel tool use, structured output, vision).
+Anthropic, OpenAI, OpenRouter, Ollama, Gemini. All first-class from day one. Tool-use canonical shape is Anthropic's; adapters normalize others. Capability map honestly exposes what's lost when downgrading (caching, parallel tool use, structured output, vision).
 
 ## What's inside v0
 
 1. A single binary, under 16 MB.
-2. Four providers, one shape.
+2. Five providers, one shape.
 3. A memory that lives in plain markdown. Read it in Obsidian, grep it in your shell. Specialized tools query it 10× to 100× more token-efficiently than grepping and globbing.
 4. Many frames, one carlos. Personal, work, side projects with their own glyphs, colors, rules, and providers. Cross-frame writes always prompt.
 5. Research that goes hard. Many readers fan out, one synthesis returns, every source on file.

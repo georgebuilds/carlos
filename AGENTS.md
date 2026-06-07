@@ -52,7 +52,7 @@ docs/               GitHub Pages site + llms.txt
 
 ## Test discipline
 
-- `go test ./...` is the floor. ~2035 tests across 39 packages today; new code
+- `go test ./...` is the floor. ~2050 tests across 39 packages today; new code
   aims for 80%+ coverage on touched packages.
 - `go vet ./...` must be clean.
 - `go build ./...` must build cleanly for the four release targets
@@ -84,9 +84,18 @@ implementation, not a paraphrase. Read it for the current state of:
   `NewDefaultRegistryWithBaseDir` delegates to it.
 - **Approval** is layered in `internal/agent/policy.go` (`LayeredApprover`):
   builtin allowlist -> workspace trust -> session fallback. The cross-frame
-  write detector lives in the same file. Audit reasons:
-  `ReasonBuiltinAllow`, `ReasonWorkspaceAllow`, `ReasonSessionAllow`,
-  `ReasonSessionDeny`, `ReasonCrossFrameAllow`.
+  write detector lives in the same file and runs ahead of the layered chain.
+  Audit reasons: `ReasonBuiltinAllow`, `ReasonWorkspaceAllow`,
+  `ReasonSessionAllow`, `ReasonSessionDeny`, `ReasonCrossFrameAllow`,
+  `ReasonCrossFrameDeny`.
+- **Orchestrator modes** (`solo`/`tight`/`orchestrator`) are stored on the frame.
+  `frame.SpawnCapFor(mode)` returns the supervisor's per-parent concurrency cap
+  (0/1/5). `Supervisor.SetMode` enforces it on `Spawn`; `cmd/carlos` updates the
+  cap on every `/frame switch` and `/mode` so the policy moves with the
+  sysprompt.
+- **Memory** persists summaries in `~/.carlos/state.db`. `Summary.Frame` stamps
+  the active frame at close; `Store.SearchInFrame` / `RecentInFrame` scope
+  queries. Migration (`migrateSummariesFrame`) adds the column to legacy DBs.
 
 ## Where to look
 

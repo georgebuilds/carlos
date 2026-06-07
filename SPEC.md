@@ -135,7 +135,7 @@ Carlos-specific:
 
 - `/insights [topic]` — what carlos has learned about the user
 - `/skills [list|review|edit <name>]` — skill library
-- `/memory <query>` — FTS5 over summarized memory
+- `/memory <query>` — FTS5 over summarized memory (also `carlos memory search -f <frame> <query>` for frame-scoped CLI)
 - `/schedule [list|add|rm]` — manage scheduled runs (writes to config.yaml)
 - `/daemon [enable|disable|status]` — background daemon control
 - `/agents` — open the manage-mode supervisor view
@@ -144,8 +144,10 @@ Carlos-specific:
 - `/shell <cmd>`, `/jobs`, `/fg <id>`, `/bg <id>` — Phase U user-shell (also accessible via `!` prefix)
 - `/trust`, `/untrust`, `/trusts` — Phase T-2 workspace trust
 - `/permissions` — Phase T-3 layered-policy overlay
-- `/frame [list|switch <name>]` — Phase F frame surface
+- `/frame [list|switch <name>|new [name]]` — Phase F frame surface (Ctrl+F also opens the takeover switcher)
+- `/mode [solo|tight|orchestrator]` — Phase O orchestrator mode for the active frame
 - `/capabilities` — Phase C-7 capability map for the active frame
+- `/whoami` — frame, mode, provider, model
 
 ## Onboarding
 
@@ -171,7 +173,7 @@ Defined in `internal/frame/frame.go`. Per-frame fields: `name`, `glyph` (single 
 
 ### On-disk layout
 
-Today the frame list lives inline in `config.yaml`. The `~/.carlos/frames/<name>/` per-frame subtree (separate vault index, per-frame state) is pending (Phase F-17).
+`internal/frame/paths.go` (Phase F-17). `PathsFor(home, name)` returns the per-frame `Root` plus `ResearchDir`, `JobsDir`, `WorktreesDir`, `DigestDir` under `~/.carlos/frames/<name>/`. `frame.Migrate(home, "personal")` is the idempotent one-shot move of legacy `~/.carlos/{research,usershell,worktrees}/*` into the personal frame's subtree with cross-device fallback; runs at every carlos-startup entry point.
 
 ### Config schema
 
@@ -202,7 +204,7 @@ A missing block is migrated at load time into a single synthetic `personal` fram
 
 ### Switcher UX
 
-Chat header paints a colored pill `<glyph><name>` in the frame's accent. Ctrl+F opens the full-screen takeover switcher (Phase F-5, pending). `/frame` echoes the active frame, lists all frames, and switches the persisted active. An inline picker (Phase F-19) is pending.
+Chat header paints a colored pill `<glyph><name>` in the frame's accent plus a dim mode label when non-solo. Ctrl+F opens the full-screen takeover switcher (Phase F-5, `internal/tui/chat/overlay_frames.go`): 3×2 tile grid, responsive columns at innerW 100/70/<70, thick accent border on the active tile, 1-6 jump select, Ctrl+left/right paginate. `/frame` echoes the active frame, lists all frames, and switches the persisted active; `/frame new` opens the wizard (Phase F-10). The inline TTY picker for headless flows (Phase F-19, `cmd/carlos/picker_inline.go`) gates on `-f` flag + multiple frames + TTY. `/whoami` prints the current frame, mode, provider, and model.
 
 ### Sysprompt fold-in
 
@@ -319,12 +321,41 @@ agent-pools/                sub-agent worktrees + state
 
 Permissions: directory 0700, files containing secrets 0600.
 
+## Phase O, orchestrator modes
+
+Each frame's `mode` field is one of `solo`, `tight`, `orchestrator` (constants in `internal/frame`). `frame.EffectiveMode` falls back to `solo` for empty or unknown values.
+
+### Sysprompt steer
+
+`agent.SystemPromptWithFrame` adds a per-mode line in the Frame block: orchestrator gets "delegate aggressively, split large problems across sub-agents"; tight gets "single-task focus, surface side-quests as notes"; solo gets "do the work yourself, delegation is opt-in".
+
+### Spawn cap with teeth
+
+`frame.SpawnCapFor` returns 0/1/5 for solo/tight/orchestrator. `Supervisor.SetMode` + `Supervisor.SpawnCap` enforce the cap on `Spawn`: solo rejects every delegation with `ErrSpawnRefusedSolo`; tight allows one in-flight child with `ErrSpawnBusyTight` on the second; orchestrator preserves the legacy cap of 5. `cmd/carlos` updates the cap on every `/frame switch` and `/mode` so the policy moves in lockstep with the sysprompt.
+
+### Cross-frame writes
+
+`write` and `edit` inputs whose path lands inside a non-active frame's subtree skip the builtin + workspace shortcuts and force the prompt path. `LayeredApprover.SetFrameSubtrees` plugs the active frame name + every frame's on-disk root; decisions record `ReasonCrossFrameAllow` / `ReasonCrossFrameDeny`. Separator-anchored prefix match guards against `/root/a` vs `/root/a-extra` collisions.
+
+## Memory + frames
+
+`summaries.frame TEXT NOT NULL DEFAULT ''` (Phase F-13). `Summary.Frame` is stamped at conversation close. `Store.SearchInFrame(query, frame, limit)` and `Store.RecentInFrame(frame, limit)` scope queries; empty frame returns the legacy cross-frame behaviour. `carlos memory search -f <name> <query>` is the CLI surface. Schema migration ALTERs legacy databases that predate the column and creates `summaries_by_frame` on both fresh-create and migrate paths.
+
+## Daemon, schedule frames
+
+`Schedule.Frame` carries the per-run frame. `Daemon.fire` (`internal/daemon/daemon.go`) resolves the schedule's frame via `Schedule.Frame > cfg.Frames.Active > cfg.Frames.Default > "personal"` and constructs a frame-aware `SpawnContract` (System with the per-frame sysprompt, OverrideProvider via `frame.ResolveProvider`, OverrideRegistry with the frame-aware tools). `Options.ProviderBuilder` is the seam that lets `cmd/carlos/daemon.go` mirror `buildDispatch`'s vendor switch without dragging provider imports into `internal/daemon`. Each fire writes a stderr breadcrumb.
+
+## Live mid-session swap
+
+`/frame switch` hands the new frame to a `swapLoop` closure in `cmd/carlos` that rebuilds the per-frame dispatch, composes a fresh `SystemPromptWithFrame`, spins up a new `chatglue.Loop` bound to the same event log + source + agentID so the transcript continues, then stops the old loop and refreshes the cross-frame approver + supervisor mode cap atomically.
+
 ## Pending
 
 - First-launch trust prompt overlay: shares styling and key-binding conventions with the `/permissions` overlay.
-- **Phase F-5**: full-screen takeover switcher bound to Ctrl+F (3x2 tile grid, accent-coloured borders, cwd-hint candidates pre-highlighted).
-- **Phase F-19**: inline frame picker (lightweight one-line switcher rendered below the composer).
-- **Phase F-17**: on-disk layout move from inline `frames.list` in `config.yaml` to `~/.carlos/frames/<name>/` per-frame subtrees.
+- Per-frame `provider_override` honoured by `cmd/carlos.buildDispatch` (today the chat path uses the shared pantry; daemon-side already uses `frame.ResolveProvider`).
+- In-process refresh of `FrameUI.Mode` / `Capabilities` after `/frame switch` (today the chat surface needs a `/whoami` echo to see the new fields).
+- Orchestrator five-checkbox heuristic + inline split layout for live sub-agents.
+- Starter-pack skill bundles beyond calendar: email, tickets, notes, code-review, daily-digest.
 
 ## Build + release
 
