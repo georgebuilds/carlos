@@ -578,7 +578,7 @@ func (f *Flow) renderRightPane(w, _ int) string {
 	case ScreenGateway:
 		body = f.gateway.View()
 	case ScreenDone:
-		body = f.done.renderName(f.cfg.UserName)
+		body = f.done.renderName(f.cfg.UserName, config.DefaultPath())
 	}
 	pane := lipgloss.JoinVertical(lipgloss.Left, title, "", body)
 	return lipgloss.NewStyle().Width(w).Render(pane)

@@ -5,6 +5,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/georgebuilds/carlos/internal/config"
 )
 
 // doneModel is screen 6: a one-line confirmation. Single keypress to exit.
@@ -32,21 +34,30 @@ func (m doneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m doneModel) View() string { return "" }
 
 // renderName is the user-facing render. Flow.View calls this with the
-// chosen name from cfg.UserName.
-func (m doneModel) renderName(name string) string {
+// chosen name from cfg.UserName. The configPath argument is the
+// actual resolved path Save() will write to (typically
+// config.DefaultPath() which honours CARLOS_CONFIG), so the line the
+// user sees matches the file the user can edit. Empty falls back to
+// config.DefaultPath() so older callers (tests) still work.
+func (m doneModel) renderName(name string, configPath string) string {
 	if name == "" {
 		name = "Boss"
+	}
+	if configPath == "" {
+		configPath = config.DefaultPath()
 	}
 	headline := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(colorAccent).
 		Render(fmt.Sprintf("Ready, %s.", name))
-	sub := styleHint.Render("Config written to ~/.carlos/config.yaml. Your personal frame is now live.")
+	sub := styleHint.Render(fmt.Sprintf("Config written to %s. Your personal frame is now live.", configPath))
 	nextHeader := styleHint.Render("next moves")
 	keyA := styleKey.Render("Ctrl+F")
 	keyB := styleKey.Render("/frame new")
-	hintA := styleHint.Render("  open the frame switcher")
-	hintB := styleHint.Render("  add a frame, optionally cloned from personal")
+	keyC := styleKey.Render("carlos --help")
+	hintA := styleHint.Render("        open the frame switcher")
+	hintB := styleHint.Render("    add a frame, optionally cloned from personal")
+	hintC := styleHint.Render(" list every cli verb (please, research, memory, schedule, gateway, ...)")
 	return lipgloss.JoinVertical(lipgloss.Left,
 		headline,
 		"",
@@ -55,5 +66,6 @@ func (m doneModel) renderName(name string) string {
 		nextHeader,
 		keyA+hintA,
 		keyB+hintB,
+		keyC+hintC,
 	)
 }
