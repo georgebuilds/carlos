@@ -84,6 +84,62 @@ func TestSystemPromptWithFrame_OmitsBlockWhenNameEmpty(t *testing.T) {
 	}
 }
 
+func TestSystemPromptWithFrame_IncludesVaultPathAndSubtree(t *testing.T) {
+	out := SystemPromptWithFrame("", "", "", FrameInfo{
+		Name:         "personal",
+		VaultPath:    "/Volumes/nas/carlos-vault",
+		VaultSubtree: "personal",
+	})
+	for _, want := range []string{"Vault: /Volumes/nas/carlos-vault", "personal"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected %q in sysprompt; got:\n%s", want, out)
+		}
+	}
+}
+
+func TestSystemPromptWithFrame_OmitsVaultBlockWhenEmpty(t *testing.T) {
+	out := SystemPromptWithFrame("", "", "", FrameInfo{Name: "personal"})
+	if strings.Contains(out, "Vault:") {
+		t.Errorf("empty VaultPath should suppress the line; got:\n%s", out)
+	}
+}
+
+func TestSystemPromptWithFrame_IncludesCwdHints(t *testing.T) {
+	out := SystemPromptWithFrame("", "", "", FrameInfo{
+		Name:     "work",
+		CwdHints: []string{"~/Code/ludus", "~/Code/work*"},
+	})
+	if !strings.Contains(out, "Cwd hints for this frame: ~/Code/ludus, ~/Code/work*") {
+		t.Errorf("cwd_hints not rendered correctly; got:\n%s", out)
+	}
+}
+
+func TestSystemPromptWithFrame_IncludesCapabilitiesSorted(t *testing.T) {
+	out := SystemPromptWithFrame("", "", "", FrameInfo{
+		Name: "work",
+		Capabilities: map[string]string{
+			"email":    "fastmail-imap",
+			"calendar": "caldav",
+		},
+	})
+	if !strings.Contains(out, "calendar=caldav, email=fastmail-imap") {
+		t.Errorf("capabilities should render sorted; got:\n%s", out)
+	}
+}
+
+func TestSystemPromptWithFrame_NotesWriteHintInBase(t *testing.T) {
+	// The static block of chatBaseSystem mentions notes_write as the
+	// preferred tool for in-frame writes. Pin the copy so a future
+	// edit doesn't silently drop the hint.
+	out := SystemPrompt("", "", "")
+	if !strings.Contains(out, "notes_write") {
+		t.Errorf("base sysprompt should mention notes_write; got:\n%s", out)
+	}
+	if !strings.Contains(out, "prefer notes_write over the generic write tool") {
+		t.Errorf("base sysprompt should prefer notes_write for in-frame writes; got:\n%s", out)
+	}
+}
+
 func TestSystemPromptWithFrame_FrameBeforeRuntime(t *testing.T) {
 	// Cache stability: chatBaseSystem → Frame block → Runtime block →
 	// Project context. Reordering invalidates the per-frame cache

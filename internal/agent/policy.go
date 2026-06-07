@@ -146,8 +146,12 @@ const (
 // construction (the schema doesn't accept a `vault:` field anymore)
 // so silent reads can't escape the user's intended boundary.
 var DefaultBuiltinAllow = []string{
-	// Configured-vault Obsidian tools — read-only on a path the
-	// user explicitly set during onboarding.
+	// Configured-vault Obsidian tools. The read family is auto-
+	// approved because the trust anchor is the configuration
+	// boundary set during onboarding. notes_write is also auto-
+	// approved because it is constrained to the active frame's
+	// vault_subtree and writes nowhere else (cross-frame and
+	// out-of-vault attempts are rejected before disk).
 	"notes_search",
 	"notes_get",
 	"notes_neighbors",
@@ -155,6 +159,7 @@ var DefaultBuiltinAllow = []string{
 	"notes_resolve",
 	"notes_backlinks",
 	"notes_tagged",
+	"notes_write",
 	// Generic read-only filesystem tools.
 	"read",
 	"grep",

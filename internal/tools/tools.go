@@ -200,6 +200,7 @@ func NewDefaultRegistryWithBaseDirAndFrames(
 	r.Register(NewNotesNeighborsTool(nenv))
 	r.Register(NewNotesRecentTool(nenv))
 	r.Register(NewNotesResolveTool(nenv))
+	r.Register(NewNotesWriteTool(nenv))
 	r.Register(NewObsidianGetTool(nenv))
 	r.Register(NewObsidianSearchTool(nenv))
 	r.Register(NewObsidianBacklinksTool(nenv))

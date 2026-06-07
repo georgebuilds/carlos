@@ -1041,7 +1041,15 @@ func runHeadless(prompt string, opts pleaseOptions) error {
 		Cwd:  hcwd,
 	}); ok {
 		if f := cfg.Frames.Find(res.Frame); f != nil {
-			pleaseFrameInfo = agent.FrameInfo{Name: f.Name, Append: f.SystemPromptAppend}
+			pleaseFrameInfo = agent.FrameInfo{
+				Name:         f.Name,
+				Append:       f.SystemPromptAppend,
+				Mode:         frame.EffectiveMode(*f),
+				VaultPath:    cfg.Vault.Path,
+				VaultSubtree: f.VaultSubtree,
+				CwdHints:     f.CwdHints,
+				Capabilities: extractCapabilityBackends(*f),
+			}
 			if opts.frame != "" || os.Getenv("CARLOS_FRAME") != "" {
 				fmt.Fprintf(os.Stderr, "carlos: frame=%s (via %s)\n", res.Frame, res.Reason)
 			}
@@ -1668,9 +1676,13 @@ func runDefault(cfg *config.Config, sessionID string) error {
 		if f := cfg.Frames.Find(resolution.Frame); f != nil {
 			activeFrame = *f
 			frameInfo = agent.FrameInfo{
-				Name:   activeFrame.Name,
-				Append: activeFrame.SystemPromptAppend,
-				Mode:   frame.EffectiveMode(activeFrame),
+				Name:         activeFrame.Name,
+				Append:       activeFrame.SystemPromptAppend,
+				Mode:         frame.EffectiveMode(activeFrame),
+				VaultPath:    cfg.Vault.Path,
+				VaultSubtree: activeFrame.VaultSubtree,
+				CwdHints:     activeFrame.CwdHints,
+				Capabilities: extractCapabilityBackends(activeFrame),
 			}
 			// Wire the supervisor's spawn cap to the active frame's
 			// mode at session boot. Without this the sysprompt would
@@ -1791,9 +1803,13 @@ func runDefault(cfg *config.Config, sessionID string) error {
 			return fmt.Errorf("rebuild dispatch: %w", err)
 		}
 		newInfo := agent.FrameInfo{
-			Name:   f.Name,
-			Append: f.SystemPromptAppend,
-			Mode:   frame.EffectiveMode(*f),
+			Name:         f.Name,
+			Append:       f.SystemPromptAppend,
+			Mode:         frame.EffectiveMode(*f),
+			VaultPath:    cfg.Vault.Path,
+			VaultSubtree: f.VaultSubtree,
+			CwdHints:     f.CwdHints,
+			Capabilities: extractCapabilityBackends(*f),
 		}
 		newSys := agent.SystemPromptWithFrame(cfg.UserName, chatCwd, chatProjectCtx, newInfo)
 		newLoop := chatglue.NewLoop(chatglue.Config{

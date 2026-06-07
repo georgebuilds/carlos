@@ -25,7 +25,10 @@
 
 package agent
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 // chatBaseSystem is the static portion. Provider, model, user name,
 // and project context are appended by SystemPrompt().
@@ -33,8 +36,8 @@ const chatBaseSystem = `You are carlos, a local-first TUI coding agent that runs
 
 You have these tool families:
 
-- notes_* (7 tools): query the user's CONFIGURED Obsidian vault. Schema does not accept a vault argument; you cannot redirect these tools. Auto-approved without prompting.
-- obsidian_* (7 tools): same operations against an ARBITRARY vault path the user has to approve per call. Use only when the user asks about a vault other than the configured one.
+- notes_* (8 tools): query and WRITE the user's CONFIGURED Obsidian vault. Schema does not accept a vault argument; you cannot redirect these tools. Auto-approved without prompting. The write verb (notes_write) is constrained to the active frame's vault_subtree — for any note that belongs in the user's current frame, prefer notes_write over the generic write tool so the user doesn't have to approve each save.
+- obsidian_* (7 tools): same READ operations against an ARBITRARY vault path the user has to approve per call. Use only when the user asks about a vault other than the configured one.
 - read, grep, glob, ls: read-only filesystem. Sandboxed by carlos's base directory.
 - write, edit: file mutation. Prompts the user.
 - bash: shell command. Prompts unless the user has trusted the workspace, in which case a small read-only verb set (git status/diff/log/show/blame, ls, pwd, cat, head, tail, wc, file, which, echo) auto-approves.
@@ -83,6 +86,21 @@ type FrameInfo struct {
 	// "tight", or "orchestrator". Surfaced in the Frame block so the
 	// model knows whether to delegate aggressively or stay single-track.
 	Mode string
+	// VaultPath is the absolute path to the configured Obsidian vault.
+	// Surfaced so notes_write + the model's mental model of "where do
+	// notes go for this user" both reference the same location.
+	VaultPath string
+	// VaultSubtree is the active frame's slice of the vault, relative
+	// to VaultPath. Empty means the whole vault.
+	VaultSubtree string
+	// CwdHints is the active frame's cwd_hints list, surfaced so the
+	// model can reason about which paths belong to this frame without
+	// guessing. Empty list = the frame is path-agnostic.
+	CwdHints []string
+	// Capabilities is the active frame's capability -> backend map
+	// (e.g. {"calendar": "caldav"}). Surfaced so the model knows which
+	// backend skill to delegate to without re-reading config.
+	Capabilities map[string]string
 }
 
 // SystemPromptWithFrame composes the runtime system prompt and folds in
@@ -109,6 +127,32 @@ func SystemPromptWithFrame(userName, cwd, projectCtx string, fi FrameInfo) strin
 			b.WriteString("\nSingle-task focus: do not chase tangents. Surface side-quests as notes for the user instead of pursuing them.")
 		case "solo":
 			b.WriteString("\nDo the work yourself. Sub-agent delegation is opt-in: only spawn an Agent when the user explicitly asks or the task is plainly beyond a single session.")
+		}
+		// Where things live: ground the agent in the active frame's
+		// concrete paths so `notes_write` calls land in the right
+		// subtree without guessing, and so the model can reason about
+		// cross-frame writes (use the generic write tool with an
+		// absolute path for those — it will prompt for confirmation).
+		var where strings.Builder
+		if vp := strings.TrimSpace(fi.VaultPath); vp != "" {
+			fmt.Fprintf(&where, "\n- Vault: %s", vp)
+			if sub := strings.TrimSpace(fi.VaultSubtree); sub != "" {
+				fmt.Fprintf(&where, " (this frame's subtree: %s)", sub)
+			}
+		}
+		if len(fi.CwdHints) > 0 {
+			fmt.Fprintf(&where, "\n- Cwd hints for this frame: %s", strings.Join(fi.CwdHints, ", "))
+		}
+		if len(fi.Capabilities) > 0 {
+			parts := make([]string, 0, len(fi.Capabilities))
+			for k, v := range fi.Capabilities {
+				parts = append(parts, k+"="+v)
+			}
+			sortStrings(parts)
+			fmt.Fprintf(&where, "\n- Capabilities wired for this frame: %s", strings.Join(parts, ", "))
+		}
+		if where.Len() > 0 {
+			b.WriteString(where.String())
 		}
 		if app := strings.TrimSpace(fi.Append); app != "" {
 			b.WriteString("\n")
