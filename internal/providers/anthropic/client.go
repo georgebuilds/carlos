@@ -124,9 +124,10 @@ func (c *Client) Stream(ctx context.Context, req providers.Request) (<-chan prov
 			var ev streamEvent
 			if err := json.Unmarshal([]byte(f.Data), &ev); err != nil {
 				// One malformed frame shouldn't tear down the stream;
-				// surface as an error event and continue.
+				// surface as an error event and continue. Scrub any
+				// model-name reveal so identity framing stays carlos's.
 				emit(providers.Event{Kind: providers.EventError,
-					Err: fmt.Errorf("anthropic: parse frame %q: %w", f.Event, err)})
+					Err: providers.ScrubModelName(fmt.Errorf("anthropic: parse frame %q: %w", f.Event, err))})
 				return nil
 			}
 			switch ev.Type {
@@ -205,7 +206,7 @@ func (c *Client) Stream(ctx context.Context, req providers.Request) (<-chan prov
 				if ev.Error != nil {
 					emit(providers.Event{
 						Kind: providers.EventError,
-						Err:  fmt.Errorf("anthropic %s: %s", ev.Error.Type, ev.Error.Message),
+						Err:  providers.ScrubModelName(fmt.Errorf("anthropic %s: %s", ev.Error.Type, ev.Error.Message)),
 					})
 				}
 			default:
@@ -214,7 +215,7 @@ func (c *Client) Stream(ctx context.Context, req providers.Request) (<-chan prov
 			return nil
 		})
 		if err != nil && !isContextCancellation(ctx, err) {
-			emit(providers.Event{Kind: providers.EventError, Err: err})
+			emit(providers.Event{Kind: providers.EventError, Err: providers.ScrubModelName(err)})
 		}
 	}()
 	return out, nil

@@ -211,20 +211,24 @@ func ProcessStream(
 		var chunk StreamChunk
 		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
 			// One malformed frame shouldn't tear down the stream;
-			// surface as an error event and continue.
+			// surface as an error event and continue. Scrub any
+			// model-name reveal first so identity framing stays
+			// carlos's.
 			emit(providers.Event{
 				Kind: providers.EventError,
-				Err:  fmt.Errorf("%s: parse chunk: %w", errPrefix, err),
+				Err:  providers.ScrubModelName(fmt.Errorf("%s: parse chunk: %w", errPrefix, err)),
 			})
 			return nil
 		}
 		// Server-side error embedded in the stream. Both OpenAI and
 		// OpenRouter use this when an upstream provider fails after
-		// the connection has been accepted.
+		// the connection has been accepted. Scrub before emit — these
+		// envelopes have historically been the noisiest leak surface
+		// (OpenRouter passes upstream provider strings through).
 		if chunk.Error != nil {
 			emit(providers.Event{
 				Kind: providers.EventError,
-				Err:  fmt.Errorf("%s %s: %s", errPrefix, errorTag(chunk.Error), chunk.Error.Message),
+				Err:  providers.ScrubModelName(fmt.Errorf("%s %s: %s", errPrefix, errorTag(chunk.Error), chunk.Error.Message)),
 			})
 			return nil
 		}
@@ -310,7 +314,7 @@ func ProcessStream(
 	flushAllTools()
 
 	if parseErr != nil && !isContextCancellation(ctx, parseErr) {
-		emit(providers.Event{Kind: providers.EventError, Err: parseErr})
+		emit(providers.Event{Kind: providers.EventError, Err: providers.ScrubModelName(parseErr)})
 	}
 }
 

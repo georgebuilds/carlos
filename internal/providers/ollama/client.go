@@ -155,9 +155,11 @@ func (c *Client) Stream(ctx context.Context, req providers.Request) (<-chan prov
 				// Malformed line shouldn't tear down the stream; surface
 				// as error event and continue scanning. Same defensive
 				// posture as the Anthropic client takes per SSE frame.
+				// Scrub any model-name reveal so identity framing stays
+				// carlos's.
 				emit(providers.Event{
 					Kind: providers.EventError,
-					Err:  fmt.Errorf("ollama: parse chunk: %w", err),
+					Err:  providers.ScrubModelName(fmt.Errorf("ollama: parse chunk: %w", err)),
 				})
 				return nil
 			}
@@ -168,7 +170,7 @@ func (c *Client) Stream(ctx context.Context, req providers.Request) (<-chan prov
 			if chunk.Error != "" {
 				emit(providers.Event{
 					Kind: providers.EventError,
-					Err:  fmt.Errorf("ollama: %s", chunk.Error),
+					Err:  providers.ScrubModelName(fmt.Errorf("ollama: %s", chunk.Error)),
 				})
 				return nil
 			}
@@ -235,7 +237,7 @@ func (c *Client) Stream(ctx context.Context, req providers.Request) (<-chan prov
 			return nil
 		})
 		if err != nil && !isContextCancellation(ctx, err) {
-			emit(providers.Event{Kind: providers.EventError, Err: err})
+			emit(providers.Event{Kind: providers.EventError, Err: providers.ScrubModelName(err)})
 		}
 	}()
 	return out, nil
