@@ -124,14 +124,16 @@ const (
 // load seeds them; cmd/carlos's startup ApplyPalette overwrites them
 // with the user-configured palette.
 var (
-	styleTagline lipgloss.Style
-	styleHint    lipgloss.Style
-	stylePrompt  lipgloss.Style
-	styleHeader  lipgloss.Style
-	styleBrand   lipgloss.Style
-	styleDotOn   lipgloss.Style
-	styleDotOff  lipgloss.Style
-	styleKey     lipgloss.Style
+	styleTagline     lipgloss.Style
+	styleHint        lipgloss.Style
+	stylePrompt      lipgloss.Style
+	styleHeader      lipgloss.Style
+	styleBrand       lipgloss.Style
+	styleDotOn       lipgloss.Style
+	styleDotOff      lipgloss.Style
+	styleDotCurrent  lipgloss.Style
+	styleDotPending  lipgloss.Style
+	styleKey         lipgloss.Style
 )
 
 // rebuildStyles regenerates the cached styles from the current color
@@ -144,6 +146,8 @@ func rebuildStyles() {
 	styleBrand = lipgloss.NewStyle().Bold(true).Foreground(colorAccent)
 	styleDotOn = lipgloss.NewStyle().Foreground(colorAccent)
 	styleDotOff = lipgloss.NewStyle().Foreground(colorMuted)
+	styleDotCurrent = lipgloss.NewStyle().Foreground(colorAccent).Bold(true)
+	styleDotPending = lipgloss.NewStyle().Foreground(colorMuted)
 	styleKey = lipgloss.NewStyle().Foreground(colorAccent).Bold(true)
 }
 
@@ -176,6 +180,12 @@ type Flow struct {
 	cfg     *config.Config
 	aborted bool
 
+	// only restricts the flow to a single screen (set via Options.Only).
+	// onlyStart records which screen was the entry point so shift-tab
+	// can refuse to back-nav out of the requested sub-flow.
+	only      bool
+	onlyStart Screen
+
 	width  int
 	height int
 
@@ -207,23 +217,77 @@ const pulseFrameDuration = 100 * time.Millisecond
 // New constructs a Flow with sane defaults. The returned config can be
 // inspected post-Run to persist; on ErrAborted, callers MUST NOT persist.
 func New() *Flow {
-	cfg := &config.Config{
-		UserName:  config.DefaultUserName,
-		Providers: map[string]config.ProviderConfig{},
+	return NewWithOptions(Options{})
+}
+
+// Options tunes Flow construction. Zero value matches New()'s historical
+// behavior — start at the name screen, framed by the welcome → done
+// sequence. StartingScreen jumps the user past every earlier screen and
+// terminates at Done after the target screen finishes, used by
+// `carlos onboard --only <screen>` to re-enter a single sub-flow.
+type Options struct {
+	// StartingScreen is the first screen to land on. When zero
+	// (ScreenName) the flow behaves as the unflagged onboarding.
+	StartingScreen Screen
+	// Only, when true, restricts the flow to StartingScreen. After the
+	// child screen advances we jump straight to Done (skipping the
+	// downstream screens) and back-nav from StartingScreen is disabled.
+	Only bool
+	// ExistingConfig seeds the flow with a previously-saved config so
+	// a partial re-onboard (e.g. `--only models`) sees the providers
+	// already configured. nil = empty config + defaults.
+	ExistingConfig *config.Config
+}
+
+// NewWithOptions is the Options-aware constructor. Used by the
+// `--only` flag to enter the flow at a specific screen.
+func NewWithOptions(opts Options) *Flow {
+	cfg := opts.ExistingConfig
+	if cfg == nil {
+		cfg = &config.Config{
+			UserName:  config.DefaultUserNameForEnv(),
+			Providers: map[string]config.ProviderConfig{},
+		}
 	}
-	return &Flow{
-		current:  ScreenName,
-		cfg:      cfg,
-		name:     newNameModel(cfg.UserName),
-		provider: newProviderModel(),
-		model:    newModelModel(),
-		skills:   newSkillsModel(),
-		vault:    newVaultModel(),
-		daemon:   newDaemonModel(),
-		gateway:  newGatewayModel(),
-		done:     newDoneModel(),
-		portrait: rememberRail(portraitCols, portraitRows),
+	if cfg.Providers == nil {
+		cfg.Providers = map[string]config.ProviderConfig{}
 	}
+	if strings.TrimSpace(cfg.UserName) == "" {
+		cfg.UserName = config.DefaultUserNameForEnv()
+	}
+	starting := opts.StartingScreen
+	if starting < ScreenName || starting > ScreenDone {
+		starting = ScreenName
+	}
+	f := &Flow{
+		current:   starting,
+		only:      opts.Only,
+		onlyStart: starting,
+		cfg:       cfg,
+		name:      newNameModel(cfg.UserName),
+		provider:  newProviderModel(),
+		model:     newModelModel(),
+		skills:    newSkillsModel(),
+		vault:     newVaultModel(),
+		daemon:    newDaemonModel(),
+		gateway:   newGatewayModel(),
+		done:      newDoneModel(),
+		portrait:  rememberRail(portraitCols, portraitRows),
+	}
+	// When the caller hands us an existing config that already wires
+	// openrouter, kick off the catalog fetch now so a re-entered
+	// `--only models` flow sees live pricing.
+	if pc, ok := cfg.Providers["openrouter"]; ok && pc.APIKey != "" {
+		f.model.orFuture = startOpenRouterFetch()
+	}
+	return f
+}
+
+// PrimeGatewayStandalone advances the gateway sub-model past the
+// "set up later" gate so a caller (cmd/carlos `gateway add`) can run
+// the wizard end-to-end without re-asking the user. Idempotent.
+func (f *Flow) PrimeGatewayStandalone() {
+	f.gateway = NewGatewayStandalone()
 }
 
 // rememberRail caches the rail-portrait at construction time so the View
@@ -257,6 +321,25 @@ func (f *Flow) Run() (*config.Config, error) {
 
 func (f *Flow) Init() tea.Cmd {
 	// Tick the first active screen so its textinput cursor starts blinking.
+	switch f.current {
+	case ScreenName:
+		return f.name.Init()
+	case ScreenProvider:
+		return f.provider.Init()
+	case ScreenModel:
+		f.model.syncFromConfig(f.cfg)
+		return f.model.Init()
+	case ScreenSkills:
+		return f.skills.Init()
+	case ScreenVault:
+		return f.vault.Init()
+	case ScreenDaemon:
+		return f.daemon.Init()
+	case ScreenGateway:
+		return f.gateway.Init()
+	case ScreenDone:
+		return f.done.Init()
+	}
 	return f.name.Init()
 }
 
@@ -277,6 +360,12 @@ func (f *Flow) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			f.aborted = true
 			return f, tea.Quit
 		case "shift+tab":
+			// In `--only` mode the entry screen is the floor: back-nav
+			// out of it would land on an unrelated screen the user
+			// didn't ask to revisit.
+			if f.only && f.current <= f.onlyStart {
+				return f, nil
+			}
 			if f.current > ScreenName {
 				f.current--
 				// Mirror the advance() auto-skip: never let back-nav
@@ -480,19 +569,28 @@ func (f *Flow) renderRightPane(w, _ int) string {
 	return lipgloss.NewStyle().Width(w).Render(pane)
 }
 
-// renderStepDots produces "● ● ○ ○ ○" with positions ≤ current filled in.
-// When pulseFrame is non-zero, the current dot animates through ◐ → ◉ → ●
-// over three render frames (advance microinteraction, slice 9e).
+// renderStepDots produces a three-tier counter:
+//
+//   - ● accent: completed steps (i < current)
+//   - ○ accent+bold: the current step
+//   - · muted: pending steps (i > current)
+//
+// When pulseFrame is non-zero, the current dot animates through
+// ◐ → ◉ → ● over three render frames (advance microinteraction, slice
+// 9e) and then settles back to the outlined-current glyph on the next
+// idle render.
 func renderStepDots(current, total, pulseFrame int) string {
 	parts := make([]string, 0, total)
 	for i := 0; i < total; i++ {
 		switch {
 		case i == current && pulseFrame > 0:
 			parts = append(parts, styleDotOn.Render(pulseGlyph(pulseFrame)))
-		case i <= current:
+		case i < current:
 			parts = append(parts, styleDotOn.Render("●"))
+		case i == current:
+			parts = append(parts, styleDotCurrent.Render("○"))
 		default:
-			parts = append(parts, styleDotOff.Render("○"))
+			parts = append(parts, styleDotPending.Render("·"))
 		}
 	}
 	return strings.Join(parts, " ")
@@ -536,6 +634,12 @@ func (f *Flow) advance() {
 	if f.current >= ScreenDone {
 		return
 	}
+	// `--only` mode: after the requested screen finishes we skip
+	// directly to Done. No further screens belong to this sub-flow.
+	if f.only && f.current == f.onlyStart {
+		f.current = ScreenDone
+		return
+	}
 	f.current++
 	if f.current == ScreenGateway && !f.cfg.Daemon.Enabled {
 		f.current++
@@ -554,6 +658,13 @@ func (f *Flow) applyChildPayload(p any) {
 	case providerResult:
 		f.cfg.Providers = v.providers
 		f.cfg.DefaultProvider = v.defaultProvider
+		// Kick off the OpenRouter /models fetch in the background as
+		// soon as we know the user wired openrouter. The model screen
+		// blocks on this future up to orWait before falling back to
+		// the curated list.
+		if pc, ok := v.providers["openrouter"]; ok && pc.APIKey != "" {
+			f.model.orFuture = startOpenRouterFetch()
+		}
 	case modelResult:
 		for name, model := range v.models {
 			pc := f.cfg.Providers[name]
