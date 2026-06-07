@@ -178,11 +178,6 @@ func main() {
 				exit(err)
 			}
 			return
-		case "gateway":
-			if err := runGateway(args[1:]); err != nil {
-				exit(err)
-			}
-			return
 		case "please":
 			// carlos please [-y|--yes] [-p|--provider <name>] [-m|--model <id>] <prompt words...>
 			//
@@ -496,10 +491,8 @@ func onboardScreenByName(name string) (onboarding.Screen, bool) {
 // "later or now" gate so the user lands directly on the enable / channel
 // pickers. Result merges back into the existing config; other fields
 // round-trip untouched.
-func runGateway(args []string) error {
-	if len(args) == 0 || args[0] != "add" {
-		return errors.New("usage: carlos gateway add")
-	}
+func runGatewayAdd(args []string) error {
+	_ = args
 	applyTheme(nil)
 	path := config.DefaultPath()
 	cfg, err := config.Load(path)

@@ -426,8 +426,10 @@ func runGateway(args []string) error {
 	switch args[0] {
 	case "test":
 		return runGatewayTest(args[1:])
+	case "add":
+		return runGatewayAdd(args[1:])
 	default:
-		return fmt.Errorf("gateway: unknown subcommand %q (expected test)", args[0])
+		return fmt.Errorf("gateway: unknown subcommand %q (expected: test, add)", args[0])
 	}
 }
 
