@@ -4,7 +4,6 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 )
 
 // daemonModel is screen 5: a single y/N prompt asking whether to enable
@@ -47,14 +46,24 @@ func (m daemonModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m daemonModel) View() string {
 	// Title owned by Flow.renderRightPane; we render the body only.
 	var sb strings.Builder
-	sb.WriteString(styleHint.Render(
-		"Required for scheduled runs and future remote gateways (Telegram, Discord, push)."))
-	sb.WriteString("\n")
-	sb.WriteString(styleHint.Render(
-		"The TUI works without it. You can flip this later with `carlos daemon enable`."))
+	sb.WriteString(styleHint.Render("the daemon runs in the background so carlos can:"))
 	sb.WriteString("\n\n")
-	prompt := "Run carlos as a background daemon? "
-	def := lipgloss.NewStyle().Foreground(colorMuted).Render("[y/N]")
-	sb.WriteString(prompt + def)
+	sb.WriteString(styleHint.Render("   - fire scheduled runs (\"every weekday at 9am, summarize my inbox\")"))
+	sb.WriteString("\n")
+	sb.WriteString(styleHint.Render("   - receive messages from telegram / ntfy / signal"))
+	sb.WriteString("\n")
+	sb.WriteString(styleHint.Render("   - post a daily digest"))
+	sb.WriteString("\n\n")
+	sb.WriteString(styleHint.Render("without the daemon, carlos only runs when you launch him."))
+	sb.WriteString("\n\n")
+	sb.WriteString("enable now?")
+	sb.WriteString("\n\n")
+	sb.WriteString("   ")
+	sb.WriteString(styleKey.Render("[enter]"))
+	sb.WriteString(styleHint.Render(" no, just the tui for now"))
+	sb.WriteString("\n")
+	sb.WriteString("   ")
+	sb.WriteString(styleKey.Render("[y]"))
+	sb.WriteString(styleHint.Render("     yes, install the background service"))
 	return sb.String()
 }
