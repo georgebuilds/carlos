@@ -14,14 +14,26 @@ import (
 // Phase 0.5 ONLY records the user's choice into config. The actual
 // launchd/systemd install lives in Phase 8 — see TODO note in Flow.View.
 type daemonModel struct {
-	choice  bool // current toggle; default false
+	choice  bool // current toggle; default false (or the preloaded initial)
 	decided bool // true once user confirmed
+	// preloaded is true when this screen was opened in --only mode against
+	// an existing config; the View then frames the prompt around "keep
+	// current" instead of "set fresh". Without this, pressing enter on an
+	// already-enabled daemon would silently disable it.
+	preloaded bool
 }
 
 // daemonResult is the payload returned on advance.
 type daemonResult struct{ enabled bool }
 
 func newDaemonModel() daemonModel { return daemonModel{choice: false} }
+
+// newDaemonModelWithInitial preloads the current toggle from existing
+// config. The --only daemon path uses this so `enter` keeps current
+// state rather than defaulting to "no".
+func newDaemonModelWithInitial(initial bool) daemonModel {
+	return daemonModel{choice: initial, preloaded: true}
+}
 
 func (m daemonModel) Init() tea.Cmd { return nil }
 
@@ -56,6 +68,26 @@ func (m daemonModel) View() string {
 	sb.WriteString("\n\n")
 	sb.WriteString(styleHint.Render("without the daemon, carlos only runs when you launch him."))
 	sb.WriteString("\n\n")
+	if m.preloaded {
+		if m.choice {
+			sb.WriteString("currently enabled. keep it on?")
+		} else {
+			sb.WriteString("currently disabled. enable now?")
+		}
+		sb.WriteString("\n\n")
+		sb.WriteString("   ")
+		sb.WriteString(styleKey.Render("[enter]"))
+		sb.WriteString(styleHint.Render(" keep current"))
+		sb.WriteString("\n")
+		sb.WriteString("   ")
+		sb.WriteString(styleKey.Render("[y]"))
+		sb.WriteString(styleHint.Render("     yes, enable"))
+		sb.WriteString("\n")
+		sb.WriteString("   ")
+		sb.WriteString(styleKey.Render("[n]"))
+		sb.WriteString(styleHint.Render("     no, disable"))
+		return sb.String()
+	}
 	sb.WriteString("enable now?")
 	sb.WriteString("\n\n")
 	sb.WriteString("   ")

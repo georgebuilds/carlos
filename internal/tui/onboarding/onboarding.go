@@ -259,6 +259,21 @@ func NewWithOptions(opts Options) *Flow {
 	if starting < ScreenName || starting > ScreenDone {
 		starting = ScreenName
 	}
+	daemonChild := newDaemonModel()
+	gatewayChild := newGatewayModel()
+	// --only daemon / --only gateway re-enter a screen the user has
+	// likely already filled in. Preload the daemon toggle so `enter`
+	// keeps the current state; auto-Prime the gateway so the user
+	// skips the redundant "set up later" gate that only makes sense
+	// during the initial onboarding walk.
+	if opts.Only && opts.ExistingConfig != nil {
+		switch starting {
+		case ScreenDaemon:
+			daemonChild = newDaemonModelWithInitial(opts.ExistingConfig.Daemon.Enabled)
+		case ScreenGateway:
+			gatewayChild = NewGatewayStandalone()
+		}
+	}
 	f := &Flow{
 		current:   starting,
 		only:      opts.Only,
@@ -269,8 +284,8 @@ func NewWithOptions(opts Options) *Flow {
 		model:     newModelModel(),
 		skills:    newSkillsModel(),
 		vault:     newVaultModel(),
-		daemon:    newDaemonModel(),
-		gateway:   newGatewayModel(),
+		daemon:    daemonChild,
+		gateway:   gatewayChild,
 		done:      newDoneModel(),
 		portrait:  rememberRail(portraitCols, portraitRows),
 	}

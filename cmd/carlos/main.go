@@ -398,19 +398,11 @@ func runOnboard(force bool, only string) error {
 	}
 	var flow *onboarding.Flow
 	if only != "" {
-		screen, ok := onboardScreenByName(only)
-		if !ok {
-			return fmt.Errorf("unknown screen %q (valid: name, providers, models, skills, vault, daemon, gateway)", only)
+		f, err := buildOnboardOnlyFlow(only, path)
+		if err != nil {
+			return err
 		}
-		existing, lerr := config.Load(path)
-		if lerr != nil && !errors.Is(lerr, fs.ErrNotExist) {
-			return fmt.Errorf("load config: %w", lerr)
-		}
-		flow = onboarding.NewWithOptions(onboarding.Options{
-			StartingScreen: screen,
-			Only:           true,
-			ExistingConfig: existing,
-		})
+		flow = f
 	} else {
 		flow = onboarding.New()
 	}
@@ -508,15 +500,7 @@ func runGatewayAdd(args []string) error {
 	if !cfg.Daemon.Enabled {
 		fmt.Fprintln(os.Stderr, "note: daemon is disabled. Run `carlos daemon enable` once the gateway is configured.")
 	}
-	flow := onboarding.NewWithOptions(onboarding.Options{
-		StartingScreen: onboarding.ScreenGateway,
-		Only:           true,
-		ExistingConfig: cfg,
-	})
-	// Bypass the "set later" gate: the user explicitly asked for the
-	// wizard. PrimeGatewayStandalone wires the gateway model directly
-	// into the enable stage.
-	flow.PrimeGatewayStandalone()
+	flow := buildGatewayAddFlow(cfg)
 	out, err := flow.Run()
 	if err != nil {
 		if errors.Is(err, onboarding.ErrAborted) {
@@ -529,6 +513,43 @@ func runGatewayAdd(args []string) error {
 	}
 	fmt.Fprintln(os.Stderr, "gateway config updated:", path)
 	return nil
+}
+
+// buildGatewayAddFlow constructs the onboarding Flow that the `carlos
+// gateway add` wizard runs. Exposed as a helper so tests can assert on
+// the constructed Flow's state without spinning up a bubbletea program.
+// NewWithOptions auto-Primes the gateway past gwStageDecide when the
+// caller passes Only + ScreenGateway + ExistingConfig, so the explicit
+// PrimeGatewayStandalone call below is a defensive no-op covering the
+// nil-cfg path (which auto-Prime does not).
+func buildGatewayAddFlow(cfg *config.Config) *onboarding.Flow {
+	flow := onboarding.NewWithOptions(onboarding.Options{
+		StartingScreen: onboarding.ScreenGateway,
+		Only:           true,
+		ExistingConfig: cfg,
+	})
+	flow.PrimeGatewayStandalone()
+	return flow
+}
+
+// buildOnboardOnlyFlow is the testable seam for `carlos onboard --only
+// <screen>`. Loads the existing config (treating ENOENT as nil so a
+// first-time --only run still works) and constructs the right Flow.
+// Returns an error when the screen name is unknown.
+func buildOnboardOnlyFlow(only, path string) (*onboarding.Flow, error) {
+	screen, ok := onboardScreenByName(only)
+	if !ok {
+		return nil, fmt.Errorf("unknown screen %q (valid: name, providers, models, skills, vault, daemon, gateway)", only)
+	}
+	existing, err := config.Load(path)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return nil, fmt.Errorf("load config: %w", err)
+	}
+	return onboarding.NewWithOptions(onboarding.Options{
+		StartingScreen: screen,
+		Only:           true,
+		ExistingConfig: existing,
+	}), nil
 }
 
 // pleaseOptions collects parsed flags from `carlos please [flags] <prompt>`.
