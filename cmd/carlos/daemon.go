@@ -406,3 +406,67 @@ func buildProviderForFrame(r frame.ResolvedProvider) (providers.Provider, error)
 // _ keeps the json import live for a future enhancement (the daemon
 // status verb may grow a `--json` flag).
 var _ = json.Marshal
+
+// --- carlos gateway ----------------------------------------------------
+
+// validGatewayChannels is the surface advertised to the user when they
+// pass a missing or unknown channel name. Kept in sync by hand with the
+// gateway.Source set; signal stays in the list so the user sees the
+// stub-only response rather than a "unknown channel" error.
+var validGatewayChannels = []string{"ntfy", "telegram", "signal", "custom"}
+
+// runGateway dispatches `carlos gateway <subcommand>`. v0 ships one
+// subcommand (test); the verb-style switch leaves room for future
+// gateway-namespaced verbs (e.g. `carlos gateway status`) without
+// breaking the CLI shape.
+func runGateway(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("gateway: subcommand required (test <%s>)", strings.Join(validGatewayChannels, " | "))
+	}
+	switch args[0] {
+	case "test":
+		return runGatewayTest(args[1:])
+	default:
+		return fmt.Errorf("gateway: unknown subcommand %q (expected test)", args[0])
+	}
+}
+
+// runGatewayTest sends a fixed test envelope through one named gateway
+// channel by issuing a `gateway-test` verb against the running daemon's
+// UDS. Surfaces a friendly error when the channel is missing/unknown or
+// the daemon isn't reachable.
+func runGatewayTest(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("gateway test: channel required (one of: %s)", strings.Join(validGatewayChannels, ", "))
+	}
+	channel := args[0]
+	if !isValidGatewayChannel(channel) {
+		return fmt.Errorf("gateway test: unknown channel %q (one of: %s)", channel, strings.Join(validGatewayChannels, ", "))
+	}
+	conn, err := daemon.Dial("")
+	if err != nil {
+		return errors.New("daemon not running. Run `carlos daemon enable` first")
+	}
+	defer conn.Close()
+	resp, err := daemon.SendRequest(conn, daemon.Request{Cmd: "gateway-test", Channel: channel})
+	if err != nil {
+		return fmt.Errorf("gateway test: %w", err)
+	}
+	if !resp.Ok {
+		return errors.New(resp.Msg)
+	}
+	fmt.Println(resp.Msg)
+	return nil
+}
+
+// isValidGatewayChannel reports whether name is one of the recognised
+// gateway channel surfaces. Case-sensitive on purpose; config keys and
+// Source constants are both lowercase.
+func isValidGatewayChannel(name string) bool {
+	for _, c := range validGatewayChannels {
+		if c == name {
+			return true
+		}
+	}
+	return false
+}

@@ -26,6 +26,12 @@
 //	                             → Phase 8b schedule CLI. Edits
 //	                               ~/.carlos/config.yaml directly so the
 //	                               daemon picks up changes on next reload.
+//	carlos gateway test <channel>
+//	                             → Sends a fixed test notification through
+//	                               one configured gateway channel
+//	                               (ntfy | telegram | signal | custom) so
+//	                               the user can verify their adapter wiring
+//	                               without waiting for a scheduled run.
 //	carlos version               → print the build version string.
 package main
 
@@ -259,6 +265,14 @@ func main() {
 			// Edits ~/.carlos/config.yaml directly so the change is
 			// picked up by the daemon on next SIGHUP / reload.
 			if err := runSchedule(args[1:]); err != nil {
+				exit(err)
+			}
+			return
+		case "gateway":
+			// `carlos gateway test <channel>` — round-trip a fixed test
+			// envelope through one adapter so the user can verify their
+			// notification wiring without waiting for a scheduled run.
+			if err := runGateway(args[1:]); err != nil {
 				exit(err)
 			}
 			return
@@ -2065,6 +2079,8 @@ Usage:
   carlos schedule list                     list configured scheduled runs
   carlos schedule add "<when>" <prompt>    add a schedule (e.g. "every weekday at 9am")
   carlos schedule rm <name>                remove a scheduled run by name
+  carlos gateway test <channel>            send a test notification through one gateway channel
+                                             (ntfy | telegram | signal | custom)
   carlos chat                              [dev-aid, Slice 1e] chat TUI against a temp log
   carlos manage                            [dev-aid, Slice 4]  manage TUI with seeded sample roster
   carlos onboard                           re-run the first-run setup flow

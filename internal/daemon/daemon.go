@@ -15,6 +15,7 @@ import (
 	"github.com/georgebuilds/carlos/internal/agent"
 	"github.com/georgebuilds/carlos/internal/config"
 	"github.com/georgebuilds/carlos/internal/frame"
+	"github.com/georgebuilds/carlos/internal/gateway"
 	"github.com/georgebuilds/carlos/internal/providers"
 	"github.com/georgebuilds/carlos/internal/schedule"
 	"github.com/georgebuilds/carlos/internal/tools"
@@ -666,9 +667,85 @@ func (d *Daemon) dispatch(req Request) Response {
 	case "stop":
 		go d.Stop()
 		return Response{Ok: true, Msg: "shutting down"}
+	case "gateway-test":
+		return d.gatewayTestResponse(req.Channel)
 	default:
 		return Response{Ok: false, Msg: fmt.Sprintf("unknown cmd %q", req.Cmd)}
 	}
+}
+
+// gatewayTestResponse runs a fixed test envelope through one gateway
+// channel and returns success/failure as a Response. Short bounded
+// context so a wedged adapter cannot block the IPC connection past the
+// HandleConn deadline.
+func (d *Daemon) gatewayTestResponse(channel string) Response {
+	if channel == "" {
+		return Response{Ok: false, Msg: "gateway-test: channel required"}
+	}
+	d.mu.Lock()
+	gw := d.gw
+	gwCfg := d.gatewayCfg
+	d.mu.Unlock()
+	if gw == nil || gw.broker == nil {
+		return Response{Ok: false, Msg: "gateway-test: gateway not running on this daemon (set gateway.enabled in config and restart)"}
+	}
+	src := gateway.Source(channel)
+	if !src.Valid() {
+		return Response{Ok: false, Msg: fmt.Sprintf("gateway-test: unknown channel %q (valid: ntfy, telegram, signal, custom)", channel)}
+	}
+	if !gatewayChannelEnabled(gwCfg, src) {
+		return Response{Ok: false, Msg: fmt.Sprintf("gateway-test: channel %q is not enabled in config", channel)}
+	}
+	if src == gateway.SourceSignal {
+		// signal ships as a stub; surface that cleanly rather than fanning
+		// out a "not yet implemented" failure receipt.
+		return Response{Ok: false, Msg: "gateway-test: signal adapter is stub-only"}
+	}
+	env := gateway.OutboundEnvelope{
+		Kind:    gateway.OutboundNotification,
+		Title:   "carlos: gateway test",
+		Body:    fmt.Sprintf("This is a test notification from carlos via the %s channel. If you can read it, your gateway is wired correctly.", channel),
+		Urgency: gateway.UrgencyDefault,
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	receipt, err := gw.broker.SendTo(ctx, env, src)
+	if err != nil {
+		return Response{Ok: false, Msg: fmt.Sprintf("gateway-test: %v", err)}
+	}
+	switch receipt.Status {
+	case gateway.StatusDelivered:
+		return Response{Ok: true, Msg: fmt.Sprintf("gateway-test: sent via %s", channel)}
+	case gateway.StatusUnknown:
+		return Response{Ok: true, Msg: fmt.Sprintf("gateway-test: dispatched to %s (fire-and-forget; check the channel for the message)", channel)}
+	default:
+		msg := receipt.Error
+		if msg == "" {
+			msg = string(receipt.Status)
+		}
+		return Response{Ok: false, Msg: fmt.Sprintf("gateway-test: %s adapter reported failure: %s", channel, msg)}
+	}
+}
+
+// gatewayChannelEnabled reports whether cfg has the named channel
+// switched on. Mirrors the buildXAdapter checks in gateway.go so the
+// CLI surfaces the same enabled/disabled gate the daemon uses at
+// startup.
+func gatewayChannelEnabled(cfg config.GatewayConfig, src gateway.Source) bool {
+	switch src {
+	case gateway.SourceNtfy:
+		return cfg.Ntfy.Enabled
+	case gateway.SourceTelegram:
+		return cfg.Telegram.Enabled
+	case gateway.SourceSignal:
+		// Signal registers even when disabled (see buildSignalAdapter);
+		// for the test verb we still gate on the config flag so the user
+		// is told to enable it explicitly.
+		return cfg.Signal.Enabled
+	case gateway.SourceCustom:
+		return cfg.Custom.Enabled
+	}
+	return false
 }
 
 // statusResponse builds the rich Response for the `status` verb: every

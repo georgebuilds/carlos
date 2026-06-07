@@ -16,9 +16,10 @@
 //
 // Commands:
 //
-//	status   → returns active schedule count, next-fire time, last-run summary
-//	reload   → re-reads config from disk; equivalent to SIGHUP
-//	stop     → graceful shutdown (cancels the ctx the daemon is running under)
+//	status        → returns active schedule count, next-fire time, last-run summary
+//	reload        → re-reads config from disk; equivalent to SIGHUP
+//	stop          → graceful shutdown (cancels the ctx the daemon is running under)
+//	gateway-test  → sends a fixed test envelope through one named gateway channel
 //
 // Reply envelope is always {"ok": bool, "msg": string, ...} so a CLI
 // failure mode is simple to surface: ok=false + msg is the human text
@@ -59,8 +60,13 @@ func DefaultSocketPath() string {
 //	{"cmd":"status"}
 //	{"cmd":"reload"}
 //	{"cmd":"stop"}
+//	{"cmd":"gateway-test","channel":"ntfy"}
 type Request struct {
 	Cmd string `json:"cmd"`
+
+	// Channel is the gateway channel name the gateway-test verb targets
+	// (ntfy / telegram / signal / custom). Ignored by other verbs.
+	Channel string `json:"channel,omitempty"`
 }
 
 // Response is the JSON shape the daemon returns:

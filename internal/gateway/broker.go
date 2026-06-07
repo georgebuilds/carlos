@@ -343,6 +343,61 @@ func (b *Broker) Send(ctx context.Context, env OutboundEnvelope) ([]DeliveryRece
 	return receipts, nil
 }
 
+// SendTo dispatches env to a single named channel, bypassing the
+// routing config. Used by the `carlos gateway test` CLI verb to verify a
+// specific adapter is wired correctly without disturbing what the user
+// has routed at runtime.
+//
+// Behaviour mirrors Send for one channel: validates the envelope,
+// stamps ID + CreatedAt, looks up the adapter, runs the same retry
+// loop, and writes the same event-log rows. Returns the per-attempt
+// receipt and a typed error when the channel name is unknown or no
+// adapter is registered for it.
+func (b *Broker) SendTo(ctx context.Context, env OutboundEnvelope, channel Source) (DeliveryReceipt, error) {
+	if !channel.Valid() {
+		return DeliveryReceipt{}, fmt.Errorf("broker: unknown channel %q", channel)
+	}
+	if err := env.Validate(); err != nil {
+		return DeliveryReceipt{}, err
+	}
+	now := b.clock().UTC().Truncate(time.Millisecond)
+	if env.ID == "" {
+		id, err := newEnvelopeID(now)
+		if err != nil {
+			return DeliveryReceipt{}, fmt.Errorf("broker: mint envelope id: %w", err)
+		}
+		env.ID = id
+	}
+	if env.CreatedAt.IsZero() {
+		env.CreatedAt = now
+	}
+
+	b.mu.RLock()
+	a, ok := b.adapters[channel]
+	retry := b.retry
+	b.mu.RUnlock()
+	if !ok {
+		return DeliveryReceipt{
+			Source: channel,
+			Status: StatusFailed,
+			Error:  "no adapter registered",
+		}, fmt.Errorf("broker: no adapter registered for %q", channel)
+	}
+	caps := a.OutboundCapabilities()
+	if !caps.SupportsKind(env.Kind) {
+		return DeliveryReceipt{
+			Source: channel,
+			Status: StatusFailed,
+			Error:  fmt.Sprintf("adapter does not support kind %q", env.Kind),
+		}, nil
+	}
+	chEnv := env
+	if caps.MaxActions > 0 && len(chEnv.Actions) > caps.MaxActions {
+		chEnv.Actions = append([]Action(nil), chEnv.Actions[:caps.MaxActions]...)
+	}
+	return b.sendOne(ctx, a, chEnv, retry), nil
+}
+
 // sendOne runs the retry loop for a single (adapter, envelope) pair.
 // Persists one EvtGatewayOutbound row per attempt; the final row carries
 // the terminal receipt.
