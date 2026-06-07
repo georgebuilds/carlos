@@ -21,7 +21,7 @@ Or grab a tarball from [Releases](https://github.com/georgebuilds/carlos/release
 
 Onboarding takes ~30 seconds:
 
-1. Your name (defaults to `$USER`)
+1. Your name (prefilled from `$USER`, or `Boss` if `$USER` is empty or `root`)
 2. A provider (Anthropic, OpenAI, OpenRouter, Ollama, or Gemini) and an API key
 3. A model from a curated dropdown (OpenRouter shows live pricing)
 4. Whether to enable the background daemon (scheduled runs, gateway delivery)
