@@ -328,6 +328,19 @@ type Model struct {
 	newFrameCopy    bool // true = copy personal; false = blank
 	newFrameGlyphEd bool // user touched the glyph field
 	newFrameError   string
+
+	// Phase T-2 follow-on: first-launch trust prompt. Surfaces once per
+	// session when the cwd is a real project dir and the user hasn't
+	// already trusted it. firstTrustDismissed sticks for the session so
+	// the prompt doesn't return on every render.
+	showFirstTrust      bool
+	firstTrustDismissed bool
+
+	// queuedCmds carries tea.Cmds queued by overlay handlers that need
+	// to run on the next Update tick. The first-trust prompt uses this
+	// to bridge to trustSlashEnable without restructuring the y/n
+	// routing.
+	queuedCmds []tea.Cmd
 }
 
 // FrameUI is the Phase F display + switch contract the chat Model
@@ -534,6 +547,7 @@ func (m *Model) OpenManageRequested() bool { return m.openManage }
 // Init kicks off backfill + subscription + the text ticker, plus the
 // textarea cursor blink if we're accepting input.
 func (m *Model) Init() tea.Cmd {
+	m.initFirstTrustPrompt()
 	cmds := []tea.Cmd{
 		backfillCmd(m.log, m.agentID),
 		subscribeCmd(m.log, m.agentID),
@@ -627,6 +641,18 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			next, cmd, handled := m.handlePermsOverlayKey(msg)
 			if handled {
 				return next, cmd
+			}
+		}
+		// First-launch trust prompt: y / n / esc. The handler queues
+		// any tea.Cmd it needs to run; we drain queuedCmds below.
+		if m.showFirstTrust {
+			if m.handleFirstTrustKey(msg.String()) {
+				var cmd tea.Cmd
+				if len(m.queuedCmds) > 0 {
+					cmd = tea.Batch(m.queuedCmds...)
+					m.queuedCmds = nil
+				}
+				return m, cmd
 			}
 		}
 		// Approval overlay intercepts y/n/A before the textarea sees

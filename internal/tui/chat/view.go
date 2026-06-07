@@ -133,6 +133,9 @@ func (m *Model) renderInner(innerW, innerH int) string {
 	} else if m.showHelp {
 		approval = renderHelpBox(innerW)
 		approvalH = lipgloss.Height(approval)
+	} else if m.showFirstTrust && m.workspace != nil {
+		approval = renderFirstTrustPrompt(m.workspace.Cwd(), innerW)
+		approvalH = lipgloss.Height(approval)
 	}
 
 	// Transcript area gets whatever's left.
