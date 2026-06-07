@@ -17,10 +17,16 @@ import (
 // is composite: one Screen enum slot at the Flow level, multiple inner
 // stages here. Modeled the same way provider screen handles its own
 // per-provider walk.
+//
+// gwStageDecide is the first-launch gate: the user picks "set up
+// later" (default) or "step through now". Picking later lands the user
+// at done; now drops into the legacy gwStageEnable → channels → adapter
+// flow.
 type gatewayStage int
 
 const (
-	gwStageEnable gatewayStage = iota
+	gwStageDecide gatewayStage = iota
+	gwStageEnable
 	gwStageChannels
 	gwStageNtfy
 	gwStageTelegram
@@ -97,9 +103,18 @@ func newGatewayModel() gatewayModel {
 	ti.Width = 56
 	ti.Prompt = "> "
 	return gatewayModel{
-		stage: gwStageEnable,
+		stage: gwStageDecide,
 		input: ti,
 	}
+}
+
+// NewGatewayStandalone constructs a gatewayModel that bypasses the
+// "later or now" gate so `carlos gateway add` can drive the same wizard
+// without re-asking the question.
+func NewGatewayStandalone() gatewayModel {
+	m := newGatewayModel()
+	m.stage = gwStageEnable
+	return m
 }
 
 func (m gatewayModel) Init() tea.Cmd { return textinput.Blink }
@@ -188,6 +203,24 @@ func (m gatewayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	k, isKey := msg.(tea.KeyMsg)
 
 	switch m.stage {
+	case gwStageDecide:
+		if isKey {
+			switch strings.ToLower(k.String()) {
+			case "n":
+				// Step through now: drop into the legacy enable
+				// prompt + channel/adapter wizard.
+				m.stage = gwStageEnable
+				return m, nil
+			case "l", "enter":
+				// Default: set up later. Gateway stays disabled
+				// and lands at done; user can finish via
+				// `carlos gateway add` whenever.
+				m.enabled = false
+				return m, nextScreen(m.buildResult())
+			}
+		}
+		return m, nil
+
 	case gwStageEnable:
 		if isKey {
 			switch strings.ToLower(k.String()) {
@@ -377,6 +410,23 @@ func (m gatewayModel) buildResult() gatewayResult {
 func (m gatewayModel) View() string {
 	var sb strings.Builder
 	switch m.stage {
+	case gwStageDecide:
+		sb.WriteString(styleHint.Render(
+			"the gateway routes notifications, approvals, and conversation to ntfy + telegram."))
+		sb.WriteString("\n")
+		sb.WriteString(styleHint.Render(
+			"the wizard is a few screens long. you can step through now or finish later."))
+		sb.WriteString("\n\n")
+		sb.WriteString("set up the gateway?")
+		sb.WriteString("\n\n")
+		sb.WriteString("   ")
+		sb.WriteString(styleKey.Render("[enter]"))
+		sb.WriteString(styleHint.Render(" set up later (run `carlos gateway add`)"))
+		sb.WriteString("\n")
+		sb.WriteString("   ")
+		sb.WriteString(styleKey.Render("[n]"))
+		sb.WriteString(styleHint.Render("     step through now"))
+
 	case gwStageEnable:
 		sb.WriteString(styleHint.Render(
 			"Push notifications + HITL approvals from your phone (ntfy, Telegram). Requires the daemon."))

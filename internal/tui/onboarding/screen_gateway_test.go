@@ -9,7 +9,8 @@ import (
 
 func TestGatewayScreen_DefaultNoEnabledDeclinesAndExits(t *testing.T) {
 	m := newGatewayModel()
-	// Enter on the y/N prompt accepts the default (no).
+	// Enter on the decide gate is the new default: "set up later" →
+	// gateway stays disabled and the flow lands at done.
 	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	if cmd == nil {
 		t.Fatal("expected nextScreen cmd on enter")
@@ -17,15 +18,61 @@ func TestGatewayScreen_DefaultNoEnabledDeclinesAndExits(t *testing.T) {
 	mm := next.(gatewayModel)
 	res := mm.buildResult()
 	if res.enabled {
-		t.Errorf("default-no should produce enabled=false; got %+v", res)
+		t.Errorf("default-later should produce enabled=false; got %+v", res)
 	}
 	if res.ntfy.Enabled || res.telegram.Enabled {
 		t.Errorf("no channels should be configured: %+v", res)
 	}
 }
 
-func TestGatewayScreen_ExplicitNoExits(t *testing.T) {
+// TestGatewayScreen_DecideGateRenders renders the gate copy so we
+// notice if the proposal language drifts away from "later (run carlos
+// gateway add)".
+func TestGatewayScreen_DecideGateRenders(t *testing.T) {
 	m := newGatewayModel()
+	out := stripStyle(m.View())
+	for _, want := range []string{
+		"set up the gateway?",
+		"[enter]",
+		"set up later",
+		"carlos gateway add",
+		"[n]",
+		"step through now",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("decide gate missing %q; got:\n%s", want, out)
+		}
+	}
+}
+
+// TestGatewayScreen_StepThroughNowDropsIntoEnable proves pressing [n]
+// on the decide gate hands control over to the legacy enable prompt
+// instead of advancing.
+func TestGatewayScreen_StepThroughNowDropsIntoEnable(t *testing.T) {
+	m := newGatewayModel()
+	next, cmd := m.Update(tea.KeyMsg{Runes: []rune{'n'}, Type: tea.KeyRunes})
+	if cmd != nil {
+		t.Errorf("step through now should NOT advance; want nil cmd")
+	}
+	if mm := next.(gatewayModel); mm.stage != gwStageEnable {
+		t.Errorf("after [n] on decide: want gwStageEnable got %v", mm.stage)
+	}
+}
+
+// TestGatewayStandaloneSkipsDecide proves NewGatewayStandalone seeds
+// the gateway model at gwStageEnable, which is what `carlos gateway
+// add` uses to bypass the first-run gate.
+func TestGatewayStandaloneSkipsDecide(t *testing.T) {
+	m := NewGatewayStandalone()
+	if m.stage != gwStageEnable {
+		t.Errorf("standalone: want gwStageEnable got %v", m.stage)
+	}
+}
+
+func TestGatewayScreen_ExplicitNoExits(t *testing.T) {
+	// The legacy "enable y/N" prompt now lives behind the decide
+	// gate; tests that exercise it start from gwStageEnable directly.
+	m := NewGatewayStandalone()
 	next, cmd := m.Update(tea.KeyMsg{Runes: []rune{'n'}, Type: tea.KeyRunes})
 	if cmd == nil {
 		t.Fatal("expected nextScreen cmd")
@@ -36,7 +83,7 @@ func TestGatewayScreen_ExplicitNoExits(t *testing.T) {
 }
 
 func TestGatewayScreen_YesAdvancesToChannelPicker(t *testing.T) {
-	m := newGatewayModel()
+	m := NewGatewayStandalone()
 	next, cmd := m.Update(tea.KeyMsg{Runes: []rune{'y'}, Type: tea.KeyRunes})
 	if cmd != nil {
 		t.Error("y should NOT yet exit; we need channel selection next")
