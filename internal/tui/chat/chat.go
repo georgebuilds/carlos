@@ -329,27 +329,26 @@ type Model struct {
 	newFrameGlyphEd bool // user touched the glyph field
 	newFrameError   string
 
-	// Phase T-2 follow-on: first-launch trust prompt. Surfaces once per
-	// session when the cwd is a real project dir and the user hasn't
-	// already trusted it. firstTrustDismissed sticks for the session so
-	// the prompt doesn't return on every render.
+	// Phase T-2 follow-on: first-launch trust prompt.
 	showFirstTrust      bool
 	firstTrustDismissed bool
 
 	// queuedCmds carries tea.Cmds queued by overlay handlers that need
-	// to run on the next Update tick. The first-trust prompt uses this
-	// to bridge to trustSlashEnable without restructuring the y/n
-	// routing.
+	// to run on the next Update tick.
 	queuedCmds []tea.Cmd
 
-	// Phase O five-checkbox heuristic. When the active frame is in
-	// orchestrator mode and the user submits a non-trivial prompt, the
-	// submit path stashes the prompt here and toggles showHeuristic.
+	// Phase O five-checkbox heuristic.
 	showHeuristic     bool
 	heuristicChecks   [heuristicQuestionCount]bool
 	heuristicPending  string
 	heuristicHelp     bool
 	heuristicDisabled bool
+
+	// Inline sub-agent panel: childrenView is the supervisor-scoped
+	// reader, nil disables the panel entirely; childrenSnap is the
+	// latest 250ms snapshot.
+	childrenView ChildrenView
+	childrenSnap []ChildSnapshot
 }
 
 // FrameUI is the Phase F display + switch contract the chat Model
@@ -499,6 +498,15 @@ func WithFrame(ui FrameUI) Option {
 	return func(m *Model) { m.frame = ui }
 }
 
+// WithChildrenView wires the inline sub-agent panel. The chat polls
+// cv.Snapshot at ~250ms while at least one child is live; the panel
+// appears on the right when the inner width clears splitMinWidth and
+// disappears as soon as the snapshot is empty. nil leaves the chat in
+// its single-stack layout.
+func WithChildrenView(cv ChildrenView) Option {
+	return func(m *Model) { m.childrenView = cv }
+}
+
 // New constructs a chat Model bound to the given event log + agent. The
 // TextSource is required (pass NewMemTextSource() if you have nothing
 // else); Slice 1f will plug a real streaming source in.
@@ -573,6 +581,10 @@ func (m *Model) Init() tea.Cmd {
 		m.userShellSubCh = ch
 		m.userShellUnsub = unsub
 		cmds = append(cmds, pumpUserShellCmd(ch))
+	}
+	if m.childrenView != nil {
+		m.childrenSnap = m.childrenView.Snapshot()
+		cmds = append(cmds, scheduleChildrenTick())
 	}
 	return tea.Batch(cmds...)
 }
@@ -847,6 +859,18 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case textTickMsg:
 		// Re-render so live assistant text from the TextSource appears.
+		// Also re-poll the children view at the same low cadence so a
+		// fresh spawn surfaces the inline panel without a dedicated
+		// supervisor event. The faster 250ms tick takes over once at
+		// least one child is live and stops on the next empty snapshot.
+		if m.childrenView != nil && len(m.childrenSnap) == 0 {
+			snap := m.childrenView.Snapshot()
+			if len(snap) > 0 {
+				m.childrenSnap = snap
+				m.rerenderViewport()
+				return m, tea.Batch(scheduleTextTick(), scheduleChildrenTick())
+			}
+		}
 		m.rerenderViewport()
 		return m, scheduleTextTick()
 
@@ -883,6 +907,24 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case userShellSubscriptionClosedMsg:
 		m.userShellSubCh = nil
 		return m, nil
+
+	case childrenTickMsg:
+		if m.childrenView == nil {
+			return m, nil
+		}
+		prev := len(m.childrenSnap)
+		m.childrenSnap = m.childrenView.Snapshot()
+		now := len(m.childrenSnap)
+		if prev != now {
+			m.rerenderViewport()
+		}
+		if now == 0 {
+			// Stop the tick loop. Init re-arms it on the next session
+			// boot; a future Spawn restarts it via the same seam (the
+			// snapshot poll on the next user-message render frame).
+			return m, nil
+		}
+		return m, scheduleChildrenTick()
 	}
 	return m, nil
 }

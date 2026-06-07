@@ -3,6 +3,7 @@ package chat
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 
@@ -162,19 +163,70 @@ func (m *Model) renderInner(innerW, innerH int) string {
 	// rerenderViewport every frame is cheap (composeTranscript is
 	// O(transcript) and the slice is small) and keeps the "follow
 	// the tail" semantics correct.
-	m.vp.Width = innerW
+	//
+	// Inline sub-agent panel: when the chat has at least one live
+	// child AND innerW clears splitMinWidth, the transcript shrinks
+	// to leave room for the right-side panel. Below splitMinWidth
+	// the panel collapses to a dim footer line so the transcript
+	// keeps the full width.
+	panelW := 0
+	showSplit := false
+	showFallback := false
+	if len(m.childrenSnap) > 0 {
+		if innerW >= splitMinWidth {
+			panelW = panelWidth(innerW)
+			showSplit = true
+		} else {
+			showFallback = true
+		}
+	}
+	transcriptW := innerW
+	if showSplit {
+		transcriptW = innerW - panelW - 1
+		if transcriptW < 30 {
+			transcriptW = 30
+		}
+	}
+	m.vp.Width = transcriptW
 	m.vp.Height = transcriptH
 	m.rerenderViewport()
 
-	parts := []string{header, m.vp.View()}
+	transcriptBody := m.vp.View()
+	if showSplit {
+		panel := renderChildrenPanel(m.childrenSnap, panelW, time.Now())
+		sep := childrenPanelSeparator(transcriptH)
+		left := lipgloss.NewStyle().Width(transcriptW).Render(transcriptBody)
+		right := lipgloss.NewStyle().Width(panelW).Render(panel)
+		transcriptBody = lipgloss.JoinHorizontal(lipgloss.Top, left, sep, right)
+	}
+
+	parts := []string{header, transcriptBody}
 	if approval != "" {
 		parts = append(parts, approval)
 	}
 	if !m.readOnly {
 		parts = append(parts, input)
 	}
+	if showFallback {
+		parts = append(parts, renderChildrenFallbackLine(m.childrenSnap, innerW))
+	}
 	parts = append(parts, footer)
 	return lipgloss.JoinVertical(lipgloss.Left, parts...)
+}
+
+// childrenPanelSeparator paints the single-column dim divider between
+// the transcript and the right-side roster. Height tracks the
+// transcript so the separator runs the full panel length.
+func childrenPanelSeparator(h int) string {
+	if h < 1 {
+		h = 1
+	}
+	bar := lipgloss.NewStyle().Foreground(colorSubtle).Render("│")
+	rows := make([]string, h)
+	for i := range rows {
+		rows[i] = bar
+	}
+	return strings.Join(rows, "\n")
 }
 
 // renderInput frames the textarea with a thin separator above so the

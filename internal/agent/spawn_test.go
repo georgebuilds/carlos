@@ -541,6 +541,60 @@ func TestSpawn_FrameMode_SetModeUpdatesCapForNextSpawn(t *testing.T) {
 	}
 }
 
+// TestSupervisor_SnapshotChildrenOf covers the inline chat panel's
+// data source. Spawning two hanging children under the same parent
+// should surface two snapshots; an unrelated spawn under a different
+// parent stays invisible to the first parent's view.
+func TestSupervisor_SnapshotChildrenOf(t *testing.T) {
+	dir := t.TempDir()
+	log, err := agent.OpenStateDB(filepath.Join(dir, "state.db"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer agent.CloseStateDB(log)
+	ctx := context.Background()
+
+	sup := agent.NewSupervisor(log, newHangingProvider(), nil)
+	defer sup.Shutdown()
+	sup.SetMaxSpawnDepth(2)
+	sup.SetMaxConcurrentChildren(5)
+
+	if got := sup.SnapshotChildrenOf(ctx, ""); len(got) != 0 {
+		t.Fatalf("empty snapshot expected; got %d", len(got))
+	}
+
+	for i, obj := range []string{"first", "second"} {
+		if _, _, err := sup.Spawn(ctx, "", agent.SpawnContract{Objective: obj}); err != nil {
+			t.Fatalf("spawn %d: %v", i, err)
+		}
+	}
+
+	// Snapshot must report both children. Title surfaces the
+	// objective so the chat panel can derive its event column.
+	snap := sup.SnapshotChildrenOf(ctx, "")
+	if len(snap) != 2 {
+		t.Fatalf("SnapshotChildrenOf len = %d, want 2", len(snap))
+	}
+	titles := map[string]bool{}
+	for _, s := range snap {
+		titles[s.Title] = true
+		if s.AgentID == "" {
+			t.Errorf("snapshot row missing AgentID")
+		}
+	}
+	for _, want := range []string{"first", "second"} {
+		if !titles[want] {
+			t.Errorf("snapshot missing objective %q; got %+v", want, snap)
+		}
+	}
+
+	// A spawn under a different parent doesn't leak into the first
+	// parent's view.
+	if got := sup.SnapshotChildrenOf(ctx, "some-other-parent"); len(got) != 0 {
+		t.Errorf("unrelated parent should see no children; got %d", len(got))
+	}
+}
+
 // TestSpawn_CannedFakeProviderRunsCleanly is the simplest end-to-end
 // sanity that uses the package-canonical fake.CannedScript. It hits
 // a tool_use; that means the base registry needs the bash tool name

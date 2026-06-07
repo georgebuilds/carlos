@@ -1709,6 +1709,29 @@ func runDefault(cfg *config.Config, sessionID string) error {
 	// startup so previous-session entries are available.
 	shellHistory := usershell.NewHistory("")
 
+	// Inline sub-agent panel: bridge the supervisor's per-parent
+	// children map into the small ChildrenView the chat polls. The
+	// adapter closes over sup + the chat-default agent id so the
+	// chat doesn't need to know either; if the chat ever runs
+	// against a non-default parent id the adapter can be rebuilt.
+	childrenView := chat.ChildrenViewFunc(func() []chat.ChildSnapshot {
+		snaps := sup.SnapshotChildrenOf(ctx, defaultAgentID)
+		if len(snaps) == 0 {
+			return nil
+		}
+		out := make([]chat.ChildSnapshot, 0, len(snaps))
+		for _, s := range snaps {
+			out = append(out, chat.ChildSnapshot{
+				AgentID:   s.AgentID,
+				State:     s.State,
+				LastEvent: s.Title,
+				Spend:     chat.ChildSpend{Tokens: s.Tokens, Cents: s.CostCents},
+				StartedAt: s.StartedAt,
+			})
+		}
+		return out
+	})
+
 	for {
 		opts := []chat.Option{
 			chat.WithTUIApprover(approver),
@@ -1716,6 +1739,7 @@ func runDefault(cfg *config.Config, sessionID string) error {
 			chat.WithSummarizer(summarizer),
 			chat.WithUserShell(shellMgr),
 			chat.WithShellHistory(shellHistory),
+			chat.WithChildrenView(childrenView),
 		}
 		if frameUI.Active != "" {
 			opts = append(opts, chat.WithFrame(frameUI))

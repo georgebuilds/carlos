@@ -15,9 +15,10 @@ import (
 // trigger the projection / event subscribe paths.
 type stubLog struct{ agent.EventLog }
 
-func newFramedModel(t *testing.T, ui FrameUI) *Model {
+func newFramedModel(t *testing.T, ui FrameUI, opts ...Option) *Model {
 	t.Helper()
-	m := New(stubLog{}, "test-agent", NewMemTextSource(), WithFrame(ui))
+	allOpts := append([]Option{WithFrame(ui)}, opts...)
+	m := New(stubLog{}, "test-agent", NewMemTextSource(), allOpts...)
 	m.width = 120
 	m.height = 30
 	return m

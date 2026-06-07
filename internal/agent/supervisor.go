@@ -625,6 +625,63 @@ func (s *Supervisor) ActiveChildren(parentID string) int {
 	return n
 }
 
+// ChildSnapshot is the per-child datum the inline chat panel renders.
+// One row per in-flight child of the parentID passed to
+// SnapshotChildrenOf. The row reads from the projection cache, so
+// state + spend reflect whatever the supervisor has already committed
+// to the log; reads are best-effort and a child that just terminated
+// may drop out of the slice on the next call.
+type ChildSnapshot struct {
+	AgentID   string
+	State     State
+	Title     string
+	Tokens    int
+	CostCents int
+	StartedAt time.Time
+}
+
+// SnapshotChildrenOf returns one ChildSnapshot per in-flight child of
+// parentID. Reads the supervisor's children map for the active set,
+// then enriches each row from the agents projection cache. A child
+// whose row hasn't landed in the cache yet (Spawn raced with the
+// projection insert) is skipped rather than reported with zero state.
+//
+// The caller is the inline chat panel; nil log makes this return an
+// empty slice so tests that drive the chat without a real DB don't
+// have to stand one up.
+func (s *Supervisor) SnapshotChildrenOf(ctx context.Context, parentID string) []ChildSnapshot {
+	if s == nil || s.log == nil {
+		return nil
+	}
+	s.mu.Lock()
+	ids := make([]string, 0, len(s.children))
+	for id, c := range s.children {
+		if c.parentID == parentID {
+			ids = append(ids, id)
+		}
+	}
+	s.mu.Unlock()
+	if len(ids) == 0 {
+		return nil
+	}
+	out := make([]ChildSnapshot, 0, len(ids))
+	for _, id := range ids {
+		row, ok, err := s.log.GetAgent(ctx, id)
+		if err != nil || !ok {
+			continue
+		}
+		out = append(out, ChildSnapshot{
+			AgentID:   row.ID,
+			State:     row.State,
+			Title:     row.Title,
+			Tokens:    int(row.TokensIn + row.TokensOut),
+			CostCents: int(row.CostCents),
+			StartedAt: row.CreatedAt,
+		})
+	}
+	return out
+}
+
 // SetMaxSpawnDepth overrides the default depth cap. Useful for tests
 // that want to exercise deeper chains without rebuilding the whole
 // supervisor.

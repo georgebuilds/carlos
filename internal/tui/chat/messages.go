@@ -89,6 +89,16 @@ func subscribeCmd(log agent.EventLog, agentID string) tea.Cmd {
 	}
 }
 
+// childrenTickMsg fires while the chat is polling the ChildrenView for
+// live sub-agent state. The handler refreshes m.childrenSnap and re-
+// arms the tick when the snapshot is non-empty; an empty snapshot
+// stops the loop so a long idle chat doesn't keep ticking.
+type childrenTickMsg struct{}
+
+func scheduleChildrenTick() tea.Cmd {
+	return tea.Tick(panelTickInterval, func(time.Time) tea.Msg { return childrenTickMsg{} })
+}
+
 // approvalRequestMsg carries one in-flight tool-call approval request
 // from the TUIApprover's pump goroutine into the Model's Update. The
 // Model parks the request on m.pendingApproval and renders an overlay
