@@ -215,7 +215,9 @@ func (d *Daemon) Run(ctx context.Context) error {
 	// 4. Signal handlers - derive a cancellable ctx so SIGTERM and
 	//    the IPC stop verb both unwind through the same path.
 	runCtx, cancel := context.WithCancel(ctx)
+	d.mu.Lock()
 	d.stopFn = cancel
+	d.mu.Unlock()
 
 	var sigCh chan os.Signal
 	if !d.opts.DisableSignals {
@@ -316,8 +318,11 @@ func (a supervisorAdapter) Spawn(ctx context.Context, parentID string, contract 
 // Stop initiates graceful shutdown. Idempotent.
 func (d *Daemon) Stop() {
 	d.stopOnce.Do(func() {
-		if d.stopFn != nil {
-			d.stopFn()
+		d.mu.Lock()
+		fn := d.stopFn
+		d.mu.Unlock()
+		if fn != nil {
+			fn()
 		}
 	})
 }
