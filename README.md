@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/branding/carlos-portrait.png" alt="carlos" width="160">
+</p>
+
 # carlos
 
 A pure-Go TUI agent. Single binary under 16 MB. No CGO. Cross-compiled for darwin + linux × amd64 + arm64.
