@@ -139,6 +139,23 @@ func NewDefaultRegistryWithBaseDirAndFrames(
 	frames frame.Config,
 	active string,
 ) *Registry {
+	return NewDefaultRegistryWithIdentity(baseDir, vaultCfg, frames, active, nil, "")
+}
+
+// NewDefaultRegistryWithIdentity is the variant that also wires the
+// carlos_about introspection tool with the user name + a provider
+// summary map. cmd/carlos populates the provider map from cfg.Providers;
+// the API keys never enter the tool's surface (only HasKey is exposed).
+// Empty providers + empty userName are fine — carlos_about still
+// registers and returns the rest of the introspection envelope.
+func NewDefaultRegistryWithIdentity(
+	baseDir string,
+	vaultCfg config.VaultConfig,
+	frames frame.Config,
+	active string,
+	providers map[string]ProviderSummary,
+	userName string,
+) *Registry {
 	r := NewRegistry()
 	bash := NewBashTool()
 	bash.BaseDir = baseDir
@@ -201,6 +218,7 @@ func NewDefaultRegistryWithBaseDirAndFrames(
 	r.Register(NewNotesRecentTool(nenv))
 	r.Register(NewNotesResolveTool(nenv))
 	r.Register(NewNotesWriteTool(nenv))
+	r.Register(NewCarlosAboutTool(vaultCfg, frames, active, providers, userName))
 	r.Register(NewObsidianGetTool(nenv))
 	r.Register(NewObsidianSearchTool(nenv))
 	r.Register(NewObsidianBacklinksTool(nenv))

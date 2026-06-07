@@ -160,6 +160,10 @@ var DefaultBuiltinAllow = []string{
 	"notes_backlinks",
 	"notes_tagged",
 	"notes_write",
+	// Read-only introspection of carlos's own state (vault path,
+	// frames, capabilities, providers). Returns local data only;
+	// no network egress, no file mutation.
+	"carlos_about",
 	// Generic read-only filesystem tools.
 	"read",
 	"grep",
