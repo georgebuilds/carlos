@@ -42,7 +42,7 @@ var gm = goldmark.New()
 // returns the populated Note (Path-relative to vault root rel,
 // slash-separated).
 //
-// Outgoing-link resolution is NOT done here — parseFile only fills the
+// Outgoing-link resolution is NOT done here - parseFile only fills the
 // raw Link.Display/Section/Line + Target=raw-target. The indexer's
 // second pass walks every note and rewrites Target to the resolved
 // relpath (or "" if unresolved). Splitting parse vs resolve keeps
@@ -71,7 +71,7 @@ func parseFile(abs, rel string, info os.FileInfo) (*Note, error) {
 	// of the file via miniyaml.SplitFrontmatter, then decode the inner
 	// YAML into a map[string]any.  Returns (nil, raw, false, nil) when
 	// no frontmatter is present, which matches goldmark-meta's silent-
-	// skip behavior.  Unterminated frontmatter is non-fatal here too —
+	// skip behavior.  Unterminated frontmatter is non-fatal here too -
 	// we treat a malformed block as "no frontmatter" rather than
 	// failing the whole parse, again matching the prior contract.
 	fmBytes, _, found, fmErr := miniyaml.SplitFrontmatter(raw)
@@ -135,7 +135,7 @@ func defaultTitle(rel string) string {
 }
 
 // stringField returns the string value of m[key] when present + a
-// string. Numeric-or-other types fall through to (_, false) — the
+// string. Numeric-or-other types fall through to (_, false) - the
 // frontmatter map is preserved verbatim, but typed accessors only see
 // the type they expect.
 func stringField(m map[string]any, key string) (string, bool) {
@@ -184,7 +184,7 @@ func headingText(h *ast.Heading, src []byte) string {
 		if t, ok := child.(*ast.Text); ok {
 			b.Write(t.Segment.Value(src))
 		} else {
-			// Other inline nodes (emphasis, links, code spans) —
+			// Other inline nodes (emphasis, links, code spans) -
 			// flatten their text children.
 			for c := child.FirstChild(); c != nil; c = c.NextSibling() {
 				if t, ok := c.(*ast.Text); ok {
@@ -209,12 +209,12 @@ func lineOf(src []byte, off int) int {
 	return bytes.Count(src[:off], []byte{'\n'}) + 1
 }
 
-// bodyStart returns the byte offset where the markdown body begins —
+// bodyStart returns the byte offset where the markdown body begins -
 // just past the closing `---` of YAML frontmatter, or 0 if no
 // frontmatter was present.
 //
 // Frontmatter detection follows goldmark-meta: the file must start with
-// `---` (no BOM tolerance — that's a goldmark quirk we inherit) and the
+// `---` (no BOM tolerance - that's a goldmark quirk we inherit) and the
 // next line equal to `---` ends the block.
 func bodyStart(src []byte) int {
 	if !bytes.HasPrefix(src, []byte("---\n")) && !bytes.HasPrefix(src, []byte("---\r\n")) {
@@ -316,7 +316,7 @@ func parseInline(body []byte, bodyOff int, source []byte) ([]Link, []string) {
 			continue
 		}
 
-		// Wikilinks — pure regex.
+		// Wikilinks - pure regex.
 		for _, m := range wikilinkRe.FindAllStringSubmatchIndex(line, -1) {
 			full := line[m[0]:m[1]]
 			tgt := line[m[2]:m[3]]
@@ -423,7 +423,7 @@ func stripMarkdownAnchors(line string) string {
 // stripInlineCode replaces `code spans` (single or multi backticks)
 // with an empty placeholder so the tag-regex pass doesn't see
 // `#example` style code samples. CommonMark inline-code rules require
-// matching opener/closer backtick runs — we honor that by counting.
+// matching opener/closer backtick runs - we honor that by counting.
 func stripInlineCode(line string) string {
 	if !strings.ContainsRune(line, '`') {
 		return line

@@ -1,5 +1,5 @@
 // Package ollama implements a pure-Go streaming client for the Ollama
-// /api/chat endpoint. No SDK — we hit the HTTP endpoint directly so the
+// /api/chat endpoint. No SDK - we hit the HTTP endpoint directly so the
 // capability map stays honest about what the API actually offers versus
 // what an SDK papers over.
 //
@@ -10,7 +10,7 @@
 // map to canonical Event channel.
 //
 // Tool-use streaming caveat: unlike Anthropic and OpenAI, Ollama does
-// NOT stream tool_call arguments incrementally — it emits the whole
+// NOT stream tool_call arguments incrementally - it emits the whole
 // tool_call atomically (typically on the final chunk where the model
 // decided to call a tool). We synthesize a ToolUseStart immediately
 // followed by ToolUseEnd in that case so the canonical channel shape
@@ -22,7 +22,7 @@
 // Mistral Nemo, Qwen 2.5+, and Firefunction-v2 are known-good. Older
 // models silently ignore the `tools` parameter and respond with a text
 // description of what they would do. The agent loop handles that case
-// gracefully — there's nothing for us to detect or warn about here.
+// gracefully - there's nothing for us to detect or warn about here.
 package ollama
 
 import (
@@ -43,7 +43,7 @@ import (
 // Client is the Ollama /api/chat client. Safe for concurrent use: each
 // Stream call runs an independent HTTP request + goroutine.
 //
-// Auth: Ollama is local-only by design — no Authorization header is
+// Auth: Ollama is local-only by design - no Authorization header is
 // sent. If a downstream user proxies Ollama through an authenticating
 // reverse proxy, that's their concern; the canonical local case is
 // auth-free.
@@ -54,7 +54,7 @@ type Client struct {
 
 // New constructs a client pointed at baseURL (defaulting to the standard
 // loopback endpoint when empty). Like the Anthropic client, we set a
-// per-dial header timeout but no overall HTTP timeout — streaming
+// per-dial header timeout but no overall HTTP timeout - streaming
 // completions can legitimately take minutes and the caller's context is
 // the right cancellation surface.
 func New(baseURL string) *Client {
@@ -77,7 +77,7 @@ func (c *Client) Name() string { return "ollama" }
 //
 //   - ParallelToolUse: false. Even when a model emits multiple tool_calls
 //     in one response, the on-the-wire shape doesn't carry the parallel
-//     semantics Anthropic does — we treat each call serially.
+//     semantics Anthropic does - we treat each call serially.
 //   - PromptCaching: false. No built-in caching API surface.
 //   - StructuredOut: true. Ollama supports `format: "json"` or a JSON
 //     schema via the format field. carlos doesn't use it yet but the
@@ -246,7 +246,7 @@ func (c *Client) Stream(ctx context.Context, req providers.Request) (<-chan prov
 // mapStopReason normalizes Ollama's done_reason vocabulary to the
 // canonical (Anthropic-shaped) stop reason names the agent loop
 // expects. Empty input (Ollama omitted the field) falls through as
-// "end_turn" — a done=true chunk with no reason is the normal
+// "end_turn" - a done=true chunk with no reason is the normal
 // successful-completion path on older Ollama builds.
 func mapStopReason(reason string) string {
 	switch reason {

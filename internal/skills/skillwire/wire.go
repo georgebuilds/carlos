@@ -11,7 +11,7 @@
 //   - Promote: react to an approval-accepted event by materializing
 //     the proposal as a real SKILL.md on disk via skills.WriteSkill.
 //
-// The accept → promote subscription is NOT wired yet — see the
+// The accept → promote subscription is NOT wired yet - see the
 // comment block at the top of PromoteAccepted.
 package skillwire
 
@@ -29,7 +29,7 @@ import (
 )
 
 // ProposalTitle returns the user-facing approval-queue title for a
-// proposal. Format: "skill: <name>" — matches the example in
+// proposal. Format: "skill: <name>" - matches the example in
 // approval.go ("skill: react-test-debug"). Pure function; safe to call
 // during artifact serialization.
 func ProposalTitle(p *skills.Proposal) string {
@@ -40,7 +40,7 @@ func ProposalTitle(p *skills.Proposal) string {
 }
 
 // ProposeOptions controls optional pre-queue steps. Today the only
-// optional step is the replay evaluator (slice 6f) — future slices
+// optional step is the replay evaluator (slice 6f) - future slices
 // may add more (e.g. a second-stage judge, an auto-edit pass) by
 // adding fields here without breaking call sites.
 //
@@ -120,7 +120,7 @@ func ProposeSkill(ctx context.Context, log *agent.SQLiteEventLog, agentID string
 //
 // Returns a ProposeResult so the caller can branch on AutoRejected
 // without re-running the replay. A successful auto-reject is NOT an
-// error — the gate did its job — so err is nil and AutoRejected=true.
+// error - the gate did its job - so err is nil and AutoRejected=true.
 func ProposeSkillWithOptions(ctx context.Context, log *agent.SQLiteEventLog, agentID string, p *skills.Proposal, opts ProposeOptions) (ProposeResult, error) {
 	if log == nil {
 		return ProposeResult{}, errors.New("propose: nil log")
@@ -137,11 +137,11 @@ func ProposeSkillWithOptions(ctx context.Context, log *agent.SQLiteEventLog, age
 		r, err := opts.Replay.Evaluate(ctx, p, opts.Transcripts)
 		if err != nil {
 			// Infra failure in the replay evaluator should NOT block
-			// the proposal — we fall back to "no signal" (queue as
+			// the proposal - we fall back to "no signal" (queue as
 			// usual) and surface the error on the result. The brief's
 			// architectural commitment is "skills induced from tasks
 			// that don't have a deterministic verifier skip the
-			// replay step and go straight to human review" — an
+			// replay step and go straight to human review" - an
 			// evaluator that itself failed is morally the same case.
 			replayReport = &ReplayReport{
 				Skipped:       true,
@@ -159,7 +159,7 @@ func ProposeSkillWithOptions(ctx context.Context, log *agent.SQLiteEventLog, age
 		if replayReport != nil && !replayReport.Skipped && replayReport.Decision == ReplayDecisionReject {
 			reason := fmt.Sprintf("replay: %s score=%.2f", replayReport.Decision, replayReport.Score)
 			if err := logAutoReject(ctx, log, agentID, p, replayReport, reason); err != nil {
-				// Logging failure is not fatal — the auto-reject still
+				// Logging failure is not fatal - the auto-reject still
 				// stands; we just lose one telemetry row.
 				reason = reason + " (telemetry log failed: " + err.Error() + ")"
 			}
@@ -195,7 +195,7 @@ func ProposeSkillWithOptions(ctx context.Context, log *agent.SQLiteEventLog, age
 // logAutoReject writes a telemetry record (a small JSON artifact of
 // kind "other") so the curator/metrics layer can surface the rejected
 // proposal without resurrecting the SKILL.md. The record carries the
-// proposal name + replay score + reason — enough for "show me what
+// proposal name + replay score + reason - enough for "show me what
 // the replay-eval rejected last week".
 //
 // Failure to log is NOT fatal; the caller still treats the proposal

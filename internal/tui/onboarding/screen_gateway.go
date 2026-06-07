@@ -79,7 +79,7 @@ type gatewayModel struct {
 	tgBotToken string
 	tgChatID   string
 
-	// Active text input — re-used across stages, re-seeded on stage
+	// Active text input - re-used across stages, re-seeded on stage
 	// transitions. We don't keep one input per field because the
 	// memory footprint is trivial and the value lives in the model
 	// fields above on advance.
@@ -168,7 +168,7 @@ func (m *gatewayModel) seedForCurrentField(userName string) {
 //
 // The user slug is lowercased + non-alphanum stripped so "Boss Lady"
 // becomes "bosslady". A short random suffix keeps the topic effectively
-// secret on public ntfy.sh — anyone with the topic name can subscribe,
+// secret on public ntfy.sh - anyone with the topic name can subscribe,
 // so randomness here is the security boundary against drive-by
 // readers.
 func generateTopic(userName string) string {
@@ -268,7 +268,7 @@ func (m gatewayModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.pickNtfy = m.choice == 1 || m.choice == 3
 				m.pickTelegram = m.choice == 2 || m.choice == 3
 				if !m.pickNtfy && !m.pickTelegram {
-					// User picked "none" — gateway stays enabled but
+					// User picked "none" - gateway stays enabled but
 					// no adapters are configured. That's a valid
 					// state (notifications go nowhere until they
 					// later edit YAML).
@@ -466,7 +466,7 @@ func (m gatewayModel) View() string {
 			sb.WriteString(styleHint.Render("ntfy server URL. Public ntfy.sh works out of the box."))
 		case ntfyFieldTopic:
 			sb.WriteString(styleHint.Render(
-				"Topic name. Treat as a secret — anyone with the topic can subscribe."))
+				"Topic name. Treat as a secret - anyone with the topic can subscribe."))
 			sb.WriteString("\n")
 			sb.WriteString(styleHint.Render(
 				"The default is randomized; press enter to keep it."))
@@ -475,7 +475,7 @@ func (m gatewayModel) View() string {
 				"HMAC key for signing action-button URLs (prevents forged decisions)."))
 			sb.WriteString("\n")
 			sb.WriteString(styleHint.Render(
-				"Auto-generated above. Save a copy somewhere — you'll need it if you ever rebuild config."))
+				"Auto-generated above. Save a copy somewhere - you'll need it if you ever rebuild config."))
 		}
 		sb.WriteString("\n\n")
 		sb.WriteString(m.input.View())
@@ -495,7 +495,7 @@ func (m gatewayModel) View() string {
 				"Bot token from @BotFather. Use env:CARLOS_TELEGRAM_TOKEN to indirect through an env var."))
 		case tgFieldChatID:
 			sb.WriteString(styleHint.Render(
-				"Your chat_id — DM @userinfobot from Telegram to find it (a positive integer)."))
+				"Your chat_id - DM @userinfobot from Telegram to find it (a positive integer)."))
 		}
 		sb.WriteString("\n\n")
 		sb.WriteString(m.input.View())

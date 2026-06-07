@@ -17,7 +17,7 @@ import (
 
 // DefaultBackgroundParallelism is how many background jobs may run
 // concurrently when the caller doesn't override via Options. Three is
-// the "felt right" default — enough for `cargo test`, `npm run dev`,
+// the "felt right" default - enough for `cargo test`, `npm run dev`,
 // and a `tail -f` simultaneously without the user losing track.
 const DefaultBackgroundParallelism = 3
 
@@ -50,7 +50,7 @@ type Options struct {
 	RingBufferCap int
 
 	// Log is the SQLite event log to write EvtUserShellStart +
-	// EvtUserShellEnd rows into. nil disables persistence — the
+	// EvtUserShellEnd rows into. nil disables persistence - the
 	// Manager still runs jobs and surfaces them in Jobs(), but the
 	// model context projection won't see them. Tests pass nil for
 	// pure lifecycle exercises; production wires the chat
@@ -68,7 +68,7 @@ type Options struct {
 // Safe for concurrent use; the TUI's Update goroutine and the per-
 // job spawn goroutines both call methods.
 //
-// S0 ships only the surface — Submit returns ErrNotImplemented, the
+// S0 ships only the surface - Submit returns ErrNotImplemented, the
 // queue is allocated but never advanced, and there's no PTY. S1
 // fills in execution; S2 fills in the queue + bg pool semantics.
 // The shape here is what the TUI codes against.
@@ -98,7 +98,7 @@ type Manager struct {
 	// next. When a foreground slot opens, the Manager pops index 0.
 	fgQueue []string
 
-	// bgQueue is the background waiting list — analog of fgQueue for
+	// bgQueue is the background waiting list - analog of fgQueue for
 	// the bg pool. Used when Submit Background lands while the pool
 	// is full; popped FIFO as bg slots free.
 	bgQueue []string
@@ -123,7 +123,7 @@ type Manager struct {
 	subscribers []chan Update
 
 	// ulidEntropy is the monotonic-random reader for fresh job IDs.
-	// Guarded by ulidMu — ulid.MonotonicEntropy is not safe for
+	// Guarded by ulidMu - ulid.MonotonicEntropy is not safe for
 	// concurrent reads.
 	ulidMu      sync.Mutex
 	ulidEntropy *ulid.MonotonicEntropy
@@ -244,7 +244,7 @@ func (m *Manager) Submit(ctx context.Context, command string, mode Mode) (*Job, 
 // We pass spawnCtx so the very first promotion of a freshly-
 // submitted job inherits the caller's context. Subsequent
 // promotions (driven by other jobs ending) use context.Background()
-// — the Manager outlives the Submit caller; we don't want a Submit
+// - the Manager outlives the Submit caller; we don't want a Submit
 // caller cancelling its ctx to also kill jobs queued behind it.
 func (m *Manager) advanceLocked(spawnCtx context.Context) {
 	// Foreground: at most one running.
@@ -282,15 +282,15 @@ func (m *Manager) startLocked(parent context.Context, job *Job) {
 	rb := NewRingBuffer(m.bufCap)
 	m.outputs[job.ID] = rb
 	if err := job.transition(StateRunning); err != nil {
-		// Shouldn't happen — the queues are supposed to only hold
-		// pending jobs — but be defensive.
+		// Shouldn't happen - the queues are supposed to only hold
+		// pending jobs - but be defensive.
 		return
 	}
 	m.publishStateLocked(job.ID, StateRunning)
 
 	// Persist the start event. We do this OUTSIDE the goroutine
 	// (still under m.mu) so the start row is in the log before the
-	// run goroutine has a chance to write the end row — projection
+	// run goroutine has a chance to write the end row - projection
 	// scans rely on start-before-end ordering.
 	if m.log != nil {
 		_, _ = AppendStart(context.Background(), m.log, StartPayload{
@@ -311,7 +311,7 @@ func (m *Manager) startLocked(parent context.Context, job *Job) {
 }
 
 // runJob is the per-job goroutine that drives the subprocess
-// lifecycle. NOT lock-held — it runs concurrently with the manager.
+// lifecycle. NOT lock-held - it runs concurrently with the manager.
 func (m *Manager) runJob(ctx context.Context, job *Job, rb *RingBuffer) {
 	reader, wait, kill, err := m.runner.Start(ctx, job.Command, job.Cwd)
 	if err != nil {
@@ -394,7 +394,7 @@ func (m *Manager) runJob(ctx context.Context, job *Job, rb *RingBuffer) {
 // job output log to disk, persists the end event, transitions the
 // Job state, publishes the state update, and drains the queue.
 //
-// All persistence side effects are best-effort — a missing OutputDir
+// All persistence side effects are best-effort - a missing OutputDir
 // or a sick event log degrade to "job finished, but the model won't
 // see it" rather than crashing the chat session.
 func (m *Manager) finalize(job *Job, rb *RingBuffer, next State, exit int, failErr error) {
@@ -435,7 +435,7 @@ func (m *Manager) finalize(job *Job, rb *RingBuffer, next State, exit int, failE
 // writeOutputLog persists output under <OutputDir>/<job-id>.log via
 // temp + rename so a crash mid-write doesn't leave a partial file.
 // Returns the final path on success, "" on failure (the caller
-// gracefully degrades — the End event simply lacks an OutputPath).
+// gracefully degrades - the End event simply lacks an OutputPath).
 //
 // Mode 0600 because user-shell output may include secrets the user
 // echoed (env vars, paths under home dir, etc.); mode 0700 on the
@@ -486,7 +486,7 @@ func (m *Manager) onJobTerminal(id string) {
 // Cancel requests termination of the named job. If the job is
 // pending, it's removed from the queue without ever running and
 // transitions to StateCancelled directly. If running, the per-job
-// context is cancelled — S1's spawn goroutine watches that ctx and
+// context is cancelled - S1's spawn goroutine watches that ctx and
 // reaps the PTY.
 //
 // Idempotent: cancelling an already-terminal job returns nil.
@@ -558,7 +558,7 @@ func (m *Manager) Foreground(id string) error {
 		incumbent, inOK := m.jobs[m.fgRunning]
 		if inOK {
 			if len(m.bgRunning) >= m.bgLimit {
-				return fmt.Errorf("usershell: cannot swap — bg pool full")
+				return fmt.Errorf("usershell: cannot swap - bg pool full")
 			}
 			if err := incumbent.markBackgrounded(true); err != nil {
 				return err
@@ -572,7 +572,7 @@ func (m *Manager) Foreground(id string) error {
 }
 
 // Jobs returns a snapshot of every Job the Manager knows about, in
-// insertion order. Safe to call concurrently with Submit/Cancel —
+// insertion order. Safe to call concurrently with Submit/Cancel -
 // the slice is a fresh copy each call.
 // Cwd returns the working directory new jobs will spawn in. Used by
 // the chat surface's Phase F-8 footer hint check after an in-band `!cd`
@@ -616,7 +616,7 @@ func (m *Manager) Jobs() []Snapshot {
 	for id := range m.bgRunning {
 		add(id)
 	}
-	// Remaining (mostly terminal) — order by SubmittedAt asc for
+	// Remaining (mostly terminal) - order by SubmittedAt asc for
 	// stable output.
 	rest := make([]*Job, 0, len(m.jobs))
 	for id, j := range m.jobs {
@@ -645,7 +645,7 @@ func (m *Manager) Get(id string) (Snapshot, error) {
 // Subscribe returns a channel that receives Update notifications
 // for every job state change + output chunk. The channel buffer is
 // generous (256) but non-blocking sends mean a slow consumer will
-// drop events — callers that need exact-once delivery should also
+// drop events - callers that need exact-once delivery should also
 // poll Jobs() / Output().
 //
 // The unsubscribe func must be called when the consumer is done so
@@ -755,7 +755,7 @@ func (m *Manager) newJobID() (string, error) {
 }
 
 // trimCommand strips leading/trailing whitespace from the raw input.
-// The "!" prefix is the composer's responsibility — by the time the
+// The "!" prefix is the composer's responsibility - by the time the
 // command lands here we already know the user wanted shell mode.
 func trimCommand(s string) string {
 	for len(s) > 0 && (s[0] == ' ' || s[0] == '\t' || s[0] == '\n' || s[0] == '\r') {
@@ -773,7 +773,7 @@ func trimCommand(s string) string {
 
 // sortBySubmitted insertion-sorts jobs by SubmittedAt ascending.
 // Insertion sort because N is tiny (the Jobs() slice tops out at
-// the number of jobs the user has run in this chat session — dozens,
+// the number of jobs the user has run in this chat session - dozens,
 // not thousands).
 func sortBySubmitted(a []*Job) {
 	for i := 1; i < len(a); i++ {

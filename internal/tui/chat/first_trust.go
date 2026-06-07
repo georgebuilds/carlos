@@ -1,4 +1,4 @@
-// first_trust.go — Phase T-2 follow-on: a one-time prompt that offers to
+// first_trust.go - Phase T-2 follow-on: a one-time prompt that offers to
 // trust the cwd on first chat launch when the workspace looks like a
 // real project (`.git`, `go.mod`, `package.json`, `Cargo.toml`, etc.)
 // and isn't already trusted.

@@ -1,4 +1,4 @@
-// library.go — load the active skill set from disk.
+// library.go - load the active skill set from disk.
 //
 // Per SPEC § Skill model § Search paths, carlos always loads from
 // FIVE directories (in this priority order; later wins on `name`):
@@ -9,7 +9,7 @@
 //  4. <projectRoot>/.agents/skills/   project-level, open standard
 //  5. ~/.carlos/skills/        carlos-native (legacy / hand-authored)
 //
-// The user's `cfg.Skills.Convention` does NOT change WHAT gets read —
+// The user's `cfg.Skills.Convention` does NOT change WHAT gets read -
 // only where carlos WRITES new skills. Everyone's existing library is
 // always picked up.
 package skills
@@ -33,7 +33,7 @@ import (
 // (values); we switched to `[]*Skill` because the curator mutates
 // Status / Updated in place and downstream callers expect the changes
 // to be visible without a re-load. The exported `Root string` from the
-// old stub is preserved as Roots []string — every consumer of the old
+// old stub is preserved as Roots []string - every consumer of the old
 // stub was internal/agent/agent.go which only references the *Library
 // type, not its fields.
 type Library struct {
@@ -95,7 +95,7 @@ func (l *Library) ForFrame(frame string) []*Skill {
 
 // PickBackend resolves the right backend skill for a capability +
 // backend pair from the active library. The capability prefix is the
-// load-bearing convention — every bundled calendar skill carries
+// load-bearing convention - every bundled calendar skill carries
 // `name: calendar-<backend>` and `backend: <backend>` so we can match
 // either by name prefix or by the frontmatter field. The frontmatter
 // field wins when both are present.
@@ -114,7 +114,7 @@ func (l *Library) PickBackend(capability, backend string) *Skill {
 			continue
 		}
 		if s.Backend == backend {
-			// Prefer explicit frontmatter when present — bundle skills
+			// Prefer explicit frontmatter when present - bundle skills
 			// rely on this so a file rename doesn't drop them off the
 			// capability map.
 			if s.Name == capability+"-"+backend || s.Name == prefix+backend || s.Backend == backend {
@@ -151,11 +151,11 @@ func skillAllowedInFrame(s *Skill, frame string) bool {
 // active set. Later roots shadow earlier ones on `name` collision
 // (SPEC § Skill model: project shadows user).
 //
-// Roots that don't exist are silently skipped — a user who has never
+// Roots that don't exist are silently skipped - a user who has never
 // created any project-level skills shouldn't see an error. Roots that
 // exist but contain malformed SKILL.md files cause LoadLibrary to
 // continue past the broken entry; the returned error (if any) is the
-// first hard read failure. We log nothing — callers decide whether to
+// first hard read failure. We log nothing - callers decide whether to
 // surface partial-load diagnostics.
 func LoadLibrary(rootDirs []string) (*Library, error) {
 	lib := &Library{Roots: append([]string(nil), rootDirs...)}
@@ -219,7 +219,7 @@ func LoadLibrary(rootDirs []string) (*Library, error) {
 //     single namespace ("calendar/") can carry multiple backend skills
 //     without forcing six sibling dirs in `skills/`.
 //
-// Errors loading any one skill are silently skipped — a single bad
+// Errors loading any one skill are silently skipped - a single bad
 // SKILL.md should not nuke the whole library.
 func loadSkillsAt(dir string) []*Skill {
 	if _, err := os.Stat(filepath.Join(dir, skillMarkdownFile)); err == nil {
@@ -254,7 +254,7 @@ func loadSkillsAt(dir string) []*Skill {
 
 // LoadFromConfig resolves the 5 SPEC search paths against the user's
 // home dir + projectRoot and calls LoadLibrary. The cfg's
-// Skills.Convention is intentionally NOT consulted — it governs writes,
+// Skills.Convention is intentionally NOT consulted - it governs writes,
 // not reads. Pass projectRoot="" to skip the project-level paths
 // (useful for the daemon or for unscoped CLI commands).
 func LoadFromConfig(cfg *config.Config, projectRoot string) (*Library, error) {

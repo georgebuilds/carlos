@@ -1,4 +1,4 @@
-// inducer.go — single-call online skill inducer.
+// inducer.go - single-call online skill inducer.
 //
 // # Contract
 //
@@ -6,7 +6,7 @@
 // active skill, the inducer makes ONE provider call that either:
 //
 //   - Returns a Proposal with name + description + body, OR
-//   - Returns nil, nil — meaning "this is not a generalizable skill".
+//   - Returns nil, nil - meaning "this is not a generalizable skill".
 //
 // The inducer is intentionally a single call. Multi-step refinement
 // loops were ruled out by SkillsBench's finding that elaborated self-
@@ -32,7 +32,7 @@
 // Per call (mid-tier model ~$3 in / $15 out per 1M tokens, June 2026):
 // ~3,000 input tokens (summarized transcript + top-k descriptions +
 // template) + ~600 output tokens ≈ $0.02. The DESIGN cost model is the
-// authoritative source — keep this in sync.
+// authoritative source - keep this in sync.
 package skills
 
 import (
@@ -49,7 +49,7 @@ import (
 // InducerPromptTemplate is the system prompt sent to the inducer. The
 // template embeds two placeholders: {{TRANSCRIPT}} (the conversation
 // summary) and {{EXISTING}} (a newline-bulleted list of existing skill
-// descriptions). They are substituted via plain string.Replace — no
+// descriptions). They are substituted via plain string.Replace - no
 // text/template engine, no escaping concerns (the inputs are
 // already-trusted strings owned by carlos).
 //
@@ -71,7 +71,7 @@ OR:
 
 HARD RULES:
   - Output ONLY the JSON object. No code fence, no commentary, no preamble.
-  - "Use when ..." in the description is non-negotiable — it is the trigger that retrieval matches against.
+  - "Use when ..." in the description is non-negotiable - it is the trigger that retrieval matches against.
   - If the procedure overlaps with an existing skill below, return null. Do not produce near-duplicates.
   - Bodies prefer "run this script" over "follow these prose steps" when the sub-task is deterministic.
 
@@ -93,7 +93,7 @@ type Proposal struct {
 	InducerName string    `json:"inducer"` // provider name + model, "anthropic:claude-3-5-sonnet"
 	InducedFrom []string  `json:"induced_from"`
 	Created     time.Time `json:"created"`
-	// RawResponse is the unparsed model output — preserved so the
+	// RawResponse is the unparsed model output - preserved so the
 	// approval-queue UX can show "what the model actually said" if the
 	// user wants to debug a reject decision.
 	RawResponse string `json:"raw_response,omitempty"`
@@ -159,7 +159,7 @@ func NewInducer(p providers.Provider) *Inducer {
 // summary of the conversation; existingDescriptions is the
 // already-active skill set (used in the dedup-prevention block of the
 // prompt). Returns (nil, nil) when the model judges the conversation
-// not-reusable — this is the expected common case, NOT an error.
+// not-reusable - this is the expected common case, NOT an error.
 func (i *Inducer) Induce(ctx context.Context, transcript string, existingDescriptions []string, opts InducerOptions) (*Proposal, error) {
 	if i == nil || i.Provider == nil {
 		return nil, errors.New("inducer: nil provider")
@@ -201,7 +201,7 @@ func (i *Inducer) Induce(ctx context.Context, transcript string, existingDescrip
 }
 
 // buildInducerPrompt substitutes the two placeholders. existing may be
-// empty (cold-start library) — we render an explicit "(none)" so the
+// empty (cold-start library) - we render an explicit "(none)" so the
 // model doesn't see a stray empty bullet.
 func buildInducerPrompt(transcript string, existing []string) string {
 	var existingBlock string
@@ -272,7 +272,7 @@ func stripCodeFence(s string) string {
 }
 
 // streamText drains a provider stream into a single string. We discard
-// tool-use events — the inducer prompt forbids tool calls; if the
+// tool-use events - the inducer prompt forbids tool calls; if the
 // model emits one anyway, we treat the conversation as a parse miss.
 func streamText(ctx context.Context, p providers.Provider, req providers.Request) (string, error) {
 	ch, err := p.Stream(ctx, req)

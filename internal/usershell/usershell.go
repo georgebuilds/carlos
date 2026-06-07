@@ -6,9 +6,9 @@
 // # Design refs
 //
 //   - personal/projects/carlos/research/2026-06-05 How to Make a TUI
-//     Feel Awesome in 2026.md — the discoverability + responsiveness
+//     Feel Awesome in 2026.md - the discoverability + responsiveness
 //     principles this surface enforces.
-//   - personal/projects/carlos/roadmap.md § "Phase U" — slice breakdown
+//   - personal/projects/carlos/roadmap.md § "Phase U" - slice breakdown
 //     S0…S9. This package is S0+S1+S2 (types, PTY exec, queue/bg pool).
 //
 // # Mental model
@@ -28,7 +28,7 @@
 //
 // The agent's bash tool is sandboxed, output-truncated, approval-
 // gated, and modeled as a *tool call* in the event log. The `!`
-// feature is the user's own shell, no fence, no approval — same
+// feature is the user's own shell, no fence, no approval - same
 // authority as their terminal. Modeling it as user-shell rather than
 // tool-call keeps the chat projection honest about who did what.
 package usershell
@@ -41,30 +41,30 @@ import (
 )
 
 // State enumerates the job lifecycle. Transitions are validated in
-// (*Job).transition — invalid moves return ErrInvalidTransition so a
+// (*Job).transition - invalid moves return ErrInvalidTransition so a
 // caller that thinks it's owning the job loudly discovers a bug.
 type State int
 
 const (
-	// StatePending — Job is in the queue, hasn't been picked up yet.
+	// StatePending - Job is in the queue, hasn't been picked up yet.
 	StatePending State = iota
-	// StateRunning — process is alive. The Manager flips this when
+	// StateRunning - process is alive. The Manager flips this when
 	// the goroutine has actually spawned the PTY.
 	StateRunning
-	// StateDone — process exited with code 0.
+	// StateDone - process exited with code 0.
 	StateDone
-	// StateFailed — process exited non-zero. ExitCode carries the
+	// StateFailed - process exited non-zero. ExitCode carries the
 	// reason; FailErr may carry a spawn-time error (e.g. shell not
 	// found) for cases where there's no exit code to report.
 	StateFailed
-	// StateCancelled — user requested cancellation; process tree was
+	// StateCancelled - user requested cancellation; process tree was
 	// SIGTERM'd → SIGKILL'd. ExitCode is whatever the OS returned,
 	// usually -1 or 130 (SIGINT).
 	StateCancelled
 )
 
 // String emits the canonical lowercase identifier the event log and
-// projections use. Stable across releases — payloads on disk hang off
+// projections use. Stable across releases - payloads on disk hang off
 // these strings.
 func (s State) String() string {
 	switch s {
@@ -82,7 +82,7 @@ func (s State) String() string {
 	return "unknown"
 }
 
-// IsTerminal reports whether s is a final state — no further
+// IsTerminal reports whether s is a final state - no further
 // transitions are allowed from here. Used by the Manager to decide
 // when a job slot is reclaimable.
 func (s State) IsTerminal() bool {
@@ -100,10 +100,10 @@ func (s State) IsTerminal() bool {
 type Mode int
 
 const (
-	// Foreground — at most one foreground job runs at a time; later
+	// Foreground - at most one foreground job runs at a time; later
 	// foreground submissions queue FIFO.
 	Foreground Mode = iota
-	// Background — parallel pool, capped by Manager config. Multiple
+	// Background - parallel pool, capped by Manager config. Multiple
 	// background jobs run concurrently.
 	Background
 )
@@ -145,7 +145,7 @@ type Job struct {
 	ID string
 
 	// Command is the raw text the user typed after the "!" prefix.
-	// Passed verbatim to $SHELL -c — no parsing carlos-side.
+	// Passed verbatim to $SHELL -c - no parsing carlos-side.
 	Command string
 
 	// Cwd is the working directory the Manager spawned the shell in.
@@ -204,7 +204,7 @@ type Job struct {
 // (the Manager) wire a real cancel before transitioning to running.
 //
 // The ID + SubmittedAt + Cwd + Command + Mode must be set by the
-// caller — this is a constructor for the fields, not a policy.
+// caller - this is a constructor for the fields, not a policy.
 func NewJob(id, command, cwd string, mode Mode, cancel context.CancelFunc) *Job {
 	return &Job{
 		ID:          id,
@@ -257,7 +257,7 @@ func (j *Job) transition(next State) error {
 }
 
 // markBackgrounded flips the Backgrounded flag. Idempotent. Returns
-// ErrInvalidTransition if the job is not currently running — only
+// ErrInvalidTransition if the job is not currently running - only
 // running jobs can be moved between fg and bg.
 func (j *Job) markBackgrounded(bg bool) error {
 	j.mu.Lock()
@@ -272,7 +272,7 @@ func (j *Job) markBackgrounded(bg bool) error {
 // setOutcome atomically writes the post-execution outcome (exit
 // code + optional spawn-time error) and transitions to next. Used
 // by the Manager's runJob goroutine so the write happens under the
-// same lock Snapshot() takes — no race on ExitCode / FailErr reads.
+// same lock Snapshot() takes - no race on ExitCode / FailErr reads.
 //
 // Returns ErrInvalidTransition if next isn't reachable from the
 // current state. On error, ExitCode + FailErr are NOT updated so

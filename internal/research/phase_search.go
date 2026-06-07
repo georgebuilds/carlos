@@ -15,7 +15,7 @@ import (
 //
 // Search results are stored as Sources with empty Content until the
 // fetch phase fills them in. IDs are assigned at fetch time, not
-// here — that way a search hit we skip (because it dupes an earlier
+// here - that way a search hit we skip (because it dupes an earlier
 // one) doesn't waste a slot in the s1/s2/… numbering.
 //
 // Search errors per sub-query are NOT fatal; we record them in

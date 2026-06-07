@@ -25,7 +25,7 @@ type Config struct {
 	BaseURL string
 
 	// Path is the endpoint path (e.g. "/v1/chat/completions" for OpenAI,
-	// "/chat/completions" for OpenRouter — the latter's BaseURL already
+	// "/chat/completions" for OpenRouter - the latter's BaseURL already
 	// includes /api/v1).
 	Path string
 
@@ -118,7 +118,7 @@ func Stream(ctx context.Context, cfg Config, req providers.Request) (<-chan prov
 //  1. The finish_reason for the choice becomes "tool_calls" (canonical),
 //     OR
 //  2. The stream terminates via `data: [DONE]` or EOF (defensive flush in
-//     case finish_reason was missing — some compatible servers omit it).
+//     case finish_reason was missing - some compatible servers omit it).
 //
 // EventToolUseStart fires on the FIRST delta that carries BOTH id+name;
 // some servers (notably certain Azure proxies) send name in chunk 1 but
@@ -149,7 +149,7 @@ func ProcessStream(
 	//   - the live ToolUse (id+name+accumulated args) so we can emit
 	//     incremental EventToolUseDelta events as args arrive,
 	//   - whether we have emitted Start yet (Start fires once id+name
-	//     are both known — see header doc),
+	//     are both known - see header doc),
 	//   - the args buffer (kept separate so we can finalize empty as "{}").
 	type accum struct {
 		tu        *providers.ToolUse
@@ -201,7 +201,7 @@ func ProcessStream(
 		}
 		// OpenAI's end-of-stream sentinel. Flush any pending tool_use
 		// accumulators (defensive: finish_reason should already have
-		// done this) and signal end-of-stream by returning nil — the
+		// done this) and signal end-of-stream by returning nil - the
 		// scanner loop will continue but no further frames will arrive.
 		if data == "[DONE]" {
 			flushAllTools()
@@ -222,7 +222,7 @@ func ProcessStream(
 		}
 		// Server-side error embedded in the stream. Both OpenAI and
 		// OpenRouter use this when an upstream provider fails after
-		// the connection has been accepted. Scrub before emit — these
+		// the connection has been accepted. Scrub before emit - these
 		// envelopes have historically been the noisiest leak surface
 		// (OpenRouter passes upstream provider strings through).
 		if chunk.Error != nil {
@@ -293,7 +293,7 @@ func ProcessStream(
 			// finish_reason on the choice. When it's tool_calls (or
 			// the legacy "function_call" some providers still emit)
 			// we must flush ALL accumulated tool_call buffers BEFORE
-			// emitting the stop reason — the agent loop expects to
+			// emitting the stop reason - the agent loop expects to
 			// see complete EventToolUseEnd events before it switches
 			// on EventStopReason.
 			if ch.FinishReason != "" {

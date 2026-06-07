@@ -1,4 +1,4 @@
-// Phase 12 slices 12a/12b — Obsidian-aware vault tools.
+// Phase 12 slices 12a/12b - Obsidian-aware vault tools.
 //
 // This file holds the shared scaffolding for the seven notes_* tools:
 //
@@ -8,7 +8,7 @@
 //   - openVault: the per-call vault resolver. Honors the optional
 //     `vault:` field on the tool input, falls back to cfg.Vault.Path,
 //     surfaces ErrNoVaultConfigured as the documented error envelope.
-//   - jsonErr / jsonOK: the response-shape helpers — every tool
+//   - jsonErr / jsonOK: the response-shape helpers - every tool
 //     returns either a typed success blob or `{"error": "msg"}`.
 //
 // Each individual tool file (notes_get.go etc.) is small + focused:
@@ -207,7 +207,7 @@ func inSubtree(relpath, subtree string) bool {
 // response's `vault:` field so the model knows which vault each
 // result came from.
 //
-// perCallVault is the optional `vault:` field from the tool input —
+// perCallVault is the optional `vault:` field from the tool input -
 // empty when omitted, in which case cfg.Vault.Path is used.
 //
 // Errors are returned typed (notes.ErrNoVaultConfigured, fs errors)
@@ -228,7 +228,7 @@ func (e *notesEnv) openVault(perCallVault string) (string, *notes.VaultIndex, er
 	// changed vaults it triggers a full re-walk. A real fsnotify
 	// watcher (slice 12-future) replaces this.
 	if rerr := v.MaybeRefresh(); rerr != nil {
-		// Refresh failure shouldn't bring down the tool call — the
+		// Refresh failure shouldn't bring down the tool call - the
 		// last-good index is still valid. Surface it as a hint in
 		// the response would be nice but the existing envelope
 		// doesn't have a slot for warnings; swallow + continue.
@@ -252,7 +252,7 @@ func jsonErr(format string, args ...any) ([]byte, error) {
 // jsonOK marshals v as the tool success response. Marshal errors are
 // returned to the caller (the agent provider will surface them as a
 // tool-result error which is the correct outcome for a struct that
-// can't be encoded — that's an implementation bug, not a model-visible
+// can't be encoded - that's an implementation bug, not a model-visible
 // state).
 func jsonOK(v any) ([]byte, error) {
 	out, err := json.Marshal(v)

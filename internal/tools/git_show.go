@@ -8,7 +8,7 @@ import (
 )
 
 // GitShowTool runs `git show <ref> [-- <path>]`. Output is capped at
-// 32 KiB (same as GitDiff — `git show` is effectively a diff plus a
+// 32 KiB (same as GitDiff - `git show` is effectively a diff plus a
 // commit header).
 type GitShowTool struct{}
 

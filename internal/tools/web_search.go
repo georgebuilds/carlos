@@ -1,14 +1,14 @@
-// Phase 11 slice 11b — web_search tool.
+// Phase 11 slice 11b - web_search tool.
 //
 // The model can now run actual web searches, not just fetch a known
 // URL (slice 11a). Three pluggable backends; the factory picks
 // based on environment / config:
 //
-//   1. Brave Search API (env BRAVE_API_KEY) — best quality + has an
+//   1. Brave Search API (env BRAVE_API_KEY) - best quality + has an
 //      explicit "we welcome non-commercial use" stance.
-//   2. SearXNG (env SEARXNG_URL) — self-hosted metasearch; the
+//   2. SearXNG (env SEARXNG_URL) - self-hosted metasearch; the
 //      privacy-respecting option for users who run their own.
-//   3. DuckDuckGo HTML scrape — no API key, best-effort fallback.
+//   3. DuckDuckGo HTML scrape - no API key, best-effort fallback.
 //      Documented as fragile; HTML can change.
 //
 // The tool stays a thin adapter over the SearchBackend interface so a
@@ -18,7 +18,7 @@
 //   - Pure-Go, no CGO, minimal deps.
 //   - Result cap (default 10, hard cap 20) so a runaway model can't
 //     pull a hundred snippets into context.
-//   - Per-request timeout (default 10s) — search APIs are usually
+//   - Per-request timeout (default 10s) - search APIs are usually
 //     <500ms; a slow one is almost always a hung connection.
 //   - Errors carry the backend name so the user / model knows which
 //     route failed.
@@ -81,7 +81,7 @@ const (
 // always sees the same `web_search` tool; the backend choice is
 // invisible to it.
 //
-// Env-based selection keeps this slice config-integration-free —
+// Env-based selection keeps this slice config-integration-free -
 // when the daemon's config schema settles (sibling slice 8a), a
 // follow-up adds Cfg.WebSearch fields and the factory prefers
 // config over env.
@@ -101,7 +101,7 @@ func NewWebSearchTool() *WebSearchTool {
 func (*WebSearchTool) Name() string { return "web_search" }
 
 func (*WebSearchTool) Description() string {
-	return "Search the web. Returns ranked title + URL + snippet results so you can pick which URLs to follow up on with web_fetch. Use for current events, fact-checking claims, finding documentation, locating canonical sources. The actual content of pages requires a follow-up web_fetch — search returns previews only."
+	return "Search the web. Returns ranked title + URL + snippet results so you can pick which URLs to follow up on with web_fetch. Use for current events, fact-checking claims, finding documentation, locating canonical sources. The actual content of pages requires a follow-up web_fetch - search returns previews only."
 }
 
 func (*WebSearchTool) Schema() []byte {
@@ -114,7 +114,7 @@ func (*WebSearchTool) Schema() []byte {
 			},
 			"max_results": {
 				"type": "integer",
-				"description": "1-20, default 10. Smaller is usually better — pick the top few and follow up with web_fetch."
+				"description": "1-20, default 10. Smaller is usually better - pick the top few and follow up with web_fetch."
 			}
 		},
 		"required": ["query"]
@@ -179,7 +179,7 @@ func (t *WebSearchTool) Execute(ctx context.Context, input []byte) ([]byte, erro
 // === Brave backend ==========================================================
 
 // BraveBackend hits the Brave Search API. Pricing / quota at
-// https://brave.com/search/api/ — non-commercial tier is free.
+// https://brave.com/search/api/ - non-commercial tier is free.
 type BraveBackend struct {
 	APIKey string
 	// Endpoint overrides the API URL. Empty → default. Set by tests.
@@ -327,7 +327,7 @@ func (s *SearXNGBackend) Search(ctx context.Context, query string, max int) ([]S
 // === DuckDuckGo HTML backend ================================================
 
 // DuckDuckGoBackend scrapes duckduckgo.com/html/. No API key needed.
-// Documented as fragile — HTML structure can change without notice;
+// Documented as fragile - HTML structure can change without notice;
 // this backend ships with explicit "best-effort" semantics.
 type DuckDuckGoBackend struct {
 	Endpoint string // override for tests

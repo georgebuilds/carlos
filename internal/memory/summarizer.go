@@ -22,11 +22,11 @@ type Summarizer interface {
 }
 
 // NaiveSummarizer is a zero-cost stub that produces a placeholder
-// summary from the message list shape — no provider call, no token
+// summary from the message list shape - no provider call, no token
 // spend. Useful for tests + early CLI exercising before the real
 // summarizer hook is wired.
 //
-// Output shape: "<N messages, last user said: ...>" — keeps the FTS5
+// Output shape: "<N messages, last user said: ...>" - keeps the FTS5
 // index populated with searchable content (the last user message
 // often carries the topic).
 type NaiveSummarizer struct{}
@@ -47,7 +47,7 @@ func (NaiveSummarizer) Summarize(_ context.Context, msgs []providers.Message) (s
 		}
 	}
 	if lastUser == "" {
-		// No user message — fall back to the last block of any role.
+		// No user message - fall back to the last block of any role.
 		lastUser = firstTextBlock(msgs[len(msgs)-1])
 	}
 	if r := []rune(lastUser); len(r) > 256 {
@@ -74,7 +74,7 @@ type LLMSummarizer struct {
 	Model    string // optional; provider default if empty
 }
 
-// summarizerPrompt is the fixed system prompt. Kept terse — the model
+// summarizerPrompt is the fixed system prompt. Kept terse - the model
 // follows instructions better when the prompt is short.
 const summarizerPrompt = "You summarize a conversation between a user and an AI assistant. Reply with exactly one factual paragraph (3-5 sentences) covering: what the user wanted, what was decided, and any open thread. Do NOT add preamble, headings, or markdown."
 
@@ -91,7 +91,7 @@ func (s LLMSummarizer) Summarize(ctx context.Context, msgs []providers.Message) 
 	}
 	// We give the provider the system prompt and the raw conversation
 	// as the user content. Building a synthetic single user message
-	// keeps the request shape provider-agnostic — every adapter
+	// keeps the request shape provider-agnostic - every adapter
 	// understands a system + user pair.
 	flat := flattenConversation(msgs)
 	req := providers.Request{

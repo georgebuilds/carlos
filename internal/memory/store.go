@@ -65,7 +65,7 @@ func OpenStore(dbPath string) (*Store, error) {
 // ownership of the DB; Close on the returned Store is a no-op for the
 // underlying handle.
 //
-// Schema apply is idempotent — calling NewStore on a DB where the
+// Schema apply is idempotent - calling NewStore on a DB where the
 // memory tables already exist is fine.
 func NewStore(db *sql.DB) (*Store, error) {
 	if db == nil {
@@ -78,7 +78,7 @@ func NewStore(db *sql.DB) (*Store, error) {
 }
 
 // Close releases the underlying *sql.DB if (and only if) this Store
-// opened it. Stores constructed via NewStore leave the handle alone —
+// opened it. Stores constructed via NewStore leave the handle alone -
 // the caller (event log) owns its lifecycle.
 func (s *Store) Close() error {
 	if s == nil || !s.owned || s.db == nil {

@@ -35,7 +35,7 @@ func (p *parser) parseValue(parentIndent int) (any, error) {
 	}
 	first := p.peek()
 	if first.indent <= parentIndent {
-		// Nothing for us at this level — value is null.
+		// Nothing for us at this level - value is null.
 		return nil, nil
 	}
 	indent := first.indent
@@ -64,10 +64,10 @@ func (p *parser) parseMap(indent int) (map[string]any, error) {
 		if cur.indent > indent {
 			return nil, fmt.Errorf("miniyaml: line %d: unexpected indent (expected %d, got %d)", cur.num, indent, cur.indent)
 		}
-		// At exactly this indent — must be a mapping line.  A bare list
+		// At exactly this indent - must be a mapping line.  A bare list
 		// item at this indent terminates the map and belongs to the
 		// caller (e.g. a list-of-maps where the items live at the same
-		// indent as the parent key — common in carlos's `schedules:`
+		// indent as the parent key - common in carlos's `schedules:`
 		// block).
 		if isListItem(cur.body) {
 			break
@@ -120,7 +120,7 @@ func (p *parser) parseMapValue(rest string, parentIndent, lineNum int) (any, err
 	if strings.HasPrefix(rest, "[") {
 		return parseFlowSequence(rest, lineNum)
 	}
-	// Tolerate empty flow map `{}` (e.g. `theme: {}`) — emit nil.
+	// Tolerate empty flow map `{}` (e.g. `theme: {}`) - emit nil.
 	if strings.TrimSpace(rest) == "{}" {
 		return map[string]any{}, nil
 	}
@@ -239,7 +239,7 @@ func isListItem(body string) bool {
 }
 
 // hasMapKey scans for an unquoted colon followed by whitespace or
-// end-of-line — the syntactic signature of `key:`.
+// end-of-line - the syntactic signature of `key:`.
 func hasMapKey(body string) bool {
 	_, _, err := splitMapKey(body, 0)
 	return err == nil

@@ -21,7 +21,7 @@
 //
 //	On startup we scan the `agents` projection for rows in non-terminal
 //	states. Any row whose last_heartbeat_at is more than the recovery
-//	tolerance (default 60s — generously larger than 2x heartbeat or the
+//	tolerance (default 60s - generously larger than 2x heartbeat or the
 //	sweep interval, so a clean shutdown immediately followed by a startup
 //	doesn't false-orphan agents that genuinely were healthy) stale gets a
 //	state_change kind=transition to=orphaned event appended and the
@@ -70,7 +70,7 @@ type RecoveryReport struct {
 // Differences vs OpenSQLiteEventLog:
 //
 //   - Ensures the parent directory exists with mode 0700 (matches the
-//     onboarding mode for ~/.carlos/config.yaml — same security posture).
+//     onboarding mode for ~/.carlos/config.yaml - same security posture).
 //   - Verifies the schema is healthy by running a trivial SELECT against
 //     each of the three tables the supervisor needs. OpenSQLiteEventLog
 //     creates the schema idempotently, so this is belt-and-braces against
@@ -84,7 +84,7 @@ func OpenStateDB(path string) (*SQLiteEventLog, error) {
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			return nil, fmt.Errorf("lifecycle: mkdir %s: %w", dir, err)
 		}
-		// MkdirAll respects an existing dir's mode — re-chmod ourselves to
+		// MkdirAll respects an existing dir's mode - re-chmod ourselves to
 		// guarantee 0700 even if a previous run created it differently.
 		if err := os.Chmod(dir, 0o700); err != nil {
 			// Non-fatal: on some filesystems chmod is a no-op, and we'd

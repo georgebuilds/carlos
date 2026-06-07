@@ -6,7 +6,7 @@
 // the active frame's tile wears a thick border in the frame's accent.
 //
 // A "+ new frame" placeholder sits in the next empty slot but is not
-// actionable here — the wizard ships in F-10. This slice only owns the
+// actionable here - the wizard ships in F-10. This slice only owns the
 // visual switcher + keyboard navigation + the existing SwitchActive
 // hook.
 //
@@ -95,7 +95,7 @@ func switcherPageBounds(nFrames, innerW, page int) (start, end int) {
 }
 
 // renderFrameSwitcher composes the takeover overlay. Returns the
-// complete block — caller (renderInner) stacks it where the other
+// complete block - caller (renderInner) stacks it where the other
 // overlays sit. width/height are the chat box's inner dimensions.
 //
 // The grid is centered horizontally; vertically the tiles sit roughly
@@ -127,7 +127,7 @@ func renderFrameSwitcher(
 	block := strings.Join(parts, "\n")
 
 	// Pad vertically so the grid sits roughly centered in the chat area
-	// — purely cosmetic; the caller's renderInner already reserves the
+	// - purely cosmetic; the caller's renderInner already reserves the
 	// full inner height for the overlay.
 	if innerH > lipgloss.Height(block)+2 {
 		topPad := (innerH - lipgloss.Height(block)) / 3
@@ -390,7 +390,7 @@ func (m *Model) handleFrameSwitcherKey(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool
 
 // switcherCursorOnNewTile reports whether the focused index is the
 // trailing "+ new frame" placeholder. The placeholder lives at
-// len(Available) — one slot past the last real frame.
+// len(Available) - one slot past the last real frame.
 func (m *Model) switcherCursorOnNewTile() bool {
 	return m.switcherCursor == len(m.frame.Available)
 }

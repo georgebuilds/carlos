@@ -25,7 +25,7 @@ func macOSPlistPath(home string) string {
 // KeepAlive is true so launchd restarts the daemon if it crashes;
 // RunAtLoad is true so it starts on user login.
 //
-// We deliberately don't set Throttle / StandardOutPath here — those are
+// We deliberately don't set Throttle / StandardOutPath here - those are
 // future-polish slices (8c/8d). Stdout/stderr go to the launchd
 // per-user log; users can tail them with `log stream --predicate
 // 'subsystem == "carlos"'` once we add os.Log instrumentation.
@@ -82,7 +82,7 @@ func InstallLaunchAgent(home string) (string, error) {
 		return "", fmt.Errorf("install: write plist: %w", err)
 	}
 
-	// Best-effort: unload any previous instance (ignore errors — first
+	// Best-effort: unload any previous instance (ignore errors - first
 	// install will report "not loaded").
 	uid := fmt.Sprintf("gui/%d", os.Getuid())
 	_ = exec.Command("launchctl", "bootout", uid+"/"+MacOSLaunchAgentLabel).Run()

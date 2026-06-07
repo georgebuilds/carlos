@@ -1,9 +1,9 @@
-// Phase 6 slice 6f — replay-eval picker.
+// Phase 6 slice 6f - replay-eval picker.
 //
 // The picker maps a candidate skill (and the historical transcripts it
 // was induced from) to ONE tool-grounded verifier kind. If no kind fits,
 // the picker returns "" and the caller (ReplayEvaluator.Evaluate) marks
-// the replay as Skipped — the proposal then goes straight to human
+// the replay as Skipped - the proposal then goes straight to human
 // review, same as it did before slice 6f existed.
 //
 // # Architectural commitment (from the slice-6f brief)
@@ -12,7 +12,7 @@
 //     and complicate the win/loss accounting in ReplayReport.Score.
 //   - Heuristic, not learned. False negatives (skip when we could have
 //     replayed) are fine; false positives (replay with the WRONG
-//     verifier) are worse — they produce noise that downstream
+//     verifier) are worse - they produce noise that downstream
 //     thresholds can't distinguish from real signal.
 //   - Picker decision is recorded on the report so a post-mortem can
 //     answer "why did this skill skip the replay step?".
@@ -20,14 +20,14 @@
 // # Heuristics, ranked
 //
 // The picker walks the proposal in this order and returns the first
-// kind that matches. Earlier rules dominate later ones — that's why the
+// kind that matches. Earlier rules dominate later ones - that's why the
 // ordering is documented inline at each branch.
 //
 //  1. Body mentions a test invocation ("go test", "cargo test",
 //     "npm test", "pytest"). High-precision signal that the skill is
 //     about running tests; route to the "diff" kind (Compiler+Tests).
 //  2. Body mentions a build invocation ("go build", "cargo build",
-//     "npm run build"). Also routes to "diff" — Compiler alone is
+//     "npm run build"). Also routes to "diff" - Compiler alone is
 //     enough to score build-only skills.
 //  3. Any transcript message contained an artifact_ref to a
 //     research-kind artifact OR the skill description / body talks
@@ -50,7 +50,7 @@ import (
 
 // pickerDecision is what PickVerifierKind returns. Kind is the empty
 // string when no verifier fits. Reason is a short human-readable
-// explanation surfaced on ReplayReport.SkippedReason — keep it terse,
+// explanation surfaced on ReplayReport.SkippedReason - keep it terse,
 // it lands in user-visible logs.
 type pickerDecision struct {
 	Kind   string
@@ -59,13 +59,13 @@ type pickerDecision struct {
 
 // PickVerifierKind inspects the candidate skill and the transcripts it
 // was induced from, and returns the verifier kind to run during replay
-// — or ("", reason) when nothing fits. Pure function: safe to test in
+// - or ("", reason) when nothing fits. Pure function: safe to test in
 // isolation and safe to call from anywhere.
 //
 // The set of returned kinds is the same set agent.Dispatcher's default
 // mapping registers: "diff" (Compiler+TestRunner) and "research"
 // (URLRefetcher). The "plan" kind exists in the Dispatcher defaults
-// but no skill heuristic targets it directly — plan artifacts are
+// but no skill heuristic targets it directly - plan artifacts are
 // produced by the spawn flow, not by skill bodies, so a replay round
 // is unlikely to surface a plan kind organically.
 func PickVerifierKind(p *skills.Proposal, transcripts [][]providers.Message) pickerDecision {
@@ -94,7 +94,7 @@ func PickVerifierKind(p *skills.Proposal, transcripts [][]providers.Message) pic
 
 	// Rule 3: research-style content. Either the transcripts produced
 	// a research-kind artifact (we sniff for the substring "research"
-	// in tool_result bodies — see transcriptsMentionResearch below) OR
+	// in tool_result bodies - see transcriptsMentionResearch below) OR
 	// the skill description / body uses research vocabulary.
 	if transcriptsMentionResearch(transcripts) {
 		return pickerDecision{Kind: agent.ArtifactKindResearch, Reason: "transcript referenced a research artifact"}
@@ -111,7 +111,7 @@ func PickVerifierKind(p *skills.Proposal, transcripts [][]providers.Message) pic
 // testInvocationNeedles is the set of substrings that signal "the skill
 // is about running tests". Lower-cased; we lower the body before
 // matching. Order matters only for the Reason string (the first match
-// wins) — not for the kind decision.
+// wins) - not for the kind decision.
 var testInvocationNeedles = []string{
 	"go test",
 	"cargo test",
@@ -134,7 +134,7 @@ var buildInvocationNeedles = []string{
 }
 
 // researchVocabularyNeedles is the URLRefetcher trigger. Conservative
-// on purpose — "fetch" and "URL" are common in non-research skills too,
+// on purpose - "fetch" and "URL" are common in non-research skills too,
 // so we require they appear in the SKILL body or description, not in
 // the transcript.
 var researchVocabularyNeedles = []string{
@@ -149,7 +149,7 @@ var researchVocabularyNeedles = []string{
 // for a substring that looks like a research-kind artifact reference.
 // Conservative match: the kind constant value "research" appearing
 // inside an artifact-ref tool_result body. This is intentionally a
-// substring sniff — the eventlog projection has structured artifact
+// substring sniff - the eventlog projection has structured artifact
 // records, but the transcripts the caller hands us are raw provider
 // messages from agent.Run and don't carry the same shape.
 func transcriptsMentionResearch(transcripts [][]providers.Message) bool {

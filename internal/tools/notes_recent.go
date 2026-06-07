@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// NotesRecentTool registers as `notes_recent` — the "what was I just
+// NotesRecentTool registers as `notes_recent` - the "what was I just
 // working on" helper. Returns the N most-recently-modified notes,
 // optionally restricted to a time window.
 //
@@ -61,7 +61,7 @@ type notesRecentEntry struct {
 
 func (t *NotesRecentTool) Execute(_ context.Context, input []byte) ([]byte, error) {
 	var in notesRecentInput
-	// Empty input is allowed — `notes_recent {}` is a valid call.
+	// Empty input is allowed - `notes_recent {}` is a valid call.
 	if len(input) > 0 {
 		if err := json.Unmarshal(input, &in); err != nil {
 			return jsonErr("parse input: %v", err)

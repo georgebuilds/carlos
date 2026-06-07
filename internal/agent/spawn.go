@@ -17,14 +17,14 @@
 //     a. Transitions the agent spawning→running (state_change
 //        kind=transition + UpdateAgentState).
 //     b. Calls agent.Run with the child's restricted tool registry,
-//        AutoApprover (subagents bypass user prompts — see KNOWN
+//        AutoApprover (subagents bypass user prompts - see KNOWN
 //        LIMITATION below), MaxIterations = contract.MaxTurns (or 25
 //        default), MaxWallClock honored via the context deadline.
 //     c. On Run completion, classifies success vs failure:
 //        - clean return → state_change to=done
 //        - error or context.Canceled → state_change to=failed
 //     d. Persists the final assistant turn to disk
-//        (~/.carlos/runs/<session>/agents/<id>.final.json) — a
+//        (~/.carlos/runs/<session>/agents/<id>.final.json) - a
 //        minimal write Slice 3d will replace with the proper artifact
 //        helper.
 //     e. Stops the heartbeat ticker.
@@ -60,7 +60,7 @@ import (
 // returned from Supervisor.Spawn. Exactly one SpawnResult is sent per
 // successful Spawn (the channel is buffered + closed after send).
 //
-// FinalTurn is the last assistant Message from the loop — the typed
+// FinalTurn is the last assistant Message from the loop - the typed
 // deliverable the parent will inspect. Slice 3e's Agent tool extracts
 // the text + ArtifactRef and assembles the tool_result it returns to
 // the parent agent's model.
@@ -96,7 +96,7 @@ type runningChild struct {
 	// child's agent.Run loop drains it between iterations (the "next
 	// tool-call boundary" semantics). Buffered so a fast Steer doesn't
 	// block the supervisor; if a sub-agent is mid-stream when the user
-	// steers twice rapidly, the second send may drop — that's the
+	// steers twice rapidly, the second send may drop - that's the
 	// documented contract.
 	steering chan string
 	// tracker is the per-subtree budget counter (Phase 5 slice 5a).
@@ -117,7 +117,7 @@ type runningChild struct {
 //	Output format     → SpawnContract.OutputFormat
 //	Success criteria  → SpawnContract.SuccessCriteria
 //	Boundaries        → MaxTurns / MaxTokens / MaxWallClock (omitted
-//	                    when zero — "use default")
+//	                    when zero - "use default")
 //
 // Tool subset is NOT injected here because providers receive it via
 // Request.Tools (the loop's opts.Tools); a redundant text listing
@@ -185,7 +185,7 @@ func composeInitialPrompt(c SpawnContract) string {
 
 // buildChildRegistry filters the supervisor's base tool registry down
 // to the names listed in allowlist. Empty allowlist (length 0) yields
-// an empty registry — sub-agents with no tools are valid (pure-
+// an empty registry - sub-agents with no tools are valid (pure-
 // reasoning subagents per SPEC § "When to delegate").
 //
 // Tools named in the allowlist but missing from the base registry are
@@ -237,7 +237,7 @@ func buildChildToolSpecs(reg *tools.Registry, allowlist []string) []providers.To
 //  7. Sends SpawnResult and closes the channel.
 //
 // Errors during state-change persistence are folded into result.Err
-// alongside the loop error — we never panic in the worker.
+// alongside the loop error - we never panic in the worker.
 func (s *Supervisor) runChild(ctx context.Context, child *runningChild, p providers.Provider, reg *tools.Registry, contract SpawnContract, resultCh chan<- SpawnResult) {
 	defer close(child.done)
 
@@ -328,7 +328,7 @@ func (s *Supervisor) runChild(ctx context.Context, child *runningChild, p provid
 		if ref, writeErr := WriteArtifact(ctx, s.log, child.id, "agent_final", turnBytes); writeErr == nil {
 			finalArtifact = ref
 		}
-		// Write/marshal errors are swallowed by design — the event log
+		// Write/marshal errors are swallowed by design - the event log
 		// remains the source of truth, the artifact is a convenience.
 	}
 

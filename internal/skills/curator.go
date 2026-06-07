@@ -1,19 +1,19 @@
-// curator.go — staleness sweep over the active skill library.
+// curator.go - staleness sweep over the active skill library.
 //
 // # Lifecycle (SPEC § Skill induction § Instrumentation)
 //
-//   - active   — default. LastUsed within 30 days (or never used but
+//   - active   - default. LastUsed within 30 days (or never used but
 //                still within its own 30-day grace window since
 //                Created).
-//   - stale    — no use in 30 days. Still in the library; description
+//   - stale    - no use in 30 days. Still in the library; description
 //                still in the startup index, BUT the SKILL.md
 //                frontmatter is marked status: stale so the inducer's
 //                "existing descriptions" prompt can deprioritize.
-//   - archived — no use in 90 days (counted from LastUsed; if never
+//   - archived - no use in 90 days (counted from LastUsed; if never
 //                used, from Created). Directory moves to
 //                <root>/_archive/<name>/, removed from active rotation.
 //
-// Never hard-delete — archived directories are restorable, and the
+// Never hard-delete - archived directories are restorable, and the
 // telemetry slice will compute survival curves from them.
 //
 // # Clock seam
@@ -40,7 +40,7 @@ const (
 
 // Curator runs lifecycle transitions. Cadence is a caller concern
 // (carlos's supervisor scheduler will tick this; tests call SweepOnce
-// directly). The struct is configuration only — no state lives here.
+// directly). The struct is configuration only - no state lives here.
 type Curator struct {
 	StaleAfter   time.Duration
 	ArchiveAfter time.Duration
@@ -84,7 +84,7 @@ type SweepTransition struct {
 //     <root>/_archive/<name>/. The skill is REMOVED from lib.Active
 //     and an entry appears in the returned transitions list.
 //
-// Errors during one skill don't abort the sweep — the per-skill error
+// Errors during one skill don't abort the sweep - the per-skill error
 // is wrapped into the SweepReport's first-error return (callers can
 // surface it via event log). A nil error means "every skill processed
 // cleanly."
@@ -120,7 +120,7 @@ func (c *Curator) SweepOnce(ctx context.Context, lib *Library, now time.Time) (*
 
 		switch {
 		case age >= archiveAfter && current != StatusArchived:
-			// Move to <skillRoot>/_archive/<name>/ — preserves
+			// Move to <skillRoot>/_archive/<name>/ - preserves
 			// telemetry and is restorable.
 			newPath, moveErr := archiveSkill(s)
 			if moveErr != nil {
@@ -178,7 +178,7 @@ func (c *Curator) SweepOnce(ctx context.Context, lib *Library, now time.Time) (*
 	return report, firstErr
 }
 
-// skillIdleAge returns how long the skill has been "idle" — time since
+// skillIdleAge returns how long the skill has been "idle" - time since
 // LastUsed if set, else time since Created. This is the metric both
 // staleness thresholds compare against.
 func skillIdleAge(s *Skill, now time.Time) time.Duration {
@@ -200,7 +200,7 @@ func skillIdleAge(s *Skill, now time.Time) time.Duration {
 
 // archiveSkill moves s.Path to its parent's _archive/<basename>/ dir.
 // Returns the new path. If the destination already exists, returns an
-// error — never overwrite an existing archive entry (a duplicate
+// error - never overwrite an existing archive entry (a duplicate
 // transition is a bug worth surfacing).
 func archiveSkill(s *Skill) (string, error) {
 	if s == nil || s.Path == "" {

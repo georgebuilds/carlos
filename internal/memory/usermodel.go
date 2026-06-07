@@ -49,7 +49,7 @@ type ProposalSink interface {
 	ProposeApproval(ctx context.Context, agentID, title string, ref ProposalRef) error
 }
 
-// Fact is one row in the `user_model` table — a slow-moving fact
+// Fact is one row in the `user_model` table - a slow-moving fact
 // about the user. Examples: name, pronouns, preferred_email,
 // working_hours, tech_stack, current_project. The taxonomy is loose:
 // the model writes whatever fits, the user accepts or rejects.
@@ -78,7 +78,7 @@ const FactSourceAgentAccepted = "agent_proposed_accepted"
 // proposal + accept/reject pair land in the same namespace.
 //
 // IMPORTANT: callers MUST ensure a row with id="user" exists in the
-// `agents` projection cache before calling ProposeFactWrite — the
+// `agents` projection cache before calling ProposeFactWrite - the
 // artifacts table has an FK to agents. The main.go bootstrap does
 // this once at startup (Phase 7 follow-up).
 const userModelProposalAgentID = "user"

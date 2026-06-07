@@ -29,7 +29,7 @@ type AgentRow struct {
 	LastHeartbeatAt time.Time
 }
 
-// Projection is the in-memory roster — the read model the TUI binds to.
+// Projection is the in-memory roster - the read model the TUI binds to.
 // Fully reconstructable by replaying the events table.
 type Projection struct {
 	rows map[string]*AgentRow
@@ -48,7 +48,7 @@ func (p *Projection) Get(id string) (AgentRow, bool) {
 	return *r, true
 }
 
-// Snapshot returns all rows in deterministic order (sorted by id) — the
+// Snapshot returns all rows in deterministic order (sorted by id) - the
 // shape used by the bit-identical comparison in the SoT proof.
 func (p *Projection) Snapshot() []AgentRow {
 	out := make([]AgentRow, 0, len(p.rows))
@@ -131,7 +131,7 @@ type ToolCall struct {
 	// Input is the raw JSON tool input the model emitted. Stored so
 	// chat transcripts can render WHAT the model asked for (e.g. the
 	// bash command, the file path being read), not just the tool name.
-	// Optional — older events written before this field existed
+	// Optional - older events written before this field existed
 	// unmarshal with an empty Input and the renderer falls back to
 	// name-only.
 	Input []byte `json:"input,omitempty"`

@@ -1,4 +1,4 @@
-// sysprompt.go — the chat-facing system prompt builder.
+// sysprompt.go - the chat-facing system prompt builder.
 //
 // Until this landed, chatglue.Config.System was "" and providers
 // answered identity questions with their built-in defaults
@@ -20,7 +20,7 @@
 // We keep it as a plain const + simple Go-string composition in
 // v1. When the prompt grows past ~50 lines or starts wanting
 // variable interpolation, promote to internal/agent/prompts/
-// carlos.md + //go:embed — the DX pattern George flagged
+// carlos.md + //go:embed - the DX pattern George flagged
 // interest in but hasn't committed to.
 
 package agent
@@ -32,19 +32,19 @@ import (
 
 // chatBaseSystem is the static portion. Provider, model, user name,
 // and project context are appended by SystemPrompt().
-const chatBaseSystem = `You are carlos, a local-first TUI coding agent that runs in the user's terminal. Your name is carlos regardless of the underlying model. If the user asks who you are, you are carlos — never name the model.
+const chatBaseSystem = `You are carlos, a local-first TUI coding agent that runs in the user's terminal. Your name is carlos regardless of the underlying model. If the user asks who you are, you are carlos - never name the model.
 
 You have these tool families:
 
-- notes_* (8 tools): query and WRITE the user's CONFIGURED Obsidian vault. Schema does not accept a vault argument; you cannot redirect these tools. Auto-approved without prompting. The write verb (notes_write) is constrained to the active frame's vault_subtree — for any note that belongs in the user's current frame, prefer notes_write over the generic write tool so the user doesn't have to approve each save.
+- notes_* (8 tools): query and WRITE the user's CONFIGURED Obsidian vault. Schema does not accept a vault argument; you cannot redirect these tools. Auto-approved without prompting. The write verb (notes_write) is constrained to the active frame's vault_subtree - for any note that belongs in the user's current frame, prefer notes_write over the generic write tool so the user doesn't have to approve each save.
 - obsidian_* (7 tools): same READ operations against an ARBITRARY vault path the user has to approve per call. Use only when the user asks about a vault other than the configured one.
 - read, grep, glob, ls: read-only filesystem. Sandboxed by carlos's base directory.
 - write, edit: file mutation. Prompts the user.
 - bash: shell command. Prompts unless the user has trusted the workspace, in which case a small read-only verb set (git status/diff/log/show/blame, ls, pwd, cat, head, tail, wc, file, which, echo) auto-approves.
 - git_status, git_diff, git_log, git_blame, git_show: read-only git inspection.
 - web_fetch, web_search, http_request: network access.
-- code_search: fan-out fetch of repo documentation from Codewiki + Context7 + DeepWiki. carlos's own repo is indexed on all three — call this with no arguments to look up your own architecture (where notes_write lives, how cross-frame approval works, what a frame is). Pass repo="owner/repo" to query a different public repo's docs. Prefer this over reading your own source files when the user asks how something works internally.
-- carlos_about: introspect your own current state (vault path, active frame, all configured frames + their settings, capabilities, providers, user name). Auto-approved. Call this when the user asks anything about how you are set up — where notes go, which frames exist, which model you're using, who the user is. Always prefer this over guessing from prior turns.
+- code_search: fan-out fetch of repo documentation from Codewiki + Context7 + DeepWiki. carlos's own repo is indexed on all three - call this with no arguments to look up your own architecture (where notes_write lives, how cross-frame approval works, what a frame is). Pass repo="owner/repo" to query a different public repo's docs. Prefer this over reading your own source files when the user asks how something works internally.
+- carlos_about: introspect your own current state (vault path, active frame, all configured frames + their settings, capabilities, providers, user name). Auto-approved. Call this when the user asks anything about how you are set up - where notes go, which frames exist, which model you're using, who the user is. Always prefer this over guessing from prior turns.
 
 Conventions:
 
@@ -76,7 +76,7 @@ func SystemPrompt(userName, cwd, projectCtx string) string {
 // frame import (avoids a cycle the chatglue layer would otherwise hit).
 //
 // All fields optional. An empty FrameInfo makes SystemPromptWithFrame
-// behave identically to the legacy SystemPrompt — the per-frame block is
+// behave identically to the legacy SystemPrompt - the per-frame block is
 // emitted only when Name is non-empty.
 type FrameInfo struct {
 	// Name is the frame's user-visible identifier ("personal", "work").
@@ -134,7 +134,7 @@ func SystemPromptWithFrame(userName, cwd, projectCtx string, fi FrameInfo) strin
 		// concrete paths so `notes_write` calls land in the right
 		// subtree without guessing, and so the model can reason about
 		// cross-frame writes (use the generic write tool with an
-		// absolute path for those — it will prompt for confirmation).
+		// absolute path for those - it will prompt for confirmation).
 		var where strings.Builder
 		if vp := strings.TrimSpace(fi.VaultPath); vp != "" {
 			fmt.Fprintf(&where, "\n- Vault: %s", vp)

@@ -1,6 +1,6 @@
 // Package daemon owns carlos's background scheduler process.
 //
-// The daemon is a Go binary, not a separate executable — `carlos daemon
+// The daemon is a Go binary, not a separate executable - `carlos daemon
 // run` is the entry point the launchd / systemd unit calls. The other
 // `carlos daemon …` subcommands (enable / disable / status) are
 // user-facing CLIs that manage the platform unit and talk to the
@@ -104,7 +104,7 @@ type ScheduleStatus struct {
 // an error if the path is already bound (i.e. another daemon is
 // running). The listener removes the socket file on Close().
 //
-// We deliberately don't blindly unlink stale sockets — if a previous
+// We deliberately don't blindly unlink stale sockets - if a previous
 // daemon crashed without removing its socket, the dial-first probe in
 // the CLI (or the daemon's own startup check) will detect the orphan
 // and prompt the user / clean it up.
@@ -117,7 +117,7 @@ func Listen(path string) (net.Listener, error) {
 		_ = conn.Close()
 		return nil, fmt.Errorf("daemon: socket %s is already in use by another carlos daemon", path)
 	}
-	// Stale socket cleanup — only after the dial probe failed.
+	// Stale socket cleanup - only after the dial probe failed.
 	if _, err := os.Stat(path); err == nil {
 		if err := os.Remove(path); err != nil {
 			return nil, fmt.Errorf("daemon: remove stale socket %s: %w", path, err)

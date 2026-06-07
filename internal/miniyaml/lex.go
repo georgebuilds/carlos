@@ -128,7 +128,7 @@ func stripComment(raw string) (string, error) {
 		case c == '"' && !inSingle:
 			// Toggle, honoring `\"` inside double-quoted strings.
 			if inDouble && prev == '\\' {
-				// escaped quote inside double-quoted string — content
+				// escaped quote inside double-quoted string - content
 			} else {
 				inDouble = !inDouble
 			}
@@ -189,7 +189,7 @@ func rejectUnsupported(body string, num int) error {
 }
 
 // hasFreeStandingMarker reports whether `body` contains `marker` (e.g.
-// '&' or '*') in a position that would be a YAML construct — preceded
+// '&' or '*') in a position that would be a YAML construct - preceded
 // by start-of-string, whitespace, or `:`/`,`/`-`, followed by an
 // identifier character.  Inside quoted strings the marker is content
 // and we ignore it.
@@ -282,7 +282,7 @@ func hasBlockScalarIndicator(body string) bool {
 			n := body[j]
 			if n == '|' || n == '>' {
 				// Make sure what follows is end-of-line or a modifier
-				// (`+`, `-`, digit) — i.e. a true block scalar, not
+				// (`+`, `-`, digit) - i.e. a true block scalar, not
 				// the `>` of a quoted string.
 				if j+1 >= len(body) {
 					return true

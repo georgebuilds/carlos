@@ -31,7 +31,7 @@ func clipANSI(s string, cells int) string {
 	for i := 0; i < len(s); {
 		c := s[i]
 		if c == 0x1b && i+1 < len(s) && s[i+1] == '[' {
-			// Start of CSI sequence — copy through to the final byte
+			// Start of CSI sequence - copy through to the final byte
 			// (0x40..0x7e). Always emit; never count toward width.
 			j := i + 2
 			for j < len(s) {

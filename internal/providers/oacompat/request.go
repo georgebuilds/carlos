@@ -9,7 +9,7 @@ import (
 
 // BuildRequest converts the canonical providers.Request into the Chat
 // Completions wire shape. System prompt is injected as the first message
-// (Chat Completions has no top-level system field — it's a role).
+// (Chat Completions has no top-level system field - it's a role).
 //
 // errPrefix is included in error messages so callers can stamp them with
 // their provider name (e.g. "openai" or "openrouter") without the shared
@@ -58,7 +58,7 @@ func BuildRequest(req providers.Request, errPrefix string) (*MessagesRequest, er
 //     canonical "user" message containing N tool_result blocks fans out to
 //     N role:"tool" wire messages.
 //
-// Unknown Kind values are rejected — silently dropping them would produce
+// Unknown Kind values are rejected - silently dropping them would produce
 // confusing model behavior.
 func toAPIMessages(m providers.Message, errPrefix string) ([]APIMsg, error) {
 	// Partition blocks by category to assemble the right wire shapes.

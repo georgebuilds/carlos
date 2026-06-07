@@ -7,7 +7,7 @@ package gateway
 //     (e.g. routing config sends a ConversationReply to ntfy).
 //  2. Truncate Actions for adapters with FixedChoice limits.
 //  3. Tell the user, via the manage view, which channels degrade a
-//     given approval — ntfy's "revise" without text is the canonical
+//     given approval - ntfy's "revise" without text is the canonical
 //     case worth flagging.
 //
 // The fields mirror the columns in the spec's capability matrix one for

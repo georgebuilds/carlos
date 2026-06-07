@@ -1,4 +1,4 @@
-// metrics.go — skill-induction instrumentation.
+// metrics.go - skill-induction instrumentation.
 //
 // # Why this exists
 //
@@ -8,19 +8,19 @@
 //
 // The signals:
 //
-//   - acceptance_rate — fraction of proposals the user approves. Top-
+//   - acceptance_rate - fraction of proposals the user approves. Top-
 //     line precision proxy. Target ≥ 50% (DESIGN § Cost model).
-//   - post-acceptance edit distance — how much the user rewrites before
+//   - post-acceptance edit distance - how much the user rewrites before
 //     approving. Draft-quality proxy. (Not computed here; see Phase 6+
-//     wiring note — needs a `pre` blob alongside the accepted
+//     wiring note - needs a `pre` blob alongside the accepted
 //     SKILL.md, which we'll record at promote time.)
-//   - reuse_count + time_to_first_reuse — directly per skill.
-//   - survival curves at 30 / 60 / 90 days — fraction of induced skills
+//   - reuse_count + time_to_first_reuse - directly per skill.
+//   - survival curves at 30 / 60 / 90 days - fraction of induced skills
 //     still active at each cutoff.
 //
 // # No private state
 //
-// Metrics holds no persistent state of its own — every reading is
+// Metrics holds no persistent state of its own - every reading is
 // derived from (a) the SkillLibrary on disk and (b) the agent event
 // log. At carlos scale (hundreds of skills, low thousands of
 // proposals), a full scan per readout is fine. When the volume grows
@@ -81,7 +81,7 @@ func (r Report) String() string {
 }
 
 // AcceptanceRate returns accepted / (accepted + rejected). Pending
-// proposals are EXCLUDED from the denominator — they have no decision
+// proposals are EXCLUDED from the denominator - they have no decision
 // yet, so attributing them either way distorts the precision read.
 // Returns 0 when no decided proposals exist.
 func (m *Metrics) AcceptanceRate(ctx context.Context, log *agent.SQLiteEventLog) (float64, error) {
@@ -146,7 +146,7 @@ func (m *Metrics) Snapshot(ctx context.Context, log *agent.SQLiteEventLog, lib *
 			}
 		}
 		// Ratios use total INDUCED skills (active+stale+archived) as
-		// the denominator — same cohort whether they survived or not.
+		// the denominator - same cohort whether they survived or not.
 		totalInduced := rep.ActiveSkills + rep.StaleSkills + rep.ArchivedSkills
 		if totalInduced > 0 {
 			rep.Survival30dRatio = float64(rep.Survival30dCount) / float64(totalInduced)

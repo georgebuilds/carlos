@@ -19,7 +19,7 @@ import (
 // Output dimensions: caller supplies (cols × rows) target cells. The
 // sampled source rectangle is cols pixels wide × rows*2 pixels tall.
 //
-// Aspect math (load-bearing — easy to get wrong):
+// Aspect math (load-bearing - easy to get wrong):
 // terminal character cells are roughly 1:2 (width:height) in DISPLAY pixels.
 // One half-block cell encodes 1 source-pixel-wide × 2 source-pixels-tall
 // and is displayed at ~1 cell × ~2 display-pixels (W × H). So:
@@ -35,7 +35,7 @@ import (
 //
 // Color path: full truecolor by default. If the environment doesn't claim
 // truecolor (COLORTERM != "truecolor"/"24bit"), we still emit 24-bit
-// sequences — most modern terminals (Apple Terminal, gnome-terminal,
+// sequences - most modern terminals (Apple Terminal, gnome-terminal,
 // xterm-256) accept them and degrade silently. The visible delta in 256-
 // color mode is mild on a face this small.
 func renderHalfBlock(src image.Image, cols, rows int) string {
@@ -156,7 +156,7 @@ func rgbTo256(c color.RGBA) int {
 }
 
 // isTruecolor checks the de-facto env-var advertisement for 24-bit color
-// support. We don't probe — false negatives degrade gracefully, and the
+// support. We don't probe - false negatives degrade gracefully, and the
 // probing path adds raw-mode complexity that bubbletea would have to
 // coordinate with.
 func isTruecolor() bool {

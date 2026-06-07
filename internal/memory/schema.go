@@ -1,12 +1,12 @@
 // Package memory ships the carlos memory subsystem (SPEC § Memory model):
 //
-//   - Episodic — full conversation transcripts, reconstructable from the
+//   - Episodic - full conversation transcripts, reconstructable from the
 //     event log (no rows in this package).
-//   - Searchable — `summaries` table + `summaries_fts` FTS5 virtual table.
+//   - Searchable - `summaries` table + `summaries_fts` FTS5 virtual table.
 //     One row per closed conversation; the LLM (or NaiveSummarizer) writes
 //     a short paragraph; an AFTER INSERT trigger keeps the FTS index in
 //     sync.
-//   - User model — `user_model` key/value table. Hand-curated + agent-
+//   - User model - `user_model` key/value table. Hand-curated + agent-
 //     proposed, NEVER silent-write: agent edits flow through the same
 //     approval queue as any other PROPOSAL artifact.
 //
@@ -18,7 +18,7 @@
 package memory
 
 // schemaSQL applies the three memory tables (summaries + user_model)
-// plus the FTS5 virtual table and trigger. Idempotent — safe to run on
+// plus the FTS5 virtual table and trigger. Idempotent - safe to run on
 // every open.
 //
 // The summaries_fts contentless-style indirection (`content='summaries',
@@ -69,7 +69,7 @@ CREATE TABLE IF NOT EXISTS user_model (
 // walPragmasSQL is run at open-time by OpenStore when it owns the DB
 // handle (i.e. not handed one by an event log). The supervisor already
 // applies the same pragmas via the DSN (see eventlog_sqlite.go), so
-// re-running them is a no-op — but when the memory package opens its
+// re-running them is a no-op - but when the memory package opens its
 // own connection (CLI path) we need to set them explicitly.
 const walPragmasSQL = `
 PRAGMA journal_mode = WAL;

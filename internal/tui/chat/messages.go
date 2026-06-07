@@ -16,7 +16,7 @@ type eventMsg struct {
 	ev agent.Event
 }
 
-// backfillMsg carries the initial replay batch — the events present in
+// backfillMsg carries the initial replay batch - the events present in
 // the log when the model was constructed. We send these as one message
 // so the transcript is populated in a single render cycle on first paint.
 type backfillMsg struct {
@@ -77,7 +77,7 @@ func pumpEventCmd(ch <-chan agent.Event) tea.Cmd {
 
 // subscribeCmd opens the subscription against the given log + agent and
 // returns subscriptionReady. We do this as a Cmd (not in New) so that
-// failure surfaces as a tea.Msg rather than a constructor error — the
+// failure surfaces as a tea.Msg rather than a constructor error - the
 // chat view should boot even if the log is briefly unreachable.
 func subscribeCmd(log agent.EventLog, agentID string) tea.Cmd {
 	return func() tea.Msg {

@@ -78,7 +78,7 @@ type Options struct {
 	DisableSignals bool
 
 	// Notifier dispatches a desktop banner per scheduled-run
-	// completion (slice 8d). Optional — nil means notifications are
+	// completion (slice 8d). Optional - nil means notifications are
 	// disabled. Production typically wires &SystemNotifier{}; tests
 	// pass a recording fake to assert content.
 	Notifier Notifier
@@ -93,7 +93,7 @@ type Options struct {
 	// is honoured. Phase F-14. Receiving a nil/zero ResolvedProvider
 	// means the caller refused to construct (caller decides whether to
 	// fall back to opts.Provider). When ProviderBuilder is itself nil,
-	// every fire uses opts.Provider unconditionally — the legacy
+	// every fire uses opts.Provider unconditionally - the legacy
 	// behaviour.
 	ProviderBuilder func(frame.ResolvedProvider) (providers.Provider, error)
 }
@@ -103,7 +103,7 @@ type Options struct {
 //
 // Lifecycle (Run):
 //
-//	1. Open state.db (single-writer invariant — see eventlog_sqlite.go).
+//	1. Open state.db (single-writer invariant - see eventlog_sqlite.go).
 //	2. Open UDS listener at ~/.carlos/daemon.sock (fail-fast on EADDRINUSE).
 //	3. Load config; build the schedule list.
 //	4. Install SIGHUP (reload) and SIGTERM/SIGINT (graceful shutdown) handlers.
@@ -156,7 +156,7 @@ type Daemon struct {
 	stopFn   context.CancelFunc
 }
 
-// New constructs a Daemon from Options. Does NOT start anything — call
+// New constructs a Daemon from Options. Does NOT start anything - call
 // Run to actually open the listener + state.db.
 func New(opts Options) (*Daemon, error) {
 	if opts.ConfigPath == "" {
@@ -178,7 +178,7 @@ func New(opts Options) (*Daemon, error) {
 // arrives over IPC). Returns nil on clean shutdown; an error if any of
 // the startup steps fail.
 //
-// Run is single-call — invoking it twice on the same Daemon is
+// Run is single-call - invoking it twice on the same Daemon is
 // undefined behavior.
 func (d *Daemon) Run(ctx context.Context) error {
 	// 1. State.db (skipped if test mode supplied a Spawner).
@@ -212,7 +212,7 @@ func (d *Daemon) Run(ctx context.Context) error {
 		return err
 	}
 
-	// 4. Signal handlers — derive a cancellable ctx so SIGTERM and
+	// 4. Signal handlers - derive a cancellable ctx so SIGTERM and
 	//    the IPC stop verb both unwind through the same path.
 	runCtx, cancel := context.WithCancel(ctx)
 	d.stopFn = cancel
@@ -349,12 +349,12 @@ func (d *Daemon) Reload() error {
 }
 
 // loadConfig reads ConfigPath, validates each schedule, and replaces
-// d.schedules. A single malformed schedule is non-fatal — we log it to
+// d.schedules. A single malformed schedule is non-fatal - we log it to
 // stderr and skip it so one bad entry doesn't disable the whole daemon.
 //
 // The gateway block is cached on d so Run() can construct the broker
 // after this returns. Reload (SIGHUP) refreshes the cache but does
-// NOT rebuild the gateway — see internal/daemon/gateway.go for why.
+// NOT rebuild the gateway - see internal/daemon/gateway.go for why.
 func (d *Daemon) loadConfig() error {
 	cfg, err := config.Load(d.opts.ConfigPath)
 	if err != nil {
@@ -384,7 +384,7 @@ func (d *Daemon) loadConfig() error {
 }
 
 // tick walks the schedule list, spawning the due ones. Per-schedule
-// fires happen sequentially within one tick — a daemon that just woke
+// fires happen sequentially within one tick - a daemon that just woke
 // up and finds 10 due schedules will fire them in declaration order.
 //
 // For each fire:
@@ -406,7 +406,7 @@ func (d *Daemon) tick(ctx context.Context) {
 			continue
 		}
 		ok := d.fire(ctx, s)
-		// Persist the update — both in-memory and on-disk.
+		// Persist the update - both in-memory and on-disk.
 		d.mu.Lock()
 		// Re-find by name (the list may have been reloaded mid-tick).
 		for j := range d.schedules {

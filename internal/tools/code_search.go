@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-// CodeSearchTool registers as `code_search` — a thin fan-out fetcher
+// CodeSearchTool registers as `code_search` - a thin fan-out fetcher
 // for the three public code-doc indexers carlos's own repo is
 // published on (Codewiki / Context7 / DeepWiki). The model can use it
 // to look up architectural questions about carlos itself ("how does
@@ -22,7 +22,7 @@ import (
 // The same tool works against any GitHub repo the indexers cover, not
 // just carlos's. Pass `repo: "owner/repo"` to override the default.
 // Default repo is "georgebuilds/carlos" so the no-arg call surfaces
-// carlos's own docs first — that's the self-reference path the model
+// carlos's own docs first - that's the self-reference path the model
 // reaches for when the user asks how something works internally.
 //
 // Network egress: the tool prompts via LayeredApprover (no auto-
@@ -93,7 +93,7 @@ func (*CodeSearchTool) Schema() []byte {
 		"properties": {
 			"query": {
 				"type": "string",
-				"description": "Optional question or topic. Used as a hint in the response framing but not (yet) as a server-side filter — the indexers return repo-rooted overviews. Pass to help the model focus its read of the merged output."
+				"description": "Optional question or topic. Used as a hint in the response framing but not (yet) as a server-side filter - the indexers return repo-rooted overviews. Pass to help the model focus its read of the merged output."
 			},
 			"repo": {
 				"type": "string",

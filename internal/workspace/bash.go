@@ -1,4 +1,4 @@
-// bash.go — the curated read-only verb classifier used by Policy.
+// bash.go - the curated read-only verb classifier used by Policy.
 //
 // The premise: when the user trusts the current workspace, carlos can
 // run a small, deliberate set of read-only shell commands without
@@ -50,7 +50,7 @@ var readOnlyVerbs = map[string]map[string]bool{
 	"which": nil,
 	"echo":  nil,
 
-	// git — only inspection subcommands. Anything that writes
+	// git - only inspection subcommands. Anything that writes
 	// (commit, push, reset, checkout, merge, rebase, stash, config
 	// --add) is denied.
 	"git": {
@@ -65,11 +65,11 @@ var readOnlyVerbs = map[string]map[string]bool{
 		"rev-parse": true,
 		"describe":  true,
 		"remote":    true, // `git remote -v` is informational
-		"config":    true, // read-only forms only — see disallowedFlags below
+		"config":    true, // read-only forms only - see disallowedFlags below
 	},
 }
 
-// disallowedShellMetacharacters — presence of any of these in the
+// disallowedShellMetacharacters - presence of any of these in the
 // command string disqualifies it from the read-only allowlist. The
 // goal is to make the classifier dumb on purpose: "git status" is
 // allowed; `"git status && rm -rf /"` is not.
@@ -77,7 +77,7 @@ var disallowedShellMetacharacters = []string{
 	";", "&&", "||", "|", ">", "<", "`", "$(", "$((", ">>", "<<",
 }
 
-// disallowedFlagsByVerb — fine-grained denial for verbs that have a
+// disallowedFlagsByVerb - fine-grained denial for verbs that have a
 // hidden write form behind a flag (typically `--delete`, `--add`,
 // `--unset`). When a token in the command matches any string here,
 // the verb-level allow is overridden and the classifier rejects.
@@ -121,7 +121,7 @@ func IsReadOnly(cmd string) bool {
 	}
 	// Multi-tier verbs: require the second token to be in the
 	// allowed subcommand set. (nil map means "no subcommand
-	// constraint" — only true for single-form verbs like pwd.)
+	// constraint" - only true for single-form verbs like pwd.)
 	if subAllow != nil {
 		if len(tokens) < 2 {
 			return false
@@ -144,7 +144,7 @@ func IsReadOnly(cmd string) bool {
 	return true
 }
 
-// tokenize is a deliberately simple word splitter — we already
+// tokenize is a deliberately simple word splitter - we already
 // rejected shell metacharacters above, so plain whitespace splitting
 // is correct here. We strip surrounding quotes on each token so
 // `cat "Makefile"` tokenizes to ["cat", "Makefile"].

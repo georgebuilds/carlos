@@ -1,4 +1,4 @@
-// Phase 3 slice 3d — content-addressable artifact store.
+// Phase 3 slice 3d - content-addressable artifact store.
 //
 // Sub-agents return deliverables (file contents, diffs, plans, skill
 // PROPOSALs, research notes) to their parent via on-disk artifacts; the
@@ -29,7 +29,7 @@
 //     so attribution is preserved.
 //   - Integrity. The filename IS the hash; readers verify on read by
 //     re-hashing if they want stronger guarantees. We never trust a row's
-//     sha256 against a renamed blob — the row is metadata, the file is
+//     sha256 against a renamed blob - the row is metadata, the file is
 //     truth.
 //   - GC story. A future "drop blobs not referenced by any non-pruned
 //     agent row" sweep is trivial: list <basePath>, subtract the set of
@@ -40,7 +40,7 @@
 //
 // Same recipe as internal/config/config.go.Save: open a unique temp file
 // under basePath, write+fsync, then rename onto <basePath>/<sha256>. If
-// the destination already exists we discard the temp — sha256 collision
+// the destination already exists we discard the temp - sha256 collision
 // is cryptographic, not coincidental, so the existing file IS the same
 // content. Concurrent writers of identical content race only on the
 // rename; both end up with the same final path.
@@ -95,13 +95,13 @@ const (
 
 // ErrArtifactNotFound is returned by ReadArtifact when no blob exists at
 // the addressed path. Callers should treat it as "the row pointed at
-// nothing on disk" — a recoverable miss, not a corrupt log.
+// nothing on disk" - a recoverable miss, not a corrupt log.
 var ErrArtifactNotFound = errors.New("artifact: not found")
 
 // ArtifactRef is the lightweight pointer the parent receives from a
 // child. It carries enough to render a roster entry (kind, size,
 // created_at) and to load the blob (path, sha256). The parent never
-// receives the raw bytes — that's the whole point of the artifact
+// receives the raw bytes - that's the whole point of the artifact
 // pattern.
 type ArtifactRef struct {
 	ID        string    // ULID from the artifacts row
@@ -129,7 +129,7 @@ type artifactWriter interface {
 //
 // home is typically os.UserHomeDir(); pass "" to let the function decide
 // via the standard library (an empty home + missing env yields the
-// relative ".carlos/artifacts/" fallback — the same shape config.go uses
+// relative ".carlos/artifacts/" fallback - the same shape config.go uses
 // for its YAML).
 func ArtifactBasePath(home string) string {
 	if env := os.Getenv("CARLOS_ARTIFACT_BASE"); env != "" {
@@ -149,7 +149,7 @@ func ArtifactBasePath(home string) string {
 // MkdirArtifactBase ensures basePath exists at mode 0700. Artifacts may
 // contain secrets (API responses, draft diffs against private code), so
 // the directory mode matches ~/.carlos itself. Idempotent. If the
-// directory already exists with looser perms we tighten it via Chmod —
+// directory already exists with looser perms we tighten it via Chmod -
 // best-effort, errors there are swallowed because the caller asked for
 // "ensure it exists", not "audit perms".
 func MkdirArtifactBase(basePath string) error {
@@ -177,7 +177,7 @@ func MkdirArtifactBase(basePath string) error {
 // the existing blob (no second file appears on disk) and inserts a new
 // row each time. The two rows carry distinct ULIDs but the same sha256,
 // so the cross-agent attribution graph stays intact. This matches
-// DESIGN's "blobs DO NOT live in SQLite rows" invariant — duplicate
+// DESIGN's "blobs DO NOT live in SQLite rows" invariant - duplicate
 // content is normal, the row is the authoritative reference.
 //
 // Errors:
@@ -250,7 +250,7 @@ func WriteArtifact(ctx context.Context, log artifactWriter, agentID, kind string
 
 // ReadArtifact reads the blob at <basePath>/<sha256>. Returns
 // ErrArtifactNotFound (wrapped via errors.Is-friendly sentinel) if the
-// file is missing — callers can distinguish "file gone" from "fs error".
+// file is missing - callers can distinguish "file gone" from "fs error".
 func ReadArtifact(basePath, sha256Hex string) ([]byte, error) {
 	if basePath == "" {
 		return nil, errors.New("artifact: ReadArtifact called with empty basePath")
@@ -276,7 +276,7 @@ func ReadArtifact(basePath, sha256Hex string) ([]byte, error) {
 //
 // If the destination materializes between our Stat above and our Rename
 // here (concurrent writers, identical content), Rename overwrites it on
-// POSIX with the same bytes — the result is byte-for-byte equivalent
+// POSIX with the same bytes - the result is byte-for-byte equivalent
 // because the sha matches, so atomicity is preserved. We could
 // alternately use os.Link to atomically claim the slot, but Rename keeps
 // us symmetric with config.go.
@@ -327,7 +327,7 @@ func randomSuffix() (string, error) {
 // newArtifactRowID mints a ULID stamped with `now`. We use the same
 // monotonic-entropy reader the rest of the package will use (sliding the
 // generator into a package-level var here so the artifacts ULIDs sort by
-// creation time the same way the agents-table ULIDs do — useful when a
+// creation time the same way the agents-table ULIDs do - useful when a
 // future roster query orders artifacts by id).
 //
 // Guarded by artifactULIDMu because ulid.MonotonicEntropy is not safe
@@ -351,7 +351,7 @@ func newArtifactRowID(now time.Time) (string, error) {
 
 // artifactULIDEntropy is the monotonic entropy source for artifact row
 // IDs. Crypto-random base, monotonic increment within the same
-// millisecond — same recipe as ulid_test.go validates for the agents
+// millisecond - same recipe as ulid_test.go validates for the agents
 // table.
 var (
 	artifactULIDMu      sync.Mutex

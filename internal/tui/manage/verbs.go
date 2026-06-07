@@ -11,7 +11,7 @@ import (
 // stop. Mirrors the agent.Supervisor methods 1:1, so production wires
 // `*agent.Supervisor` directly. Tests pass a recording double.
 //
-// Per SPEC § Verbs the three verbs must NOT be aliased — each has a
+// Per SPEC § Verbs the three verbs must NOT be aliased - each has a
 // distinct effect (steer = inject message, interrupt = abort turn,
 // stop = terminate). The interface intentionally enumerates them as
 // three methods rather than a single Dispatch(verb string, ...) so the
@@ -68,7 +68,7 @@ func (r VerbResult) String() string {
 	case "interrupt":
 		return "interrupting " + id
 	case "stop":
-		return "stopping " + id + " — graceful drain → hard-kill after 30s"
+		return "stopping " + id + " - graceful drain → hard-kill after 30s"
 	}
 	return r.Verb + " " + id + " ok"
 }

@@ -15,7 +15,7 @@ import (
 // Returning false denies the call; the loop reports "(rejected by user)"
 // back to the model so it can adapt rather than crashing.
 //
-// The approver is also where session-level allowlisting lives — a TUI
+// The approver is also where session-level allowlisting lives - a TUI
 // implementation can prompt with y/N/Always and keep "Always" in state.
 type Approver interface {
 	ApproveToolCall(name string, input []byte) bool
@@ -43,14 +43,14 @@ type LoopOptions struct {
 	// SPEC § Manage mode § Verbs (Steer).
 	//
 	// Closing the channel is the canonical "no more steering will
-	// arrive" signal — the loop stops draining on close. Sending on a
+	// arrive" signal - the loop stops draining on close. Sending on a
 	// nil channel from the supervisor is a no-op (the loop's drain is
 	// a non-blocking select against nil, which never fires).
 	Steering <-chan string
 
 	// Budget caps the loop's spend in tokens, cents, and/or wall-clock
 	// time. Zero value (or BudgetTracker == nil) disables enforcement
-	// entirely — the loop behaves as it did pre-5a. Phase 5 slice 5a.
+	// entirely - the loop behaves as it did pre-5a. Phase 5 slice 5a.
 	Budget Budget
 
 	// BudgetTracker is the running counter the budget gate consults
@@ -63,7 +63,7 @@ type LoopOptions struct {
 	// ErrBudgetExceeded so the caller classifies as a graceful end
 	// rather than an infra error. After each completed stream the loop
 	// pushes an estimate via BudgetTracker.Add (today: from message
-	// body length — see budget.EstimateCallCost / Tokens; future:
+	// body length - see budget.EstimateCallCost / Tokens; future:
 	// adapters that wire real usage will report through this same Add).
 	BudgetTracker *Tracker
 }
@@ -82,7 +82,7 @@ var ErrMaxIterations = errors.New("loop: max iterations exceeded")
 //     tool_result block.
 //  5. Append the tool_results as a user message and loop.
 //
-// The loop is provider-agnostic — it talks to providers.Provider and
+// The loop is provider-agnostic - it talks to providers.Provider and
 // expects the canonical Anthropic event shape. Adapters in
 // internal/providers/{openai,ollama,...} normalize their wire formats to
 // this shape so the same loop runs unchanged.
@@ -105,7 +105,7 @@ func Run(ctx context.Context, p providers.Provider, reg *tools.Registry, opts Lo
 	for iter := 0; iter < maxIter; iter++ {
 		// Drain any pending steering nudges before constructing the
 		// next provider request. This is the "delivered at the next
-		// tool-call boundary" contract — never injected mid-stream.
+		// tool-call boundary" contract - never injected mid-stream.
 		messages = drainSteering(opts.Steering, messages)
 
 		// Phase 5 slice 5a: budget gate. Refusing here gives the model
@@ -169,7 +169,7 @@ func Run(ctx context.Context, p providers.Provider, reg *tools.Registry, opts Lo
 		}
 		if len(results) == 0 {
 			// stop_reason was tool_use but no tool_use blocks were
-			// emitted — provider bug or schema drift. Surface
+			// emitted - provider bug or schema drift. Surface
 			// rather than spinning.
 			return messages, fmt.Errorf("loop: stop=tool_use but no tool_use blocks in assistant turn")
 		}
@@ -206,7 +206,7 @@ func blockBodyBytes(blocks []providers.Block) int {
 // as the channel has nothing pending. Safe on a nil channel.
 //
 // Each drained message is wrapped with a "[steer] " prefix so the
-// model can distinguish supervisor nudges from organic user input —
+// model can distinguish supervisor nudges from organic user input -
 // helpful when steering arrives mid-conversation about a different
 // concern than the original prompt.
 func drainSteering(ch <-chan string, messages []providers.Message) []providers.Message {
@@ -233,7 +233,7 @@ func drainSteering(ch <-chan string, messages []providers.Message) []providers.M
 
 // executeOneTool runs a single tool_use block and returns the
 // corresponding tool_result. Denials and execution errors come back as
-// tool_result text so the model can adapt — they are not surfaced as
+// tool_result text so the model can adapt - they are not surfaced as
 // loop errors.
 func executeOneTool(ctx context.Context, reg *tools.Registry, approver Approver, use providers.Block) providers.Block {
 	if !approver.ApproveToolCall(use.ToolName, use.ToolInput) {
@@ -262,7 +262,7 @@ func executeOneTool(ctx context.Context, reg *tools.Registry, approver Approver,
 // assistant turn as a single providers.Message. Text deltas accumulate
 // into text blocks; tool_use_start opens a tool_use block; tool_use_end
 // finalizes its input field. Multiple text/tool_use blocks can interleave
-// — the assembled blocks preserve order.
+// - the assembled blocks preserve order.
 //
 // textSink (if non-nil) receives every text delta as it arrives so the
 // CLI / TUI can render progressively without waiting for the full turn.

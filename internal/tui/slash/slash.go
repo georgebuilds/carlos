@@ -5,7 +5,7 @@
 // `/exit` without thinking. Carlos-specific commands (e.g. `/insights`)
 // extend the same `/<verb>[ args...]` shape so the muscle memory carries.
 //
-// Slash commands are TUI-only directives — they are NOT prompts sent to
+// Slash commands are TUI-only directives - they are NOT prompts sent to
 // the model. The TUI's input handler peeks at the first character: a
 // leading `/` routes to Parse + the command registry; anything else is a
 // model-bound message.
@@ -78,7 +78,7 @@ var Builtins = []Spec{
 	{Name: "agents", Description: "switch focus to the manage-mode supervisor view"},
 	{Name: "research", ArgsHint: "<question>", Description: "deep-research a question; web-searches, fetches sources, synthesizes a cited report"},
 
-	// Phase U — user-shell verbs. Provide a slash alternative to
+	// Phase U - user-shell verbs. Provide a slash alternative to
 	// the "!"-prefix submit so users who prefer slashes get parity.
 	{Name: "shell", ArgsHint: "<cmd>", Description: "run a shell command in your context (same as !cmd)"},
 	{Name: "jobs", Description: "toggle the shell-jobs overlay (same as Ctrl+J)"},
@@ -86,25 +86,25 @@ var Builtins = []Spec{
 	{Name: "bg", ArgsHint: "<job-id>", Description: "background the running shell job (same as Ctrl+Z)"},
 	{Name: "resume", Description: "pick a past chat session to resume (Phase R)"},
 
-	// Phase T-2 — workspace trust. Trust enables auto-approval for
+	// Phase T-2 - workspace trust. Trust enables auto-approval for
 	// a curated set of read-only bash verbs (git status/diff/log/…,
 	// ls, pwd, cat, head, tail, …). Everything else still prompts.
 	{Name: "trust", Description: "trust the current workspace for read-only bash auto-approval"},
 	{Name: "untrust", Description: "remove trust from the current workspace"},
 	{Name: "trusts", Description: "list trusted workspaces"},
 
-	// Phase T-3 — open the layered-policy overlay: built-in
+	// Phase T-3 - open the layered-policy overlay: built-in
 	// allowlist plus trusted workspaces, with tab to switch and /
 	// to filter.
 	{Name: "permissions", Description: "open the permissions overlay (built-in + workspace-trust state)"},
 
-	// Phase F — frames. `/frame` echoes the active frame; `/frame
+	// Phase F - frames. `/frame` echoes the active frame; `/frame
 	// list` enumerates available frames; `/frame switch <name>`
 	// persists a new active frame (provider/model take effect at
 	// next session start until the live-swap slice lands).
 	{Name: "frame", ArgsHint: "[list|switch <name>|new [name]]", Description: "show or switch the active frame (Phase F)"},
 
-	// Phase C-7 — list user-facing capabilities wired in the active
+	// Phase C-7 - list user-facing capabilities wired in the active
 	// frame: capability -> backend -> skills that deliver it.
 	{Name: "capabilities", Description: "list wired capabilities (calendar, etc.) in the active frame"},
 

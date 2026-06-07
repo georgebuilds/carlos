@@ -32,7 +32,7 @@ type Summary struct {
 // callers do NOT need to touch the FTS table.
 //
 // Returns the new row id. Empty AgentID or empty Text return errors
-// — both are required for a useful summary, and silently inserting a
+// - both are required for a useful summary, and silently inserting a
 // blank row would pollute the FTS index.
 func (s *Store) AppendSummary(ctx context.Context, sum Summary) (int64, error) {
 	if s == nil {
@@ -68,7 +68,7 @@ func (s *Store) AppendSummary(ctx context.Context, sum Summary) (int64, error) {
 // rows ordered by closed_at DESC (newest first). If limit <= 0 we
 // default to 10.
 //
-// The query is passed straight to FTS5 — callers may use the full
+// The query is passed straight to FTS5 - callers may use the full
 // FTS5 query grammar (quoted phrases, AND/OR/NOT, NEAR/N, prefix*).
 // Bad-syntax queries surface the FTS5 error wrapped.
 //
@@ -171,7 +171,7 @@ func (s *Store) RecentInFrame(ctx context.Context, frame string, limit int) ([]S
 
 // scanSummaries is the shared row-scan loop for Search and
 // RecentSummaries. Both queries select the same column list in the
-// same order — keep them in lockstep.
+// same order - keep them in lockstep.
 func scanSummaries(rows interface {
 	Next() bool
 	Scan(dest ...any) error

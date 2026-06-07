@@ -31,12 +31,12 @@ import "sync"
 //     that agent, as a single string. Implementations MUST be safe to
 //     call concurrently with Append / Reset.
 //   - Append(agentID, delta) tacks delta onto the buffer.
-//   - Reset(agentID) clears the buffer (called at turn boundaries — when
+//   - Reset(agentID) clears the buffer (called at turn boundaries - when
 //     the assistant's reply is "sealed" into the event log via whatever
 //     compacted form Slice 1f settles on, the live buffer is dropped so
 //     the next turn starts fresh).
 //
-// The chat view polls Get via a Subscribe-style channel? No — Slice 1f
+// The chat view polls Get via a Subscribe-style channel? No - Slice 1f
 // will be the publisher, and it sends a `TextUpdatedMsg` (defined in
 // messages.go) into the bubbletea program. The chat view's Update reads
 // the latest Get on every render. Pull-on-render keeps the wire surface

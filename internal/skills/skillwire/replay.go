@@ -1,4 +1,4 @@
-// Phase 6 slice 6f — replay-eval for induced skill candidates.
+// Phase 6 slice 6f - replay-eval for induced skill candidates.
 //
 // # Why this exists
 //
@@ -10,14 +10,14 @@
 // from. Without this gate, those 16/84 ship and silently corrupt every
 // future conversation that retrieves them.
 //
-// # Architectural commitments (load-bearing — slice-6f brief)
+// # Architectural commitments (load-bearing - slice-6f brief)
 //
 //   - Replay is OPTIONAL per slice. Skills induced from tasks without
 //     a deterministic verifier skip the replay step and go straight to
 //     human review. We don't fabricate a score we can't measure.
 //   - The skill is the variable, not the model. With-skill vs
 //     without-skill runs use the SAME provider, SAME model, SAME
-//     initial messages — only the System prompt changes.
+//     initial messages - only the System prompt changes.
 //   - One verifier per replay (see replay_picker.go). Picking multiple
 //     dilutes the signal.
 //   - Replay corpus is bounded (default 5 transcripts). The cost
@@ -30,10 +30,10 @@
 //
 // The slice-6f brief lists this file as internal/skills/replay.go but
 // the implementation has to import internal/agent (Dispatcher, Budget,
-// Run) and agent already imports internal/skills — that closes a
+// Run) and agent already imports internal/skills - that closes a
 // cycle. skillwire/ exists precisely for this reason (see the
-// package-level doc on wire.go). The architectural intent — replay is
-// skill-induction's verifier gate, separate from spawn/loop concerns —
+// package-level doc on wire.go). The architectural intent - replay is
+// skill-induction's verifier gate, separate from spawn/loop concerns -
 // is unchanged.
 package skillwire
 
@@ -52,7 +52,7 @@ import (
 // VerifierDispatcher is the seam the ReplayEvaluator uses to score
 // the replay outputs. *agent.Dispatcher satisfies it. The interface
 // exists so tests can swap in a fake without spinning up real
-// compilers / test runners / network fetches — see
+// compilers / test runners / network fetches - see
 // replay_test.go::fakeDispatcher.
 //
 // The signature mirrors agent.Dispatcher.Verify exactly: same arg
@@ -65,7 +65,7 @@ type VerifierDispatcher interface {
 
 // Compile-time check that the real Dispatcher satisfies our interface.
 // Failing here means agent.Dispatcher.Verify has drifted and the
-// integration is broken — surface that at build time, not runtime.
+// integration is broken - surface that at build time, not runtime.
 var _ VerifierDispatcher = (*agent.Dispatcher)(nil)
 
 // ReplayEvaluator scores a candidate skill by replaying the historical
@@ -74,7 +74,7 @@ var _ VerifierDispatcher = (*agent.Dispatcher)(nil)
 //
 // Construct one Evaluator per induction pipeline (typically held on
 // the wire-layer's option struct). The struct is safe to share across
-// goroutines — the only mutable state is fields the caller sets at
+// goroutines - the only mutable state is fields the caller sets at
 // construction time.
 type ReplayEvaluator struct {
 	// Provider is the LLM that runs both arms of the replay. Held
@@ -97,18 +97,18 @@ type ReplayEvaluator struct {
 	// Workdir is the directory the verifiers run in. Typically a
 	// Worktree.Root from slice 3f so the replay's compile/test
 	// happens against a known checkout. The Evaluator does NOT
-	// chdir or sandbox itself — that's the caller's job. We just
+	// chdir or sandbox itself - that's the caller's job. We just
 	// pass workdir through to Dispatcher.Verify.
 	Workdir string
 
 	// MaxReplays caps the number of historical transcripts we replay
 	// against. Zero defaults to DefaultMaxReplays (5). Exceeding the
-	// supplied transcript slice is fine — we replay min(len, cap).
+	// supplied transcript slice is fine - we replay min(len, cap).
 	MaxReplays int
 
 	// PerReplayBudget caps each replay's tokens / cost / wall-clock.
 	// Zero defaults to a sane cap (see defaultPerReplayBudget). The
-	// budget is applied per replay, not summed across replays — a
+	// budget is applied per replay, not summed across replays - a
 	// 5-replay run with a 30s budget per arm caps at ~300s total
 	// (5 × 2 arms × 30s). Callers that need a global cap layer their
 	// own context timeout on top.
@@ -116,7 +116,7 @@ type ReplayEvaluator struct {
 
 	// Tools is the registry the replay's agent.Run uses. Held on the
 	// evaluator (not per-call) because the registry shape must match
-	// what the skill was induced from — passing a different toolset
+	// what the skill was induced from - passing a different toolset
 	// between with-skill and without-skill would change the variable.
 	// Zero = empty registry (text-only replays, useful for tests).
 	Tools *tools.Registry
@@ -139,7 +139,7 @@ const DefaultMaxReplays = 5
 //
 // 20k tokens × 2 arms × 5 replays = 200k tokens worst-case per
 // proposal. At mid-tier prices (~$3/M in, $15/M out) the worst case
-// is ~$1.80. Brief's per-proposal budget target is $0.10 — so this
+// is ~$1.80. Brief's per-proposal budget target is $0.10 - so this
 // cap is the runaway alarm, not the normal operating point.
 func defaultPerReplayBudget() agent.Budget {
 	return agent.Budget{
@@ -153,7 +153,7 @@ func defaultPerReplayBudget() agent.Budget {
 // pre-computed on ReplayReport so the gate doesn't recompute.
 type ReplayPair struct {
 	// TranscriptID is the agent ID (or other handle) the caller
-	// supplied — passed through verbatim so post-mortems can trace
+	// supplied - passed through verbatim so post-mortems can trace
 	// back to the eventlog.
 	TranscriptID string
 
@@ -172,7 +172,7 @@ type ReplayPair struct {
 	Delta int
 
 	// Errors collected during this pair's execution. Non-nil errors
-	// do NOT abort the whole evaluation — they downgrade this pair
+	// do NOT abort the whole evaluation - they downgrade this pair
 	// to a tie (Delta=0) and surface in ReplayReport.Concerns.
 	WithSkillErr    string `json:",omitempty"`
 	WithoutSkillErr string `json:",omitempty"`
@@ -185,7 +185,7 @@ type ReplayReport struct {
 	// Replays is the per-transcript record. Empty when Skipped=true.
 	Replays []ReplayPair
 
-	// Score is the "win rate" — fraction of replays where with-skill
+	// Score is the "win rate" - fraction of replays where with-skill
 	// strictly outperformed without-skill. Ties don't count for
 	// either side; the denominator is len(Replays) but the numerator
 	// counts only Delta=+1 pairs. A 0-pair report (no replays
@@ -202,15 +202,15 @@ type ReplayReport struct {
 	// strong evidence to AUTO-ACCEPT (cheap downside of "needs more
 	// human review") but a clear majority loss to AUTO-REJECT (a bad
 	// skill silently degrades every future conversation that
-	// retrieves it — the brief's headline risk).
+	// retrieves it - the brief's headline risk).
 	Decision string
 
-	// Concerns is a free-form list of issues — verifier errors,
+	// Concerns is a free-form list of issues - verifier errors,
 	// budget trips, picker fallbacks. Surfaced into the approval
 	// queue title when non-empty (see PipelineHook).
 	Concerns []string
 
-	// Skipped is true when no verifier fits this skill class — the
+	// Skipped is true when no verifier fits this skill class - the
 	// picker returned an empty kind. Skipped=true means the gate
 	// behaves identically to the pre-slice-6f pipeline: proposal
 	// queues for human review, no verifier signal attached.
@@ -222,7 +222,7 @@ type ReplayReport struct {
 	SkippedReason string
 
 	// VerifierKind records the kind PickVerifierKind returned. Empty
-	// iff Skipped=true. Useful for telemetry — once acceptance-rate
+	// iff Skipped=true. Useful for telemetry - once acceptance-rate
 	// per-kind is plotted we can tune the picker.
 	VerifierKind string
 }
@@ -243,10 +243,10 @@ const (
 // induced from. The caller typically fetches them via
 // agent.EventLog.Read keyed by proposal.InducedFrom (agent IDs) and
 // reduces each to a []providers.Message (the assistant/user turns
-// from agent.Run). Slice 6f does NOT prescribe the reduction — that's
+// from agent.Run). Slice 6f does NOT prescribe the reduction - that's
 // induction-side concern (slice 6e).
 //
-// Returns a non-nil error only for INFRA failures — nil-receiver, nil
+// Returns a non-nil error only for INFRA failures - nil-receiver, nil
 // proposal, nil provider, nil dispatcher. A successful run with all
 // replays failing returns a report (Score=0, Decision="reject" or
 // "inconclusive" depending on counts) and nil error; the gate is then
@@ -265,7 +265,7 @@ func (r *ReplayEvaluator) Evaluate(ctx context.Context, proposal *skills.Proposa
 		return nil, errors.New("replay: nil dispatcher")
 	}
 
-	// Pick verifier kind. Skipped path returns early — same shape as
+	// Pick verifier kind. Skipped path returns early - same shape as
 	// the pre-slice-6f pipeline. The report carries the picker reason
 	// so the caller can surface "no verifier fit" in audit logs.
 	pick := PickVerifierKind(proposal, transcripts)
@@ -285,9 +285,9 @@ func (r *ReplayEvaluator) Evaluate(ctx context.Context, proposal *skills.Proposa
 		max = len(transcripts)
 	}
 	if max == 0 {
-		// No transcripts to replay against — there's a verifier kind
+		// No transcripts to replay against - there's a verifier kind
 		// in principle but nothing to score. Surface as inconclusive
-		// (not Skipped — the difference matters for telemetry: this
+		// (not Skipped - the difference matters for telemetry: this
 		// is "we COULD have replayed if you'd given us data" vs the
 		// picker's "we WOULDN'T have replayed even with data").
 		return &ReplayReport{
@@ -347,7 +347,7 @@ func (r *ReplayEvaluator) Evaluate(ctx context.Context, proposal *skills.Proposa
 //	with-skill: System = base + skill.Body
 //	without-skill: System = base
 //
-// "base" is empty by default — the replay isn't trying to reproduce
+// "base" is empty by default - the replay isn't trying to reproduce
 // the original conversation's system prompt (that would be fragile and
 // is induction-side concern), it's measuring whether the skill body
 // helps on the same initial messages.
@@ -361,7 +361,7 @@ func (r *ReplayEvaluator) runOnePair(ctx context.Context, proposal *skills.Propo
 	// transcript and use it as the seed. This is deliberately
 	// minimal: replaying the full transcript would just have the
 	// model regenerate the same tool-call sequence, which doesn't
-	// test the skill — it tests determinism. Replaying just the
+	// test the skill - it tests determinism. Replaying just the
 	// seed exercises the skill's planning value.
 	seed := initialUserMessage(transcript)
 	if len(seed) == 0 {
@@ -385,7 +385,7 @@ func (r *ReplayEvaluator) runOnePair(ctx context.Context, proposal *skills.Propo
 	}
 
 	// Verify each arm. Even if one arm errored we still try to verify
-	// the other — the verifier's job is to score the OUTPUT, and an
+	// the other - the verifier's job is to score the OUTPUT, and an
 	// empty output is a legitimate (low) score, not an infra failure.
 	withSkillReports, vErr := r.Dispatcher.Verify(ctx, r.Workdir, kind, withSkillOut)
 	if vErr != nil && pair.WithSkillErr == "" {
@@ -407,7 +407,7 @@ func (r *ReplayEvaluator) runOnePair(ctx context.Context, proposal *skills.Propo
 }
 
 // runArm executes one agent.Run call and returns the final assistant
-// text concatenated into a single byte slice — that's the content the
+// text concatenated into a single byte slice - that's the content the
 // verifier scores. Errors from agent.Run (including budget exceeded,
 // which is the deliberate runaway-stop signal) are returned to the
 // caller; the caller records them on the pair.
@@ -448,7 +448,7 @@ func initialUserMessage(transcript []providers.Message) []providers.Message {
 }
 
 // finalAssistantText concatenates every text block in the LAST
-// assistant message. Tool-use blocks are skipped — the verifier
+// assistant message. Tool-use blocks are skipped - the verifier
 // scores the model's final answer, not its tool calls. Returns
 // nil for an empty or all-tool-use final turn.
 func finalAssistantText(msgs []providers.Message) []byte {
@@ -487,7 +487,7 @@ func buildReplaySystem(p *skills.Proposal) string {
 // bestReport picks the highest-scoring report from a slice. Dispatcher
 // may return zero, one, or many reports per Verify call (e.g. the
 // "diff" kind fires both Compiler AND TestRunner). The replay's
-// per-arm score is the BEST of those signals — a project that
+// per-arm score is the BEST of those signals - a project that
 // compiles AND tests cleanly is two confirmations; we don't want to
 // dilute that by averaging with a no-signal report.
 //
@@ -552,8 +552,8 @@ func decideFromScore(score float64, completed int) string {
 }
 
 // transcriptID returns a stable identifier for a transcript. We
-// don't have a first-class transcript ID — the caller passes a slice
-// of message-lists — so we fall back to a positional ID. If the
+// don't have a first-class transcript ID - the caller passes a slice
+// of message-lists - so we fall back to a positional ID. If the
 // caller wants real IDs they can wrap Evaluate themselves.
 func transcriptID(_ []providers.Message, idx int) string {
 	return fmt.Sprintf("transcript-%d", idx)

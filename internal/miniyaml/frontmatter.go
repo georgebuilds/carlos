@@ -19,7 +19,7 @@ import (
 //   - found=false → data didn't start with a `---` line.  frontmatter
 //     is nil; body is data verbatim.
 //   - err set     → the opener was present but no matching closer was
-//     found (an unterminated frontmatter — surfaces as a parse error
+//     found (an unterminated frontmatter - surfaces as a parse error
 //     to the caller).
 //
 // A leading UTF-8 BOM is tolerated.  CRLF line endings are tolerated:

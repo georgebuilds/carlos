@@ -17,7 +17,7 @@ import (
 )
 
 // Script is an ordered list of events the provider will emit on Stream.
-// Each call to Stream walks a fresh copy of the script — no internal state
+// Each call to Stream walks a fresh copy of the script - no internal state
 // leaks between turns.
 type Script []providers.Event
 
@@ -44,7 +44,7 @@ func New(name string, script Script) *Provider {
 // WithStopAfter returns a copy that halts emission after n events. Used to
 // simulate provider stream truncation in the kill-and-resume test.
 //
-// The mutex + lastReq aren't copied — each derived provider gets a fresh
+// The mutex + lastReq aren't copied - each derived provider gets a fresh
 // LastRequest tracker so concurrent runs over the same script don't fight
 // over the same buffer. (sync.Mutex is non-copyable; vet flags a struct
 // copy of *p as a result.)

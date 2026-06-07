@@ -11,7 +11,7 @@ import "encoding/json"
 // fields than we model (entities, animations, voice, dice, etc.); they
 // pass through to ignored JSON keys. If a future capability (file
 // upload, photo inbound) needs a field, add it here rather than chasing
-// a single big "complete" struct — the Bot API churns frequently and a
+// a single big "complete" struct - the Bot API churns frequently and a
 // tight slice keeps the surface area survivable.
 //
 // API reference: https://core.telegram.org/bots/api
@@ -30,7 +30,7 @@ type apiResponse struct {
 }
 
 // responseParams carries the per-error metadata Telegram returns. The
-// only field we care about is RetryAfter — when present (alongside
+// only field we care about is RetryAfter - when present (alongside
 // error_code 429), the adapter surfaces it so the broker's retry loop
 // can wait the right amount of time.
 type responseParams struct {
@@ -69,7 +69,7 @@ type inlineKeyboardButton struct {
 
 // answerCallbackQueryRequest dismisses the "loading" spinner Telegram
 // shows on a tapped inline button. If we don't answer, the spinner
-// hangs for 15s before the client gives up — bad UX even when the bot
+// hangs for 15s before the client gives up - bad UX even when the bot
 // has already done the work behind the tap.
 type answerCallbackQueryRequest struct {
 	CallbackQueryID string `json:"callback_query_id"`

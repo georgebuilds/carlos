@@ -24,9 +24,9 @@ import (
 //  3. The supervisor (Phase 4 approval gate) calls [Worktree.Diff] and
 //     [Worktree.ChangedFiles] to render what happened.
 //  4. The user picks one of:
-//     a. [Worktree.Apply] — merge ff-only into the parent. May fail if
+//     a. [Worktree.Apply] - merge ff-only into the parent. May fail if
 //     the parent advanced; the UI surfaces the error.
-//     b. [Worktree.Discard] — throw the work away.
+//     b. [Worktree.Discard] - throw the work away.
 //  5. [Worktree.Close] runs regardless. It is idempotent so step 4a/4b
 //     and step 5 can both be deferred safely.
 type Worktree struct {
@@ -37,7 +37,7 @@ type Worktree struct {
 	// (`carlos/<id>`). Apply merges this branch into RepoRoot's HEAD;
 	// Close deletes it.
 	Branch string
-	// RepoRoot is the originating repo — the parent. `git worktree add`,
+	// RepoRoot is the originating repo - the parent. `git worktree add`,
 	// `git worktree remove`, the apply-step `git merge --ff-only`, and
 	// branch deletion all run with `-C RepoRoot`.
 	RepoRoot string
@@ -51,7 +51,7 @@ type Worktree struct {
 
 // NewWorktree creates a fresh worktree under `<home>/.carlos/worktrees/<id>/`
 // checked out at baseBranch. The private branch is named `carlos/<id>`
-// where <id> is 12 hex chars from crypto/rand — collision probability is
+// where <id> is 12 hex chars from crypto/rand - collision probability is
 // negligible and the name is short enough to read in a `git branch` list.
 //
 // repoRoot must be a path inside a git repository (we let `git worktree
@@ -61,7 +61,7 @@ type Worktree struct {
 // add`.
 //
 // If anything fails, NewWorktree cleans up partial state before returning
-// — the caller does not have to worry about orphaned directories or
+// - the caller does not have to worry about orphaned directories or
 // branches.
 func NewWorktree(repoRoot, baseBranch string) (*Worktree, error) {
 	return NewWorktreeIn(repoRoot, baseBranch, "")
@@ -111,7 +111,7 @@ func NewWorktreeIn(repoRoot, baseBranch, baseDir string) (*Worktree, error) {
 
 	// `git worktree add -b <branch> <path> <baseBranch>` creates the
 	// branch from baseBranch and checks it out into a new worktree at
-	// <path>. The branch is shared with the parent repo — that's how the
+	// <path>. The branch is shared with the parent repo - that's how the
 	// later `git merge --ff-only <branch>` from the parent picks up the
 	// sub-agent's commits.
 	add := exec.Command("git", "-C", repoRoot, "worktree", "add", "-b", branch, wtPath, baseBranch)
@@ -142,7 +142,7 @@ func (w *Worktree) Exec(ctx context.Context, cmd []string, stdin io.Reader) ([]b
 	return runCommand(ctx, w.Root, cmd, stdin)
 }
 
-// Diff returns `git -C <Root> diff <baseBranch>...HEAD` — the
+// Diff returns `git -C <Root> diff <baseBranch>...HEAD` - the
 // three-dot form, which shows changes on HEAD relative to the merge
 // base with baseBranch. That's exactly what the manage-mode approval
 // pane wants to render: "what did the sub-agent do, ignoring anything
@@ -161,7 +161,7 @@ func (w *Worktree) Diff() ([]byte, error) {
 	return out, nil
 }
 
-// ChangedFiles lists files changed in the worktree vs base — same
+// ChangedFiles lists files changed in the worktree vs base - same
 // semantics as [Diff] but `--name-only`. Used to surface "the model wants
 // to edit these files" in the approval pane.
 func (w *Worktree) ChangedFiles() ([]string, error) {
@@ -185,7 +185,7 @@ func (w *Worktree) ChangedFiles() ([]string, error) {
 }
 
 // Apply merges the worktree's branch back into the parent repo's HEAD
-// via `git merge --ff-only`. Refuses non-fast-forward — see the package
+// via `git merge --ff-only`. Refuses non-fast-forward - see the package
 // doc for justification. After a successful Apply, the supervisor still
 // calls Close to clean up the worktree directory and the now-merged
 // branch.
@@ -210,7 +210,7 @@ func (w *Worktree) Discard() error {
 }
 
 // Close removes the worktree and deletes the private branch. Idempotent
-// — a second call is a no-op so Apply-then-Close and Discard-then-Close
+// - a second call is a no-op so Apply-then-Close and Discard-then-Close
 // (or any belt-and-braces defer chain) both work.
 //
 // We use --force on `worktree remove` because the sub-agent may have
@@ -224,7 +224,7 @@ func (w *Worktree) Close() error {
 
 	// Remove the worktree first. If the branch deletion is attempted
 	// while the worktree still references it, git refuses with "branch
-	// is checked out at ..." — and the operator is then left with a
+	// is checked out at ..." - and the operator is then left with a
 	// dangling worktree.
 	rmOut, rmErr := exec.Command("git", "-C", w.RepoRoot, "worktree", "remove", "--force", w.Root).CombinedOutput()
 	brOut, brErr := exec.Command("git", "-C", w.RepoRoot, "branch", "-D", w.Branch).CombinedOutput()

@@ -7,12 +7,12 @@ import (
 )
 
 // daemonModel is screen 5: a single y/N prompt asking whether to enable
-// the background daemon. Default is NO — daemon enables future remote
+// the background daemon. Default is NO - daemon enables future remote
 // gateways (Telegram, Discord, scheduled runs) but the TUI works without
 // it, so opt-in keeps the surface area minimal.
 //
 // Phase 0.5 ONLY records the user's choice into config. The actual
-// launchd/systemd install lives in Phase 8 — see TODO note in Flow.View.
+// launchd/systemd install lives in Phase 8 - see TODO note in Flow.View.
 type daemonModel struct {
 	choice  bool // current toggle; default false (or the preloaded initial)
 	decided bool // true once user confirmed

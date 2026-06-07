@@ -26,7 +26,7 @@ type Ignorer interface {
 }
 
 // gitignoreRule is a parsed pattern from a .gitignore file. Rules are stored
-// in walk order — the *last* matching rule wins (gitignore semantics).
+// in walk order - the *last* matching rule wins (gitignore semantics).
 type gitignoreRule struct {
 	// base is the directory the .gitignore lives in, expressed as a
 	// path relative to the Ignorer root. Patterns rooted with leading `/`
@@ -34,7 +34,7 @@ type gitignoreRule struct {
 	// under base.
 	base string
 	// pattern is the cleaned pattern body (no `!` prefix; trailing `/`
-	// stripped — see dirOnly).
+	// stripped - see dirOnly).
 	pattern string
 	// negate flips the match into an "explicitly include" rule.
 	negate bool
@@ -90,7 +90,7 @@ func LoadIgnorer(root string) (Ignorer, error) {
 
 	walkErr := filepath.WalkDir(absRoot, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
-			// Skip unreadable entries rather than abort the whole load —
+			// Skip unreadable entries rather than abort the whole load -
 			// a perm-denied subtree should not stop us indexing the
 			// rest of the repo.
 			if errors.Is(err, fs.ErrPermission) {
@@ -149,7 +149,7 @@ func parseGitignore(path, base string) ([]gitignoreRule, error) {
 		line := s.Text()
 		// Trim trailing whitespace; leading whitespace is significant
 		// only in that gitignore treats spaces as part of the pattern
-		// unless escaped — we don't support escapes so we leave leading
+		// unless escaped - we don't support escapes so we leave leading
 		// spaces alone.
 		line = strings.TrimRight(line, " \t\r")
 		if line == "" || strings.HasPrefix(line, "#") {
@@ -203,7 +203,7 @@ func (ig *fsIgnorer) isIgnored(path string, isDir bool) bool {
 		// The root itself is never ignored.
 		return false
 	}
-	// .git is always ignored — no in-repo file can override this.
+	// .git is always ignored - no in-repo file can override this.
 	if rel == ".git" || strings.HasPrefix(rel, ".git/") {
 		return true
 	}
@@ -238,7 +238,7 @@ func (ig *fsIgnorer) relpath(path string) string {
 func ruleApplies(r gitignoreRule, rel string, isDir bool) bool {
 	if r.dirOnly && !isDir {
 		// A dir-only rule like `node_modules/` should still ignore the
-		// contents of node_modules — handled by callers that descend
+		// contents of node_modules - handled by callers that descend
 		// (walker prunes dirs); for file-level checks we also want
 		// "is the file UNDER an ignored dir?" treated as ignored.
 		// We approximate that by matching the rule against any prefix
@@ -289,7 +289,7 @@ func ruleApplies(r gitignoreRule, rel string, isDir bool) bool {
 func pathHasIgnoredDirAncestor(r gitignoreRule, rel string) bool {
 	parts := strings.Split(rel, "/")
 	// Iterate all proper prefixes (i.e. ancestors), inclusive of rel
-	// itself if it's a directory — the caller handles the !isDir case
+	// itself if it's a directory - the caller handles the !isDir case
 	// for the leaf already.
 	for i := 1; i < len(parts); i++ {
 		anc := strings.Join(parts[:i], "/")
@@ -340,7 +340,7 @@ func globMatch(pattern, name string) bool {
 		if pattern == "" {
 			return name == ""
 		}
-		// Handle `**` first — it may consume any number of segments.
+		// Handle `**` first - it may consume any number of segments.
 		if strings.HasPrefix(pattern, "**") {
 			rest := strings.TrimPrefix(pattern, "**")
 			rest = strings.TrimPrefix(rest, "/")
@@ -396,7 +396,7 @@ func globMatch(pattern, name string) bool {
 // WalkRespectingGitignore is filepath.WalkDir but skips entries the
 // Ignorer rejects. Directories that are ignored have their entire subtree
 // pruned (returning fs.SkipDir). The walk also unconditionally skips
-// `.git/` regardless of Ignorer state — defensive against a missing or
+// `.git/` regardless of Ignorer state - defensive against a missing or
 // empty Ignorer.
 func WalkRespectingGitignore(root string, ig Ignorer, fn filepath.WalkFunc) error {
 	absRoot, err := filepath.Abs(root)

@@ -1,4 +1,4 @@
-// Phase 5 slice 5c — verifier hook into the approval queue.
+// Phase 5 slice 5c - verifier hook into the approval queue.
 //
 // This file holds the small wiring layer that calls Verifier.Verify and
 // translates the result into an approval-queue entry. It's separated
@@ -14,11 +14,11 @@
 //  1. Runs the verifier on the artifact body.
 //  2. If the verifier returned an infra error (no judge, malformed
 //     response, transport failure), it surfaces the artifact for
-//     human review with a "verifier-failed" badge — never silently
+//     human review with a "verifier-failed" badge - never silently
 //     accepts. The "necessary but not sufficient" rule from MAST: a
 //     broken verifier should be loud.
 //  3. If the verifier accepted cleanly (decision=accept AND score >=
-//     acceptScoreThreshold), NO approval is queued — the artifact is
+//     acceptScoreThreshold), NO approval is queued - the artifact is
 //     considered cleared.
 //  4. Otherwise, ProposeApproval is called with the verifier's
 //     concerns embedded into the title so the queue UI surfaces the
@@ -29,7 +29,7 @@
 // The hook is INTENTIONALLY not called from spawn.go's runChild today.
 // Per the task brief: "this is the wiring spawn.go's runChild calls on
 // each child's agent_final artifact (for kind selection). Don't modify
-// spawn.go directly — provide the hook and document the wire-up for
+// spawn.go directly - provide the hook and document the wire-up for
 // the foreground integrator."
 //
 // Future wiring (cmd/carlos main + the foreground integrator):
@@ -43,7 +43,7 @@
 //
 // # Phase 5d note
 //
-// Phase 5d (tool-grounded verification — running tests, compiling code,
+// Phase 5d (tool-grounded verification - running tests, compiling code,
 // checking citations against real files) lands later and reuses this
 // same hook surface: VerifyAndQueue gets richer evidence and can
 // auto-accept with higher confidence. Today it's an LLM-as-judge gate
@@ -75,7 +75,7 @@ const acceptScoreThreshold = 8
 //
 // Returns the resulting VerificationReport plus any error from the
 // verifier OR approval-queue write. A non-nil error does NOT mean the
-// artifact is "broken" — it means the verification machinery itself
+// artifact is "broken" - it means the verification machinery itself
 // hit a problem (e.g. judge transport failure). In that case the
 // artifact IS queued for human review with a verifier-failed title;
 // the error is surfaced for logging.
@@ -90,10 +90,10 @@ func VerifyAndQueue(ctx context.Context, log *SQLiteEventLog, verifier *Verifier
 		return VerificationReport{}, errors.New("verifier_hook: artifact ref ID required")
 	}
 
-	// Verifier may be nil (no judge configured) — fall back to
+	// Verifier may be nil (no judge configured) - fall back to
 	// human-only review with a "no judge" title.
 	if verifier == nil || verifier.Judge == nil {
-		title := fmt.Sprintf("(unverified — no judge) %s artifact from %s", ref.Kind, ref.AgentID)
+		title := fmt.Sprintf("(unverified - no judge) %s artifact from %s", ref.Kind, ref.AgentID)
 		if _, err := ProposeApproval(ctx, log, ref.AgentID, title, ref); err != nil {
 			return VerificationReport{}, fmt.Errorf("verifier_hook: propose: %w", err)
 		}

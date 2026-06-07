@@ -18,7 +18,7 @@ type rosterRow struct {
 	indent     int    // 0 = root, 1 = direct child, 2 = grandchild, etc.
 	collapsed  bool   // true → the row hides a deeper subtree; shows "…N more"
 	hiddenKids int    // number of descendants collapsed under this row
-	tool       string // current tool name placeholder; "" → "—"
+	tool       string // current tool name placeholder; "" → "-"
 	spark      string // pre-rendered sparkline (focused agent only)
 	elapsed    time.Duration
 }
@@ -68,7 +68,7 @@ func buildRosterRows(rows []agent.AgentRow, focusID string, maxDepth int) []rost
 		}
 		// If the parent is missing from this slice (filter narrowed
 		// it out), treat the orphaned child as a root so it stays
-		// visible — losing rows silently would be a worse UX than
+		// visible - losing rows silently would be a worse UX than
 		// rendering a stray child at the root level.
 		if _, ok := byID[r.ParentID]; !ok {
 			rootList = append(rootList, r)
@@ -187,7 +187,7 @@ func renderRoster(rows []rosterRow, opts rosterRenderOptions) string {
 }
 
 // renderRosterHeader is the bold column-name row. We don't render any
-// border around the table — the outer manage view provides the frame.
+// border around the table - the outer manage view provides the frame.
 func renderRosterHeader(intentW int, dropModel bool) string {
 	style := lipgloss.NewStyle().Foreground(colorMuted).Bold(true)
 	parts := []string{
@@ -236,7 +236,7 @@ func renderRosterRow(rr rosterRow, opts rosterRenderOptions, intentW int, dropMo
 
 	model := r.Model
 	if model == "" {
-		model = "—"
+		model = "-"
 	}
 	model = truncate(model, 16)
 
@@ -327,7 +327,7 @@ func padRight(s string, n int) string {
 
 // padRightANSI pads s (which may contain ANSI escapes) to a visible
 // width of n. lipgloss.Width discounts the escape sequences. If s is
-// wider than n we leave it alone — truncating an already-styled
+// wider than n we leave it alone - truncating an already-styled
 // string would corrupt the escape pairs.
 func padRightANSI(s string, n int) string {
 	gap := n - lipgloss.Width(s)
@@ -341,7 +341,7 @@ func padRightANSI(s string, n int) string {
 // <1m → "Ns" / "NNs"; <1h → "NmMMs" or just "NNm"; ≥1h → "NhMMm".
 func formatElapsed(d time.Duration) string {
 	if d <= 0 {
-		return "—"
+		return "-"
 	}
 	if d < time.Minute {
 		return itoa(int(d.Seconds())) + "s"

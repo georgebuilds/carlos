@@ -1,4 +1,4 @@
-// trigger.go — conjunctive online-induction trigger.
+// trigger.go - conjunctive online-induction trigger.
 //
 // # Why conjunctive
 //
@@ -8,18 +8,18 @@
 // skills." SkillsBench measured self-generated skills at -1.3pp average
 // with 16/84 tasks degraded (arXiv 2602.12670); "Library Learning
 // Doesn't" (arXiv 2410.20274) found direct reuse of induced functions
-// is negligible — gains come from the abstraction act, not later
+// is negligible - gains come from the abstraction act, not later
 // reuse. The asymmetry is: a bad single answer costs one answer, a bad
 // skill silently degrades every future conversation that retrieves it.
 //
 // So the trigger insists on ALL of:
 //
-//  1. Verified-or-user-confirmed success — model self-assessment of
+//  1. Verified-or-user-confirmed success - model self-assessment of
 //     "did I succeed?" does NOT count.
-//  2. Pattern signal — repeated tool-call sequence OR error-recovery
+//  2. Pattern signal - repeated tool-call sequence OR error-recovery
 //     OR explicit user correction.
-//  3. Novelty — low max cosine vs. existing description embeddings.
-//  4. Length pre-filter — conversation crossed a minimum complexity
+//  3. Novelty - low max cosine vs. existing description embeddings.
+//  4. Length pre-filter - conversation crossed a minimum complexity
 //     threshold. Cheap gate to skip trivial exchanges.
 //
 // Below trigger acceptance-rate of 50% the recommendation is to
@@ -59,7 +59,7 @@ package skills
 //     [0, 2]; the caller should clamp to [0, 1] for the floor compare.
 //   - LengthAboveFloor: conversation passed the cheap complexity gate.
 //
-// Reasons fired (returned by Evaluate) are pure telemetry — pass them
+// Reasons fired (returned by Evaluate) are pure telemetry - pass them
 // through to the event log so the trigger thresholds are tunable by
 // post-hoc analysis.
 type TriggerSignals struct {
@@ -77,7 +77,7 @@ type TriggerSignals struct {
 // guess (no prior literature); the telemetry slice will retune.
 const DefaultNoveltyFloor = 0.4
 
-// Conjunct labels used in the reasons slice. Stable strings — they
+// Conjunct labels used in the reasons slice. Stable strings - they
 // land in the event log payload and downstream dashboards group on
 // them, so renaming is a schema change.
 const (
@@ -92,7 +92,7 @@ const (
 
 // Evaluate returns (true, reasons) iff all four conjuncts are
 // satisfied. The reasons slice always lists EVERY individual signal
-// that fired, regardless of the conjunctive verdict — telemetry wants
+// that fired, regardless of the conjunctive verdict - telemetry wants
 // to know "we had 3 of 4 conjuncts" as well as "we had all 4".
 //
 // noveltyFloor is the cosine-distance threshold the caller picks;

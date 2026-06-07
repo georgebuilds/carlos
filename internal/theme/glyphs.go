@@ -4,7 +4,7 @@ import "github.com/georgebuilds/carlos/internal/agent"
 
 // StateGlyph returns the unicode shape paired with the colored badge for
 // an agent state. Color encodes priority; the glyph encodes the state
-// itself — together they survive both colorblind viewers and NO_COLOR
+// itself - together they survive both colorblind viewers and NO_COLOR
 // monochrome rendering.
 //
 // Why theme owns this:
@@ -15,7 +15,7 @@ import "github.com/georgebuilds/carlos/internal/agent"
 //     this is the same move for glyphs. One source of truth means a
 //     future tweak (new state, glyph swap) is a one-file change.
 //
-//   - theme is the centralized visual-atom package — palette lives here,
+//   - theme is the centralized visual-atom package - palette lives here,
 //     glyphs are the same kind of leaf primitive. Putting them in
 //     internal/tui/manage would force chat to import manage just for
 //     a rune, which is the wrong dependency direction.
@@ -36,11 +36,11 @@ import "github.com/georgebuilds/carlos/internal/agent"
 // Every glyph is in the Unicode Geometric Shapes block (U+25xx) or the
 // Dingbats block (U+27xx, checkmark/cross), hand-picked to render as a
 // single terminal cell in every common monospace font. Emoji are
-// avoided — their cell width varies between terminals (some 1, some 2),
+// avoided - their cell width varies between terminals (some 1, some 2),
 // which breaks the manage roster's column alignment.
 //
 // Returns "·" (U+00B7 middle dot) for any unknown / future state value
-// — visually neutral so a forgotten case prints something rather than
+// - visually neutral so a forgotten case prints something rather than
 // nothing and an alert reader can spot the missing mapping.
 func StateGlyph(s agent.State) string {
 	switch s {

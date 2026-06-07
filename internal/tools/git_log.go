@@ -7,7 +7,7 @@ import (
 )
 
 // GitLogTool runs `git log --oneline -n <limit> [-- <path>]`. The
-// oneline format gives sha + subject — enough for a model to navigate
+// oneline format gives sha + subject - enough for a model to navigate
 // commits without flooding context with bodies. For full commit text
 // use GitShow with the sha.
 type GitLogTool struct{}

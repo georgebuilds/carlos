@@ -1,10 +1,10 @@
-// Phase 5 slice 5d — tool-grounded verifier adapters.
+// Phase 5 slice 5d - tool-grounded verifier adapters.
 //
 // Empirical context (see /Volumes/nas/vault/personal/projects/carlos/
-// research/2026-06-04 Supervisor — decisions adopted.md): "tool-grounded
+// research/2026-06-04 Supervisor - decisions adopted.md): "tool-grounded
 // verification preferred where available; LLM-judge only where no
 // deterministic check exists." A compiler exit code, a test runner's
-// pass/fail count, and a URL's HTTP status are deterministic — every
+// pass/fail count, and a URL's HTTP status are deterministic - every
 // agent run of the same artifact against the same workdir produces the
 // same verdict.
 //
@@ -15,14 +15,14 @@
 //   - Same VerificationReport shape as the LLM Verifier so callers don't
 //     branch. Decision ∈ {accept | needs_revision | reject}. Score is a
 //     normalized 1-10 (10 = clean pass, 1 = broken).
-//   - One adapter per check kind. Don't fold them — different artifact
+//   - One adapter per check kind. Don't fold them - different artifact
 //     kinds need different verifiers. A Dispatcher picks the right one
 //     (or several) based on artifact Kind + content sniff.
 //   - Verifier choice is opt-in per artifact. The supervisor decides
 //     whether to run a verifier when an artifact is queued (today: only
 //     when artifact Kind matches a known mapping, like kind=="plan" →
 //     ToolGroundedDispatcher).
-//   - No reliance on a global project root — adapters take a workdir arg
+//   - No reliance on a global project root - adapters take a workdir arg
 //     so they work inside Worktree sandboxes (Slice 3f).
 //
 // # Wiring
@@ -30,7 +30,7 @@
 // The Dispatcher and adapters are constructed by the foreground
 // integrator (cmd/carlos/main.go runHeadless setup); a separate slice
 // wires them into the supervisor approval queue. See the slice-5d notes
-// for the integration snippet — this file does not modify supervisor.go.
+// for the integration snippet - this file does not modify supervisor.go.
 package agent
 
 import (
@@ -41,7 +41,7 @@ import (
 
 // ToolGroundedVerifier is the interface every tool-grounded adapter
 // implements. Mirrors the surface of the LLM-judge Verifier.Verify but
-// dropped the ArtifactRef arg — the adapters care about the bytes and
+// dropped the ArtifactRef arg - the adapters care about the bytes and
 // the workdir, not the metadata. The Dispatcher carries the kind
 // dimension for routing instead.
 type ToolGroundedVerifier interface {
@@ -57,7 +57,7 @@ type ToolGroundedVerifier interface {
 	//
 	// A nil-error return with Decision=reject is the normal path for a
 	// failed check. A non-nil error is reserved for infra failures (no
-	// toolchain on PATH, workdir unreadable, etc.) — i.e. the verifier
+	// toolchain on PATH, workdir unreadable, etc.) - i.e. the verifier
 	// could not run, not that the verifier ran and the artifact failed.
 	Verify(ctx context.Context, workdir string, content []byte) (VerificationReport, error)
 }
@@ -69,7 +69,7 @@ type ToolGroundedVerifier interface {
 //
 // The Dispatcher itself is thread-safe AFTER construction (post-Register
 // calls). The registration map is not locked because typical usage is
-// register-once-at-boot then dispatch-many — matching how the existing
+// register-once-at-boot then dispatch-many - matching how the existing
 // tools.Registry behaves.
 type Dispatcher struct {
 	byKind map[string][]ToolGroundedVerifier
@@ -77,7 +77,7 @@ type Dispatcher struct {
 
 // NewDispatcher returns an empty Dispatcher. The default kind mappings
 // suggested by slice 5d (plan / diff → Compiler + TestRunner; research →
-// URLRefetcher) are NOT pre-registered here — registration is the
+// URLRefetcher) are NOT pre-registered here - registration is the
 // foreground integrator's responsibility so it can opt out of any
 // adapter the user's config disables.
 //
@@ -141,7 +141,7 @@ func (d *Dispatcher) Verify(ctx context.Context, workdir, kind string, content [
 	var errs []error
 	for _, a := range adapters {
 		r, err := a.Verify(ctx, workdir, content)
-		// Always record the report — even on infra error the adapter
+		// Always record the report - even on infra error the adapter
 		// may have filled in JudgeModel + concerns we want to surface.
 		reports = append(reports, r)
 		if err != nil {
@@ -154,7 +154,7 @@ func (d *Dispatcher) Verify(ctx context.Context, workdir, kind string, content [
 	return reports, nil
 }
 
-// KindsRegistered returns the registered kinds in arbitrary order —
+// KindsRegistered returns the registered kinds in arbitrary order -
 // handy for tests and for the diagnostics command.
 func (d *Dispatcher) KindsRegistered() []string {
 	if d == nil {
@@ -175,13 +175,13 @@ func (d *Dispatcher) KindsRegistered() []string {
 // Boundaries:
 //
 //	1.0  → 10 (clean pass)
-//	0.0  → 1  (broken; never zero — Score is 1-based per verifier.go)
+//	0.0  → 1  (broken; never zero - Score is 1-based per verifier.go)
 //	mid  → round(1 + 9*ratio); clamped to [1, 10].
 //
 // We never return 0 because verifier.parseJudgeResponse rejects scores
 // outside 1-10 and we want our reports to be valid against the same
 // gate. A truly empty input (zero claims, zero URLs, no tests) is a
-// caller-side semantic we handle separately — typically by returning a
+// caller-side semantic we handle separately - typically by returning a
 // clean accept with score 10.
 func scoreFromRatio(ratio float64) int {
 	if ratio >= 1.0 {

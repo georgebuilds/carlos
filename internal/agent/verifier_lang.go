@@ -1,15 +1,15 @@
-// Phase 5 slice 5d — language/toolchain detection for tool-grounded
+// Phase 5 slice 5d - language/toolchain detection for tool-grounded
 // verifier adapters.
 //
 // The Compiler and TestRunner adapters need to pick the right canonical
 // build/test command for the project living under workdir. We detect by
 // project marker files (go.mod, package.json, Cargo.toml, pyproject.toml,
-// etc.) — same approach as every other "polyglot project detector"
+// etc.) - same approach as every other "polyglot project detector"
 // because it's the only signal that survives across repos that share the
 // same file extensions in different ecosystems.
 //
 // Detection is shallow (workdir top-level only) on purpose. A monorepo
-// with multiple sub-projects is out of scope for v0 — the foreground
+// with multiple sub-projects is out of scope for v0 - the foreground
 // integrator can call Verify per worktree if it cares to break a repo
 // down. Mirrors the discipline in internal/sandbox/worktree.go which
 // also pins one project per worktree.
@@ -35,7 +35,7 @@ const (
 
 // projectMarker maps a top-level file (or directory) name to the
 // language that owns it. Order in detectLanguage matters when multiple
-// markers coexist (e.g. a Node frontend in a Go repo) — Go wins by
+// markers coexist (e.g. a Node frontend in a Go repo) - Go wins by
 // virtue of being checked first, mirroring the carlos repo's own
 // convention.
 var projectMarker = map[string]detectedLang{
@@ -53,7 +53,7 @@ var projectMarker = map[string]detectedLang{
 //
 // Priority: Go → Rust → Python → Node. Go and Rust are typed/compiled
 // languages where a build pass is a strong signal; Node and Python are
-// dynamic, so we deprioritize them — but we still try them if no
+// dynamic, so we deprioritize them - but we still try them if no
 // compiled-language marker is present.
 func detectLanguage(workdir string) detectedLang {
 	priority := []struct {
@@ -76,7 +76,7 @@ func detectLanguage(workdir string) detectedLang {
 }
 
 // fileExists reports whether path exists as a regular file or directory.
-// Errors are swallowed (treated as non-existent) — the detector is
+// Errors are swallowed (treated as non-existent) - the detector is
 // best-effort and a stat failure on a marker path is functionally the
 // same as the marker being absent.
 func fileExists(path string) bool {

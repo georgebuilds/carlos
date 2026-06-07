@@ -26,7 +26,7 @@ import (
 //	▎ running · ⌃z bg · ⌃c cancel               ← active hint
 //
 // Color discipline pulled from [[2026-06-05 How to Make a TUI Feel
-// Awesome in 2026|TUI research §3]] — accent for the prompt + status
+// Awesome in 2026|TUI research §3]] - accent for the prompt + status
 // badge, muted/subtle for the body, no decorative color.
 
 // pathHyperlinkRe matches Go-style file:line:col references that
@@ -35,9 +35,9 @@ import (
 //	main.go:42
 //	internal/usershell/manager.go:123:45
 //
-// Conservative — single relative or absolute path tokens, no spaces.
+// Conservative - single relative or absolute path tokens, no spaces.
 // Misses paths-with-spaces (we don't try, since OSC 8 is a polish
-// item — false positives are worse than missed positives).
+// item - false positives are worse than missed positives).
 var pathHyperlinkRe = regexp.MustCompile(
 	`((?:\.\.?/|/)?[A-Za-z_][A-Za-z0-9_./-]*\.(?:go|md|ts|tsx|js|py|rs|sh|yaml|yml|json|txt|html|css))(?::\d+(?::\d+)?)?`,
 )
@@ -82,7 +82,7 @@ func renderUserShellEntry(e transcriptEntry, width int) string {
 		sb.WriteString("\n")
 	}
 
-	// Status row — running hint or completion badge.
+	// Status row - running hint or completion badge.
 	if e.shellRunning {
 		runStyle := lipgloss.NewStyle().Foreground(colorAccent)
 		keyStyle := lipgloss.NewStyle().Foreground(colorAccent).Bold(true)
@@ -113,7 +113,7 @@ func renderUserShellEntry(e transcriptEntry, width int) string {
 // renderUserShellBadge produces the per-status badge for a completed
 // job. Discipline: ONE accent color per success/error path, no extra
 // decoration. Duration shown only when ≥1s (sub-second jobs are
-// "instant" — adding "0.4s" to every line is just noise).
+// "instant" - adding "0.4s" to every line is just noise).
 func renderUserShellBadge(e transcriptEntry) string {
 	mutedStyle := lipgloss.NewStyle().Foreground(colorMuted)
 	switch {
@@ -174,12 +174,12 @@ func annotatePaths(s string) string {
 		if !strings.HasPrefix(match, "/") {
 			url += "./"
 		}
-		// Strip :line[:col] before constructing the URL — most
+		// Strip :line[:col] before constructing the URL - most
 		// terminals handle the bare path; line/col is informational
 		// in the display text.
 		core := match
 		if i := strings.Index(match, ":"); i > 0 {
-			// Only strip when the suffix is line[:col] numeric — a
+			// Only strip when the suffix is line[:col] numeric - a
 			// path like "foo:bar" without digits shouldn't lose the
 			// colon part.
 			rest := match[i+1:]

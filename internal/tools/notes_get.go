@@ -9,7 +9,7 @@ import (
 	"github.com/georgebuilds/carlos/internal/notes"
 )
 
-// NotesGetTool registers as `notes_get` — the "what's in this note"
+// NotesGetTool registers as `notes_get` - the "what's in this note"
 // query. Returns frontmatter + outline by default; body is opt-in.
 type NotesGetTool struct {
 	env *notesEnv

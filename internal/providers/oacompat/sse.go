@@ -29,7 +29,7 @@ type SSEFrame struct {
 // ParseSSE reads the entire SSE stream from r, calling onFrame for each
 // complete frame in order. Returns on io.EOF (normal stream close) or any
 // non-EOF read error. If onFrame returns a non-nil error, parsing stops
-// and that error is returned to the caller — io.EOF can be used as a
+// and that error is returned to the caller - io.EOF can be used as a
 // sentinel "stop cleanly" signal.
 //
 // Framing rules from the SSE spec we actually need:

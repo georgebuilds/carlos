@@ -2,28 +2,28 @@
 //
 // The handler is the inbound half of the ntfy contract. When the user
 // taps an action button on their phone, the ntfy server fires the
-// configured http action — a POST against the public action endpoint
+// configured http action - a POST against the public action endpoint
 // we baked into the publish. That request hits the handler below.
 //
 // The daemon owns the public listener (Tailscale Funnel); the adapter
 // only exposes a stdlib http.Handler that the daemon mounts at the
 // configured path (e.g. /gateway/ntfy/action). Keeping the adapter
-// out of the listener business simplifies the contract — Start does
+// out of the listener business simplifies the contract - Start does
 // not bind a port, it only wires the IngestFunc.
 //
 // # Status codes (audited by handler_test.go)
 //
-//   - 405 — method other than POST. ntfy fires POST per our publish
+//   - 405 - method other than POST. ntfy fires POST per our publish
 //     spec; anything else is a misconfigured Action button or a poker.
-//   - 400 — token missing or malformed. ntfy never produces a missing
+//   - 400 - token missing or malformed. ntfy never produces a missing
 //     token because the URL we publish always carries one; 400 means
 //     someone is hitting the endpoint directly with garbage.
-//   - 401 — token signature invalid OR expired. Both forms get the
+//   - 401 - token signature invalid OR expired. Both forms get the
 //     same code so a brute-force probe can't distinguish "wrong key"
 //     from "expired key" via the response.
-//   - 500 — broker IngestFunc failed (event log down). The user's tap
+//   - 500 - broker IngestFunc failed (event log down). The user's tap
 //     will appear unhandled; ntfy's action UI surfaces the failure.
-//   - 204 — success. No body — there is no subscriber to read it.
+//   - 204 - success. No body - there is no subscriber to read it.
 //
 // # Replay
 //
@@ -98,7 +98,7 @@ func (h *actionHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	ingestFn := h.ingest()
 	if ingestFn == nil {
-		// Start has not been called yet — the adapter is technically
+		// Start has not been called yet - the adapter is technically
 		// unwired. Surface as 503 so ntfy's action retry semantics
 		// give the daemon a chance to come up.
 		http.Error(w, "adapter not started", http.StatusServiceUnavailable)

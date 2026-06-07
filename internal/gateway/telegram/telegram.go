@@ -12,7 +12,7 @@
 //     InboundMessage and inline-button taps as InboundDecision (with
 //     ArtifactID round-tripped through callback_data).
 //   - chat_id whitelist: any inbound from a non-allowed chat is logged
-//     and dropped — we do not error, because a stranger DM'ing the bot
+//     and dropped - we do not error, because a stranger DM'ing the bot
 //     should not stall the long-poll.
 //   - Per-bot rate limit: a simple token-bucket spaces sendMessage
 //     calls, and we honor Retry-After on a 429 by failing the current
@@ -55,7 +55,7 @@ type Config struct {
 	APIBaseURL string
 
 	// AllowedChatIDs is the whitelist of chat_id values whose inbound
-	// updates we accept. An empty list means "reject everything" — the
+	// updates we accept. An empty list means "reject everything" - the
 	// safer default for "carlos in my pocket" where the bot is single-
 	// user and any other chat is by definition the wrong audience.
 	AllowedChatIDs []int64
@@ -77,7 +77,7 @@ type Config struct {
 	Now func() time.Time
 
 	// RateLimitInterval is the minimum spacing between sendMessage
-	// calls. Defaults to 33ms — roughly 30 messages/second, the
+	// calls. Defaults to 33ms - roughly 30 messages/second, the
 	// documented per-bot ceiling for non-broadcast traffic. Tests set
 	// it to 0 to disable the bucket entirely.
 	RateLimitInterval time.Duration
@@ -178,7 +178,7 @@ func (a *Adapter) OutboundCapabilities() gateway.OutboundCapabilities {
 }
 
 // Send publishes env to the first whitelisted chat. Per the spec,
-// adapters are single-recipient at this level — multi-recipient fanout
+// adapters are single-recipient at this level - multi-recipient fanout
 // is the broker's job (one Send call per destination). We pick the
 // first AllowedChatID as the destination; the broker will eventually
 // loop over chats explicitly when multi-user lands.
@@ -317,7 +317,7 @@ func (a *Adapter) Start(ctx context.Context, ingest gateway.IngestFunc) error {
 			}
 			// Transient errors (network blip, server 5xx, malformed
 			// JSON) get logged and we retry. The long-poll itself is
-			// the natural backoff — we don't burn a tight loop.
+			// the natural backoff - we don't burn a tight loop.
 			a.log.Printf("telegram: getUpdates: %v", err)
 			select {
 			case <-ctx.Done():
@@ -352,7 +352,7 @@ func (a *Adapter) pollOnce(ctx context.Context, ingest gateway.IngestFunc) error
 	for _, u := range updates {
 		a.handleUpdate(ctx, u, ingest)
 		// Advance the cursor past every update we've seen, even ones
-		// we dropped (wrong chat, malformed, etc.) — re-fetching them
+		// we dropped (wrong chat, malformed, etc.) - re-fetching them
 		// would just produce the same drop next iteration.
 		a.offsetMu.Lock()
 		if u.UpdateID >= a.offset {
@@ -381,7 +381,7 @@ func (a *Adapter) handleUpdate(ctx context.Context, u update, ingest gateway.Ing
 
 // handleMessage turns a text Message into an InboundMessage envelope.
 // Whitelist check runs first; non-allowed chats produce a single log
-// row and are dropped (no error — see package comment).
+// row and are dropped (no error - see package comment).
 func (a *Adapter) handleMessage(ctx context.Context, u update, ingest gateway.IngestFunc) {
 	m := u.Message
 	if m.Chat.ID == 0 {
@@ -393,7 +393,7 @@ func (a *Adapter) handleMessage(ctx context.Context, u update, ingest gateway.In
 		return
 	}
 	if m.Text == "" {
-		// Non-text content (photo, sticker, etc.) — surface a log row
+		// Non-text content (photo, sticker, etc.) - surface a log row
 		// and skip. File/image inbound is a future enhancement; the
 		// capability bit is set so the broker knows we *will* handle
 		// it, but the wire code lives in a later slice.
@@ -416,7 +416,7 @@ func (a *Adapter) handleMessage(ctx context.Context, u update, ingest gateway.In
 // handleCallback turns a CallbackQuery into an InboundDecision envelope.
 // We decode callback_data into actionID + artifactID, then map the
 // actionID to a DecisionKind. Any unknown action surfaces as a log row
-// and a dropped envelope — the broker should never receive an inbound
+// and a dropped envelope - the broker should never receive an inbound
 // it can't act on.
 //
 // We always answer the callback (answerCallbackQuery) so the spinner on
@@ -463,7 +463,7 @@ func (a *Adapter) handleCallback(ctx context.Context, u update, ingest gateway.I
 }
 
 // answerCallback fires the answerCallbackQuery method to dismiss the
-// spinner. Best-effort — a failure here is logged but never propagated
+// spinner. Best-effort - a failure here is logged but never propagated
 // because the decision envelope has already been ingested and a user-
 // visible spinner is purely cosmetic.
 func (a *Adapter) answerCallback(ctx context.Context, callbackID string) {
@@ -489,7 +489,7 @@ func (a *Adapter) Stop(_ context.Context) error {
 // decoding fails.
 //
 // 429s carry a Retry-After hint we surface in the error so the broker
-// can wait the right amount. We do NOT retry inside the adapter — the
+// can wait the right amount. We do NOT retry inside the adapter - the
 // broker owns the retry loop. The error text always contains "429"
 // when the underlying cause is rate-limiting, so a non-typed grep
 // works.
@@ -563,7 +563,7 @@ func (a *Adapter) endpointFor(method string) string {
 }
 
 // tokenBucket is the per-bot rate limiter. We model it as a single-token
-// bucket refilled every interval — equivalent to "wait at least
+// bucket refilled every interval - equivalent to "wait at least
 // interval since the last sendMessage." Sufficient for the per-bot
 // 30 msg/s ceiling; if we ever need bursty sends, swap in a multi-
 // token bucket without changing the call site.
@@ -588,7 +588,7 @@ func (b *tokenBucket) wait(ctx context.Context) error {
 	if !b.next.IsZero() && now.Before(b.next) {
 		delay = b.next.Sub(now)
 	}
-	// Reserve the next slot regardless of whether we slept — this is
+	// Reserve the next slot regardless of whether we slept - this is
 	// what makes the bucket FIFO under concurrency.
 	b.next = now.Add(delay + b.interval)
 	b.mu.Unlock()

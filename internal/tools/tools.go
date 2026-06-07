@@ -64,13 +64,13 @@ func (r *Registry) All() []Tool {
 // just saves the typing in the common case.
 //
 // Tools registered:
-//   - bash              — shell command runner (non-PTY)
-//   - read/write/edit   — file ops
-//   - grep/glob         — search
-//   - git_status / git_diff / git_log / git_blame / git_show — git read-only
-//   - web_fetch / web_search — Phase 11 web access
+//   - bash              - shell command runner (non-PTY)
+//   - read/write/edit   - file ops
+//   - grep/glob         - search
+//   - git_status / git_diff / git_log / git_blame / git_show - git read-only
+//   - web_fetch / web_search - Phase 11 web access
 //   - notes_get / notes_search / notes_backlinks / notes_tagged /
-//     notes_neighbors / notes_recent / notes_resolve — Phase 12
+//     notes_neighbors / notes_recent / notes_resolve - Phase 12
 //     Obsidian-aware vault queries (no-op envelope when no vault
 //     configured AND no per-call override).
 //
@@ -146,7 +146,7 @@ func NewDefaultRegistryWithBaseDirAndFrames(
 // carlos_about introspection tool with the user name + a provider
 // summary map. cmd/carlos populates the provider map from cfg.Providers;
 // the API keys never enter the tool's surface (only HasKey is exposed).
-// Empty providers + empty userName are fine — carlos_about still
+// Empty providers + empty userName are fine - carlos_about still
 // registers and returns the rest of the introspection envelope.
 func NewDefaultRegistryWithIdentity(
 	baseDir string,
@@ -181,7 +181,7 @@ func NewDefaultRegistryWithIdentity(
 	r.Register(NewGitBlameTool())
 	r.Register(NewGitShowTool())
 	// Phase 11a/b: web_fetch + web_search. Don't touch the local
-	// filesystem, so BaseDir is irrelevant — register the same
+	// filesystem, so BaseDir is irrelevant - register the same
 	// instance for both the worktree-sandboxed and non-sandboxed
 	// factories. web_search picks its backend from env at
 	// construction (BRAVE_API_KEY → Brave; SEARXNG_URL → SearXNG;
@@ -198,12 +198,12 @@ func NewDefaultRegistryWithIdentity(
 	r.Register(httpReq)
 	// Phase 12 / T-1: two tool families share one *notes.Cache.
 	//
-	//   - notes_*    — hard-pinned to the user's configured vault.
+	//   - notes_*    - hard-pinned to the user's configured vault.
 	//                  Schema doesn't accept a per-call `vault:` field.
 	//                  Auto-approved by LayeredApprover because the
 	//                  trust anchor is the configuration boundary set
 	//                  during onboarding.
-	//   - obsidian_* — generalized vault tools; `vault:` is required
+	//   - obsidian_* - generalized vault tools; `vault:` is required
 	//                  on every call. The model has to convince the
 	//                  user (via the approval prompt) to read each
 	//                  arbitrary vault.

@@ -1,13 +1,13 @@
-// Phase 5 slice 5a — per-run + per-subtree token/cost/wall-clock caps.
+// Phase 5 slice 5a - per-run + per-subtree token/cost/wall-clock caps.
 //
 // SPEC § Manage mode § Safety rails:
 //
-//   - Per-run and per-subtree token/cost caps — hard ceilings, enforced
+//   - Per-run and per-subtree token/cost caps - hard ceilings, enforced
 //     before each provider call.
 //
 // Why before each call (and not "as the call returns"): refusing to call
-// gives the model a clean tool_result it can adapt to — "I've hit the
-// cost cap; let me wrap up" — instead of yanking the chair at completion
+// gives the model a clean tool_result it can adapt to - "I've hit the
+// cost cap; let me wrap up" - instead of yanking the chair at completion
 // time. Mid-call cancellation is the existing ctx mechanism; this layer
 // is the polite "don't even ask" gate.
 //
@@ -18,7 +18,7 @@
 //   - a *parent* Tracker per top-level run (the user's invocation), and
 //   - a *subtree* Tracker per sub-agent root (one per Spawn call).
 //
-// Sibling subtrees have independent Trackers — a runaway child does not
+// Sibling subtrees have independent Trackers - a runaway child does not
 // starve its siblings. The parent Tracker accumulates child increments
 // too: every time a subtree's Tracker.Add is called, the supervisor
 // propagates the same delta up to the parent (see Tracker.Parent).
@@ -30,7 +30,7 @@
 // Providers vary wildly in what they report. Some (Anthropic) expose
 // per-call token usage in their stream events; some (OpenAI streaming)
 // report usage only at end-of-call; some (Ollama, fake) report nothing.
-// The Tracker is deliberately ignorant of that variation — callers
+// The Tracker is deliberately ignorant of that variation - callers
 // (today: the loop wrapper) decide what to push in. The default loop
 // hook estimates cost from message body length when no usage event has
 // arrived; adapters that wire real usage call Tracker.Add with the
@@ -109,7 +109,7 @@ func NewTracker(parent *Tracker) *Tracker {
 	}
 }
 
-// newTrackerWithClock is the test seam — lets a test inject a clock
+// newTrackerWithClock is the test seam - lets a test inject a clock
 // without exposing it on the public NewTracker (which 99% of callers
 // shouldn't think about).
 func newTrackerWithClock(parent *Tracker, clock func() time.Time) *Tracker {
@@ -121,7 +121,7 @@ func newTrackerWithClock(parent *Tracker, clock func() time.Time) *Tracker {
 
 // Add records spend on this Tracker AND propagates to the parent (if
 // any) so per-subtree spend also counts against the per-run cap.
-// Negative values are clamped to zero — defensive against bad usage
+// Negative values are clamped to zero - defensive against bad usage
 // reports from a provider adapter.
 func (t *Tracker) Add(tokensIn, tokensOut, costCents int64) {
 	if tokensIn < 0 {
@@ -168,7 +168,7 @@ func (t *Tracker) Elapsed() time.Duration {
 // clamped to zero on an exceeded dimension (never negative).
 //
 // A zero cap is treated as unlimited and the corresponding remainder is
-// returned as 0 with exceeded staying false on that dimension — callers
+// returned as 0 with exceeded staying false on that dimension - callers
 // should consult Budget.IsUnlimited to disambiguate.
 func (t *Tracker) Remaining(b Budget) (tokens, cost int64, wall time.Duration, exceeded bool) {
 	t.mu.Lock()
@@ -205,9 +205,9 @@ func (t *Tracker) Remaining(b Budget) (tokens, cost int64, wall time.Duration, e
 // CheckBudget returns nil if the Tracker has headroom on every capped
 // dimension of b. Returns one of the ErrBudgetExceeded* sentinels
 // otherwise (the first dimension that trips wins; order: tokens, cost,
-// time — same order as the Budget struct fields).
+// time - same order as the Budget struct fields).
 //
-// Designed to be called BEFORE each provider stream — see SPEC for the
+// Designed to be called BEFORE each provider stream - see SPEC for the
 // rationale on "refuse with a clean tool_result the model can adapt to"
 // vs cancelling mid-call.
 func (t *Tracker) CheckBudget(b Budget) error {
@@ -266,14 +266,14 @@ var (
 )
 
 // EstimateCallCost is a rough fallback for adapters that don't report
-// usage. We bill 1 cent per ~10k chars of body — a deliberately
+// usage. We bill 1 cent per ~10k chars of body - a deliberately
 // loose number that just keeps the runaway alarm honest until adapters
 // wire real usage. Callers that have real numbers should NOT use this
 // and instead pass actual usage to Tracker.Add.
 //
 // Bytes counted: every Text and ToolResult body in messages, plus
 // system + every tool spec description. Tool inputs the model emitted
-// are billed on the assistant side via the response stream — we don't
+// are billed on the assistant side via the response stream - we don't
 // double-count them on the request side.
 func EstimateCallCost(systemBytes int, requestBodyBytes int) int64 {
 	total := systemBytes + requestBodyBytes

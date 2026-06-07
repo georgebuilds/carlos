@@ -25,7 +25,7 @@ import (
 //     the in-process stream of accepted Decision envelopes for a given
 //     ArtifactID, with the "first-wins" guarantee held by the gate.
 //
-// The broker does NOT own the event-log connection — it borrows the
+// The broker does NOT own the event-log connection - it borrows the
 // *SQLiteEventLog from the daemon. Multiple brokers in the same
 // process is not a supported config; the daemon constructs one.
 type Broker struct {
@@ -57,7 +57,7 @@ type Broker struct {
 // wins" per ArtifactID. The first Ingest call that lands a Decision for
 // an artifact captures the Decision; later decisions read the
 // already-resolved gate and call adapter.Send back via the broker so
-// the user is told "already decided" (caller responsibility — broker
+// the user is told "already decided" (caller responsibility - broker
 // just exposes Resolved + Decision).
 type decisionGate struct {
 	once     sync.Once
@@ -282,7 +282,7 @@ func (b *Broker) Stop(ctx context.Context) error {
 //
 // Returns the receipts in the same order as the routing list (skipping
 // channels with no registered adapter). An error is returned only if
-// the envelope itself fails Validate — partial send failures surface as
+// the envelope itself fails Validate - partial send failures surface as
 // receipts with StatusFailed.
 func (b *Broker) Send(ctx context.Context, env OutboundEnvelope) ([]DeliveryReceipt, error) {
 	if err := env.Validate(); err != nil {
@@ -313,7 +313,7 @@ func (b *Broker) Send(ctx context.Context, env OutboundEnvelope) ([]DeliveryRece
 	for _, ch := range channels {
 		a, ok := adapters[ch]
 		if !ok {
-			// Routing references a channel with no adapter — log a
+			// Routing references a channel with no adapter - log a
 			// failed receipt so the manage view can show the gap, but
 			// don't fail the send.
 			receipts = append(receipts, DeliveryReceipt{
@@ -332,7 +332,7 @@ func (b *Broker) Send(ctx context.Context, env OutboundEnvelope) ([]DeliveryRece
 			})
 			continue
 		}
-		// Per-channel envelope copy — Actions may need truncation.
+		// Per-channel envelope copy - Actions may need truncation.
 		chEnv := env
 		if caps.MaxActions > 0 && len(chEnv.Actions) > caps.MaxActions {
 			chEnv.Actions = append([]Action(nil), chEnv.Actions[:caps.MaxActions]...)
@@ -415,7 +415,7 @@ func (b *Broker) sendOne(ctx context.Context, a Adapter, env OutboundEnvelope, r
 			}
 		}
 
-		// Pre-attempt row — "we tried, status unknown" per spec.
+		// Pre-attempt row - "we tried, status unknown" per spec.
 		preReceipt := DeliveryReceipt{Source: a.Name(), Status: StatusUnknown}
 		_, _ = appendOutbound(ctx, b.log, OutboundPayload{
 			Channel:    a.Name(),
@@ -438,7 +438,7 @@ func (b *Broker) sendOne(ctx context.Context, a Adapter, env OutboundEnvelope, r
 			}
 		}
 
-		// Post-attempt row — terminal status for this attempt.
+		// Post-attempt row - terminal status for this attempt.
 		_, _ = appendOutbound(ctx, b.log, OutboundPayload{
 			Channel:    a.Name(),
 			EnvelopeID: env.ID,
@@ -450,7 +450,7 @@ func (b *Broker) sendOne(ctx context.Context, a Adapter, env OutboundEnvelope, r
 
 		last = receipt
 		if receipt.Status == StatusDelivered || receipt.Status == StatusUnknown {
-			// Unknown is "we tried, the platform didn't say no" —
+			// Unknown is "we tried, the platform didn't say no" -
 			// don't retry fire-and-forget channels. The spec is
 			// explicit about this for ntfy.
 			return receipt
@@ -491,7 +491,7 @@ func (b *Broker) Ingest(ctx context.Context, env InboundEnvelope) error {
 		return err
 	}
 	if !claimed {
-		// Duplicate — silent drop.
+		// Duplicate - silent drop.
 		return nil
 	}
 

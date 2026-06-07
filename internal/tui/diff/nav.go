@@ -12,7 +12,7 @@ import "strings"
 // and always point at the hunk-header line (StartLine) and the last
 // body line of that hunk (EndLine).
 type HunkIndex struct {
-	// File is the preferred display path for the hunk's owning file —
+	// File is the preferred display path for the hunk's owning file -
 	// the new-side path when present, else the old-side path. The leading
 	// `a/` / `b/` from git diff output is preserved.
 	File string
@@ -30,7 +30,7 @@ type HunkIndex struct {
 
 // RenderWithIndex is Render plus a per-hunk index. Callers that want
 // hunk navigation should use this; callers that just want a styled
-// blob can call Render. The two share their implementation — Render
+// blob can call Render. The two share their implementation - Render
 // is a thin wrapper that drops the index.
 //
 // Index entries appear in the order they show up in the rendered

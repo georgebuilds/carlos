@@ -1,4 +1,4 @@
-// Package tools — HTTPRequestTool.
+// Package tools - HTTPRequestTool.
 //
 // Method-parametric HTTP for API consumption, exposed as the
 // `http_request` tool. Companion to web_fetch (Slice 11a, which is
@@ -47,7 +47,7 @@ type HTTPRequestTool struct {
 	// the per-request Timeout and follows up to MaxRedirects redirects.
 	// Tests inject custom clients to swap in httptest transports.
 	Client *http.Client
-	// Timeout is the per-request hard ceiling. Default 30s — APIs are
+	// Timeout is the per-request hard ceiling. Default 30s - APIs are
 	// often slower than static pages; tune via the request's timeout
 	// field for hot-path calls.
 	Timeout time.Duration
@@ -138,7 +138,7 @@ type httpRequestResult struct {
 }
 
 // Execute parses input, validates URL + method, fires the request,
-// captures the response. Non-2xx status codes are NOT errors here —
+// captures the response. Non-2xx status codes are NOT errors here -
 // they're returned in the result so the model can react to API errors
 // without the tool failing the call.
 func (t *HTTPRequestTool) Execute(ctx context.Context, input []byte) ([]byte, error) {

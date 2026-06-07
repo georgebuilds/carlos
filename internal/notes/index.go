@@ -12,7 +12,7 @@ import (
 )
 
 // VaultIndex is the per-vault parsed state. Construction goes through
-// Cache.Open — callers should not instantiate VaultIndex directly so
+// Cache.Open - callers should not instantiate VaultIndex directly so
 // the lazy + idempotent-open contract holds.
 type VaultIndex struct {
 	// Root is the absolute, cleaned path to the vault root.
@@ -249,13 +249,13 @@ func (v *VaultIndex) Get(name string) (*Note, error) {
 	return v.notes[resolved], nil
 }
 
-// Resolve is the verbose form of resolveLink — surfaces the candidate
+// Resolve is the verbose form of resolveLink - surfaces the candidate
 // list so notes_resolve can report ambiguity.
 //
 // Resolve returns ALL candidates whose title (or alias) matches the
 // link, even when one of them happens to share the relpath. This lets
 // notes_resolve flag ambiguity for a query like "notes" that maps to
-// both `notes.md` and `sub/notes.md` — the resolver in resolveLink
+// both `notes.md` and `sub/notes.md` - the resolver in resolveLink
 // short-circuits on exact-path for plain Get / link-rewriting where
 // the model already committed to a target. Resolve is the introspective
 // surface, so it widens the candidate set.
@@ -267,7 +267,7 @@ func (v *VaultIndex) Resolve(link string) (string, []*Note, error) {
 	link = strings.TrimSpace(link)
 	link = strings.TrimPrefix(link, "[[")
 	link = strings.TrimSuffix(link, "]]")
-	// Drop any section anchor — resolution is at the note level.
+	// Drop any section anchor - resolution is at the note level.
 	if i := strings.Index(link, "#"); i >= 0 {
 		link = link[:i]
 	}
@@ -545,7 +545,7 @@ func (v *VaultIndex) Refresh() error {
 
 // MaybeRefresh re-parses only the files whose mtime or size changed
 // since the last scan; new + deleted files trigger a full Refresh so
-// the index covers them. Cheap on warm vaults — single os.Stat per
+// the index covers them. Cheap on warm vaults - single os.Stat per
 // note + a directory walk to detect new files.
 //
 // Returns nil if nothing changed.
@@ -618,7 +618,7 @@ func (v *VaultIndex) MaybeRefresh() error {
 		return nil
 	}
 	// At least one file changed; rebuild fully (re-parsing only the
-	// changed files is a 12-d-or-later optimisation — for a 1000-note
+	// changed files is a 12-d-or-later optimisation - for a 1000-note
 	// vault a full re-walk is <100ms).
 	return v.scan()
 }
@@ -789,7 +789,7 @@ func isExcluded(rel string, patterns []string) bool {
 		if matched, _ := filepath.Match(p, rel); matched {
 			return true
 		}
-		// Single-segment globs against the basename too — Obsidian
+		// Single-segment globs against the basename too - Obsidian
 		// users tend to write `*.draft.md` style patterns.
 		if matched, _ := filepath.Match(p, filepath.Base(rel)); matched {
 			return true

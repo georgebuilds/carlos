@@ -24,7 +24,7 @@
 //     the event log: 720 heartbeat events/hour/agent ~= 30 KB/hour of
 //     events (well under the WAL throughput we benchmarked).
 //   - 10s sweep means worst-case orphan detection latency is ~20s
-//     (last heartbeat + 2x interval + sweep cadence) — fast enough that
+//     (last heartbeat + 2x interval + sweep cadence) - fast enough that
 //     a hung agent doesn't drift for minutes, slow enough that a brief
 //     GC pause or a Slow-Disk(tm) event doesn't false-orphan.
 //   - 2x interval staleness threshold = one missed heartbeat is fine,

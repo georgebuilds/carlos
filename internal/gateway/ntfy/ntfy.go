@@ -25,7 +25,7 @@
 // Handler() returning an http.Handler the daemon mounts on its public
 // listener. Start does NOT bind a port; it only captures the
 // IngestFunc the handler hands inbound envelopes to. This split keeps
-// the adapter's contract clean — there is exactly one place that owns
+// the adapter's contract clean - there is exactly one place that owns
 // public TLS termination (the daemon, behind Tailscale Funnel) and
 // the adapter is library code.
 //
@@ -76,7 +76,7 @@ type Config struct {
 	// "https://carlos-cronus.ts.net". Required.
 	Server string
 
-	// Topic is the destination topic. Treat as a secret — anyone with
+	// Topic is the destination topic. Treat as a secret - anyone with
 	// the topic name can subscribe to outbound messages on the public
 	// ntfy.sh. Required.
 	Topic string
@@ -85,7 +85,7 @@ type Config struct {
 	// when publishing to the public ntfy.sh.
 	Token string
 
-	// ActionEndpoint is the public URL the action buttons POST to —
+	// ActionEndpoint is the public URL the action buttons POST to -
 	// typically the daemon's Tailscale Funnel'd /gateway/ntfy/action
 	// route. Required when the broker ever sends an ApprovalRequest;
 	// Notifications work without it.
@@ -289,7 +289,7 @@ func (a *Adapter) Send(ctx context.Context, env gateway.OutboundEnvelope) (gatew
 	// Try to parse the JSON receipt for ProviderRef. If the body is
 	// empty or not JSON we still consider the publish delivered (the
 	// 2xx is the authoritative signal) but downgrade ProviderRef to
-	// empty and Status to Unknown — the broker uses Unknown to mean
+	// empty and Status to Unknown - the broker uses Unknown to mean
 	// "we tried and the platform didn't tell us anything more."
 	if len(bytes.TrimSpace(respBody)) == 0 {
 		receipt.Status = gateway.StatusUnknown
@@ -306,7 +306,7 @@ func (a *Adapter) Send(ctx context.Context, env gateway.OutboundEnvelope) (gatew
 
 // Start records the broker's IngestFunc so the action handler can
 // route inbound envelopes back. It blocks until ctx is cancelled or
-// Stop is called — matches the fake adapter's lifecycle shape so the
+// Stop is called - matches the fake adapter's lifecycle shape so the
 // daemon can run all adapters under a single errgroup.
 func (a *Adapter) Start(ctx context.Context, ingest gateway.IngestFunc) error {
 	a.mu.Lock()
@@ -436,7 +436,7 @@ func withTokenQuery(base, token string) (string, error) {
 }
 
 // truncate clips s to n bytes, appending an ellipsis when truncation
-// happens. Used to keep error messages bounded — a verbose ntfy 5xx
+// happens. Used to keep error messages bounded - a verbose ntfy 5xx
 // body should not blow up the event log.
 func truncate(s string, n int) string {
 	if len(s) <= n {

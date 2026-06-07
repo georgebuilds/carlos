@@ -1,4 +1,4 @@
-// Approval queue — the user-facing review gate for every artifact a
+// Approval queue - the user-facing review gate for every artifact a
 // sub-agent (or, eventually, the parent agent) produces that needs
 // human sign-off before changing user state.
 //
@@ -6,19 +6,19 @@
 // log: "an induced skill is just another on-disk artifact referenced
 // from the event log, reviewable as a markdown diff in the same
 // focus-pane/approval UX as any other deliverable." Plans, file diffs,
-// skill proposals, research outputs — they all flow through this one
+// skill proposals, research outputs - they all flow through this one
 // queue.
 //
 // # Wire shape
 //
 // Three event types compose the contract:
 //
-//   - EvtApprovalProposed — an artifact is queued for review. Payload
+//   - EvtApprovalProposed - an artifact is queued for review. Payload
 //     carries the ArtifactRef (so consumers don't have to re-query)
 //     and a free-text Title the UI surfaces in the queue list.
-//   - EvtApprovalAccepted — the user (or a policy) approved. Payload
+//   - EvtApprovalAccepted - the user (or a policy) approved. Payload
 //     carries the artifact ID and an optional Note.
-//   - EvtApprovalRejected — the user rejected; payload same as accept
+//   - EvtApprovalRejected - the user rejected; payload same as accept
 //     plus the rejection Reason.
 //
 // The "pending queue" is derived: scan EvtApprovalProposed events,
@@ -122,7 +122,7 @@ func AcceptApproval(ctx context.Context, log *SQLiteEventLog, artifactID, note s
 }
 
 // RejectApproval closes a pending approval as rejected. The Note
-// should carry the user's reasoning — it's what the producing agent
+// should carry the user's reasoning - it's what the producing agent
 // reads next time it considers a similar proposal (eventually wired
 // into Phase 6 skill-induction calibration).
 func RejectApproval(ctx context.Context, log *SQLiteEventLog, artifactID, reason string) (int64, error) {
@@ -210,7 +210,7 @@ func ListPendingApprovals(ctx context.Context, log *SQLiteEventLog) ([]PendingAp
 }
 
 // sortByProposedAt orders pending approvals oldest-first. Ties on
-// ProposedAt (common: two proposals land in the same millisecond — we
+// ProposedAt (common: two proposals land in the same millisecond - we
 // truncate to ms before persisting) break deterministically on
 // Ref.ID so list output is stable across runs. Insertion sort because
 // N is small (human-cadence review queue, hundreds at most).

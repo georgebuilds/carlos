@@ -113,7 +113,7 @@ func Migrate(home, personalFrameName string) (MigrationReport, error) {
 
 // migrateDir moves every regular file (and one-level subdirectory) from
 // src into dst. Returns (moved, skipped, err). Returns (0, 0, nil) when
-// src is missing — the legacy layout simply didn't exist on this
+// src is missing - the legacy layout simply didn't exist on this
 // machine. Empty src after the walk is removed.
 func migrateDir(src, dst string) (moved, skipped int, firstErr error) {
 	if _, err := os.Stat(src); err != nil {
@@ -165,7 +165,7 @@ func migrateDir(src, dst string) (moved, skipped int, firstErr error) {
 }
 
 // copyFile is a small EXDEV fallback for the single-file regular case.
-// Not used for directories — the migration is point-in-time and the
+// Not used for directories - the migration is point-in-time and the
 // expected legacy paths are flat (research/<files>, usershell/<files>).
 func copyFile(src, dst string) error {
 	in, err := os.Open(src)

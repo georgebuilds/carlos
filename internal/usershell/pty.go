@@ -27,7 +27,7 @@ const killGrace = 200 * time.Millisecond
 var shellPicker = pickShell
 
 // pickShell reads $SHELL and falls back to a platform-appropriate
-// default. We don't try to find the "best" shell — whatever the user
+// default. We don't try to find the "best" shell - whatever the user
 // has set, we use, because their aliases / functions / completions
 // live there.
 func pickShell() string {
@@ -128,7 +128,7 @@ func (ptyRunner) Start(ctx context.Context, command, cwd string) (io.Reader, fun
 
 // RingBuffer is a fixed-capacity byte buffer that drops the OLDEST
 // bytes on overflow. Used to keep the live PTY output in memory for
-// the transcript view without unbounded growth — `tail -f /dev/null`
+// the transcript view without unbounded growth - `tail -f /dev/null`
 // running for an hour stays at `cap` bytes regardless.
 //
 // Concurrent-safe: the read goroutine writes, the TUI reads. Lock
@@ -154,7 +154,7 @@ func NewRingBuffer(capacity int) *RingBuffer {
 }
 
 // Write appends p to the buffer, dropping the oldest bytes if the
-// total would exceed cap. Always returns len(p), nil — the buffer
+// total would exceed cap. Always returns len(p), nil - the buffer
 // never errors, just rolls over. Satisfies io.Writer so an io.Copy
 // from the PTY reader writes straight in.
 func (r *RingBuffer) Write(p []byte) (int, error) {

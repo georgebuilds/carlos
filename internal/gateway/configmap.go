@@ -10,7 +10,7 @@ import (
 
 // RoutingFromConfig translates the YAML-side GatewayRouting (string
 // channel lists) into the typed runtime RoutingConfig the broker
-// consumes. Unknown channel names are skipped with no error — the
+// consumes. Unknown channel names are skipped with no error - the
 // daemon-side loader should log them, but a bad value in one routing
 // entry should not stop the broker from coming up. A nil/empty cfg
 // returns DefaultRoutingConfig so users with `gateway.enabled: true`
@@ -37,7 +37,7 @@ func isEmptyRouting(cfg config.GatewayRouting) bool {
 // of typed Source values, dropping unknown entries. Whitespace around
 // names is trimmed; case is preserved (Source values are lowercase by
 // convention, so a "Telegram" with a capital letter is treated as
-// unknown — the daemon's config loader should normalize at load time
+// unknown - the daemon's config loader should normalize at load time
 // if we ever decide to be lenient).
 func parseSources(names []string) []Source {
 	if len(names) == 0 {
@@ -57,7 +57,7 @@ func parseSources(names []string) []Source {
 // RetryFromConfig translates the YAML retry block into the typed
 // RetryConfig. Duration strings ("1s", "60s") are parsed via
 // time.ParseDuration; an unparseable value returns the spec default
-// for that field — the daemon should surface this as a config
+// for that field - the daemon should surface this as a config
 // warning, but it should never crash the broker.
 //
 // A zero-value cfg returns DefaultRetryConfig so the broker is

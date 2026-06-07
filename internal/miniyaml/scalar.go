@@ -36,14 +36,14 @@ func parseScalar(raw string, lineNum int) (any, error) {
 		return i, nil
 	}
 	// Float?  Require a `.` to avoid swallowing ints that just happen
-	// to look numeric — yaml.v3 distinguishes the two and our struct
+	// to look numeric - yaml.v3 distinguishes the two and our struct
 	// roundtrip relies on it.
 	if strings.ContainsAny(s, ".eE") {
 		if f, err := strconv.ParseFloat(s, 64); err == nil {
 			return f, nil
 		}
 	}
-	// Bare string — return verbatim.  We do NOT validate further: YAML
+	// Bare string - return verbatim.  We do NOT validate further: YAML
 	// allows almost anything as a bare scalar so long as it doesn't
 	// start with a reserved indicator (`!`, `&`, `*`, `?`, `:`, `-`
 	// followed by space, etc.).  Those reserved cases were filtered by
@@ -63,7 +63,7 @@ func parseInt(s string) (int64, bool) {
 	if s[0] == '+' {
 		return 0, false
 	}
-	// Reject leading zero on multi-digit integers — yaml.v3 treats
+	// Reject leading zero on multi-digit integers - yaml.v3 treats
 	// `0777` as octal but our consumers never feed us octals; keeping
 	// the bare leading-zero case as a string preserves IDs like
 	// `0123`.
@@ -110,7 +110,7 @@ func tryUnquote(s string) (string, bool) {
 }
 
 // unquoteDouble handles the YAML double-quote escape set we care about:
-// \" \\ \n \r \t \0 \/ — covers everything carlos's files (or the JSON
+// \" \\ \n \r \t \0 \/ - covers everything carlos's files (or the JSON
 // roundtrip path) emits.  Anything else stays verbatim.
 func unquoteDouble(inner string) string {
 	var b strings.Builder
@@ -133,7 +133,7 @@ func unquoteDouble(inner string) string {
 			case '0':
 				b.WriteByte(0)
 			default:
-				// Unknown escape — preserve verbatim.
+				// Unknown escape - preserve verbatim.
 				b.WriteByte(inner[i])
 				b.WriteByte(inner[i+1])
 			}
@@ -323,7 +323,7 @@ func needsQuoting(s string) bool {
 		case '[', ']', '{', '}', ',', '&', '*', '!', '|', '>', '%', '@', '`':
 			return true
 		}
-		// Control chars (< 0x20 other than tab — tab already handled).
+		// Control chars (< 0x20 other than tab - tab already handled).
 		if c < 0x20 {
 			return true
 		}

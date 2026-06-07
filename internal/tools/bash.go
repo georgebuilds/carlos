@@ -17,7 +17,7 @@ import (
 // BashTool runs a shell command via `bash -c`. The Anthropic Messages API
 // expects a typed JSON input matching the tool's schema; carlos's bash
 // schema is `{cmd: string}`. Anything more structured (env, cwd, etc.)
-// can be added later — keeping the surface minimal for v0 means the model
+// can be added later - keeping the surface minimal for v0 means the model
 // doesn't have to learn many parameters.
 //
 // Output discipline:
@@ -44,7 +44,7 @@ type BashTool struct {
 	// instead of the parent's cwd. Set explicitly by `carlos please
 	// --worktree` so shell commands the model invokes (test runners,
 	// formatters, git, etc.) see the sandboxed checkout. WorkingDir,
-	// when set, still wins — explicit cwd from a future test or caller
+	// when set, still wins - explicit cwd from a future test or caller
 	// trumps the implicit sandbox. Zero-value preserves existing
 	// behaviour bit-for-bit.
 	BaseDir string
@@ -52,7 +52,7 @@ type BashTool struct {
 	// (vim, less, gum, anything that calls isatty()) only behave
 	// correctly with a real PTY on stdout. The output discipline
 	// (8 KiB cap, exit-code surfacing, timeout, ctx kill) is unchanged
-	// regardless of PTY mode — PTY only changes how the child is spawned.
+	// regardless of PTY mode - PTY only changes how the child is spawned.
 	//
 	// Note that PTY mode collapses stdout and stderr into one stream
 	// (that's how a terminal works), which matches the bash tool's
@@ -96,7 +96,7 @@ const defaultMaxOutputBytes = 8 * 1024
 // returns the combined output + exit code as a plain text body the
 // model can read directly. Errors returned are infrastructure errors
 // (input parse fail, exec setup fail); a command exiting non-zero is
-// NOT an error — it's part of the output the model needs to see.
+// NOT an error - it's part of the output the model needs to see.
 func (t *BashTool) Execute(ctx context.Context, input []byte) ([]byte, error) {
 	var in bashInput
 	if err := json.Unmarshal(input, &in); err != nil {
@@ -129,7 +129,7 @@ func (t *BashTool) Execute(ctx context.Context, input []byte) ([]byte, error) {
 	// SIGKILL the whole tree, not just `bash` (which would otherwise
 	// leave grandchild processes alive). Mirrors sandbox/sandbox.go's
 	// runCommand pattern. With PTY mode we also set Setsid so the PTY
-	// becomes the session's controlling terminal — required for
+	// becomes the session's controlling terminal - required for
 	// terminal-aware programs like vim/less to interact correctly.
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if t.PTY {

@@ -19,7 +19,7 @@ import (
 //	│ s steer  i interrupt  x stop   /  filter  enter focus  q quit │
 //	└────────────────────────────────────────────────────────────────┘
 //
-// Below the minimum terminal size we refuse to render — same posture
+// Below the minimum terminal size we refuse to render - same posture
 // as onboarding + chat.
 func (m *Model) View() string {
 	if m.quitting {
@@ -38,7 +38,7 @@ func (m *Model) View() string {
 	// Height(h - 3) + leading "\n": one-row top margin so terminals
 	// with overlaid tab bars (Ghostty tabbed mode, iTerm2 tabs, tmux
 	// status line, etc.) don't eat the top border. The wasted row in
-	// untabbed terminals is just blank — universal compatibility for
+	// untabbed terminals is just blank - universal compatibility for
 	// the cost of one cell row.
 	border := lipgloss.NewStyle().
 		Border(lipgloss.NormalBorder()).
@@ -180,7 +180,7 @@ func (m *Model) renderFocusHeader(w int) string {
 	if id == "" {
 		return lipgloss.NewStyle().
 			Foreground(colorMuted).
-			Render("focus: (none — enter on a row)")
+			Render("focus: (none - enter on a row)")
 	}
 	row, ok := m.findRow(id)
 	if !ok {
@@ -261,7 +261,7 @@ func (m *Model) renderOverlay(w int) string {
 	style := lipgloss.NewStyle().Foreground(colorAccent).Bold(true)
 	switch m.overlay {
 	case overlayInterruptConfirm, overlayStopConfirm:
-		// Confirm prompts don't need the textinput — just the
+		// Confirm prompts don't need the textinput - just the
 		// y/N prompt.
 		return style.Render(prompt) +
 			lipgloss.NewStyle().Foreground(colorMuted).Render("(esc to cancel)")
@@ -309,7 +309,7 @@ func sortDirGlyph(asc bool) string {
 }
 
 // findRow returns the agent.AgentRow for id in the most-recent
-// snapshot, or false. Linear scan — the projection is ~tens of rows.
+// snapshot, or false. Linear scan - the projection is ~tens of rows.
 func (m *Model) findRow(id string) (agent.AgentRow, bool) {
 	for _, r := range m.rawRows {
 		if r.ID == id {

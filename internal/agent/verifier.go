@@ -1,7 +1,7 @@
-// Phase 5 slice 5c — separate-model verifier pass.
+// Phase 5 slice 5c - separate-model verifier pass.
 //
 // Empirical context (see /Volumes/nas/vault/personal/projects/carlos/
-// research/2026-06-04 Supervisor — decisions adopted.md):
+// research/2026-06-04 Supervisor - decisions adopted.md):
 //
 //   - MAST: ~32.3% of multi-agent failures cascade through
 //     verification/termination failures. A verifier is necessary.
@@ -9,14 +9,14 @@
 //     its own output produces self-consistent errors that are stable
 //     or *increase* with scale. A verifier is necessary but the
 //     verifier MUST be a different model.
-//   - "Verifier is necessary but not sufficient" (MAST) — the verifier
+//   - "Verifier is necessary but not sufficient" (MAST) - the verifier
 //     is one of several layers; human-in-the-loop remains the final
 //     check. Verifier output is fed into the existing approval queue
 //     (see verifier_hook.go) rather than gating silently.
 //   - Verifier on cheap read tasks INVERTS the cost math (research
 //     notes, deferred bucket). Today: opt-in per artifact kind; v0 fires
 //     on kind == ArtifactKindAgentFinal and on artifacts marked
-//     requires_verification (a future flag — for v0 just the kind
+//     requires_verification (a future flag - for v0 just the kind
 //     selection in verifier_hook.go).
 //
 // Bias controls in the prompt:
@@ -24,13 +24,13 @@
 //   - Pointwise grading (one artifact, one score) rather than pairwise
 //     (which one is better). Pairwise inflates positional bias.
 //   - Explicit "score independently of length" and "score independently
-//     of presentation order" — the LLM-as-judge bias literature.
+//     of presentation order" - the LLM-as-judge bias literature.
 //   - Decision is structured (accept | needs_revision | reject) so a
 //     wandering verifier still produces something parseable; freeform
 //     verdicts produce mushy data the approval queue can't act on.
 //
 // The verifier prompt is intentionally short. The full artifact body
-// follows verbatim — we trust the judge model to read it. No
+// follows verbatim - we trust the judge model to read it. No
 // preprocessing beyond a UTF-8 byte cap; carlos artifacts at v0 are
 // well under context window for any modern judge model.
 package agent
@@ -70,7 +70,7 @@ type VerificationReport struct {
 	// first concern truncated if non-empty.
 	Concerns []string `json:"concerns,omitempty"`
 
-	// Decision is the structured verdict — see VerificationDecision
+	// Decision is the structured verdict - see VerificationDecision
 	// constants.
 	Decision VerificationDecision `json:"decision"`
 
@@ -97,7 +97,7 @@ var (
 	// ErrMalformedJudgeResponse is returned when the judge's output
 	// can't be parsed as the expected JSON shape. Surfaced as an
 	// infra error so the caller doesn't silently accept a wandering
-	// verifier — per the "necessary but not sufficient" rule, a
+	// verifier - per the "necessary but not sufficient" rule, a
 	// broken verifier should be loud, not silent.
 	ErrMalformedJudgeResponse = errors.New("verifier: malformed judge response")
 )
@@ -117,7 +117,7 @@ type Verifier struct {
 
 	// MaxArtifactBytes caps how much of the artifact body we feed to
 	// the judge. Zero = no cap. Default at the call site is
-	// DefaultMaxArtifactBytes — 128KiB, comfortably under any modern
+	// DefaultMaxArtifactBytes - 128KiB, comfortably under any modern
 	// model's context window with prompt+system included.
 	MaxArtifactBytes int
 }
@@ -127,7 +127,7 @@ type Verifier struct {
 const DefaultMaxArtifactBytes = 128 * 1024
 
 // verifierSystemPrompt is the system message sent to the judge. The
-// bias-control language is load-bearing — see the file header for the
+// bias-control language is load-bearing - see the file header for the
 // empirical justification. Kept short so the judge's attention stays
 // on the artifact body.
 //
@@ -154,7 +154,7 @@ If you cannot evaluate the artifact (truncated, unreadable, off-topic to its pur
 
 // composeJudgePrompt assembles the user-message text the judge sees.
 // We label sections plainly so the judge model doesn't have to infer
-// boundaries — the same flat-headings format as composeInitialPrompt
+// boundaries - the same flat-headings format as composeInitialPrompt
 // in spawn.go.
 func composeJudgePrompt(ref ArtifactRef, content []byte) string {
 	var b strings.Builder
@@ -179,7 +179,7 @@ func composeJudgePrompt(ref ArtifactRef, content []byte) string {
 // judge's output can't be parsed; otherwise propagates provider /
 // transport errors.
 //
-// The function is a single LLM call — no retries, no loop. The caller
+// The function is a single LLM call - no retries, no loop. The caller
 // (verifier_hook.go) decides whether to surface the report into the
 // approval queue.
 func (v *Verifier) Verify(ctx context.Context, ref ArtifactRef, content []byte) (VerificationReport, error) {
@@ -243,7 +243,7 @@ func formatJudgeModelID(provider, model string) string {
 }
 
 // collectJudgeText is a verifier-side trimmed version of
-// loop.go's collectAssistant — we only need the text body and the
+// loop.go's collectAssistant - we only need the text body and the
 // stop reason, never tool_use. Errors surfaced through the stream
 // are returned to the caller wrapped.
 func collectJudgeText(stream <-chan providers.Event) (string, string, error) {
@@ -264,7 +264,7 @@ func collectJudgeText(stream <-chan providers.Event) (string, string, error) {
 
 // parseJudgeResponse extracts the JSON verdict from the judge's body.
 // We tolerate the judge wrapping its JSON in a ```json fence or a few
-// stray surrounding chars — but if no balanced { ... } can be found,
+// stray surrounding chars - but if no balanced { ... } can be found,
 // we return an error so the caller can mark this as a malformed
 // verdict rather than silently accepting.
 func parseJudgeResponse(body string) (VerificationReport, error) {
@@ -301,7 +301,7 @@ func parseJudgeResponse(body string) (VerificationReport, error) {
 
 // extractJSON finds the first balanced JSON object substring in body.
 // Counts braces; returns "" if no balanced object is found. We don't
-// attempt to repair broken JSON — the judge is expected to produce
+// attempt to repair broken JSON - the judge is expected to produce
 // strict JSON per the system prompt, and a parse failure is itself
 // signal that the judge is misbehaving.
 func extractJSON(body string) string {
@@ -346,7 +346,7 @@ func extractJSON(body string) string {
 // SelectJudgeProvider returns the first provider from `available`
 // whose Name() differs from induceProviderName. If every available
 // provider shares the inducer's name (or available is empty/nil),
-// ErrNoJudgeAvailable is returned — the caller falls back to
+// ErrNoJudgeAvailable is returned - the caller falls back to
 // human-only review.
 //
 // Selection is "first different", not "best different". Adapters that

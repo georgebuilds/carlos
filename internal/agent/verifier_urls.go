@@ -1,4 +1,4 @@
-// Phase 5 slice 5d — URLRefetcher adapter.
+// Phase 5 slice 5d - URLRefetcher adapter.
 //
 // Extracts URLs from the artifact body (via the existing
 // CitationAuditor regex), HEADs each one (falling back to GET on
@@ -73,7 +73,7 @@ type urlStatus struct {
 }
 
 // Verify extracts URLs from content (using CitationAuditor), fetches
-// each, and produces the report. workdir is ignored — URL fetches are
+// each, and produces the report. workdir is ignored - URL fetches are
 // network-only.
 func (v *URLRefetcherVerifier) Verify(ctx context.Context, workdir string, content []byte) (VerificationReport, error) {
 	_ = workdir
@@ -155,7 +155,7 @@ func (v *URLRefetcherVerifier) Verify(ctx context.Context, workdir string, conte
 
 // extractURLsForRefetch reuses CitationAuditor to pull URLs out of
 // content. We take URLs only (skip path / [N] citations) because the
-// refetcher's deterministic check is HTTP-only — local paths get
+// refetcher's deterministic check is HTTP-only - local paths get
 // validated elsewhere, numeric refs don't have a target. Dedupes via
 // the auditor's own dedup pass.
 func extractURLsForRefetch(content []byte) []string {
@@ -205,7 +205,7 @@ func fetchURLs(ctx context.Context, client *http.Client, urls []string, maxParal
 
 // fetchOne issues HEAD; if the server returns 405/501 (HEAD not
 // allowed / not implemented), we retry with GET. We don't read the
-// body — the status code is enough signal.
+// body - the status code is enough signal.
 func fetchOne(ctx context.Context, client *http.Client, u string) urlStatus {
 	resp, err := doRequest(ctx, client, http.MethodHead, u)
 	if err == nil && (resp.StatusCode == http.StatusMethodNotAllowed || resp.StatusCode == http.StatusNotImplemented) {
@@ -235,7 +235,7 @@ func doRequest(ctx context.Context, client *http.Client, method, u string) (*htt
 }
 
 // closeResponse drains and closes resp.Body. Safe to call with a nil
-// resp — useful for the dual-method fetch path above.
+// resp - useful for the dual-method fetch path above.
 func closeResponse(resp *http.Response) {
 	if resp == nil || resp.Body == nil {
 		return
@@ -245,7 +245,7 @@ func closeResponse(resp *http.Response) {
 
 // classifyStatuses splits the urlStatus slice into (healthy count,
 // broken slice). Healthy = 2xx; 3xx counts as healthy if redirect-
-// followable (any 3xx — slice 5d brief lumps them all as "followable").
+// followable (any 3xx - slice 5d brief lumps them all as "followable").
 // Broken = 4xx, 5xx, or network error.
 //
 // The broken slice is sorted by status code ascending (with network
@@ -269,8 +269,8 @@ func classifyStatuses(statuses []urlStatus) (int, []urlStatus) {
 
 // ErrURLRefetcherNoNetwork is a sentinel callers can errors.Is against
 // when they want to surface "verifier could not reach the network" as
-// a distinct outcome. Today we never return it — all URL errors are
-// folded into the broken count — but the sentinel reserves the name
+// a distinct outcome. Today we never return it - all URL errors are
+// folded into the broken count - but the sentinel reserves the name
 // for a future per-error-class enhancement.
 var ErrURLRefetcherNoNetwork = errors.New("urls: network unreachable")
 

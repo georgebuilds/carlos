@@ -15,7 +15,7 @@ import (
 // per-adapter via OutboundCapabilities.MaxActions.
 //
 // ID is the durable identifier the broker correlates back to a Decision
-// inbound — adapters pass it through verbatim ("approve" stays
+// inbound - adapters pass it through verbatim ("approve" stays
 // "approve" across both legs). Label is what the user sees.
 type Action struct {
 	ID    string `json:"id"`
@@ -36,7 +36,7 @@ func CanonicalActions() []Action {
 // Decision is the typed payload of an InboundDecision envelope. Kind is
 // the three-way response; Revision carries the freeform text the user
 // supplied when they tapped Revise (Telegram/Custom) or stays empty
-// (ntfy — see spec § Approval-queue integration).
+// (ntfy - see spec § Approval-queue integration).
 type Decision struct {
 	Kind     DecisionKind `json:"kind"`
 	Revision string       `json:"revision,omitempty"`
@@ -67,7 +67,7 @@ type OutboundEnvelope struct {
 	// Telegram puts it in bold at the top of the body.
 	Title string `json:"title,omitempty"`
 
-	// Body is the markdown body. Adapters downgrade as needed —
+	// Body is the markdown body. Adapters downgrade as needed -
 	// Telegram supports MarkdownV2, ntfy treats it as plaintext.
 	Body string `json:"body,omitempty"`
 
@@ -207,7 +207,7 @@ type DeliveryReceipt struct {
 // MonotonicEntropy is NOT safe for concurrent calls (its Read mutates
 // shared state without internal locking). The broker can be called
 // from many goroutines (one per fan-out adapter, one per inbound
-// callback), so we serialize through envelopeULIDMu — cheap because
+// callback), so we serialize through envelopeULIDMu - cheap because
 // minting one ULID is ~microseconds.
 var (
 	envelopeULIDMu      sync.Mutex

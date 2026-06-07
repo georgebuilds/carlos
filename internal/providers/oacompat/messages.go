@@ -27,10 +27,10 @@ type MessagesRequest struct {
 
 // APIMsg is one Chat Completions message. The shape differs subtly by role:
 //
-//	system    — {role: system, content: "..."}
-//	user      — {role: user, content: "..." OR [{type:text|image_url, ...}]}
-//	assistant — {role: assistant, content: "..."?, tool_calls: [...]?}
-//	tool      — {role: tool, tool_call_id: "...", content: "..."}
+//	system    - {role: system, content: "..."}
+//	user      - {role: user, content: "..." OR [{type:text|image_url, ...}]}
+//	assistant - {role: assistant, content: "..."?, tool_calls: [...]?}
+//	tool      - {role: tool, tool_call_id: "...", content: "..."}
 //
 // We always send content as a plain string today; multipart content (images)
 // is a separate slice. Assistant turns with tool_calls send content=""
@@ -61,7 +61,7 @@ type APIFunction struct {
 }
 
 // APITool is one entry in the tools array. The function.parameters field
-// receives the canonical providers.ToolSpec.Schema verbatim — the schema
+// receives the canonical providers.ToolSpec.Schema verbatim - the schema
 // in our interface IS the JSON Schema.
 type APITool struct {
 	Type     string         `json:"type"` // always "function"

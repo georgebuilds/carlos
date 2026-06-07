@@ -14,7 +14,7 @@
 // via Reply when the user hits a key.
 //
 // Session lifetime: the "always" cache is map[toolName]bool, reset
-// when the process exits. "Always" is per-tool-name, not per-input —
+// when the process exits. "Always" is per-tool-name, not per-input -
 // this is the right ergonomic tradeoff for `read` / `glob` / `grep`
 // (low-risk and called often) while keeping `bash` / `write` / `edit`
 // honest (the model still gets prompted per call, unless the user
@@ -43,7 +43,7 @@ const (
 // these off the channel returned by Requests(), renders an overlay,
 // and pushes a decision back via Reply. The reply channel is buffered
 // (cap=1) so Reply never blocks even if the requester has already
-// timed out / cancelled — the buffered send is a safe drop.
+// timed out / cancelled - the buffered send is a safe drop.
 type ApprovalRequest struct {
 	// Tool is the tool name (e.g. "bash", "write").
 	Tool string
@@ -70,7 +70,7 @@ type TUIApprover struct {
 }
 
 // NewTUIApprover returns a fresh approver with empty "always" cache
-// and a buffered request channel (cap=16 — well above the worst-case
+// and a buffered request channel (cap=16 - well above the worst-case
 // pending approvals; agent.Run is synchronous so backpressure on this
 // channel just means a tool call waits).
 func NewTUIApprover() *TUIApprover {
@@ -109,7 +109,7 @@ func (t *TUIApprover) ApproveToolCall(name string, input []byte) bool {
 	case <-t.closedCh:
 		return false
 	}
-	// Reply-with-cancellation: same story on the receive side — a
+	// Reply-with-cancellation: same story on the receive side - a
 	// Close mid-prompt unblocks us cleanly.
 	var decision ApprovalDecision
 	select {
@@ -134,7 +134,7 @@ func (t *TUIApprover) Requests() <-chan *ApprovalRequest {
 // Reply delivers the user's decision for a specific request. The
 // reply channel is buffered so this is non-blocking; calling Reply
 // twice on the same request silently drops the second decision
-// (defensive — keypress double-fire shouldn't deadlock).
+// (defensive - keypress double-fire shouldn't deadlock).
 func (t *TUIApprover) Reply(req *ApprovalRequest, decision ApprovalDecision) {
 	if req == nil || req.reply == nil {
 		return

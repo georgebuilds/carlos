@@ -48,7 +48,7 @@ func (m *Model) frameSlash(args string) tea.Cmd {
 
 // frameSwitchCmd persists a frame switch via the wired SwitchActive
 // hook. The chat header pill updates in place; the provider/model
-// swap is recorded but does not re-instantiate the running loop —
+// swap is recorded but does not re-instantiate the running loop -
 // users who care about model switch restart the session. The status
 // echo names that constraint so the surprise doesn't land at the
 // next assistant turn.
@@ -98,7 +98,7 @@ func (m *Model) frameKnown(name string) bool {
 	return false
 }
 
-// statusCmd is the small helper for slash echoes — exposed here so the
+// statusCmd is the small helper for slash echoes - exposed here so the
 // frame package's switch flow uses the same statusMsg shape as every
 // other slash without dragging in the chat.go branches.
 func statusCmd(text string, kind statusKind) tea.Cmd {

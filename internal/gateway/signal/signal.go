@@ -2,15 +2,15 @@
 // as a stub for slice G6 of the gateway architecture: every method on
 // the gateway.Adapter contract is implemented, the broker can register
 // it, and the wire shape of the planned signal-cli JSON-RPC integration
-// is sketched in wire.go — but no JSON-RPC traffic is exchanged.
+// is sketched in wire.go - but no JSON-RPC traffic is exchanged.
 //
 // # Why a stub
 //
-// The gateway architecture spec § "Signal — same shape as Telegram,
+// The gateway architecture spec § "Signal - same shape as Telegram,
 // harder" defers Signal to its own slice because signal-cli is unofficial,
 // the registration path (phone + captcha) is fiddly, and the trust model
 // is materially different from Telegram. The stub lets the rest of the
-// system — broker registration, capability advertisement, manage view —
+// system - broker registration, capability advertisement, manage view -
 // treat Signal as a first-class channel without forcing G6 onto the v1
 // critical path.
 //
@@ -35,7 +35,7 @@
 //     broker's existing (Source, GatewayEventID) dedupe just works.
 //
 // The capability set advertised here is the post-implementation target
-// from the spec's capability matrix — Push + FixedChoiceHITL (≤3,
+// from the spec's capability matrix - Push + FixedChoiceHITL (≤3,
 // rendered as keyword replies) + FreeFormTextInbound + FileImageInbound.
 // We expose it from the stub so routing config the user writes today
 // keeps working when G6 lands.
@@ -50,7 +50,7 @@ import (
 )
 
 // Config controls the Signal adapter. The zero value is a disabled
-// adapter — Name + OutboundCapabilities still report meaningfully so the broker
+// adapter - Name + OutboundCapabilities still report meaningfully so the broker
 // can register it, but Send returns a "disabled" failure receipt and
 // Start exits immediately. Enabling the adapter requires a configured
 // signal-cli socket path AND a sender E.164 number; both are validated
@@ -70,7 +70,7 @@ type Config struct {
 
 	// SenderNumber is the E.164 phone number signal-cli has registered.
 	// Used as the JSON-RPC `account` parameter on every outbound. We
-	// don't validate the E.164 shape here — signal-cli rejects malformed
+	// don't validate the E.164 shape here - signal-cli rejects malformed
 	// numbers loudly at first use, which is a clearer error surface than
 	// us trying to mirror the grammar.
 	SenderNumber string
@@ -115,7 +115,7 @@ func New(cfg Config) (*Adapter, error) {
 }
 
 // Name returns gateway.SourceSignal regardless of whether the adapter
-// is enabled — the broker needs a stable name to key its adapter map
+// is enabled - the broker needs a stable name to key its adapter map
 // even when the channel is gated off.
 func (a *Adapter) Name() gateway.Source { return gateway.SourceSignal }
 
@@ -138,7 +138,7 @@ func (a *Adapter) OutboundCapabilities() gateway.OutboundCapabilities {
 }
 
 // Send is the broker→adapter outbound. In stub form it always returns
-// a StatusFailed receipt — the body of the error distinguishes the two
+// a StatusFailed receipt - the body of the error distinguishes the two
 // "not yet useful" modes:
 //
 //   - Disabled adapter: "signal adapter is disabled". The broker logs
@@ -146,7 +146,7 @@ func (a *Adapter) OutboundCapabilities() gateway.OutboundCapabilities {
 //     not have selected Signal in the first place).
 //   - Enabled-but-stub adapter: "signal adapter: not yet implemented".
 //     The receipt is still StatusFailed because no message went out,
-//     but the wording tells the operator the config is fine — what's
+//     but the wording tells the operator the config is fine - what's
 //     missing is the G6 implementation.
 //
 // A real implementation will translate env into a `send` JSON-RPC call
@@ -173,7 +173,7 @@ func (a *Adapter) Send(_ context.Context, _ gateway.OutboundEnvelope) (gateway.D
 //     hang the startup goroutine.
 //   - Enabled adapter: blocks until ctx is cancelled or Stop is called,
 //     simulating the connected JSON-RPC subscribe loop. This is the
-//     shape the real implementation will keep — replace the blocking
+//     shape the real implementation will keep - replace the blocking
 //     select with a `dial unix socket → loop on incoming JSON-RPC
 //     notifications → translate to InboundEnvelope → ingest` body.
 //

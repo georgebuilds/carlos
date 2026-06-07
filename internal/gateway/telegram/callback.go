@@ -12,7 +12,7 @@ import (
 //	<actionID>:<artifactID>
 //
 // actionID is one of the canonical Decision IDs ("approve" | "revise" |
-// "reject") — at most 7 bytes — plus a single-byte separator. The
+// "reject") - at most 7 bytes - plus a single-byte separator. The
 // broker mints ArtifactIDs as ULIDs (26 bytes), so a well-formed
 // callback_data clocks in at 26 + 1 + 7 = 34 bytes, comfortably under
 // the 64-byte ceiling.
@@ -41,7 +41,7 @@ var ErrCallbackMalformed = errors.New("telegram: malformed callback_data")
 
 // EncodeCallbackData packs actionID and artifactID into Telegram's
 // callback_data field. Returns ErrCallbackTooLong if the result would
-// exceed 64 bytes — see file-level comment for the budget rationale.
+// exceed 64 bytes - see file-level comment for the budget rationale.
 //
 // Both inputs are validated: each must be non-empty and free of the
 // separator byte. We do not escape; the contract is that callers use
@@ -72,7 +72,7 @@ func EncodeCallbackData(actionID, artifactID string) (string, error) {
 // missing the separator or has an empty half.
 //
 // We deliberately do not validate that actionID is one of the canonical
-// Decision constants here — that's the broker's job. Adapters stay
+// Decision constants here - that's the broker's job. Adapters stay
 // dumb; if someone wires a non-canonical action button, the broker is
 // the right place to drop the inbound.
 func DecodeCallbackData(data string) (actionID, artifactID string, err error) {

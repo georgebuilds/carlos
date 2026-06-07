@@ -3,7 +3,7 @@
 // Opens from the F-5 switcher when the user presses `n`, when they hit
 // Enter while the "+ new frame" tile is focused, or via the slash
 // `/frame new [name]`. Lives in the same overlay slot as the switcher
-// so layout math doesn't change — when the wizard is up the switcher
+// so layout math doesn't change - when the wizard is up the switcher
 // is hidden behind it. Esc returns to the switcher; Enter validates +
 // fires FrameUI.AddFrame.
 //
@@ -35,7 +35,7 @@ const (
 	newFrameFieldCount
 )
 
-// newFrameFieldName / etc. are intentionally lower-case — they're an
+// newFrameFieldName / etc. are intentionally lower-case - they're an
 // implementation detail. The brief calls for ~80% coverage on the new
 // code, so the field-index tests live in the test file in the same
 // package and use these unexported constants directly.
@@ -152,7 +152,7 @@ func (m *Model) newFrameInsert(s string) {
 }
 
 // newFrameBackspace deletes the last rune of the focused text field.
-// No-op for accent/start fields — those have their own key bindings.
+// No-op for accent/start fields - those have their own key bindings.
 func (m *Model) newFrameBackspace() {
 	switch m.newFrameField {
 	case newFrameFieldName:

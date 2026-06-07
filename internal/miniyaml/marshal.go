@@ -16,7 +16,7 @@ import (
 //   - Lists emit `- item\n` per entry, with nested containers either
 //     inline-after-the-dash (for the first key of a list-of-maps) or
 //     on subsequent lines indented by 2.
-//   - Empty maps render as `{}`, empty lists as `[]` — only used when
+//   - Empty maps render as `{}`, empty lists as `[]` - only used when
 //     a container is the *value* of a key; at top level an empty
 //     container renders as `{}\n` / `[]\n`.
 //
@@ -188,7 +188,7 @@ func appendList(buf []byte, xs []any, indent int) ([]byte, error) {
 			first := true
 			for _, k := range keys {
 				if first {
-					// no extra indent — already on the dash line
+					// no extra indent - already on the dash line
 					first = false
 				} else {
 					buf = appendIndent(buf, indent+2)

@@ -3,7 +3,7 @@
 // highlight_stub.go is the no-op build of the syntax-highlighting
 // surface. It's selected when the `nochroma` build tag is set, which
 // compiles chroma out of the binary entirely. Renderer.Highlight = true
-// in this build silently degrades to "no highlighting" — diffs still
+// in this build silently degrades to "no highlighting" - diffs still
 // render correctly, just without per-token coloring.
 
 package diff

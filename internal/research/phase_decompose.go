@@ -7,7 +7,7 @@ import (
 )
 
 // decomposeSystem is the system prompt for the planning phase. The
-// "ONE per line, no numbering" rule is load-bearing — every other
+// "ONE per line, no numbering" rule is load-bearing - every other
 // shape (bulleted list, JSON, prose paragraphs) is harder to parse
 // reliably across models. Plain line-per-query falls out cleanly.
 const decomposeSystem = `You decompose research questions into specific sub-queries. Each sub-query is a focused search prompt that, when answered, contributes one piece of the overall picture. Return ONE sub-query per line, no numbering, no bullets, no commentary.`
@@ -82,7 +82,7 @@ func stripBulletPrefix(s string) string {
 			return s[len(p):]
 		}
 	}
-	// "1. " / "12. " / "1) " / "12) " — strip leading digits + . or ).
+	// "1. " / "12. " / "1) " / "12) " - strip leading digits + . or ).
 	i := 0
 	for i < len(s) && s[i] >= '0' && s[i] <= '9' {
 		i++

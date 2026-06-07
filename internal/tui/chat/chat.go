@@ -24,7 +24,7 @@ import (
 	"github.com/georgebuilds/carlos/internal/workspace"
 )
 
-// Brand palette — package-level vars populated by [ApplyPalette].
+// Brand palette - package-level vars populated by [ApplyPalette].
 //
 // Prior to Phase 9 slice 9a these were inline literals mirrored from
 // internal/tui/onboarding. They are now sourced from
@@ -54,7 +54,7 @@ func init() {
 // ApplyPalette wires a freshly-loaded [theme.Palette] into the chat
 // package's color vars. Call once at startup from cmd/carlos after the
 // user config is loaded. Idempotent and safe to call again on config
-// reload (no concurrency guarantee — TUI startup is single-threaded).
+// reload (no concurrency guarantee - TUI startup is single-threaded).
 func ApplyPalette(p theme.Palette) {
 	colorAccent = p.Accent
 	colorMuted = p.Muted
@@ -66,7 +66,7 @@ func ApplyPalette(p theme.Palette) {
 	colorSubtle = p.Subtle
 }
 
-// Minimum terminal size. Chat is a working surface, not a poster — the
+// Minimum terminal size. Chat is a working surface, not a poster - the
 // floor is lower than onboarding's 80x24 because nothing breaks below
 // it; the experience just gets cramped. Below 60x16 we refuse to render
 // to avoid corrupt output.
@@ -215,7 +215,7 @@ type Model struct {
 	showHelp bool
 
 	// userName addresses the user in the empty-state greeting.
-	// Defaults to "Boss" — matches carlos's brand voice. Override
+	// Defaults to "Boss" - matches carlos's brand voice. Override
 	// via WithUserName(cfg.UserName).
 	userName string
 
@@ -236,7 +236,7 @@ type Model struct {
 	spawner ResearchSpawner
 
 	// summarizer is the slice-9j `/compact` driver. When nil, /compact
-	// echoes a "not configured" statusMsg rather than failing — the
+	// echoes a "not configured" statusMsg rather than failing - the
 	// chat surface still works without an LLM-backed summarizer.
 	// Production wires memory.LLMSummarizer; tests inject a fake.
 	summarizer memory.Summarizer
@@ -263,7 +263,7 @@ type Model struct {
 
 	// Phase U S7: separate shell-history file walked via ↑/↓ when
 	// the composer is in shell mode (input starts with "!"). nil
-	// disables — composer falls back to letting the textarea
+	// disables - composer falls back to letting the textarea
 	// handle arrow keys natively (cursor up/down within
 	// multi-line input).
 	shellHistory *usershell.History
@@ -291,7 +291,7 @@ type Model struct {
 	// served read-only to /frame. frame.SwitchActive is a callback
 	// the slash dispatch uses to persist a switch; nil means /frame
 	// switch echoes "not wired" rather than failing. The full
-	// mid-session provider/model swap is its own slice — for now a
+	// mid-session provider/model swap is its own slice - for now a
 	// switch updates the persisted active and prints a hint to
 	// restart for the new provider/model to take effect.
 	frame FrameUI
@@ -353,7 +353,7 @@ type Model struct {
 
 // FrameUI is the Phase F display + switch contract the chat Model
 // consumes. Pulled out of internal/frame so chat doesn't have to know
-// about Config — it just needs the active frame's render fields plus
+// about Config - it just needs the active frame's render fields plus
 // the list of names to offer in /frame list.
 type FrameUI struct {
 	// Active is the name of the frame this session resolved to. Empty
@@ -398,7 +398,7 @@ type FrameUI struct {
 	AddFrame func(f frame.Frame) error
 	// PersonalTemplate returns the field bundle the new-frame wizard
 	// uses when the user picks "copy personal" on the start-from
-	// toggle. Returning a zero Frame is fine — the wizard treats that
+	// toggle. Returning a zero Frame is fine - the wizard treats that
 	// the same as "blank". nil is also fine; the wizard hides the
 	// copy-personal option and falls back to blank.
 	PersonalTemplate func() frame.Frame
@@ -410,7 +410,7 @@ type FrameUI struct {
 	// capabilities) for a frame name. frameSwitchCmd calls this after
 	// a successful SwitchActive so the chat's in-process FrameUI
 	// reflects the new frame's settings without waiting for the next
-	// session. nil disables the refresh — Mode + Capabilities stay
+	// session. nil disables the refresh - Mode + Capabilities stay
 	// what they were until the next restart.
 	LookupFrame func(name string) (FrameUIUpdate, bool)
 }
@@ -435,7 +435,7 @@ const (
 // Option configures a Model at construction time.
 type Option func(*Model)
 
-// WithReadOnly disables input handling — the chat view becomes a pure
+// WithReadOnly disables input handling - the chat view becomes a pure
 // transcript reader. Used by snapshot tests and any future view that
 // shows another agent's transcript without owning input.
 func WithReadOnly() Option {
@@ -452,7 +452,7 @@ func WithTUIApprover(a *TUIApprover) Option {
 }
 
 // WithUserName personalizes the empty-state greeting. Empty string is
-// fine — the default "Boss" is the carlos voice; pass the user's real
+// fine - the default "Boss" is the carlos voice; pass the user's real
 // name from onboarding config to make the first frame more familiar.
 func WithUserName(name string) Option {
 	return func(m *Model) {
@@ -464,7 +464,7 @@ func WithUserName(name string) Option {
 
 // WithUserShell attaches a usershell.Manager so "!cmd" submissions
 // run as shell commands. Nil (or omitting this option entirely)
-// leaves the feature dormant — the composer treats "!ls" like any
+// leaves the feature dormant - the composer treats "!ls" like any
 // other text and the footer collapses to its idle branch.
 // cmd/carlos.runDefault constructs the Manager scoped to the chat
 // session's event log; tests pass either a real Manager with a
@@ -518,7 +518,7 @@ func New(log agent.EventLog, agentID string, source TextSource, opts ...Option) 
 	vp.MouseWheelEnabled = true
 
 	ta := textarea.New()
-	ta.Placeholder = "type a message — enter to send, shift-enter for newline"
+	ta.Placeholder = "type a message - enter to send, shift-enter for newline"
 	ta.Prompt = "│ "
 	ta.CharLimit = 0
 	ta.ShowLineNumbers = false
@@ -638,7 +638,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// Phase F-5: takeover frame switcher takes precedence over the
 		// jobs / permissions overlays so Ctrl+F always reaches it. The
-		// approval overlay is still modal above this — the model is
+		// approval overlay is still modal above this - the model is
 		// waiting and a frame switch shouldn't interrupt that.
 		if m.showFrameSwitcher {
 			next, cmd, handled := m.handleFrameSwitcherKey(msg)
@@ -717,7 +717,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Ctrl+C means: cancel the running fg shell job if there
 			// is one (mirrors terminal SIGINT semantics); otherwise
 			// quit the chat. The TUI research note flags ctrl+c as
-			// terminal-reserved for cancel and we honor that — the
+			// terminal-reserved for cancel and we honor that - the
 			// chat-quit path keeps it as the second-class meaning so
 			// the user can still exit, just with no fg job parked.
 			if cmd := m.cancelForegroundCmd(); cmd != nil {
@@ -750,7 +750,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+@":
 			// Ctrl+Enter on terminals that emit NUL (mac Terminal,
 			// many xterms). Treat as "submit as background shell
-			// job" — only when the input starts with "!", else
+			// job" - only when the input starts with "!", else
 			// fall through to the textarea so it stays a no-op.
 			if m.readOnly {
 				return m, nil
@@ -781,7 +781,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "ctrl+l":
 			// Phase F-8: mute cwd-hint footer for the rest of the
-			// session. Idempotent — second press just keeps the lock
+			// session. Idempotent - second press just keeps the lock
 			// on. No-op when no hint is wired.
 			if m.frame.Active != "" && m.frame.MatchCwd != nil {
 				m.lockCwdHints()
@@ -847,7 +847,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case approvalRequestMsg:
 		// Stash the request; overlay renders on next View. Force
-		// scroll-to-bottom regardless of prior YOffset — the user
+		// scroll-to-bottom regardless of prior YOffset - the user
 		// definitely wants to see the conversation that just led the
 		// model to ask for this tool. Re-pump so any further requests
 		// (rare but possible if the model paused and resumed mid-
@@ -891,7 +891,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case userShellUpdateMsg:
 		// S5: stream live output chunks into the matching transcript
 		// entry. State-only updates (no Output bytes) just re-arm the
-		// pump — the transcript row was created by EvtUserShellStart
+		// pump - the transcript row was created by EvtUserShellStart
 		// and will be sealed by EvtUserShellEnd via applyEvent.
 		if len(msg.u.Output) > 0 {
 			if idx := m.findUserShellEntry(msg.u.JobID); idx != -1 {
@@ -970,7 +970,7 @@ func (m *Model) resolveApproval(d ApprovalDecision) tea.Cmd {
 //
 // Projection errors surface as system-note transcript entries (drift
 // detection should be loud), but DO NOT block the transcript update
-// for the same event — the two concerns are independent. A heartbeat
+// for the same event - the two concerns are independent. A heartbeat
 // arriving for an agent the projection doesn't recognize shouldn't
 // also stop the chat from rendering the user's next message just
 // because the projection's row check failed.
@@ -981,7 +981,7 @@ func (m *Model) applyEvent(ev agent.Event) {
 			ts:   ev.TS,
 			text: fmt.Sprintf("projection error on seq=%d (%s): %v", ev.Seq, ev.Type, err),
 		})
-		// fallthrough — still render the entry below if applicable.
+		// fallthrough - still render the entry below if applicable.
 	}
 	switch ev.Type {
 	case agent.EvtUserMessage:
@@ -1043,7 +1043,7 @@ func (m *Model) applyEvent(ev agent.Event) {
 			text: p.Text,
 		})
 	case agent.EvtStateChange:
-		// No transcript entry — the header's id + state badge + model
+		// No transcript entry - the header's id + state badge + model
 		// already conveys session identity and current activity. The
 		// older "agent <full-ulid> spawned (model=...)" line was
 		// pure duplication and read as noise the user actively had
@@ -1131,7 +1131,7 @@ func (m *Model) applyEvent(ev agent.Event) {
 				kind:              entryUserShell,
 				ts:                ev.TS,
 				shellJobID:        p.JobID,
-				shellCommand:      "(unknown — start event missing)",
+				shellCommand:      "(unknown - start event missing)",
 				shellOutput:       p.OutputInline,
 				shellExitCode:     p.ExitCode,
 				shellDuration:     p.Duration,
@@ -1150,7 +1150,7 @@ func (m *Model) applyEvent(ev agent.Event) {
 		m.transcript[idx].shellTruncated = p.TruncatedBytes
 		m.transcript[idx].shellFailErr = p.FailErrMsg
 		// Prefer the canonical inline output from the End event over
-		// whatever streamed during the run — the End event's copy is
+		// whatever streamed during the run - the End event's copy is
 		// what the model sees, so the transcript should match.
 		if p.OutputInline != "" {
 			m.transcript[idx].shellOutput = p.OutputInline
@@ -1302,7 +1302,7 @@ func (m *Model) shellSlashBackground(arg string) tea.Cmd {
 }
 
 // resolveShellJobID accepts the user's arg (raw ULID, "j<short>",
-// or just the suffix) and returns the matching full ULID — or "" if
+// or just the suffix) and returns the matching full ULID - or "" if
 // no job matches. Case-insensitive substring match across job IDs.
 func resolveShellJobID(mgr *usershell.Manager, arg string) string {
 	arg = strings.TrimSpace(arg)
@@ -1341,7 +1341,7 @@ func (m *Model) dispatchSlash(c slash.Command) tea.Cmd {
 		// MODEL also forgets, and a chat reload picks up the same
 		// reset marker on backfill. Without the marker, the model
 		// would keep talking about the old conversation on the
-		// next "hi" — exactly the bug we hit in field testing.
+		// next "hi" - exactly the bug we hit in field testing.
 		m.transcript = nil
 		m.rerenderViewport()
 		log, ok := m.log.(*agent.SQLiteEventLog)
@@ -1437,7 +1437,7 @@ func (m *Model) dispatchSlash(c slash.Command) tea.Cmd {
 		return m.runCompactCmd()
 	case "shell":
 		// Phase U S7: explicit slash entry to the user-shell. Same
-		// effect as typing "!cmd" — for users who prefer the slash
+		// effect as typing "!cmd" - for users who prefer the slash
 		// vocabulary or have keyboards that fight the "!" key.
 		body := strings.TrimSpace(c.Args)
 		if body == "" {
@@ -1496,14 +1496,14 @@ func (m *Model) dispatchSlash(c slash.Command) tea.Cmd {
 	if _, ok := slash.Lookup(c.Name); ok {
 		return func() tea.Msg {
 			return statusMsg{
-				text: fmt.Sprintf("slash command: /%s (handler pending — slice 1f)", c.Name),
+				text: fmt.Sprintf("slash command: /%s (handler pending - slice 1f)", c.Name),
 				kind: statusInfo,
 			}
 		}
 	}
 	return func() tea.Msg {
 		return statusMsg{
-			text: fmt.Sprintf("unknown command: /%s — try /help", c.Name),
+			text: fmt.Sprintf("unknown command: /%s - try /help", c.Name),
 			kind: statusWarn,
 		}
 	}
@@ -1519,7 +1519,7 @@ func (m *Model) dispatchSlash(c slash.Command) tea.Cmd {
 //
 // Edits happen against ~/.carlos/config.yaml via the existing atomic
 // writer (config.Save). The daemon picks up the change on its next
-// SIGHUP / IPC reload — neither is needed for /schedule itself to work,
+// SIGHUP / IPC reload - neither is needed for /schedule itself to work,
 // since the slash command only edits config.
 func handleScheduleSlash(args string) string {
 	args = strings.TrimSpace(args)
@@ -1545,7 +1545,7 @@ func handleScheduleSlash(args string) string {
 	case "add":
 		when, prompt, found := splitWhenPrompt(strings.TrimSpace(rest))
 		if !found {
-			return `schedule add: usage — /schedule add "<when>" <prompt...>`
+			return `schedule add: usage - /schedule add "<when>" <prompt...>`
 		}
 		sch, err := schedule.ParseNatural(when)
 		if err != nil {
@@ -1661,7 +1661,7 @@ func slashHelpLine() string {
 
 // slashModelLine handles `/model [provider:model]`. Phase 2e scope:
 // with no args, list configured providers + their default models from
-// the user's config. With args, acknowledge — actual mid-session
+// the user's config. With args, acknowledge - actual mid-session
 // switching needs Phase 3's spawn/provider plumbing in the chat TUI's
 // own loop (which doesn't exist yet; the dev-aid chat view is read-
 // only on the event log, no provider attached). For headless
@@ -1675,7 +1675,7 @@ func slashModelLine(arg string) string {
 		return "/model: no config loaded (" + err.Error() + ")"
 	}
 	if len(cfg.Providers) == 0 {
-		return "/model: no providers configured — run `carlos onboard`"
+		return "/model: no providers configured - run `carlos onboard`"
 	}
 	parts := make([]string, 0, len(cfg.Providers))
 	for name, pc := range cfg.Providers {
@@ -1694,7 +1694,7 @@ func slashModelLine(arg string) string {
 
 // appendUserMessage writes a user_message event to the log. The event
 // flows back through the subscription → eventMsg path and lands in the
-// transcript via applyEvent — so we do NOT touch the local transcript
+// transcript via applyEvent - so we do NOT touch the local transcript
 // here. Single source of truth: render only what the log has accepted.
 func (m *Model) appendUserMessage(text string) tea.Cmd {
 	agentID := m.agentID

@@ -12,7 +12,7 @@ import (
 // close) or any non-EOF read error.
 //
 // Framing: one complete JSON object per line, terminated by '\n'. Blank
-// lines are skipped (defensive — Ollama doesn't insert them, but some
+// lines are skipped (defensive - Ollama doesn't insert them, but some
 // proxies and httptest setups normalize newlines and we'd rather not
 // trip on a stray empty line).
 //

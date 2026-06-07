@@ -17,7 +17,7 @@ import (
 //
 // Validation: the actual match count must equal `expect_match_count`
 // (default 1). If they differ, the edit is REFUSED with an error that
-// names both numbers — this catches "I thought there was one match but
+// names both numbers - this catches "I thought there was one match but
 // there are three" mistakes before they touch the disk.
 //
 // Binary refusal mirrors ReadTool: a NUL-byte sniff on first 512 bytes
@@ -37,7 +37,7 @@ func NewEditTool() *EditTool { return &EditTool{} }
 func (*EditTool) Name() string { return "edit" }
 
 func (*EditTool) Description() string {
-	return "Replace an exact string in a file. Validates that `search` matches exactly `expect_match_count` times (default 1); refuses the edit otherwise. Use when you need to surgically modify an existing file — for whole-file replacement use `write`."
+	return "Replace an exact string in a file. Validates that `search` matches exactly `expect_match_count` times (default 1); refuses the edit otherwise. Use when you need to surgically modify an existing file - for whole-file replacement use `write`."
 }
 
 func (*EditTool) Schema() []byte {

@@ -2,7 +2,7 @@
 //
 // # Threat model
 //
-// ntfy topics are *public* unless self-hosted with auth — anyone who
+// ntfy topics are *public* unless self-hosted with auth - anyone who
 // learns the topic name can subscribe to outbound messages AND see
 // every action-button URL we publish. If those URLs were
 // unauthenticated, any subscriber could forge a Decision inbound by
@@ -22,7 +22,7 @@
 //
 // Where payload_json is the JSON encoding of tokenPayload (envelope_id,
 // artifact_id, action_id, exp_unix_ms). HMAC is computed over the raw
-// payload_json bytes — NOT over the base64-encoded form — so any
+// payload_json bytes - NOT over the base64-encoded form - so any
 // canonicalization differences in base64 padding cannot smuggle past
 // verification.
 //
@@ -63,7 +63,7 @@ var (
 	// ErrTokenMalformed covers shape errors: missing separator, bad
 	// base64, payload not JSON. Maps to 400 Bad Request.
 	ErrTokenMalformed = errors.New("ntfy: token malformed")
-	// ErrTokenBadSignature is returned when the HMAC does not match —
+	// ErrTokenBadSignature is returned when the HMAC does not match -
 	// either a wrong key or a tampered payload. Maps to 401.
 	ErrTokenBadSignature = errors.New("ntfy: token signature invalid")
 	// ErrTokenExpired is returned when the embedded exp is in the
@@ -154,7 +154,7 @@ func verifyToken(key []byte, token string, now time.Time) (tokenPayload, error) 
 	return p, nil
 }
 
-// base64URLEncode is RFC 4648 §5 with padding stripped — same flavor
+// base64URLEncode is RFC 4648 §5 with padding stripped - same flavor
 // JWTs use. Padding is purely a length marker for un-aligned inputs;
 // the decoder reconstructs it from the segment length.
 func base64URLEncode(b []byte) string {
@@ -162,7 +162,7 @@ func base64URLEncode(b []byte) string {
 }
 
 // base64URLDecode is the inverse of base64URLEncode. RawURLEncoding
-// (no padding) is strict — it rejects '=' chars, which is what we want
+// (no padding) is strict - it rejects '=' chars, which is what we want
 // for a forgery check.
 func base64URLDecode(s string) ([]byte, error) {
 	return base64.RawURLEncoding.DecodeString(s)

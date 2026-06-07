@@ -13,7 +13,7 @@ import (
 // DefaultVaultPath returns the suggested vault location. We keep notes
 // inside ~/.carlos/ so the rest of carlos's state (config, state.db,
 // artifacts) and the user's notes share one backup surface and one
-// mental model — "carlos's stuff lives here".
+// mental model - "carlos's stuff lives here".
 //
 // Users who already have an Obsidian vault override this in one
 // keystroke from the onboarding screen. Empty home dir falls back to
@@ -62,7 +62,7 @@ func (m vaultModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				raw = DefaultVaultPath()
 			}
 			path := expandTilde(raw)
-			// MkdirAll is idempotent — re-running onboarding against
+			// MkdirAll is idempotent - re-running onboarding against
 			// an existing vault is a no-op. 0o700 matches ~/.carlos.
 			if err := os.MkdirAll(path, 0o700); err != nil {
 				m.mkdirErr = err
@@ -76,7 +76,7 @@ func (m vaultModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-// View renders the body only — Flow.renderRightPane owns the title.
+// View renders the body only - Flow.renderRightPane owns the title.
 func (m vaultModel) View() string {
 	var sb strings.Builder
 	sb.WriteString(styleHint.Render(
@@ -90,7 +90,7 @@ func (m vaultModel) View() string {
 	if m.mkdirErr != nil {
 		// Stay on the screen so the user can correct the path. Errors
 		// here are usually "you typed /Volumes/missing" or "perm
-		// denied" — both recoverable by editing the field.
+		// denied" - both recoverable by editing the field.
 		errStyle := lipgloss.NewStyle().Foreground(colorAccent).Bold(true)
 		sb.WriteString("\n")
 		sb.WriteString(errStyle.Render("couldn't create that path: "))

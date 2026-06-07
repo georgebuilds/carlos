@@ -31,11 +31,11 @@
 //
 // # Public API
 //
-//   - [Unmarshal] / [Marshal] — generic Go value tree.
-//   - [UnmarshalStruct] / [MarshalStruct] — struct mapping via JSON
+//   - [Unmarshal] / [Marshal] - generic Go value tree.
+//   - [UnmarshalStruct] / [MarshalStruct] - struct mapping via JSON
 //     roundtrip; callers tag with `json:"..."`, not `yaml:"..."`. This
 //     dodges adding reflection to the parser itself.
-//   - [SplitFrontmatter] — peels a YAML frontmatter block from the start
+//   - [SplitFrontmatter] - peels a YAML frontmatter block from the start
 //     of a byte slice (used by notes + skills).
 //
 // The parser produces deterministic output: maps are sorted alphabetically

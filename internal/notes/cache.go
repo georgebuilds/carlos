@@ -34,7 +34,7 @@ type cacheEntry struct {
 }
 
 // NewCache returns an empty Cache. excludes is the shared glob list
-// from cfg.Vault.Exclude — every VaultIndex opened through this Cache
+// from cfg.Vault.Exclude - every VaultIndex opened through this Cache
 // uses the same patterns. Callers that need per-vault excludes (out of
 // scope for v0) can construct a separate Cache.
 func NewCache(excludes []string) *Cache {
@@ -125,7 +125,7 @@ func canonicalisePath(path string) (string, error) {
 
 // expandHome resolves a leading `~` (alone or with `/`) against the
 // current user's home directory. Other tilde forms (`~user/`) are not
-// supported in v0 — callers using those should pass an absolute path.
+// supported in v0 - callers using those should pass an absolute path.
 func expandHome(path string) (string, error) {
 	if !strings.HasPrefix(path, "~") {
 		return path, nil
@@ -146,7 +146,7 @@ func expandHome(path string) (string, error) {
 // VaultConfig is the minimal interface the tool layer's resolve helper
 // expects: just the configured vault Path. The actual config struct
 // lives in internal/config but the notes package can't import that
-// (config imports schedule which imports tools — circular). Duck-typing
+// (config imports schedule which imports tools - circular). Duck-typing
 // via an interface keeps the dependency arrow one-way.
 type VaultConfig interface {
 	VaultPath() string

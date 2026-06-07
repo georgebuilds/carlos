@@ -43,7 +43,7 @@ func (m *Model) View() string {
 		Height(h - 2).
 		Padding(0, 1)
 
-	// border.GetWidth() is Width set above (w - 2) — the inner area
+	// border.GetWidth() is Width set above (w - 2) - the inner area
 	// INCLUDING the outer padding. The 2-col horizontal padding eats
 	// columns that children can't render into, so we subtract them
 	// before handing the width down. Header/footer used to overflow
@@ -78,7 +78,7 @@ func (m *Model) renderInner(innerW, innerH int) string {
 	// Approval prompt OR frame switcher OR heuristic OR jobs overlay
 	// OR help overlay is a bordered panel above the input. Compute
 	// height first so we can reserve it from the transcript area.
-	// They're mutually exclusive — approval is modal (model is
+	// They're mutually exclusive - approval is modal (model is
 	// waiting), jobs / perms / help / switcher / heuristic are
 	// dismiss-on-keypress; precedence: approval > switcher >
 	// heuristic > jobs > perms > help.
@@ -237,7 +237,7 @@ func (m *Model) renderInput(w int) string {
 }
 
 // renderHeader shows the agent ID + state badge + model name + (Phase F)
-// frame pill. State comes from the projection — single source of truth.
+// frame pill. State comes from the projection - single source of truth.
 // Pill suppressed when no frame is wired (legacy single-shelf mode) so
 // the header stays compatible with tests built before Phase F.
 func (m *Model) renderHeader(w int) string {
@@ -281,7 +281,7 @@ func framePill(f FrameUI) string {
 // non-TTY. The frame.Pill helper takes a bool so it stays standalone.
 func isNoColor() bool {
 	// colorAccent is rendered by the theme package which already honours
-	// NO_COLOR — if the accent has no foreground, we're monochrome.
+	// NO_COLOR - if the accent has no foreground, we're monochrome.
 	return colorAccent == ""
 }
 
@@ -301,7 +301,7 @@ func (m *Model) headerState() (agent.State, string) {
 // Slice 9c: the brackets now wrap a unicode glyph (theme.StateGlyph)
 // plus the label. Color encodes priority; shape encodes identity. When
 // NO_COLOR strips the foreground, the glyph alone still distinguishes
-// states — same accessibility win as manage's roster badges.
+// states - same accessibility win as manage's roster badges.
 func stateBadge(s agent.State) string {
 	var color lipgloss.Color
 	switch s {
@@ -354,12 +354,12 @@ func (m *Model) renderFooter(w int) string {
 	// tip behavior.
 	shellHint := renderUserShellFooter(m.computeUserShellFooterContext())
 	// Drop the right-aligned tip when there isn't enough room left
-	// after the keybind hints — wrapping it onto a second row pushes
+	// after the keybind hints - wrapping it onto a second row pushes
 	// the leftover word ("commands") flush-left, which reads worse
 	// than just hiding the tip. The hints alone are the discoverable
 	// surface; /help is already there for the user who needs it.
 	//
-	// User-shell hint, when present, replaces the tip — actionable
+	// User-shell hint, when present, replaces the tip - actionable
 	// "you can press X right now" beats "type /help" every time.
 	var tip string
 	if shellHint != "" {
@@ -393,7 +393,7 @@ func (m *Model) renderFooter(w int) string {
 
 // renderApprovalBox returns a bordered, accent-colored panel for a
 // pending tool-call approval. Lives between the transcript and the
-// input separator (see renderInner). Compact layout — three rows
+// input separator (see renderInner). Compact layout - three rows
 // inside the box so the transcript above stays usable:
 //
 //	🧢 wants to run `bash`
@@ -401,7 +401,7 @@ func (m *Model) renderFooter(w int) string {
 //	    [y] yes   [n] no   [A] always for bash    (esc denies)
 //
 // Width tracks the inner chat box minus the box's own border
-// (Border = 2 cols; Padding = 0 — vertical real estate is precious
+// (Border = 2 cols; Padding = 0 - vertical real estate is precious
 // when the transcript shares the screen).
 // renderToolCard is the bordered tool-call card. Single header row
 // inside a rounded box, in the tool's accent color (warn if errored):
@@ -412,7 +412,7 @@ func (m *Model) renderFooter(w int) string {
 //
 // Composition: glyph + tool name + middle-dot + one-line input
 // preview + right-aligned status suffix (line count / "error" /
-// "running…"). The actual output is intentionally hidden — the model
+// "running…"). The actual output is intentionally hidden - the model
 // already saw it; the user gets a summary. An expand keybind is a
 // future slice.
 func renderToolCard(e transcriptEntry, width int) string {
@@ -558,7 +558,7 @@ func renderApprovalBox(req *ApprovalRequest, innerW int) string {
 
 // renderHelpBox is the slice-9d slash-command help panel. Built by
 // reading slash.Builtins so new commands surface here automatically
-// — no separate doc table to keep in sync. Two-column layout: name +
+// - no separate doc table to keep in sync. Two-column layout: name +
 // args hint on the left, description on the right.
 //
 // Closes on any keypress (handled in Update). The footer hint at the
@@ -635,7 +635,7 @@ func renderHelpBox(innerW int) string {
 
 // oneLine collapses s to a single line at most maxW visual cells,
 // trimming on newline boundaries first so multi-line tool inputs read
-// as their first line (commonly the most informative — the bash cmd,
+// as their first line (commonly the most informative - the bash cmd,
 // the file path). Returns the trimmed text with "…" suffix if cut.
 func oneLine(s string, maxW int) string {
 	if maxW < 4 {
@@ -648,7 +648,7 @@ func oneLine(s string, maxW int) string {
 	if lipgloss.Width(s) <= maxW {
 		return s
 	}
-	// Visual-cell-aware truncation — char index is close enough for
+	// Visual-cell-aware truncation - char index is close enough for
 	// the ASCII-heavy JSON shapes tool inputs use.
 	cut := maxW - 1
 	if cut > len(s) {
@@ -808,7 +808,7 @@ func (m *Model) rerenderViewport() {
 // empty. Centered cap + greeting + a few example prompts. Vertically
 // padded so the content sits roughly in the middle of the viewport.
 //
-// readOnly tweaks the input hint — a viewer-only surface (manage
+// readOnly tweaks the input hint - a viewer-only surface (manage
 // preview, snapshot tests) should not imply input capability.
 func renderEmptyState(userName string, width, height int, readOnly bool) string {
 	if userName == "" {
@@ -819,10 +819,10 @@ func renderEmptyState(userName string, width, height int, readOnly bool) string 
 	example := lipgloss.NewStyle().Foreground(colorSubtle).Italic(true)
 
 	cap := accent.Render("🧢")
-	greeting := cap + "  " + accent.Render("Hey "+userName+" — what are we working on?")
+	greeting := cap + "  " + accent.Render("Hey "+userName+" - what are we working on?")
 	hint := muted.Render("type a message below and hit enter")
 	if readOnly {
-		hint = muted.Render("(viewer mode — transcript is read-only)")
+		hint = muted.Render("(viewer mode - transcript is read-only)")
 	}
 
 	examples := []string{
@@ -874,7 +874,7 @@ func composeTranscript(entries []transcriptEntry, liveText string, width int) st
 }
 
 // renderEntry styles one transcript entry. User and assistant turns use
-// emoji avatars — 👤 for the user, 🧢 for carlos (the cap is the brand
+// emoji avatars - 👤 for the user, 🧢 for carlos (the cap is the brand
 // mark). Everything else (tool calls, steering, state notes) keeps a
 // short text label since they're system-level annotations, not
 // conversational turns.
@@ -902,7 +902,7 @@ func renderEntry(e transcriptEntry, width int) string {
 		//   │ 🔧 bash · ls -la ~/Desktop · 20 lines       │
 		//   └─────────────────────────────────────────────┘
 		//
-		// The output stays off-screen by default — the model already
+		// The output stays off-screen by default - the model already
 		// saw the full bytes; the user gets the summary. Expand
 		// keybind is a future slice; for now the card is the whole
 		// surface.
@@ -954,7 +954,7 @@ func renderEntry(e transcriptEntry, width int) string {
 // gutter: the avatar + ": " starts the first line; continuation lines
 // indent by the same visual width so the body text aligns under
 // itself. Without this, a wrapped assistant response shows row 2 flush
-// to the left edge — it reads as a new speaker, not a continuation.
+// to the left edge - it reads as a new speaker, not a continuation.
 //
 // Width math: avatar (typically 2 cells for an emoji) + ": " = 4
 // visual cells. The text body wraps to width - indent; subsequent
@@ -969,7 +969,7 @@ func renderAvatarBlock(avatar, colon, text string, textColor lipgloss.Color, wid
 
 	lines := wordWrap(text, wrapW)
 	if len(lines) == 0 {
-		// Empty body — still emit the avatar so the entry's existence
+		// Empty body - still emit the avatar so the entry's existence
 		// is visible. Shouldn't happen in practice (chat doesn't seal
 		// empty turns) but the defensive render avoids a vanishing row.
 		return avatar + colon
@@ -993,7 +993,7 @@ func renderAvatarBlock(avatar, colon, text string, textColor lipgloss.Color, wid
 // content; CJK falls back to imperfect-but-never-garbled wrap).
 //
 // Embedded "\n" in s start a new paragraph that gets its own wrap pass
-// — keeps explicit line breaks in the model's response intact.
+// - keeps explicit line breaks in the model's response intact.
 func wordWrap(s string, width int) []string {
 	if width < 1 {
 		width = 1
@@ -1010,7 +1010,7 @@ func wordWrap(s string, width int) []string {
 			cur := lipgloss.Width(line.String())
 			switch {
 			case cur == 0:
-				// First word on a fresh line — emit it; hard-break
+				// First word on a fresh line - emit it; hard-break
 				// only if it alone exceeds width.
 				for ww > width {
 					cut := width
@@ -1028,7 +1028,7 @@ func wordWrap(s string, width int) []string {
 				line.WriteByte(' ')
 				line.WriteString(word)
 			default:
-				// Word would overflow the current line — flush, then
+				// Word would overflow the current line - flush, then
 				// start fresh with the same hard-break logic.
 				out = append(out, line.String())
 				line.Reset()
@@ -1055,7 +1055,7 @@ func wordWrap(s string, width int) []string {
 
 // renderAssistantLive is the streaming-assistant counterpart of
 // renderEntry's entryAssistantMessage case. Same 🧢: <text> shape so a
-// turn-pair reads as a single conversational beat — including the
+// turn-pair reads as a single conversational beat - including the
 // gutter so wrapped continuation lines align under the body, not
 // flush-left.
 func renderAssistantLive(text string, width int) string {

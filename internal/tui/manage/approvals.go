@@ -12,7 +12,7 @@ import (
 	"github.com/georgebuilds/carlos/internal/agent"
 )
 
-// Approval pane — surfaces Phase 4h's pending-approval queue inside the
+// Approval pane - surfaces Phase 4h's pending-approval queue inside the
 // manage TUI. The same agent.ListPendingApprovals API the `carlos
 // approvals` CLI uses; user navigates with arrows, accepts with `y`,
 // rejects with `r` (which opens a reason-input overlay first).
@@ -123,7 +123,7 @@ func (p *approvalsPane) moveCursor(delta int) {
 //
 // Layout:
 //
-//	header line: "Approvals — N pending — as of HH:MM:SS"
+//	header line: "Approvals - N pending - as of HH:MM:SS"
 //	(optional fetch-error line in warn color)
 //	[for each pending, oldest first]:
 //	  > <id-short>  <age>  [<kind>]  <title>
@@ -133,7 +133,7 @@ func (p *approvalsPane) render(w, h int) string {
 	var sb strings.Builder
 
 	header := lipgloss.NewStyle().Bold(true).Foreground(colorAccent).Render(
-		fmt.Sprintf("Approvals — %d pending", len(p.pending)),
+		fmt.Sprintf("Approvals - %d pending", len(p.pending)),
 	)
 	if !p.fetched.IsZero() {
 		header += lipgloss.NewStyle().Foreground(colorSubtle).Render(
@@ -149,7 +149,7 @@ func (p *approvalsPane) render(w, h int) string {
 
 	if len(p.pending) == 0 {
 		sb.WriteString(lipgloss.NewStyle().Foreground(colorMuted).Italic(true).Render(
-			"\n(no pending approvals — induced skill proposals, plan diffs, and " +
+			"\n(no pending approvals - induced skill proposals, plan diffs, and " +
 				"research outputs that need review surface here)"))
 		return lipgloss.NewStyle().Width(w).Height(h).Render(sb.String())
 	}
@@ -195,7 +195,7 @@ func (p *approvalsPane) render(w, h int) string {
 	return lipgloss.NewStyle().Width(w).Height(h).Render(sb.String())
 }
 
-// (shortID lives in styles.go — shared with the roster.)
+// (shortID lives in styles.go - shared with the roster.)
 
 // humanAge renders a duration as a short relative string: "5s", "12m",
 // "3h", "2d". Matches the roster's age column conventions.

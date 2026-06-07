@@ -12,7 +12,7 @@ import (
 // config block.
 type RetryConfig struct {
 	// MaxAttempts caps the total number of Send tries per envelope per
-	// channel. A value of 1 means "no retry" — the first failure is
+	// channel. A value of 1 means "no retry" - the first failure is
 	// final. Spec default is 5.
 	MaxAttempts int
 
@@ -77,7 +77,7 @@ func (cfg RetryConfig) Validate() error {
 // "before attempt 2" → returns BackoffInitial; attemptIndex=2 returns
 // 2*BackoffInitial; capped at BackoffMax).
 //
-// Deterministic — no jitter today. If we see thundering herd against a
+// Deterministic - no jitter today. If we see thundering herd against a
 // rate-limited Telegram bot, the next iteration adds jitter ±25%.
 func (cfg RetryConfig) backoffFor(attemptIndex int) time.Duration {
 	if attemptIndex <= 0 {

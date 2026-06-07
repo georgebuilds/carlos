@@ -1,5 +1,5 @@
 // Package approvals bridges the agent.ApprovalQueue to the gateway
-// Broker. It's the load-bearing piece of G4 — the bit that turns a
+// Broker. It's the load-bearing piece of G4 - the bit that turns a
 // pending approval (Phase 4 contract) into an outbound envelope on
 // whatever channels the user configured, and turns the Decision that
 // comes back into an Accept / Reject on the same queue the TUI manages.
@@ -22,7 +22,7 @@
 // approvals span every sub-agent in the system. v0 polls because
 // implementing "subscribe to type X across all agents" is a separate
 // projection-shape change the rest of the broker doesn't need. Cadence
-// is generous (30s default) — the user's phone notification is the
+// is generous (30s default) - the user's phone notification is the
 // thing they actually wait on, not the database tick.
 //
 // # First-write-wins
@@ -50,7 +50,7 @@
 // user sees a duplicate notification; the broker's inbound dedupe by
 // (Source, GatewayEventID) keeps the decision side clean and the gate
 // fires only once per ArtifactID anyway. This is the right tradeoff
-// for a single-user daemon — durable bookkeeping for "did we send"
+// for a single-user daemon - durable bookkeeping for "did we send"
 // would just be a slower way to re-prompt at the cost of a migration
 // we don't need yet.
 package approvals
@@ -117,7 +117,7 @@ type Router struct {
 
 	// sent is the in-memory dedupe set keyed by ArtifactID. Entries are
 	// added by dispatch (one envelope per pending) and removed by gc
-	// when the artifact disappears from the pending list — which
+	// when the artifact disappears from the pending list - which
 	// happens when ANY surface (TUI click, scheduled auto-approve, or
 	// the gateway router itself) resolved the approval. Without the
 	// GC, a TUI-side accept leaves the watcher dangling forever.
@@ -173,7 +173,7 @@ func defaultBodyTemplate(p agent.PendingApproval) string {
 // Run blocks until ctx cancels, polling the approval queue on the
 // configured interval. Returns nil on clean shutdown; any error
 // returned represents an unrecoverable broker/event-log fault (today,
-// nothing in the loop is fatal — the loop logs and continues — so
+// nothing in the loop is fatal - the loop logs and continues - so
 // this returns only ctx.Err()).
 //
 // In-flight decision watchers are cancelled when ctx cancels; their
@@ -228,7 +228,7 @@ func (r *Router) poll(ctx context.Context, wg *sync.WaitGroup) {
 			continue
 		}
 		// dispatch fires the Send + spawns the decision watcher. We do
-		// it inline so the marker stays consistent — if Send errors at
+		// it inline so the marker stays consistent - if Send errors at
 		// the envelope-validation layer we want to surface that
 		// immediately rather than retrying every tick forever.
 		r.dispatch(ctx, wg, p)
@@ -275,8 +275,8 @@ func (r *Router) markSent(artifactID string) bool {
 // dispatch builds the outbound envelope, hands it to broker.Send, and
 // launches a watcher goroutine for the matching decision. If
 // broker.Send fails synchronously (envelope validation), the watcher
-// is not started — there's no point waiting for a decision the user
-// will never see — and we leave the artifact in the sent set so we
+// is not started - there's no point waiting for a decision the user
+// will never see - and we leave the artifact in the sent set so we
 // don't loop on a malformed envelope every tick.
 func (r *Router) dispatch(ctx context.Context, wg *sync.WaitGroup, p agent.PendingApproval) {
 	env := gateway.OutboundEnvelope{
@@ -314,7 +314,7 @@ func (r *Router) dispatch(ctx context.Context, wg *sync.WaitGroup, p agent.Pendi
 		defer unsub()
 		defer cancel()
 		r.waitForDecision(watchCtx, p.Ref.ID, decCh)
-		// We don't self-clean watcher / sent map entries here — the
+		// We don't self-clean watcher / sent map entries here - the
 		// next poll's gc handles it once the resolved artifact drops
 		// out of ListPendingApprovals. Leaving a stale cancel in the
 		// map between Decision-landed and next-gc costs one entry
@@ -324,7 +324,7 @@ func (r *Router) dispatch(ctx context.Context, wg *sync.WaitGroup, p agent.Pendi
 
 // waitForDecision blocks until ctx cancels or a Decision arrives on
 // decCh. On Decision, translates to the matching agent.Approval API
-// call. Event-log errors are silently dropped — see package doc for
+// call. Event-log errors are silently dropped - see package doc for
 // why we don't retry (the broker already deduplicated the decision;
 // any retry here would be against the local SQLite, which means we're
 // in a degraded state the loop can't fix).
@@ -335,7 +335,7 @@ func (r *Router) waitForDecision(ctx context.Context, artifactID string, decCh <
 		return
 	case got, ok := <-decCh:
 		if !ok {
-			// Channel closed without a value — shouldn't happen with
+			// Channel closed without a value - shouldn't happen with
 			// the current broker, but it's not worth panicking over.
 			return
 		}

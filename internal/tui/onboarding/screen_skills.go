@@ -55,7 +55,7 @@ func (m skillsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// View body only — Flow.renderRightPane owns the title.
+// View body only - Flow.renderRightPane owns the title.
 func (m skillsModel) View() string {
 	var sb strings.Builder
 	sb.WriteString(styleHint.Render(

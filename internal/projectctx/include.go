@@ -19,19 +19,19 @@ import (
 //     OR end with a known doc extension (.md/.txt). Otherwise we'd
 //     mangle prose that happens to mention `@somebody`.
 //
-// We DO NOT match `@<path>` inside fenced code blocks (``` ... ```) —
+// We DO NOT match `@<path>` inside fenced code blocks (``` ... ```) -
 // that detection happens in expandIncludes line-by-line, not in this
 // regex.
 var includeRe = regexp.MustCompile(`^\s*@(\S+)\s*$`)
 
 // expandIncludes recursively resolves `@<path>` directives in content.
 //
-// baseDir is the directory of the file that wrote the include — paths
+// baseDir is the directory of the file that wrote the include - paths
 // are resolved relative to it (matches Claude Code semantics). `~` is
 // home-expanded. depth/maxDepth bound recursion. seenPaths is the
 // resolution stack used for cycle detection: an include of a path
 // already on the stack is replaced with
-// "[project context: cycle detected — <path>]" rather than re-expanded.
+// "[project context: cycle detected - <path>]" rather than re-expanded.
 //
 // Returned warnings are advisory; callers can log them but the expanded
 // content is always safe to use (failed includes are replaced inline
@@ -47,7 +47,7 @@ func expandIncludes(content, baseDir string, depth, maxDepth int, seenPaths map[
 
 	for _, line := range splitKeepNewlines(content) {
 		// Toggle fence state on lines that START with ``` (optional lang).
-		// We deliberately don't try to parse tildes (~~~) — markdown
+		// We deliberately don't try to parse tildes (~~~) - markdown
 		// parsers vary; the conservative choice is to only honor ``` and
 		// accept that ~~~ blocks may have @-paths expanded. Real-world
 		// AGENTS.md files universally use ```.
@@ -70,18 +70,18 @@ func expandIncludes(content, baseDir string, depth, maxDepth int, seenPaths map[
 
 		incPath := resolveIncludePath(m[1], baseDir)
 		if seenPaths[incPath] {
-			out.WriteString(fmt.Sprintf("[project context: cycle detected — %s]\n", incPath))
+			out.WriteString(fmt.Sprintf("[project context: cycle detected - %s]\n", incPath))
 			continue
 		}
 		data, err := os.ReadFile(incPath)
 		if err != nil {
-			stub := fmt.Sprintf("[project context: include failed — %s: %v]\n", m[1], err)
+			stub := fmt.Sprintf("[project context: include failed - %s: %v]\n", m[1], err)
 			out.WriteString(stub)
 			warnings = append(warnings, fmt.Sprintf("include %s: %v", incPath, err))
 			continue
 		}
 
-		// Push, recurse, pop — pop is essential so siblings don't
+		// Push, recurse, pop - pop is essential so siblings don't
 		// poison each other (only a true cycle along the current
 		// resolution path should trip the guard).
 		seenPaths[incPath] = true
@@ -103,7 +103,7 @@ func expandIncludes(content, baseDir string, depth, maxDepth int, seenPaths map[
 func resolveIncludePath(p, baseDir string) string {
 	if strings.HasPrefix(p, "~") {
 		if home, err := os.UserHomeDir(); err == nil && home != "" {
-			// Handles both "~" and "~/foo" — strip the leading "~" then
+			// Handles both "~" and "~/foo" - strip the leading "~" then
 			// join. "~user" syntax is not supported (rare in practice and
 			// Go's stdlib doesn't provide a cross-platform resolver).
 			rest := strings.TrimPrefix(p, "~")

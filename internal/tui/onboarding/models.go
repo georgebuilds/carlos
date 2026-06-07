@@ -25,13 +25,13 @@ type ModelSuggestion struct {
 }
 
 // providerModels returns the curated list of model suggestions for the
-// onboarding picker. The list is small by design — we're picking the
+// onboarding picker. The list is small by design - we're picking the
 // "obvious starting choice" PLUS a tasteful spread of alternatives,
 // not an exhaustive catalog.
 //
 // The picker is non-restrictive: users can ignore the dropdown and
 // type any slug they want. The list is a discoverability aid, not a
-// gate. That's why we don't have to chase every released model — a
+// gate. That's why we don't have to chase every released model - a
 // user who knows they want some niche fine-tune will type it in.
 //
 // Pricing is hand-curated for the closed labs (Anthropic / OpenAI /
@@ -45,7 +45,7 @@ type ModelSuggestion struct {
 //   - Anthropic native API: model IDs as documented by Anthropic
 //     (kebab-case, no provider prefix).
 //   - OpenAI native API: model IDs as documented by OpenAI.
-//   - OpenRouter: slugs from https://openrouter.ai/api/v1/models —
+//   - OpenRouter: slugs from https://openrouter.ai/api/v1/models -
 //     "<vendor>/<model>" namespacing. Every entry on OpenRouter that
 //     accepts chat/completions supports streaming via the standard
 //     stream: true parameter; we only include chat completion models.
@@ -68,8 +68,8 @@ func providerModels(provider string) []ModelSuggestion {
 		}
 	case "gemini":
 		// Native Google Generative Language API. Slugs match Google's
-		// model IDs (no provider prefix — the prefix is OpenRouter
-		// convention). Default is gemini-3.5-flash (non-lite) — the
+		// model IDs (no provider prefix - the prefix is OpenRouter
+		// convention). Default is gemini-3.5-flash (non-lite) - the
 		// "fast workhorse" tier most users want.
 		return []ModelSuggestion{
 			{Slug: "gemini-3.5-flash", Label: "Gemini 3.5 Flash", Note: "fast workhorse, default", PromptUSDPerM: 0.10, CompletionUSDPerM: 0.40, CtxLen: 1_000_000},
@@ -103,9 +103,9 @@ func providerModels(provider string) []ModelSuggestion {
 		}
 	case "ollama":
 		// Local: users pull these tags with `ollama pull <tag>`. The
-		// list is tiny — Ollama's registry has hundreds and tastes
+		// list is tiny - Ollama's registry has hundreds and tastes
 		// vary; we pick a few that work well on consumer hardware.
-		// Zero pricing is correct — inference is free at the API edge.
+		// Zero pricing is correct - inference is free at the API edge.
 		return []ModelSuggestion{
 			{Slug: "llama3.1:8b", Label: "Llama 3.1 8B", Note: "general, default", CtxLen: 128_000},
 			{Slug: "llama3.3:70b", Label: "Llama 3.3 70B", Note: "needs lots of RAM", CtxLen: 128_000},

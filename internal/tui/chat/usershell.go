@@ -25,7 +25,7 @@ import (
 //   - Ctrl+Enter for "submit this as a background job"
 //   - Esc for "cancel the running foreground job"
 //
-// Transcript rendering for completed jobs is S5 — this file handles
+// Transcript rendering for completed jobs is S5 - this file handles
 // the composer/footer half of the feature.
 
 // userShellPrefix is the single ASCII byte that flips a submission
@@ -33,14 +33,14 @@ import (
 // codex / opencode convention.
 const userShellPrefix = '!'
 
-// (shortIDLen removed — we reuse view.go's existing shortID helper
+// (shortIDLen removed - we reuse view.go's existing shortID helper
 // which returns the leading 8 chars of a ULID. Compact enough for a
 // footer; consistent with how the rest of the chat surface labels
 // agents.)
 
 // isShellSubmission reports whether raw is a "!<cmd>" submission
 // with a non-empty command body. Bare "!" or "! " is the typing-
-// state — handled by the footer for visual feedback, but submit
+// state - handled by the footer for visual feedback, but submit
 // rejects it as empty so the user isn't surprised by an "empty
 // command" job.
 func isShellSubmission(raw string) bool {
@@ -53,7 +53,7 @@ func isShellSubmission(raw string) bool {
 
 // hasShellPrefix reports whether raw is at least a "!" (with or
 // without a command following it). Used by the footer-state
-// detector — a bare "!" still flips the footer into shell-mode so
+// detector - a bare "!" still flips the footer into shell-mode so
 // the user knows what's about to happen.
 func hasShellPrefix(raw string) bool {
 	trimmed := strings.TrimLeft(raw, " \t")
@@ -98,7 +98,7 @@ func pumpUserShellCmd(ch <-chan usershell.Update) tea.Cmd {
 // userShellSubscriptionClosedMsg flags the Subscribe channel as
 // drained. The Update loop responds by clearing m.userShellSubCh so
 // no further pumps are scheduled. Practically this only fires on
-// Manager.Close (chat exit) — at which point the model is also
+// Manager.Close (chat exit) - at which point the model is also
 // about to quit, so the message is largely informational.
 type userShellSubscriptionClosedMsg struct{}
 
@@ -109,7 +109,7 @@ type userShellSubscriptionClosedMsg struct{}
 //
 // Also records the command in the shell-history file (Phase U S7) so
 // ↑/↓ in shell mode can recall it next time. History writes are
-// best-effort — a disk error doesn't fail the submit.
+// best-effort - a disk error doesn't fail the submit.
 func (m *Model) submitUserShellCmd(cmd string, mode usershell.Mode) tea.Cmd {
 	if m.usershell == nil {
 		return func() tea.Msg {
@@ -136,7 +136,7 @@ func (m *Model) submitUserShellCmd(cmd string, mode usershell.Mode) tea.Cmd {
 	}
 	mgr := m.usershell
 	return func() tea.Msg {
-		// 2s budget — Submit is non-blocking; the timeout only
+		// 2s budget - Submit is non-blocking; the timeout only
 		// matters if the underlying DB write hangs.
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
@@ -152,7 +152,7 @@ func (m *Model) submitUserShellCmd(cmd string, mode usershell.Mode) tea.Cmd {
 			modeWord = "bg"
 		}
 		return statusMsg{
-			text: fmt.Sprintf("shell: queued j%s (%s) — %s", shortID(job.ID), modeWord, cmd),
+			text: fmt.Sprintf("shell: queued j%s (%s) - %s", shortID(job.ID), modeWord, cmd),
 			kind: statusInfo,
 		}
 	}
@@ -166,7 +166,7 @@ func (m *Model) cancelForegroundCmd() tea.Cmd {
 		return nil
 	}
 	mgr := m.usershell
-	// Snapshot under no lock — Jobs() returns a copy.
+	// Snapshot under no lock - Jobs() returns a copy.
 	for _, snap := range mgr.Jobs() {
 		if snap.State == usershell.StateRunning && !snap.Backgrounded {
 			id := snap.ID
@@ -239,7 +239,7 @@ type userShellFooterContext struct {
 }
 
 // computeUserShellFooterContext inspects the textarea + Manager and
-// returns the rendering inputs. Pure function — no side effects,
+// returns the rendering inputs. Pure function - no side effects,
 // safe to call per frame.
 func (m *Model) computeUserShellFooterContext() userShellFooterContext {
 	ctx := userShellFooterContext{
@@ -372,7 +372,7 @@ func formatDuration(d time.Duration) string {
 }
 
 // truncateOneLine clips s to at most max runes, replacing the tail
-// with an ellipsis. Single-line only — newlines collapse to spaces
+// with an ellipsis. Single-line only - newlines collapse to spaces
 // because we're rendering a one-line footer. max <= 0 returns s
 // unchanged.
 func truncateOneLine(s string, max int) string {

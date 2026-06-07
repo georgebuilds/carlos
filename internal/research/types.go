@@ -18,7 +18,7 @@
 //     stable ID; the synthesis prompt forces the model to cite by ID
 //     so the verify phase can audit coverage.
 //   - Cost-bounded. ResearchBudget caps provider calls, fetched
-//     bytes, and wall-clock. Refusals are clean — partial Report is
+//     bytes, and wall-clock. Refusals are clean - partial Report is
 //     returned with a Concerns entry.
 //   - Deterministic phase order:
 //     decompose → search → fetch → read → synthesize → verify.
@@ -87,7 +87,7 @@ type BudgetUsage struct {
 // ResearchBudget caps the engine's spend. A zero field means
 // unlimited for that axis. The engine's defaults (filled at the top
 // of Run when fields are zero) are conservative: ~20 calls, 32 MiB,
-// 5 min wall-clock — enough headroom for the documented v0 use cases
+// 5 min wall-clock - enough headroom for the documented v0 use cases
 // without risking a runaway research arc.
 type ResearchBudget struct {
 	MaxProviderCalls int           // 0 = unlimited; default 20

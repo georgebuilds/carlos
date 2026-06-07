@@ -10,7 +10,7 @@ import (
 )
 
 // refreshTickMsg fires every refreshInterval to re-snapshot the
-// agents projection. Cheap query (≤ a few dozen rows) — see source.go
+// agents projection. Cheap query (≤ a few dozen rows) - see source.go
 // for the SQL.
 type refreshTickMsg struct{}
 
@@ -81,7 +81,7 @@ func scheduleClearStatus() tea.Cmd {
 }
 
 // snapshotCmd runs the SnapshotSource once and returns the result as
-// a snapshotReadyMsg. Errors are non-fatal — the model keeps the
+// a snapshotReadyMsg. Errors are non-fatal - the model keeps the
 // previous snapshot and surfaces the error inline via the status bar.
 func snapshotCmd(src SnapshotSource) tea.Cmd {
 	return func() tea.Msg {

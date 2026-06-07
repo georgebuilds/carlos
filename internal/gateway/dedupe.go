@@ -46,11 +46,11 @@ func migrateDedupe(ctx context.Context, db *sql.DB) error {
 // (false, nil) on duplicate, (false, err) on a real DB problem.
 //
 // Why this pattern: persisting the claim in SQL is the only way to
-// survive a daemon crash mid-ingest — an in-memory set is wiped on
+// survive a daemon crash mid-ingest - an in-memory set is wiped on
 // restart and the next Telegram poll re-delivers the unacked update.
 // The row-write happens BEFORE the rest of the ingest pipeline so a
 // crash after claim but before event-append is recoverable as "ingest
-// happened, event lost" — the inbound was logically processed, the
+// happened, event lost" - the inbound was logically processed, the
 // audit row is just missing. Acceptable for an idempotency guarantee.
 func claimIngest(ctx context.Context, db *sql.DB, source Source, gatewayEventID, envelopeID string, ingestedAtMillis int64) (bool, error) {
 	if db == nil {

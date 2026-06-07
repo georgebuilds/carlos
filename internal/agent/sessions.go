@@ -2,14 +2,14 @@
 //
 // In carlos's schema, every conversation is a row in the `agents`
 // projection table. Top-level agents (parent_id IS NULL) are the
-// surface a user actually interacts with — what CC and most agent
+// surface a user actually interacts with - what CC and most agent
 // CLIs call a "session". Spawned sub-agents have parent_id set and
 // are out of scope for the session picker.
 //
 // This file owns the read side: ListUserSessions for the picker,
 // MostRecentUserSession for `carlos -c`. Writes go through the
 // existing InsertAgent + UpdateAgentState path (an agent IS a
-// session — there's no separate session table).
+// session - there's no separate session table).
 package agent
 
 import (
@@ -32,12 +32,12 @@ type Session struct {
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
 	Preview    string // last user message, truncated; "" if no user messages yet
-	UserMsgs   int    // count of user messages — handy for filtering empty drafts
+	UserMsgs   int    // count of user messages - handy for filtering empty drafts
 }
 
 // ErrNoSessions is returned by MostRecentUserSession when the agents
 // table holds no top-level rows. Callers (carlos -c) surface this as
-// a friendly "no sessions yet — start one with `carlos`" hint.
+// a friendly "no sessions yet - start one with `carlos`" hint.
 var ErrNoSessions = errors.New("agent: no user sessions found")
 
 // ListUserSessions returns every top-level agent (parent_id IS NULL),
@@ -46,7 +46,7 @@ var ErrNoSessions = errors.New("agent: no user sessions found")
 // picker hide the session the user is currently in).
 //
 // Each Session is enriched with a last-user-message preview by
-// scanning the events table — bounded to one extra query per
+// scanning the events table - bounded to one extra query per
 // session, ms-scale at the dozens-of-sessions level we expect from a
 // single user.
 func ListUserSessions(ctx context.Context, log *SQLiteEventLog, excluded string) ([]Session, error) {
@@ -78,7 +78,7 @@ func ListUserSessions(ctx context.Context, log *SQLiteEventLog, excluded string)
 		}
 		st, ok := parseState(stateS)
 		if !ok {
-			// Skip rows with an unknown state value — projection
+			// Skip rows with an unknown state value - projection
 			// inconsistency; better to drop one row than fail the
 			// whole picker.
 			continue
@@ -98,7 +98,7 @@ func ListUserSessions(ctx context.Context, log *SQLiteEventLog, excluded string)
 	for i := range out {
 		preview, count, err := lastUserMessage(ctx, log, out[i].ID)
 		if err != nil {
-			// A bad preview shouldn't break the picker — leave
+			// A bad preview shouldn't break the picker - leave
 			// blank and move on.
 			continue
 		}
@@ -109,7 +109,7 @@ func ListUserSessions(ctx context.Context, log *SQLiteEventLog, excluded string)
 }
 
 // MostRecentUserSession returns the single most-recently-active
-// top-level session — used by `carlos -c` / `--continue`. Returns
+// top-level session - used by `carlos -c` / `--continue`. Returns
 // ErrNoSessions when none exist.
 func MostRecentUserSession(ctx context.Context, log *SQLiteEventLog) (Session, error) {
 	sessions, err := ListUserSessions(ctx, log, "")
@@ -125,9 +125,9 @@ func MostRecentUserSession(ctx context.Context, log *SQLiteEventLog) (Session, e
 // lastUserMessage scans the events table for the most recent
 // EvtUserMessage on agentID, returning (truncated preview, total
 // user-message count). A nil payload or a malformed JSON row
-// doesn't error — preview stays empty for that session.
+// doesn't error - preview stays empty for that session.
 func lastUserMessage(ctx context.Context, log *SQLiteEventLog, agentID string) (string, int, error) {
-	// Count first — cheap aggregate.
+	// Count first - cheap aggregate.
 	var count int
 	row := log.DB().QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM events WHERE agent_id = ? AND type = ?`,
@@ -143,7 +143,7 @@ func lastUserMessage(ctx context.Context, log *SQLiteEventLog, agentID string) (
 		return "", 0, nil
 	}
 
-	// Then preview — last user message body.
+	// Then preview - last user message body.
 	var payload []byte
 	row = log.DB().QueryRowContext(ctx,
 		`SELECT payload FROM events
@@ -160,7 +160,7 @@ func lastUserMessage(ctx context.Context, log *SQLiteEventLog, agentID string) (
 
 // decodeUserMessagePreview unmarshals a MessagePayload and returns
 // the first ~120 chars of the text, with newlines collapsed to
-// spaces. A decode error returns "" — preview is a nice-to-have,
+// spaces. A decode error returns "" - preview is a nice-to-have,
 // not load-bearing.
 func decodeUserMessagePreview(payload []byte) string {
 	var msg MessagePayload
@@ -183,7 +183,7 @@ func tryUnmarshalMessage(raw []byte, out *MessagePayload) error {
 // to spaces), appending an ellipsis when trimmed. Lives here so the
 // picker's preview rendering stays consistent regardless of caller.
 //
-// max <= 0 returns the empty string — "don't render any preview" is
+// max <= 0 returns the empty string - "don't render any preview" is
 // a sensible interpretation of "give me zero characters".
 func truncatePreview(s string, max int) string {
 	if max <= 0 {

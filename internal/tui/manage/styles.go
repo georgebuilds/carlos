@@ -7,7 +7,7 @@ import (
 	"github.com/georgebuilds/carlos/internal/theme"
 )
 
-// Brand palette — package-level vars populated by [ApplyPalette].
+// Brand palette - package-level vars populated by [ApplyPalette].
 //
 // Centralized in internal/theme as of Phase 9 slice 9a. The legacy
 // inline literals are now mapped from theme.Palette slots so a single
@@ -43,11 +43,11 @@ func ApplyPalette(p theme.Palette) {
 	colorBrand = p.Brand
 	colorAccent = p.Accent
 	colorMuted = p.Muted
-	// manage's pre-centralization colorWarn was the amber/214 slot —
+	// manage's pre-centralization colorWarn was the amber/214 slot -
 	// the same shade chat called Tool.
 	colorWarn = p.Tool
 	colorOK = p.OK
-	// manage's colorErr was 203 — the same shade chat called Warn.
+	// manage's colorErr was 203 - the same shade chat called Warn.
 	colorErr = p.Warn
 	colorErrHi = p.ErrHi
 	colorCyan = p.Cyan
@@ -55,7 +55,7 @@ func ApplyPalette(p theme.Palette) {
 	colorSubtle = p.Subtle
 }
 
-// Minimum terminal size. Below this we refuse to render — the manage
+// Minimum terminal size. Below this we refuse to render - the manage
 // view needs the cells to keep two panes legible.
 const (
 	minTermWidth  = 100
@@ -68,7 +68,7 @@ const (
 // onto a small palette so the user can scan a row of badges and pick
 // out anomalies at a glance.
 //
-// Color is never the sole signal — the badge always prints the state
+// Color is never the sole signal - the badge always prints the state
 // name in brackets. The color is just the accelerator.
 func stateColor(s agent.State) lipgloss.Color {
 	switch s {
@@ -105,7 +105,7 @@ func stateColor(s agent.State) lipgloss.Color {
 // Slice 9c: a unicode glyph (theme.StateGlyph) is prefixed inside the
 // brackets so the state is still distinguishable when color is stripped
 // (NO_COLOR) or the viewer is colorblind. Glyph sits BEFORE the label
-// so the eye lands on the shape first — color is an accelerator, shape
+// so the eye lands on the shape first - color is an accelerator, shape
 // is the canonical signal.
 func stateBadge(s agent.State) string {
 	style := lipgloss.NewStyle().Foreground(stateColor(s))

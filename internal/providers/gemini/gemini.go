@@ -59,7 +59,7 @@ func New(apiKey string) *Client {
 }
 
 // Name is the routing key the rest of carlos uses to identify this
-// provider. Must stay stable across releases — `default_provider:
+// provider. Must stay stable across releases - `default_provider:
 // gemini` in user configs hangs off this string.
 func (c *Client) Name() string { return "gemini" }
 
@@ -68,7 +68,7 @@ func (c *Client) Name() string { return "gemini" }
 // compatible endpoint.
 //
 // ParallelToolUse: Gemini emits multiple tool_calls per turn via the
-// OpenAI shape — confirmed against Google's docs for the compatible
+// OpenAI shape - confirmed against Google's docs for the compatible
 // endpoint.
 //
 // PromptCaching: Gemini's context caching exists but is exposed

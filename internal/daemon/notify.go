@@ -1,4 +1,4 @@
-// Phase 8 slice 8d — push notifications for scheduled-run completion.
+// Phase 8 slice 8d - push notifications for scheduled-run completion.
 //
 // The daemon fires schedules autonomously; without a notification path
 // the user has no idea anything happened until they open the TUI and
@@ -11,7 +11,7 @@
 //   - Linux:  notify-send "carlos" "<body>"
 //   - other:  no-op (return nil so the daemon doesn't trip).
 //
-// Failures are non-fatal — the daemon's whole point is autonomy; a
+// Failures are non-fatal - the daemon's whole point is autonomy; a
 // missing osascript / notify-send shouldn't crash the scheduler. We
 // log the error to stderr (visible via `carlos daemon status` log
 // fetch in a future slice) and continue.
@@ -33,14 +33,14 @@ type Notifier interface {
 	Notify(ctx context.Context, n Notification) error
 }
 
-// Notification is the payload — minimal because both backends only
+// Notification is the payload - minimal because both backends only
 // expose a title + body. urgency hint is macOS-ignored; Linux uses
 // the `--urgency=` flag.
 type Notification struct {
 	// Title shows in bold above the body. "carlos" by default; the
 	// daemon prepends per-schedule context if useful.
 	Title string
-	// Body is the main message. Keep under ~120 chars — both
+	// Body is the main message. Keep under ~120 chars - both
 	// platforms truncate aggressively past that.
 	Body string
 	// Urgency: "low" | "normal" | "critical". Empty = "normal".
@@ -51,7 +51,7 @@ type Notification struct {
 // on macOS, notify-send on Linux, no-op elsewhere.
 type SystemNotifier struct {
 	// Timeout caps each shell-out so a hung utility doesn't pin the
-	// tick loop. Default 5s — banners should be near-instant.
+	// tick loop. Default 5s - banners should be near-instant.
 	Timeout time.Duration
 }
 
@@ -78,7 +78,7 @@ func (s *SystemNotifier) Notify(ctx context.Context, n Notification) error {
 	case "linux":
 		return runLinuxNotify(cctx, n)
 	default:
-		// Windows, FreeBSD, etc. — no-op rather than error so the
+		// Windows, FreeBSD, etc. - no-op rather than error so the
 		// daemon's tick loop stays platform-agnostic.
 		return nil
 	}
@@ -104,7 +104,7 @@ func runMacOSNotify(ctx context.Context, n Notification) error {
 
 // runLinuxNotify shells out to notify-send. Available on most desktop
 // distros that ship libnotify; servers / minimal containers may not
-// have it — those return ENOENT which we wrap clearly.
+// have it - those return ENOENT which we wrap clearly.
 func runLinuxNotify(ctx context.Context, n Notification) error {
 	args := []string{n.Title, n.Body}
 	if n.Urgency != "" {

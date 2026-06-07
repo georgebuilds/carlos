@@ -158,7 +158,7 @@ func runDaemonDisable() error {
 // points so the user doesn't silently miss notifications.
 //
 // We probe by dialing the daemon UDS. A successful dial implies a
-// running daemon — that's enough; we don't need to round-trip a
+// running daemon - that's enough; we don't need to round-trip a
 // status request just to render the banner. Silent on success.
 //
 // Honest about the limitation: the gateway is single-owner by design
@@ -174,7 +174,7 @@ func warnGatewayOrphaned(cfg *config.Config) {
 		return
 	}
 	fmt.Fprintln(os.Stderr,
-		"carlos: gateway is configured but the daemon isn't running — push/HITL routing is off. "+
+		"carlos: gateway is configured but the daemon isn't running - push/HITL routing is off. "+
 			"Start it with `carlos daemon enable` (installs auto-start) or `carlos daemon run` (foreground).")
 }
 
@@ -266,7 +266,7 @@ func runScheduleList() error {
 // generated from a slug of the prompt + a timestamp suffix.
 func runScheduleAdd(args []string) error {
 	if len(args) < 2 {
-		return errors.New(`schedule add: usage — carlos schedule add "<when>" <prompt...>`)
+		return errors.New(`schedule add: usage - carlos schedule add "<when>" <prompt...>`)
 	}
 	when := args[0]
 	prompt := strings.Join(args[1:], " ")
@@ -296,7 +296,7 @@ func runScheduleAdd(args []string) error {
 	}
 	fmt.Printf("added schedule %q (spec=%q)\n", sch.Name, sch.Spec)
 	if !signalDaemonReload() {
-		fmt.Println("  (daemon not running — it'll pick this up on next start)")
+		fmt.Println("  (daemon not running - it'll pick this up on next start)")
 	}
 	return nil
 }
@@ -305,7 +305,7 @@ func runScheduleAdd(args []string) error {
 // present) and saves the config back.
 func runScheduleRm(args []string) error {
 	if len(args) != 1 {
-		return errors.New("schedule rm: usage — carlos schedule rm <name>")
+		return errors.New("schedule rm: usage - carlos schedule rm <name>")
 	}
 	name := args[0]
 	cfgPath := config.DefaultPath()
@@ -331,7 +331,7 @@ func runScheduleRm(args []string) error {
 	}
 	fmt.Printf("removed schedule %q\n", name)
 	if !signalDaemonReload() {
-		fmt.Println("  (daemon not running — change applies on next start)")
+		fmt.Println("  (daemon not running - change applies on next start)")
 	}
 	return nil
 }

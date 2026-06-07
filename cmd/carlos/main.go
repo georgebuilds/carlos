@@ -1,4 +1,4 @@
-// carlos — entrypoint.
+// carlos - entrypoint.
 //
 // Subcommands:
 //
@@ -67,7 +67,7 @@ import (
 )
 
 // fallbackVersion is what we print when runtime/debug.ReadBuildInfo
-// returns nothing useful — typically when carlos was built via
+// returns nothing useful - typically when carlos was built via
 // `go run` or `go build` from a working tree rather than installed
 // from a tag (`go install` / goreleaser). Production builds always
 // have BuildInfo.Main.Version populated; this string is for dev.
@@ -77,7 +77,7 @@ const fallbackVersion = "dev"
 //
 //  1. BuildInfo.Main.Version when set + not "(devel)" → real semver
 //     (e.g. "v0.3.1" from `go install` or a goreleaser-stamped build).
-//  2. The VCS commit hash from BuildInfo.Settings when available —
+//  2. The VCS commit hash from BuildInfo.Settings when available -
 //     short form, helps when bisecting dev builds.
 //  3. fallbackVersion as the universal default.
 func versionString() string {
@@ -139,7 +139,7 @@ func applyTheme(cfg *config.Config) {
 
 func main() {
 	args := os.Args[1:]
-	// Phase R — session resume flags. Strip before the verb switch
+	// Phase R - session resume flags. Strip before the verb switch
 	// so `carlos -c` / `carlos -r` land in the default chat path
 	// instead of falling through to the help case. The flag is
 	// ignored when followed by a verb (`carlos -c onboard` runs
@@ -175,7 +175,7 @@ func main() {
 			//
 			// Flag parsing is intentionally hand-rolled (no flag package)
 			// so the prompt can contain arbitrary words without quoting
-			// rules — we strip recognized leading flags and treat the
+			// rules - we strip recognized leading flags and treat the
 			// remainder as the prompt.
 			pleaseOpts, prompt, perr := parsePleaseArgs(args[1:])
 			if perr != nil {
@@ -183,7 +183,7 @@ func main() {
 				os.Exit(2)
 			}
 			if strings.TrimSpace(prompt) == "" {
-				fmt.Fprintln(os.Stderr, `carlos: "please" needs something to do — e.g. carlos please summarize ~/notes/today.md`)
+				fmt.Fprintln(os.Stderr, `carlos: "please" needs something to do - e.g. carlos please summarize ~/notes/today.md`)
 				os.Exit(2)
 			}
 			if err := runHeadless(prompt, pleaseOpts); err != nil {
@@ -212,7 +212,7 @@ func main() {
 			}
 			return
 		case "approvals":
-			// `carlos approvals list|accept|reject ...` — Phase 4h v0
+			// `carlos approvals list|accept|reject ...` - Phase 4h v0
 			// CLI surface for the pending-approval queue. The TUI
 			// pane that consumes the same agent.ListPendingApprovals
 			// API lands in a Phase-4h-follow-up slice; this gives
@@ -222,7 +222,7 @@ func main() {
 			}
 			return
 		case "memory":
-			// `carlos memory search <query>` — Phase 7h CLI surface
+			// `carlos memory search <query>` - Phase 7h CLI surface
 			// for the FTS5 summary index. Other memory subcommands
 			// (list-facts, etc.) follow when needed.
 			if err := runMemory(args[1:]); err != nil {
@@ -230,7 +230,7 @@ func main() {
 			}
 			return
 		case "research-internal":
-			// Phase 11 slice 11c — DEV-AID smoke harness for the
+			// Phase 11 slice 11c - DEV-AID smoke harness for the
 			// research orchestrator engine. The user-facing
 			// `/research` slash command + `carlos research <q>`
 			// headless variant land in slice 11f (see below).
@@ -239,7 +239,7 @@ func main() {
 			}
 			return
 		case "research":
-			// Phase 11 slice 11f — user-facing headless variant.
+			// Phase 11 slice 11f - user-facing headless variant.
 			// Mirrors runResearchInternal but with friendlier output,
 			// a markdown report saved to ~/.carlos/research/<slug>-<ts>.md,
 			// and a banner line that surfaces both on stderr and at
@@ -249,7 +249,7 @@ func main() {
 			}
 			return
 		case "daemon":
-			// `carlos daemon run|enable|disable|status` — Phase 8a
+			// `carlos daemon run|enable|disable|status` - Phase 8a
 			// CLI surface. `run` is what the launchd plist / systemd
 			// unit calls; enable/disable manage the platform unit;
 			// status dials the running daemon over UDS.
@@ -258,7 +258,7 @@ func main() {
 			}
 			return
 		case "schedule":
-			// `carlos schedule list|add|rm` — Phase 8b CLI surface.
+			// `carlos schedule list|add|rm` - Phase 8b CLI surface.
 			// Edits ~/.carlos/config.yaml directly so the change is
 			// picked up by the daemon on next SIGHUP / reload.
 			if err := runSchedule(args[1:]); err != nil {
@@ -266,7 +266,7 @@ func main() {
 			}
 			return
 		case "gateway":
-			// `carlos gateway test <channel>` — round-trip a fixed test
+			// `carlos gateway test <channel>` - round-trip a fixed test
 			// envelope through one adapter so the user can verify their
 			// notification wiring without waiting for a scheduled run.
 			if err := runGateway(args[1:]); err != nil {
@@ -284,7 +284,7 @@ func main() {
 	cfg, err := config.Load(path)
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
-		// First run — no message, just launch onboarding.
+		// First run - no message, just launch onboarding.
 		if err := runOnboard(false, ""); err != nil {
 			exit(err)
 		}
@@ -311,7 +311,7 @@ func main() {
 	sessionID, err := resolveSessionFromFlag(resumeMode)
 	if err != nil {
 		if errors.Is(err, errPickerCancelled) {
-			// User backed out of the picker — exit 0, no message.
+			// User backed out of the picker - exit 0, no message.
 			return
 		}
 		exit(err)
@@ -336,7 +336,7 @@ func resolveSessionFromFlag(mode string) (string, error) {
 		home, _ := os.UserHomeDir()
 		dbPath := filepath.Join(home, ".carlos", "state.db")
 		if _, err := os.Stat(dbPath); errors.Is(err, fs.ErrNotExist) {
-			fmt.Fprintln(os.Stderr, "carlos: no past sessions — starting a fresh one")
+			fmt.Fprintln(os.Stderr, "carlos: no past sessions - starting a fresh one")
 			return "", nil
 		}
 		log, err := agent.OpenStateDB(dbPath)
@@ -346,7 +346,7 @@ func resolveSessionFromFlag(mode string) (string, error) {
 		defer log.Close()
 		sess, err := agent.MostRecentUserSession(ctx, log)
 		if errors.Is(err, agent.ErrNoSessions) {
-			fmt.Fprintln(os.Stderr, "carlos: no past sessions — starting a fresh one")
+			fmt.Fprintln(os.Stderr, "carlos: no past sessions - starting a fresh one")
 			return "", nil
 		}
 		if err != nil {
@@ -356,7 +356,7 @@ func resolveSessionFromFlag(mode string) (string, error) {
 	case "resume":
 		id, err := runSessionPicker(ctx)
 		if errors.Is(err, agent.ErrNoSessions) {
-			fmt.Fprintln(os.Stderr, "carlos: no past sessions — starting a fresh one")
+			fmt.Fprintln(os.Stderr, "carlos: no past sessions - starting a fresh one")
 			return "", nil
 		}
 		return id, err
@@ -422,7 +422,7 @@ func runGatewayAdd(args []string) error {
 		return fmt.Errorf("load config: %w", err)
 	}
 	// Daemon must be enabled for the gateway to do anything useful.
-	// Warn the user instead of failing — they may be staging config
+	// Warn the user instead of failing - they may be staging config
 	// for a separate `carlos daemon enable` run.
 	if !cfg.Daemon.Enabled {
 		fmt.Fprintln(os.Stderr, "note: daemon is disabled. Run `carlos daemon enable` once the gateway is configured.")
@@ -485,7 +485,7 @@ type pleaseOptions struct {
 	provider    string // "" means use cfg.DefaultProvider
 	model       string // "" means use the provider's default
 	// worktree opens a sandbox.Worktree at session start and registers
-	// PlanTool. Off by default in v0 — opt-in until field experience
+	// PlanTool. Off by default in v0 - opt-in until field experience
 	// (Slice 7e/7f) shakes out the rough edges of the apply gate.
 	worktree bool
 	// Phase F-18: frame override for this invocation. "" falls through to
@@ -516,7 +516,7 @@ func parseLeadingFrameFlag(args []string) (string, []string, error) {
 
 // parsePleaseArgs strips recognized leading flags from args and returns
 // the options plus the remaining joined prompt. Unknown leading tokens
-// stop the scan — anything after is treated as part of the prompt
+// stop the scan - anything after is treated as part of the prompt
 // (preserving the "no quoting rules" property of `carlos please`).
 func parsePleaseArgs(args []string) (pleaseOptions, string, error) {
 	var opts pleaseOptions
@@ -583,7 +583,7 @@ func buildDispatchForFrame(cfg *config.Config, opts pleaseOptions, activeFrame *
 	}
 	if name == "" {
 		// First configured wins. Iteration order is the YAML map order,
-		// which Go randomizes — but with a single configured provider this
+		// which Go randomizes - but with a single configured provider this
 		// is deterministic, and with multiple the user explicitly picked
 		// DefaultProvider, so we're only here in degenerate cases.
 		for n, pc := range cfg.Providers {
@@ -594,12 +594,12 @@ func buildDispatchForFrame(cfg *config.Config, opts pleaseOptions, activeFrame *
 		}
 	}
 	if name == "" {
-		return nil, errors.New("no provider configured — run `carlos onboard`")
+		return nil, errors.New("no provider configured - run `carlos onboard`")
 	}
 
 	apiKey, baseURL, frameDefaultModel := resolveProviderCreds(cfg, name, activeFrame)
 	if apiKey == "" && baseURL == "" {
-		return nil, fmt.Errorf("provider %q not configured — run `carlos onboard`", name)
+		return nil, fmt.Errorf("provider %q not configured - run `carlos onboard`", name)
 	}
 
 	var p providers.Provider
@@ -634,7 +634,7 @@ func buildDispatchForFrame(cfg *config.Config, opts pleaseOptions, activeFrame *
 // activeFrameForDispatch returns a pointer to the active frame's record
 // in cfg.Frames.List, honouring CARLOS_FRAME env + cwd + persisted-active
 // resolution. Returns nil when frames aren't wired or the resolved name
-// can't be found. nil is the legacy single-shelf signal — buildDispatch
+// can't be found. nil is the legacy single-shelf signal - buildDispatch
 // then uses the shared pantry without applying provider_override.
 func activeFrameForDispatch(cfg *config.Config, flag string) *frame.Frame {
 	if len(cfg.Frames.List) == 0 {
@@ -725,7 +725,7 @@ func providerDefaultModel(name string) string {
 
 // buildResearchEngine constructs a *research.Engine from the tools the
 // chat surface already has registered. Returns nil if either web tool
-// is missing — the chat surface still works fine without /research, so
+// is missing - the chat surface still works fine without /research, so
 // the option-injection point treats nil as "feature disabled".
 //
 // Pulled out as a helper so cmd/carlos.runDefault stays under one
@@ -767,7 +767,7 @@ func buildResearchEngine(provider providers.Provider, model string, reg *tools.R
 // frameName is empty, falls back to the legacy ~/.carlos/research/
 // path so tests + callers that haven't been threaded through Phase F-17
 // keep working. The slug + timestamp combo keeps successive runs of the
-// same question distinguishable without requiring a per-run UUID —
+// same question distinguishable without requiring a per-run UUID -
 // humans recognize the question text first and use the timestamp to
 // pick the right version.
 func saveResearchReport(question, markdown, frameName string, now time.Time) (string, error) {
@@ -804,7 +804,7 @@ func researchDirFor(home, frameName string) string {
 //
 // Empty home (UserHomeDir failed) is a hard skip: there's nothing to
 // migrate and we shouldn't fabricate a path. Errors during migration
-// are surfaced but never fatal — every file we can't move stays where
+// are surfaced but never fatal - every file we can't move stays where
 // it was and the user can re-run carlos after fixing the cause.
 func migrateFrameLayout(home string) {
 	if home == "" {
@@ -830,7 +830,7 @@ func migrateFrameLayout(home string) {
 // slug: lowercase, [a-z0-9] runs joined by '-', collapsed dashes, max
 // 60 chars (so the full filename including the -<unix-ts>.md suffix
 // stays well under common 255-byte filename limits). Empty input falls
-// back to "research" — the caller still gets a usable name even when
+// back to "research" - the caller still gets a usable name even when
 // the question was somehow all punctuation.
 func slugifyQuestion(q string) string {
 	q = strings.ToLower(strings.TrimSpace(q))
@@ -889,7 +889,7 @@ func confirmOverwrite(path string) bool {
 }
 
 func printUsage() {
-	fmt.Println(`carlos — a general-purpose TUI agent
+	fmt.Println(`carlos - a general-purpose TUI agent
 
 Usage:
   carlos                                   launch the TUI (runs onboarding first if needed)
@@ -935,7 +935,7 @@ func exit(err error) {
 
 // scrubProviderName runs the model-name scrub over an error's display
 // string before it reaches stderr. The existing structural lines
-// ("carlos: provider=X model=Y") are deliberate and stay — the user
+// ("carlos: provider=X model=Y") are deliberate and stay - the user
 // configured them. The hardening here is about errors bubbled up from
 // a provider client: when those carry a "I am Gemini" / "Claude:"
 // reveal in their wire payload, we rewrite the visible string to

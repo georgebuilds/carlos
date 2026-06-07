@@ -12,7 +12,7 @@
 //     reaches into vault B. The Cache holds independent indexes per path.
 //   - Frontmatter is first-class: title / aliases / tags / description
 //     are surfaced through structured fields, not raw YAML.
-//   - Outline is just "# headings" — Obsidian callouts, Dataview blocks,
+//   - Outline is just "# headings" - Obsidian callouts, Dataview blocks,
 //     etc. fall through to body text. v0 keeps the surface narrow.
 package notes
 
@@ -39,7 +39,7 @@ type Note struct {
 	// Path is the note's relative path from the vault Root, using
 	// forward slashes regardless of host OS.
 	Path string
-	// Title is the display title — frontmatter `title:` if present,
+	// Title is the display title - frontmatter `title:` if present,
 	// otherwise the filename without the .md extension.
 	Title string
 	// Aliases is the frontmatter `aliases:` list (strings only;

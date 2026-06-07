@@ -1,4 +1,4 @@
-// Phase 9 slice 9j — `/compact` Claude Code parity.
+// Phase 9 slice 9j - `/compact` Claude Code parity.
 //
 // /compact summarizes the chat's conversation history and resets the
 // model's context to the summary, freeing space for new turns. /clear
@@ -9,7 +9,7 @@
 //
 //  1. Build a []providers.Message from the chat transcript (user +
 //     assistant rows only; tool / steering / state-change rows skip).
-//  2. Call m.summarizer.Summarize(ctx, history) — memory.Summarizer.
+//  2. Call m.summarizer.Summarize(ctx, history) - memory.Summarizer.
 //  3. Append EvtSessionReset (same marker /clear uses; this is what
 //     tells chatglue.buildHistory to truncate the projection).
 //  4. Append a synthetic EvtUserMessage carrying "[compacted summary]
@@ -17,7 +17,7 @@
 //  5. Clear the rendered transcript; the events flow back through the
 //     subscription pump and rebuild it from the post-reset slice.
 //
-// The pre-compact events stay in the log for audit — the summary is a
+// The pre-compact events stay in the log for audit - the summary is a
 // new synthetic row, not a destructive edit. This keeps /compact
 // reversible-by-design: a future "uncompact" verb could restore the
 // pre-summary history because every row is still there, just gated by
@@ -50,7 +50,7 @@ const compactSummaryPrefix = "[compacted summary]\n\n"
 
 // WithSummarizer wires a memory.Summarizer so the `/compact` slash
 // command can summarize and reset the conversation. When nil, /compact
-// echoes "not configured" — graceful degradation. Production wires
+// echoes "not configured" - graceful degradation. Production wires
 // memory.LLMSummarizer against the chat's provider + model; tests
 // inject a fake that returns a canned string.
 func WithSummarizer(s memory.Summarizer) Option {
@@ -63,7 +63,7 @@ func WithSummarizer(s memory.Summarizer) Option {
 //
 // Empty-history short-circuit: if the transcript projects down to zero
 // user-or-assistant rows we skip the provider call and echo "nothing
-// to compact" — Claude Code's behavior for the same edge.
+// to compact" - Claude Code's behavior for the same edge.
 //
 // Failures inside the goroutine surface as a warn-colored statusMsg
 // via errMsg. The pre-compact events stay in the log unchanged so a
@@ -157,7 +157,7 @@ func (m *Model) runCompactCmd() tea.Cmd {
 
 // transcriptToMessages projects the rendered transcript into the
 // providers.Message slice the summarizer ingests. Only user +
-// assistant rows contribute — tool calls / results / steering / state
+// assistant rows contribute - tool calls / results / steering / state
 // changes are conversation-adjacent metadata, not prose the model
 // should be asked to summarize. (The summarizer's LLMSummarizer prompt
 // is also tuned for plain conversational turns.)

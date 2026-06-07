@@ -11,7 +11,7 @@ import (
 
 // WriteTool atomically writes a file (temp + fsync + rename), mirroring
 // internal/config/config.go's Save discipline. Defaults to "create" mode,
-// i.e. fails if the file already exists — the model has to be explicit
+// i.e. fails if the file already exists - the model has to be explicit
 // about overwriting, which protects existing artifacts during a partial
 // or hallucinated tool call.
 //
@@ -34,7 +34,7 @@ func NewWriteTool() *WriteTool { return &WriteTool{} }
 func (*WriteTool) Name() string { return "write" }
 
 func (*WriteTool) Description() string {
-	return "Atomically write a text file. Default mode is \"create\" — fails if the file already exists. Use mode \"overwrite\" to replace an existing file. Parent directories are created as needed. Use when creating new files; for surgical edits to an existing file, prefer the `edit` tool."
+	return "Atomically write a text file. Default mode is \"create\" - fails if the file already exists. Use mode \"overwrite\" to replace an existing file. Parent directories are created as needed. Use when creating new files; for surgical edits to an existing file, prefer the `edit` tool."
 }
 
 func (*WriteTool) Schema() []byte {
@@ -106,7 +106,7 @@ func (t *WriteTool) Execute(_ context.Context, input []byte) ([]byte, error) {
 // atomicWrite is the shared write primitive used by WriteTool and
 // EditTool. It mirrors config.Save's discipline: temp file, fsync,
 // rename. POSIX rename is atomic on Darwin and Linux, so a reader either
-// sees the old file or the new file — never a torn write.
+// sees the old file or the new file - never a torn write.
 func atomicWrite(path string, data []byte, mode os.FileMode) error {
 	tmp := path + ".tmp"
 	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode)

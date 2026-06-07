@@ -20,7 +20,7 @@ type Frame struct {
 	Name string `json:"name"`
 	// Glyph is the single visible character on the takeover-switcher tile
 	// and inline picker. Defaults are filled in by DefaultGlyphFor when
-	// the user omits it. ASCII / single-width Unicode only — emoji are
+	// the user omits it. ASCII / single-width Unicode only - emoji are
 	// opt-in (user can override) but never required.
 	Glyph string `json:"glyph,omitempty"`
 	// Accent is one of the eight palette names (rust, slate, olive, teal,
@@ -36,7 +36,7 @@ type Frame struct {
 	// inherits the provider's default model.
 	Model string `json:"model,omitempty"`
 	// ProviderOverride lets a frame shadow specific keys from the shared
-	// providers pantry — e.g. work uses LUDUS_ANTHROPIC_KEY for separate
+	// providers pantry - e.g. work uses LUDUS_ANTHROPIC_KEY for separate
 	// billing while personal stays on ANTHROPIC_API_KEY. Resolved by
 	// ResolveProvider.
 	ProviderOverride map[string]ProviderOverride `json:"provider_override,omitempty"`
@@ -80,7 +80,7 @@ type ProviderOverride struct {
 
 // Config is the on-disk shape of the `frames:` block in config.yaml.
 //
-// A missing or empty Config is fine — the loader synthesises a single
+// A missing or empty Config is fine - the loader synthesises a single
 // "personal" frame from the legacy top-level provider/model. See
 // MigrateFromLegacy.
 type Config struct {
@@ -111,7 +111,7 @@ const DefaultPersonalAccent = "cream"
 
 // AccentPalette is the curated list of accent names a frame may pick.
 // Anything outside this list is treated as "use theme default accent"
-// rather than erroring — frames are user-edited YAML and we'd rather
+// rather than erroring - frames are user-edited YAML and we'd rather
 // degrade than refuse to load.
 var AccentPalette = []string{
 	"rust", "slate", "olive", "teal",
@@ -142,7 +142,7 @@ func DefaultGlyphFor(name string) string {
 
 // IsValidAccent reports whether the accent name is in the curated
 // palette. Used by the new-frame wizard to gate the colour picker, not
-// by Load — see comment on AccentPalette.
+// by Load - see comment on AccentPalette.
 func IsValidAccent(name string) bool {
 	for _, a := range AccentPalette {
 		if a == name {
@@ -179,7 +179,7 @@ const (
 	// the model that side-quests and tangents should be deferred. A
 	// good fit for "I am pairing on one specific bug" sessions.
 	ModeTight = "tight"
-	// ModeOrchestrator means carlos delegates aggressively — large
+	// ModeOrchestrator means carlos delegates aggressively - large
 	// problems get split across child agents that report back to the
 	// parent. Best fit for work frames coordinating multiple workstreams.
 	ModeOrchestrator = "orchestrator"
@@ -310,7 +310,7 @@ type SharedProvider struct {
 //	   shared.DefaultModel.
 //
 // Returns ("", _, false) when neither the frame nor the default names a
-// provider — callers prompt the user / re-run onboarding.
+// provider - callers prompt the user / re-run onboarding.
 func ResolveProvider(
 	f Frame,
 	defaultProvider string,
@@ -323,7 +323,7 @@ func ResolveProvider(
 	if name == "" {
 		return ResolvedProvider{}, false
 	}
-	shared := pantry[name] // zero value if missing — caller decides
+	shared := pantry[name] // zero value if missing - caller decides
 	out := ResolvedProvider{
 		Provider:     name,
 		APIKey:       shared.APIKey,

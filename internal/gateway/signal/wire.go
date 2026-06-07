@@ -2,7 +2,7 @@ package signal
 
 // This file sketches the signal-cli JSON-RPC wire envelope so a future
 // implementer of slice G6 starts with the field names and types already
-// pinned to the documented service shape — not a blank file.
+// pinned to the documented service shape - not a blank file.
 //
 // Source for the shapes below:
 //
@@ -32,7 +32,7 @@ import "encoding/json"
 // the client-side correlation key signal-cli echoes back in the
 // matching rpcResponse. Method is the signal-cli method name ("send",
 // "subscribeReceive", "listGroups", …). Params is the method-specific
-// payload — declared as RawMessage so each call site picks the
+// payload - declared as RawMessage so each call site picks the
 // concrete type (sendParams, etc.) without forcing a union here.
 type rpcRequest struct {
 	JSONRPC string          `json:"jsonrpc"`
@@ -61,7 +61,7 @@ type rpcError struct {
 }
 
 // rpcNotification is a server-initiated message (no ID). signal-cli
-// uses these for `receive` events — one per inbound Signal message
+// uses these for `receive` events - one per inbound Signal message
 // from any subscribed account. The Params payload decodes into
 // receiveParams.
 type rpcNotification struct {
@@ -72,7 +72,7 @@ type rpcNotification struct {
 
 // sendParams is the payload of a `send` method call. The signal-cli
 // service accepts either Recipient (a single E.164 number) or GroupID
-// (a base64-encoded group identifier) — set exactly one. Message is
+// (a base64-encoded group identifier) - set exactly one. Message is
 // the body; Attachments is an optional list of local file paths
 // signal-cli reads from disk and ships as Signal attachments.
 //
@@ -88,7 +88,7 @@ type sendParams struct {
 }
 
 // sendResult is the result payload of a successful `send`. The
-// per-recipient Timestamp is the signal-cli message identifier — we'll
+// per-recipient Timestamp is the signal-cli message identifier - we'll
 // surface it as DeliveryReceipt.ProviderRef so the broker can
 // correlate later.
 type sendResult struct {
@@ -106,7 +106,7 @@ type sendResultDetail struct {
 }
 
 // signalAddress is the canonical recipient shape signal-cli uses
-// across send/receive — either an E.164 phone number or a Signal UUID.
+// across send/receive - either an E.164 phone number or a Signal UUID.
 // Both are optional (one of the two is always populated) so we model
 // them as omitempty-decorated strings rather than a union.
 type signalAddress struct {
@@ -144,7 +144,7 @@ type receiveEnvelope struct {
 // receiveDataMsg is the inbound message body. Message is the free-form
 // text; Attachments carries any media the user sent (signal-cli writes
 // them to disk and gives us paths). GroupInfo distinguishes group
-// messages from 1:1 DMs — v1 treats both alike because the gateway is
+// messages from 1:1 DMs - v1 treats both alike because the gateway is
 // single-user, but G6+ will likely want to filter on it.
 type receiveDataMsg struct {
 	Timestamp   int64              `json:"timestamp"`
@@ -185,8 +185,8 @@ type receiveQuote struct {
 }
 
 // receiveReactInfo captures emoji reactions. Reactions on a previous
-// approval message are a candidate UX for "approve" without typing —
-// the user double-taps a thumbs-up — but that's well past G6.
+// approval message are a candidate UX for "approve" without typing -
+// the user double-taps a thumbs-up - but that's well past G6.
 type receiveReactInfo struct {
 	Emoji     string `json:"emoji"`
 	Author    string `json:"author,omitempty"`
@@ -207,7 +207,7 @@ type receiveReceiptMsg struct {
 }
 
 // subscribeReceiveParams is the payload of a `subscribeReceive` method
-// call — the way a JSON-RPC client tells signal-cli "start streaming
+// call - the way a JSON-RPC client tells signal-cli "start streaming
 // inbound for this account". Without it the daemon holds incoming
 // messages and only releases them on an explicit `receive` poll.
 type subscribeReceiveParams struct {

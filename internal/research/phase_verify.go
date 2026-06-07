@@ -9,16 +9,16 @@ import (
 
 // runVerify runs two independent quality signals on the synthesis:
 //
-//   1. CitationAuditor — pure-Go heuristic that scores claim-by-
+//   1. CitationAuditor - pure-Go heuristic that scores claim-by-
 //      claim citation coverage. Always runs; cheap; deterministic.
-//   2. Verifier (LLM judge) — only runs when e.Judge is configured.
+//   2. Verifier (LLM judge) - only runs when e.Judge is configured.
 //      The judge is intentionally a separate provider (per the
 //      "Too Consistent to Detect" finding); when no separate judge
 //      is available, we skip the LLM pass and rely on the
 //      heuristic alone.
 //
 // Verifier failures (malformed response, provider down, judge ran
-// out of budget) are NOT fatal — the synthesis still ships; the
+// out of budget) are NOT fatal - the synthesis still ships; the
 // failure is recorded in Concerns. The citation audit always
 // succeeds (it's pure compute).
 func (e *Engine) runVerify(ctx context.Context, report *Report) (err error) {
@@ -39,7 +39,7 @@ func (e *Engine) runVerify(ctx context.Context, report *Report) (err error) {
 			"verify: no separate-provider judge configured; skipping LLM verification")
 		return nil
 	}
-	// Budget gate — the judge is a separate LLM call, so we charge
+	// Budget gate - the judge is a separate LLM call, so we charge
 	// it against the same budget. If we're at the cap, skip rather
 	// than fail.
 	if report.Budget.ProviderCalls >= e.Budget.MaxProviderCalls {
@@ -59,7 +59,7 @@ func (e *Engine) runVerify(ctx context.Context, report *Report) (err error) {
 		Size:    int64(len(report.Synthesis)),
 	}
 	vr, err := v.Verify(ctx, ref, []byte(report.Synthesis))
-	// Charge the judge call no matter what — even a malformed
+	// Charge the judge call no matter what - even a malformed
 	// response cost a round-trip.
 	report.Budget.ProviderCalls++
 	if err != nil {

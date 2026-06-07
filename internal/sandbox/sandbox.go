@@ -7,7 +7,7 @@
 //     isolation would just add friction.
 //   - [Worktree]: runs commands inside a fresh `git worktree` checked out
 //     on a private branch under `<home>/.carlos/worktrees/<id>/`. Suited to
-//     any sub-agent that may write to shared state — file edits, git
+//     any sub-agent that may write to shared state - file edits, git
 //     operations, bash commands that mutate the workspace.
 //
 // # Why worktree per side-effecting agent
@@ -23,7 +23,7 @@
 //   - A safe "apply gate". The sub-agent's work lives on a private branch
 //     until the user (or a future policy) explicitly merges it back into
 //     the parent repo via [Worktree.Apply]. A reject is just
-//     [Worktree.Discard] — the work disappears, the parent is untouched.
+//     [Worktree.Discard] - the work disappears, the parent is untouched.
 //
 // # When NOT to use a worktree
 //
@@ -34,7 +34,7 @@
 //
 // [Worktree.Apply] uses `git merge --ff-only`. If the parent repo's HEAD
 // has advanced past the worktree's base while the sub-agent was working,
-// the merge refuses — Apply returns an error the UI surfaces, and the user
+// the merge refuses - Apply returns an error the UI surfaces, and the user
 // resolves manually (typically by re-running the sub-agent on the new
 // base). No silent merge commits, no surprise conflict markers in the
 // working tree.
@@ -67,7 +67,7 @@ type Backend interface {
 	// Combined stdout/stderr are each capped at maxOutputBytes. Context
 	// cancel kills the entire process tree, not just the direct child.
 	Exec(ctx context.Context, cmd []string, stdin io.Reader) (stdout, stderr []byte, exit int, err error)
-	// Close releases backend resources. Must be idempotent — Phase 4's
+	// Close releases backend resources. Must be idempotent - Phase 4's
 	// approval queue calls Close after Apply or Discard regardless of
 	// what happened in between.
 	Close() error
@@ -102,7 +102,7 @@ const maxOutputBytes = 8 * 1024
 
 // capWriter is an io.Writer that drops bytes once max have been written.
 // It exposes how many bytes were dropped so the caller can mark output as
-// truncated if it cares (the Backend interface currently does not — the
+// truncated if it cares (the Backend interface currently does not - the
 // supervisor is expected to render output as-is and the cap is a hard
 // safety belt, not a UX feature).
 type capWriter struct {
@@ -139,7 +139,7 @@ func (w *capWriter) Bytes() []byte { return w.buf.Bytes() }
 //     ctx-cancel can SIGKILL the whole tree, not just the immediate child
 //     (bash + descendants would otherwise survive)
 //   - returns exit code 0 on success, the process's exit code on a
-//     non-zero exit (not surfaced as err — that's caller policy), and -1
+//     non-zero exit (not surfaced as err - that's caller policy), and -1
 //     for infrastructure-level failures
 func runCommand(ctx context.Context, dir string, cmd []string, stdin io.Reader) (stdout, stderr []byte, exit int, err error) {
 	if len(cmd) == 0 {

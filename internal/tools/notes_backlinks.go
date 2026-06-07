@@ -89,7 +89,7 @@ func (t *NotesBacklinksTool) Execute(_ context.Context, input []byte) ([]byte, e
 		}
 		return jsonErr("notes_backlinks: %v", err)
 	}
-	// Target for the response header — we already know it resolved
+	// Target for the response header - we already know it resolved
 	// (Backlinks would have errored otherwise) and we computed
 	// `resolved` above for the subtree gate.
 	target, _ := v.Get(resolved)

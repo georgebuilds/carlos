@@ -5,7 +5,7 @@ import (
 	"io"
 )
 
-// Local runs commands in the user's actual working directory — whatever
+// Local runs commands in the user's actual working directory - whatever
 // the carlos process was launched with. No isolation, no setup cost. Used
 // for read-only sub-agents (search, inspect, summarize) where the
 // worktree machinery would just be friction.
@@ -30,7 +30,7 @@ func (l *Local) Exec(ctx context.Context, cmd []string, stdin io.Reader) ([]byte
 	return runCommand(ctx, l.Dir, cmd, stdin)
 }
 
-// Close is a no-op for Local — there's nothing to release. Always
+// Close is a no-op for Local - there's nothing to release. Always
 // returns nil so the caller's defer is harmless.
 func (*Local) Close() error { return nil }
 

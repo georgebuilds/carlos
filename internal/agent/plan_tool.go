@@ -1,4 +1,4 @@
-// PlanTool — the model-facing handle on the propose-don't-publish gate.
+// PlanTool - the model-facing handle on the propose-don't-publish gate.
 //
 // The model edits files inside a sandbox worktree using the usual
 // read/write/edit/bash tools, then calls `plan` to package the
@@ -30,7 +30,7 @@
 // PlanTool lives in the `agent` package (not `tools`) because the
 // approval-queue + artifact-store primitives it composes live here and
 // `tools` cannot import `agent` without a cycle. Conceptually it's a
-// peer of AgentTool — both are model-facing wrappers around supervisor
+// peer of AgentTool - both are model-facing wrappers around supervisor
 // machinery, both live next to the machinery they wrap.
 package agent
 
@@ -63,7 +63,7 @@ type PlanTool struct {
 	// mutates the worktree.
 	Worktree PlanWorktree
 	// Log is the SQLite event log the artifact + approval events land
-	// in. Same log the rest of the session writes to — there's no
+	// in. Same log the rest of the session writes to - there's no
 	// separate "plan log".
 	Log *SQLiteEventLog
 }
@@ -80,15 +80,15 @@ func NewPlanTool(agentID string, w PlanWorktree, log *SQLiteEventLog) *PlanTool 
 func (*PlanTool) Name() string { return "plan" }
 
 // Description is what the model sees in the tools array. It frames
-// `plan` as the terminal step of an edit session — when the model
+// `plan` as the terminal step of an edit session - when the model
 // is *done* and wants the user to review, not as a tool to call
 // speculatively.
 func (*PlanTool) Description() string {
-	return "Queue the changes you've made in this session for the user's review. Call this AFTER you've made your edits (via write/edit/bash) and the work is ready for sign-off. The user sees the diff in the approval queue; on accept, the edits land atomically in their checkout; on reject, the work is discarded. Returns immediately with a plan id — the actual apply decision is asynchronous. Use sparingly: one call per logical unit of work, not one call per file."
+	return "Queue the changes you've made in this session for the user's review. Call this AFTER you've made your edits (via write/edit/bash) and the work is ready for sign-off. The user sees the diff in the approval queue; on accept, the edits land atomically in their checkout; on reject, the work is discarded. Returns immediately with a plan id - the actual apply decision is asynchronous. Use sparingly: one call per logical unit of work, not one call per file."
 }
 
 // Schema is the JSON schema the model fills in. The diff itself is
-// NOT in the schema — carlos computes it from the worktree's actual
+// NOT in the schema - carlos computes it from the worktree's actual
 // state so a hallucinated `diff` field can't bypass the gate.
 func (*PlanTool) Schema() []byte {
 	return []byte(`{
@@ -140,7 +140,7 @@ type PlanMetadata struct {
 
 // PlanResult is what the model sees as the tool_result body. The
 // `await` field is a string the model can quote verbatim back to the
-// user when explaining "your decision is needed" — keeps the
+// user when explaining "your decision is needed" - keeps the
 // instruction text in one place (here) so a future change to the CLI
 // surface doesn't drift across prompts.
 type PlanResult struct {
@@ -187,7 +187,7 @@ func (t *PlanTool) Execute(ctx context.Context, input []byte) ([]byte, error) {
 		// this as a tool error (not a successful "queued: false") forces
 		// the model to react and try again rather than silently telling
 		// the user "I queued a plan" with nothing in it.
-		return nil, errors.New("plan: no changes detected — make edits first")
+		return nil, errors.New("plan: no changes detected - make edits first")
 	}
 
 	actualFiles, err := t.Worktree.ChangedFiles()

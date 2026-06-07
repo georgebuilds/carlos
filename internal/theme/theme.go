@@ -55,13 +55,13 @@ import (
 type Variant int
 
 const (
-	// Dark is the default — the legacy palette.
+	// Dark is the default - the legacy palette.
 	Dark Variant = iota
 	// Light is the inverted-lightness variant for light-bg terminals.
 	Light
 )
 
-// String returns "dark" / "light" — matches the YAML config tokens
+// String returns "dark" / "light" - matches the YAML config tokens
 // users type in `cfg.Theme.Variant`.
 func (v Variant) String() string {
 	if v == Light {
@@ -78,14 +78,14 @@ func (v Variant) String() string {
 // returned.
 //
 // When NoColor is true every color slot holds the empty lipgloss.Color,
-// which lipgloss treats as "no styling" — the output is plain text.
+// which lipgloss treats as "no styling" - the output is plain text.
 // Bold / Italic still render in monochrome terminals, so emphasis
 // survives. Callers that want to distinguish "no color, but still
 // emphasize" can read NoColor and toggle Bold/Italic accordingly.
 type Palette struct {
-	// Accent is the brand color — borders, active highlights, key hints.
+	// Accent is the brand color - borders, active highlights, key hints.
 	Accent lipgloss.Color
-	// Muted is the dim neutral — separators, hint text.
+	// Muted is the dim neutral - separators, hint text.
 	Muted lipgloss.Color
 	// User colors the human's chat messages.
 	User lipgloss.Color
@@ -153,14 +153,14 @@ func (o Options) envOf() func(string) string {
 //  1. If `NO_COLOR` is set (any non-empty value, per no-color.org spec),
 //     return a monochrome palette and stop.
 //  2. Pick the variant: ForcedVariant ("dark"/"light") wins; else parse
-//     `COLORFGBG` (`"FG;BG"` ANSI indices — BG < 8 is dark, BG >= 8 is
+//     `COLORFGBG` (`"FG;BG"` ANSI indices - BG < 8 is dark, BG >= 8 is
 //     light); else default to Dark.
 //  3. Build the base palette for the chosen variant.
 //  4. If AccentOverride is non-empty, replace the Accent slot.
 func Load(opts Options) Palette {
 	env := opts.envOf()
 
-	// NO_COLOR check — overrides everything. Per https://no-color.org
+	// NO_COLOR check - overrides everything. Per https://no-color.org
 	// the variable is treated as a boolean: any value (even "0") means
 	// "user wants monochrome".
 	if env("NO_COLOR") != "" {
@@ -240,7 +240,7 @@ func parseColor(s string) (lipgloss.Color, bool) {
 	return "", false
 }
 
-// darkPalette is the legacy literal set — the same hex values
+// darkPalette is the legacy literal set - the same hex values
 // chat/manage/onboarding declared inline before centralization. Keeping
 // them identical means the visual baseline is unchanged for the (vast)
 // majority of users on dark terminals.
@@ -264,7 +264,7 @@ func darkPalette() Palette {
 // for legibility against a white background; neutrals lighten so they
 // recede instead of dominate.
 //
-// Hand-tuned, not computed — color theory algorithms produce muddy
+// Hand-tuned, not computed - color theory algorithms produce muddy
 // results on a brand-anchored palette this small. Tune by eye.
 func lightPalette() Palette {
 	return Palette{
@@ -284,7 +284,7 @@ func lightPalette() Palette {
 
 // monochromePalette returns a Palette with every color slot empty.
 // lipgloss treats `Color("")` as "no styling" so the rendered output
-// is plain text. Bold/Italic still apply — callers that want emphasis
+// is plain text. Bold/Italic still apply - callers that want emphasis
 // in NO_COLOR mode toggle those instead of color.
 //
 // The Variant is preserved so a renderer can still pick a different

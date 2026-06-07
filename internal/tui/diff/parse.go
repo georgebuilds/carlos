@@ -1,6 +1,6 @@
 // Package diff renders unified-diff text into a lipgloss-styled string
-// for the manage focus pane. The package is standalone — no manage- or
-// chat-specific imports — so the focus-pane integrator (a follow-up
+// for the manage focus pane. The package is standalone - no manage- or
+// chat-specific imports - so the focus-pane integrator (a follow-up
 // slice) can wire it up without bleeding TUI state into here.
 //
 // Public surface is just [Renderer], [Mode], [Renderer.Render], and
@@ -16,7 +16,7 @@ import (
 )
 
 // parsedDiff is the intermediate representation produced by [parseUnified]
-// and consumed by the renderer. Kept deliberately minimal — we don't try
+// and consumed by the renderer. Kept deliberately minimal - we don't try
 // to reproduce go-diff's full type fidelity, just enough to colorize and
 // index the output.
 type parsedDiff struct {
@@ -24,7 +24,7 @@ type parsedDiff struct {
 }
 
 type parsedFile struct {
-	// header lines verbatim — everything before the first @@ hunk header
+	// header lines verbatim - everything before the first @@ hunk header
 	// for a file (the `diff --git`, `index`, `---`, `+++`, plus any
 	// `new file mode`/`deleted file mode`/`Binary files differ` lines).
 	header []string
@@ -65,7 +65,7 @@ type parsedHunk struct {
 // We tolerate diffs that lack the `diff --git` line (e.g. raw `diff -u`
 // output): a `--- ` line outside of a hunk also starts a new file.
 //
-// The parser does NOT validate hunk line counts against the @@ header —
+// The parser does NOT validate hunk line counts against the @@ header -
 // if a producer emits a malformed hunk the renderer will still print
 // every line it sees, just without any guarantee that the +/- counts
 // match what the header advertised. This is intentional: rendering
@@ -116,7 +116,7 @@ func parseUnified(data []byte) parsedDiff {
 			cur.newPath = strings.TrimPrefix(line, "+++ ")
 		case strings.HasPrefix(line, "@@"):
 			if cur == nil {
-				// hunk before any file header — synthesize an anonymous
+				// hunk before any file header - synthesize an anonymous
 				// file so we don't drop the lines on the floor.
 				cur = &parsedFile{}
 			}
@@ -156,7 +156,7 @@ func parseUnified(data []byte) parsedDiff {
 // "unknown start" and still prints the hunk.
 func parseHunkRange(header string) (int, int) {
 	// Format: "@@ -A,B +C,D @@ ..."  or "@@ -A +C @@ ..." (count=1)
-	// We scan twice — first '-' then '+' — and grab the integer up to
+	// We scan twice - first '-' then '+' - and grab the integer up to
 	// either ',' or ' '. strconv.Atoi handles the leading-zero edge.
 	parse := func(prefix byte) int {
 		i := strings.IndexByte(header, prefix)

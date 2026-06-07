@@ -15,7 +15,7 @@
 //
 // Persisted state is intentionally minimal: path + ISO-8601 trusted-at
 // timestamp. We do NOT persist per-workspace command allowlists in v1
-// — the allowlist is global (see bash.go) and applies uniformly
+// - the allowlist is global (see bash.go) and applies uniformly
 // across trusted dirs. Per-workspace overrides are a future slice.
 //
 // # Why a separate package
@@ -62,7 +62,7 @@ type Store struct {
 }
 
 // DefaultPath returns ~/.carlos/trusted-workspaces.json. Falls back
-// to ".carlos/trusted-workspaces.json" (relative) if HOME is unset —
+// to ".carlos/trusted-workspaces.json" (relative) if HOME is unset -
 // matches config.DefaultPath's behavior so the two stay parallel.
 func DefaultPath() string {
 	home, err := os.UserHomeDir()
@@ -79,7 +79,7 @@ func NewStore(path string) *Store {
 }
 
 // Load reads the JSON file into the in-memory cache. An absent file
-// is not an error — it just means no workspace has been trusted yet.
+// is not an error - it just means no workspace has been trusted yet.
 // Safe to call multiple times; only the first read hits disk.
 func (s *Store) Load() error {
 	s.mu.Lock()
@@ -114,7 +114,7 @@ func (s *Store) Load() error {
 // IsTrusted reports whether path is in the trusted set. path is
 // normalized (absolute + symlink-resolved) before lookup so callers
 // can pass the literal cwd they got from os.Getwd. Returns (false,
-// nil) for an unloaded store — call Load first.
+// nil) for an unloaded store - call Load first.
 func (s *Store) IsTrusted(path string) (bool, error) {
 	norm, err := normalize(path)
 	if err != nil {
@@ -130,7 +130,7 @@ func (s *Store) IsTrusted(path string) (bool, error) {
 }
 
 // Trust adds path to the trusted set and persists to disk. Idempotent
-// — re-trusting an existing path just refreshes the TrustedAt stamp.
+// - re-trusting an existing path just refreshes the TrustedAt stamp.
 func (s *Store) Trust(path string) error {
 	norm, err := normalize(path)
 	if err != nil {
@@ -146,7 +146,7 @@ func (s *Store) Trust(path string) error {
 }
 
 // Untrust removes path from the trusted set and persists. Idempotent
-// — removing an absent path is a no-op.
+// - removing an absent path is a no-op.
 func (s *Store) Untrust(path string) error {
 	norm, err := normalize(path)
 	if err != nil {
@@ -179,7 +179,7 @@ func (s *Store) List() ([]Entry, error) {
 
 // save writes the entries to disk atomically: temp file in the same
 // directory, fsync, rename. Parent dir is created 0700, file is
-// 0600 — same secrecy as config.yaml.
+// 0600 - same secrecy as config.yaml.
 func (s *Store) save() error {
 	dir := filepath.Dir(s.path)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -239,6 +239,6 @@ func normalize(path string) (string, error) {
 		return eval, nil
 	}
 	// Symlink-resolution failure (e.g. dir doesn't exist yet) shouldn't
-	// block the trust write — fall back to the lexical absolute path.
+	// block the trust write - fall back to the lexical absolute path.
 	return abs, nil
 }

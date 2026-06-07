@@ -74,7 +74,7 @@ type Fetcher interface {
 // invokes WebFetchTool.Execute with a {"url": …} payload, parses the
 // JSON envelope (the same shape the model sees), and maps it onto a
 // Source. The adapter is the only place the engine talks to the tool's
-// JSON encoding — everything downstream consumes Source values.
+// JSON encoding - everything downstream consumes Source values.
 type WebFetchAdapter struct {
 	Tool *tools.WebFetchTool
 
@@ -266,7 +266,7 @@ func (e *Engine) callProvider(ctx context.Context, report *Report, system, user 
 	if err != nil {
 		return "", fmt.Errorf("provider stream: %w", err)
 	}
-	// Charge the call regardless of stream outcome — even an errored
+	// Charge the call regardless of stream outcome - even an errored
 	// stream cost a provider round-trip.
 	report.Budget.ProviderCalls++
 

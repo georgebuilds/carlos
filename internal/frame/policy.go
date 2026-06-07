@@ -15,14 +15,14 @@ type Resolution struct {
 	// Reason records which rule fired. One of the Reason* constants below.
 	Reason string
 	// Candidates is the list of frames whose CwdHints matched the input
-	// cwd. Populated only when Reason is ReasonCwdHintMultiple — the chat
+	// cwd. Populated only when Reason is ReasonCwdHintMultiple - the chat
 	// shell uses it to pre-highlight the matching tiles in the takeover.
 	Candidates []string
 }
 
 const (
 	// ReasonEnv means the CARLOS_FRAME env var picked the frame. Highest
-	// precedence — beats everything else, even an explicit -f flag at the
+	// precedence - beats everything else, even an explicit -f flag at the
 	// CLI (the CLI checks env first to keep cron + manual invocation
 	// identical).
 	ReasonEnv = "env"
@@ -63,11 +63,11 @@ type Input struct {
 //
 // Precedence (highest first):
 //
-//	1. Env (CARLOS_FRAME) — wins even if the named frame doesn't exist;
+//	1. Env (CARLOS_FRAME) - wins even if the named frame doesn't exist;
 //	   callers see ReasonEnv with the requested name so they can warn.
-//	2. Flag (-f) — same shape as env, slightly lower precedence so
+//	2. Flag (-f) - same shape as env, slightly lower precedence so
 //	   `CARLOS_FRAME=work carlos -f personal` honors the env.
-//	3. Cwd-hint match — exact one match wins; multiple matches fall through
+//	3. Cwd-hint match - exact one match wins; multiple matches fall through
 //	   to persisted-active with the candidates surfaced.
 //	4. Persisted active.
 //	5. Default ("personal" when default is empty).
@@ -132,12 +132,12 @@ func fallbackDefault(cfg *Config) string {
 // the supplied cwd. Match rule:
 //
 //   - Hint without any glob meta-character (`*` `?` `[`) is treated as a
-//     path prefix — useful for the common `~/Code/anneal` case.
+//     path prefix - useful for the common `~/Code/anneal` case.
 //   - Hint with glob meta is fed to filepath.Match against the cwd
 //     itself, then against every parent directory walking up.
 //
 // Both forms tolerate a leading `~/` which is resolved against $HOME by
-// callers — ResolveActive doesn't expand tilde itself because the cwd
+// callers - ResolveActive doesn't expand tilde itself because the cwd
 // passed in is already absolute.
 func matchCwdHints(cfg *Config, cwd string) []string {
 	var out []string

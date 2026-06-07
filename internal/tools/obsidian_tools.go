@@ -4,10 +4,10 @@
 // instead of defaulting to the configured vault. That separation is
 // what makes the permission story honest:
 //
-//   - notes_* — operates on the user's configured vault only. The
+//   - notes_* - operates on the user's configured vault only. The
 //     LayeredApprover auto-approves these because the trust came
 //     from the configuration boundary.
-//   - obsidian_* — operates on whatever vault the model passes per
+//   - obsidian_* - operates on whatever vault the model passes per
 //     call. Always prompts the user; the model has to convince them
 //     that THIS particular vault path is one they want carlos to
 //     read.

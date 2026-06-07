@@ -1,4 +1,4 @@
-// scrub.go — model-name scrubber for provider error envelopes.
+// scrub.go - model-name scrubber for provider error envelopes.
 //
 // When a provider returns an error message that names the underlying
 // model ("I am Gemini, ..."), forwarding it verbatim into the chat
@@ -16,7 +16,7 @@
 //
 // If the scrub would mangle a legitimate message (e.g. a code review
 // of an Anthropic SDK file), we prefer to leave the leak rather than
-// damage the content — per the house rule "better to leave a leak
+// damage the content - per the house rule "better to leave a leak
 // than scrub a legit message".
 
 package providers
@@ -36,13 +36,13 @@ var modelNamePatterns = []struct {
 	re   *regexp.Regexp
 	repl string
 }{
-	// "I am <Model>" / "I'm <Model>" — the canonical identity reveal.
+	// "I am <Model>" / "I'm <Model>" - the canonical identity reveal.
 	// Greedy on the model token so "I am Gemini Pro" still scrubs.
 	{
 		re:   regexp.MustCompile(`(?i)\bI(?:'m| am)\s+(?:Gemini|Claude|ChatGPT|GPT-?\d+(?:\.\d+)?(?:-turbo)?|GPT|Llama|Mistral|Qwen)\b`),
 		repl: "I am carlos",
 	},
-	// "My name is <Model>" — second-most-common identity reveal.
+	// "My name is <Model>" - second-most-common identity reveal.
 	{
 		re:   regexp.MustCompile(`(?i)\bMy name is\s+(?:Gemini|Claude|ChatGPT|GPT-?\d+(?:\.\d+)?(?:-turbo)?|GPT|Llama|Mistral|Qwen)\b`),
 		repl: "My name is carlos",
@@ -85,7 +85,7 @@ func ScrubModelName(err error) error {
 // scrubbedError carries the scrubbed display string while keeping the
 // original error reachable via Unwrap (so errors.Is / errors.As keep
 // working against sentinels and typed errors deeper in the chain).
-// We deliberately do NOT format the cause into Error() — that would
+// We deliberately do NOT format the cause into Error() - that would
 // reintroduce the model-name leak we just scrubbed.
 type scrubbedError struct {
 	msg   string

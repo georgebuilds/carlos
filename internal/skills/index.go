@@ -1,4 +1,4 @@
-// index.go — description-embedding index for top-k retrieval.
+// index.go - description-embedding index for top-k retrieval.
 //
 // Voyager pattern (verified from the paper, Fig. 4): index by skill
 // description, retrieve top-k by cosine similarity over the description
@@ -12,7 +12,7 @@
 // per-byte sign. It is deterministic, dependency-free, and good enough
 // to validate the wiring (the cosine top-k machinery is provably
 // correct over any non-zero vectors). It is NOT a real semantic
-// embedder — two unrelated descriptions will not cluster by topic.
+// embedder - two unrelated descriptions will not cluster by topic.
 //
 // # Production wiring (deferred to Phase 6+)
 //
@@ -27,7 +27,7 @@
 //
 // The interface is intentionally narrow: one method, Embed(ctx, text),
 // returns a float32 vector of arbitrary dimension. The Index does not
-// pin a dimension — the first Add wins; subsequent Adds with mismatched
+// pin a dimension - the first Add wins; subsequent Adds with mismatched
 // dimensions return an error.
 package skills
 
@@ -51,7 +51,7 @@ type Embedder interface {
 
 // DeterministicEmbedder is the v0 stub. Produces a 256-dim vector from
 // the SHA-256 of the input (8 bits per dim, mapped to [-1, +1]). Not a
-// semantic embedder — wire a real one before relying on cluster quality
+// semantic embedder - wire a real one before relying on cluster quality
 // in production.
 type DeterministicEmbedder struct {
 	// Dim controls the output vector length. Zero defaults to 256. The
@@ -90,7 +90,7 @@ var _ Embedder = DeterministicEmbedder{}
 
 // IndexEntry pairs a skill with its description embedding. The Skill
 // pointer is held by reference; mutating the underlying skill after Add
-// changes what later TopK calls see (intentional — when the curator
+// changes what later TopK calls see (intentional - when the curator
 // updates a skill, the index should reflect it next query).
 type IndexEntry struct {
 	Skill *Skill
@@ -144,7 +144,7 @@ type ScoredSkill struct {
 
 // TopK returns up to k skills ranked by descending cosine similarity to
 // queryEmb. Ties are broken by skill name to keep results stable.
-// k <= 0 returns nil. A dimension mismatch yields an empty slice — the
+// k <= 0 returns nil. A dimension mismatch yields an empty slice - the
 // caller mis-configured the embedder.
 func (idx *Index) TopK(queryEmb []float32, k int) []ScoredSkill {
 	if k <= 0 || len(idx.entries) == 0 {

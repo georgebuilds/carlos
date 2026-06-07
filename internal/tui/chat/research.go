@@ -58,7 +58,7 @@ func (f SpawnFunc) Spawn(ctx context.Context, q string) (string, <-chan research
 //
 // Kept as an interface (rather than a hard *research.Engine field) so
 // the chat package never grows a transport / network dependency the
-// tests would need to stub out — the engine itself owns the provider +
+// tests would need to stub out - the engine itself owns the provider +
 // search + fetch wiring, and the chat side only needs Run.
 type ResearchEngine interface {
 	Run(ctx context.Context, question string) (*research.Report, error)
@@ -66,7 +66,7 @@ type ResearchEngine interface {
 
 // WithResearchEngine wires a ResearchEngine so the `/research` slash
 // command runs against it. When nil, `/research` returns a clean
-// "research engine not wired" status echo — useful for the dev-aid
+// "research engine not wired" status echo - useful for the dev-aid
 // chat surface that intentionally has no provider hooked up.
 //
 // The production wire-up (cmd/carlos.runDefault) constructs the engine
@@ -87,12 +87,12 @@ const researchSyncTimeout = 10 * time.Minute
 // runResearchCmd is the synchronous-for-v0 driver for `/research`. It:
 //
 //  1. Returns immediately with a status line so the user sees something
-//     happen — the engine itself takes 30s-3min in the typical case.
+//     happen - the engine itself takes 30s-3min in the typical case.
 //  2. Spawns a goroutine that calls engine.Run.
 //  3. On completion (success or error), writes a single
 //     EvtAssistantMessage to the log so the rendered Report (or error
 //     line) lands in the transcript via the chat's normal subscription
-//     pump — no special-case rendering needed.
+//     pump - no special-case rendering needed.
 //
 // Sync execution is the v0 contract; slice 11d makes it a real sub-agent
 // so the chat stays interactive while research runs.
@@ -119,7 +119,7 @@ func (m *Model) runResearchCmd(question string) tea.Cmd {
 		var body string
 		switch {
 		case err != nil && report != nil && (report.Synthesis != "" || len(report.Sources) > 0):
-			// Partial result: still useful — render what we got plus the
+			// Partial result: still useful - render what we got plus the
 			// failure line. The engine's own Concerns list will reflect
 			// the abort cause; we append a top-level note so the user
 			// can see the failure without scrolling.
@@ -156,7 +156,7 @@ func (m *Model) runResearchCmd(question string) tea.Cmd {
 }
 
 // researchAsyncTimeout caps the sub-agent context. Same 10-minute
-// budget as the sync path (researchSyncTimeout) — the engine's own
+// budget as the sync path (researchSyncTimeout) - the engine's own
 // budget is the inner guard; this is the outer "something is hung"
 // fence. The chat stays interactive throughout: the goroutine just
 // drains the spawn channel and the phase events flow through the
@@ -173,7 +173,7 @@ const researchAsyncTimeout = 10 * time.Minute
 // (cancel-on-deadline) and to surface a fall-back error statusMsg if
 // SpawnResearch itself fails before the first event lands. Once the
 // engine starts, every observable progress signal comes through the
-// event log — no out-of-band channel into the Model — so race-
+// event log - no out-of-band channel into the Model - so race-
 // conditions on transcript mutation are impossible.
 func (m *Model) runResearchAsync(question string) tea.Cmd {
 	spawner := m.spawner
@@ -278,7 +278,7 @@ func truncate(s string, maxRunes int) string {
 // markdown document. Mirrors cmd/carlos.renderReportMarkdown so the
 // chat-surfaced report has the same shape as the headless CLI's
 // stdout output. Exported so cmd/carlos can call into the same
-// formatter — the chat package is the lowest-dep place that already
+// formatter - the chat package is the lowest-dep place that already
 // imports both the agent log and the research types, so it's a
 // natural home.
 //
@@ -311,7 +311,7 @@ func RenderReportMarkdown(r *research.Report) string {
 			if title == "" {
 				title = "(untitled)"
 			}
-			fmt.Fprintf(&b, "- **%s** — %s — <%s>\n", s.ID, title, s.URL)
+			fmt.Fprintf(&b, "- **%s** - %s - <%s>\n", s.ID, title, s.URL)
 		}
 		b.WriteString("\n")
 	}

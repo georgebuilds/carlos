@@ -3,14 +3,14 @@
 // ntfy is the spec's "fire-and-forget HITL" channel: HTTP POST publishes
 // to a topic, push subscribers receive the message, and up to three
 // "http" action buttons let the user respond with one tap. The publish
-// API has two flavors — the plain-body form (priority/title carried in
+// API has two flavors - the plain-body form (priority/title carried in
 // X-* headers) and the structured JSON form. We use the JSON form
 // uniformly for two reasons:
 //
 //  1. Action buttons are first-class JSON: a [{"action":"http", ...}]
 //     array attached to the publish, no fragile X-Actions header parser.
 //  2. The server's response is a JSON publish receipt with an `id` field
-//     when we accept JSON in return — exactly what we need to populate
+//     when we accept JSON in return - exactly what we need to populate
 //     DeliveryReceipt.ProviderRef without speculative parsing.
 //
 // The shapes in this file mirror the publish + receipt subset we care
@@ -23,14 +23,14 @@ package ntfy
 
 // publishRequest is the structured ntfy publish body. We POST it to the
 // server *root* with Content-Type: application/json and the topic
-// embedded in the payload — the alternative (POST /<topic>) cannot
+// embedded in the payload - the alternative (POST /<topic>) cannot
 // carry actions cleanly in plain-body mode.
 type publishRequest struct {
 	// Topic is the destination ntfy topic. Required.
 	Topic string `json:"topic"`
 
 	// Message is the body text. Markdown is supported by recent ntfy
-	// clients but is rendered as plaintext on older ones — adapters
+	// clients but is rendered as plaintext on older ones - adapters
 	// should not rely on formatting fidelity.
 	Message string `json:"message,omitempty"`
 
@@ -54,7 +54,7 @@ type publishRequest struct {
 }
 
 // publishAction is one "http" action button. ntfy supports "view" and
-// "broadcast" actions too, but we only emit "http" — it's the only one
+// "broadcast" actions too, but we only emit "http" - it's the only one
 // that round-trips back into our handler without an Android intent.
 //
 // The button fires Method against URL, attaching Headers. Body is
@@ -73,7 +73,7 @@ type publishAction struct {
 
 // publishResponse is the JSON receipt ntfy returns when we publish with
 // Content-Type: application/json. The shape is documented but ntfy.sh
-// has historically reserved the right to add fields — we only decode
+// has historically reserved the right to add fields - we only decode
 // the ones we need and let unknown fields drift through.
 type publishResponse struct {
 	ID    string `json:"id"`    // ntfy-assigned message id; used as ProviderRef

@@ -213,7 +213,7 @@ func (t *GrepTool) Execute(ctx context.Context, input []byte) ([]byte, error) {
 
 // grepFile scans one file line-by-line, writing any hits in `path:N:txt`
 // form into out. Increments *hits per match (caller enforces the cap).
-// Files that fail to open are silently skipped — a coding agent doesn't
+// Files that fail to open are silently skipped - a coding agent doesn't
 // need a flood of "permission denied" entries cluttering its view.
 func grepFile(path string, match func([]byte) bool, out *bytes.Buffer, hits *int) {
 	f, err := os.Open(path)

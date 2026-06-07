@@ -45,9 +45,9 @@ func (k SortKey) String() string {
 // priorityRank scores a row for the default sort. Lower = higher
 // priority (sorted ascending in the rendered list).
 //
-// Bucket 0: awaiting-input. SPEC's loudest signal — only a human
+// Bucket 0: awaiting-input. SPEC's loudest signal - only a human
 // unblocks them.
-// Bucket 1: runaway cost. Cheap heuristic — top 10% by cost-cents is
+// Bucket 1: runaway cost. Cheap heuristic - top 10% by cost-cents is
 // computed by sortPriority below; this rank function only knows about
 // the bucket, not the threshold.
 // Bucket 2: verification-failed. Not yet wired; the slot exists so we
@@ -64,7 +64,7 @@ func priorityRank(r agent.AgentRow, runawayBudget int64) int {
 		return 0
 	case runawayBudget > 0 && r.CostCents >= runawayBudget:
 		return 1
-	// Bucket 2: verification-failed — not yet wired; intentionally
+	// Bucket 2: verification-failed - not yet wired; intentionally
 	// reserves the slot. When a `verification_failed` badge is added
 	// to AgentRow, this branch flips on.
 	case r.State == agent.StateOrphaned:
@@ -108,7 +108,7 @@ func runawayThreshold(rows []agent.AgentRow) int64 {
 // keeps the documented direction (ascending for IDs, ascending state
 // label, ascending cost, etc.); asc=false reverses.
 //
-// The priority sort intentionally ignores asc — the user's request is
+// The priority sort intentionally ignores asc - the user's request is
 // "tell me what needs attention", which has a canonical direction. We
 // keep the asc parameter to allow Shift+1 to fall through to priority-
 // reversed (descending bucket order) for symmetry, but the typical

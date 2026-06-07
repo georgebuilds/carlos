@@ -33,7 +33,7 @@ func (e *Engine) runFetch(ctx context.Context, report *Report) (err error) {
 			report.Sources = fetched
 			return err
 		}
-		// Refuse before each fetch — we don't know the body size
+		// Refuse before each fetch - we don't know the body size
 		// until we read it, so the check uses what we've already
 		// charged. A single oversized fetch can still push us past
 		// the cap by one body; we accept that overshoot in exchange

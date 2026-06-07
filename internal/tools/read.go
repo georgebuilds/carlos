@@ -11,8 +11,8 @@ import (
 	"os"
 )
 
-// ReadTool returns file contents — optionally restricted to a 1-indexed
-// line range — with a 64 KiB output cap. Binary files are refused via a
+// ReadTool returns file contents - optionally restricted to a 1-indexed
+// line range - with a 64 KiB output cap. Binary files are refused via a
 // null-byte sniff in the first 512 bytes, so the model never gets handed
 // a UTF-8-mangled binary blob as "text".
 //
@@ -38,7 +38,7 @@ func NewReadTool() *ReadTool { return &ReadTool{} }
 func (*ReadTool) Name() string { return "read" }
 
 func (*ReadTool) Description() string {
-	return "Read a text file's contents, optionally restricted to a 1-indexed line range. Output is capped at 64 KiB; binary files are refused. Use when you need to inspect code, configuration, or any text artifact — prefer this over `bash cat` so output is properly framed and truncation is explicit."
+	return "Read a text file's contents, optionally restricted to a 1-indexed line range. Output is capped at 64 KiB; binary files are refused. Use when you need to inspect code, configuration, or any text artifact - prefer this over `bash cat` so output is properly framed and truncation is explicit."
 }
 
 func (*ReadTool) Schema() []byte {
@@ -73,7 +73,7 @@ const defaultReadCap = 64 * 1024
 // binarySniffBytes is the leading window we inspect for null bytes. 512
 // is what git uses for the same heuristic; if a file looks like text in
 // its first 512 bytes it almost always is (the rare exception is a UTF-16
-// file with a BOM beyond 512 — out of scope for v0).
+// file with a BOM beyond 512 - out of scope for v0).
 const binarySniffBytes = 512
 
 // Execute reads the file and returns its content (range-limited if asked,
@@ -125,7 +125,7 @@ func (t *ReadTool) Execute(_ context.Context, input []byte) ([]byte, error) {
 	// microseconds.
 	scanner := bufio.NewScanner(br)
 	// Allow up to 1 MiB per line so generated/minified files don't crash
-	// the scanner — they will still get truncated by the output cap.
+	// the scanner - they will still get truncated by the output cap.
 	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
 	lineNum := 0
 	truncated := false
@@ -150,7 +150,7 @@ func (t *ReadTool) Execute(_ context.Context, input []byte) ([]byte, error) {
 		return nil, fmt.Errorf("read: scan %s: %w", path, err)
 	}
 	if truncated {
-		fmt.Fprintf(&out, "[truncated at %d bytes — file is larger]\n", cap)
+		fmt.Fprintf(&out, "[truncated at %d bytes - file is larger]\n", cap)
 	}
 	return out.Bytes(), nil
 }

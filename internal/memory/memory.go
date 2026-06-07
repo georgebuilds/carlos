@@ -1,4 +1,4 @@
-// Package memory — see schema.go for the doc comment that anchors the
+// Package memory - see schema.go for the doc comment that anchors the
 // package. This file used to hold a stub Store implementation; the
 // real implementation now lives in store.go (lifecycle), summary.go
 // (FTS5 summaries), summarizer.go (Summarizer interface), and

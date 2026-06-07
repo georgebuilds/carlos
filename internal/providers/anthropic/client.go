@@ -1,5 +1,5 @@
 // Package anthropic implements a pure-Go streaming client for the
-// Anthropic Messages API. No SDK — we hit the HTTP endpoint directly so
+// Anthropic Messages API. No SDK - we hit the HTTP endpoint directly so
 // the capability map stays honest about what the API actually offers
 // versus what an SDK papers over.
 //
@@ -39,7 +39,7 @@ func New(apiKey string) *Client {
 		APIKey:  apiKey,
 		BaseURL: "https://api.anthropic.com",
 		HTTPClient: &http.Client{
-			// No overall Timeout — that aborts in-flight streams.
+			// No overall Timeout - that aborts in-flight streams.
 			// Per-dial timeout via Transport instead.
 			Transport: &http.Transport{
 				ResponseHeaderTimeout: 30 * time.Second,
@@ -201,7 +201,7 @@ func (c *Client) Stream(ctx context.Context, req providers.Request) (<-chan prov
 				// Anthropic sends this as the last event; consumer
 				// already saw EventStopReason via message_delta.
 			case "ping":
-				// keepalive — ignore.
+				// keepalive - ignore.
 			case "error":
 				if ev.Error != nil {
 					emit(providers.Event{
@@ -210,7 +210,7 @@ func (c *Client) Stream(ctx context.Context, req providers.Request) (<-chan prov
 					})
 				}
 			default:
-				// Unknown event type — forward-compat: ignore.
+				// Unknown event type - forward-compat: ignore.
 			}
 			return nil
 		})

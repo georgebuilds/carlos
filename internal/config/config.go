@@ -152,7 +152,7 @@ type GatewayRetry struct {
 //
 // Path may use `~` for the home directory; the notes package canonicalises
 // it (filepath.Abs + Clean) on first Open. An empty Path means "no vault
-// configured" — tool calls without a per-call override return the
+// configured" - tool calls without a per-call override return the
 // configured-vault error envelope to the model.
 //
 // Exclude patterns use the same syntax as `filepath.Match`. The notes
@@ -173,7 +173,7 @@ type ThemeConfig struct {
 	// Variant pins the palette: "dark" or "light". Empty string ("")
 	// means autodetect via COLORFGBG, falling back to "dark". Any
 	// other value is treated as autodetect (the theme package is
-	// permissive — never produces a black-on-black surprise).
+	// permissive - never produces a black-on-black surprise).
 	Variant string `json:"variant,omitempty"`
 	// Accent overrides the brand-blue Accent slot. Accepts
 	// "#rrggbb"/"#rgb" hex or a decimal 0-255 ANSI palette index.
@@ -207,8 +207,8 @@ type DaemonConfig struct {
 // SPEC § Skill model § Convention paths.
 //
 // Convention values:
-//   - "agents" — write to .agents/skills/<name>/SKILL.md (open standard, default)
-//   - "claude" — write to .claude/skills/<name>/SKILL.md (Claude Code convention)
+//   - "agents" - write to .agents/skills/<name>/SKILL.md (open standard, default)
+//   - "claude" - write to .claude/skills/<name>/SKILL.md (Claude Code convention)
 type SkillsConfig struct {
 	Convention string `json:"convention"`
 }
@@ -219,7 +219,7 @@ const (
 	SkillsConventionClaude = "claude"
 )
 
-// DefaultSkillsConvention is the default for the onboarding screen — open
+// DefaultSkillsConvention is the default for the onboarding screen - open
 // standard wins by default (user can flip).
 const DefaultSkillsConvention = SkillsConventionAgents
 
@@ -256,7 +256,7 @@ func DefaultDir() string {
 	return filepath.Dir(DefaultPath())
 }
 
-// Load parses the YAML at path. Returns (nil, os.ErrNotExist) — wrapped — if
+// Load parses the YAML at path. Returns (nil, os.ErrNotExist) - wrapped - if
 // the file is absent, so callers can distinguish "no config yet, run
 // onboarding" from "config exists but failed to parse".
 //
@@ -296,7 +296,7 @@ func migrateFrames(cfg Config) frame.Config {
 // File mode is 0600.
 //
 // Atomic-rename guarantees on POSIX (Darwin/Linux) ensure callers see either
-// the old file contents or the new file contents — never a half-written one,
+// the old file contents or the new file contents - never a half-written one,
 // even on ctrl-c or panic mid-write.
 func Save(path string, cfg *Config) error {
 	if cfg == nil {

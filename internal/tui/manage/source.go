@@ -1,4 +1,4 @@
-// Package manage is the bubbletea sub-agent supervision TUI — the
+// Package manage is the bubbletea sub-agent supervision TUI - the
 // marquee surface from SPEC § Manage mode.
 //
 // The package is a read-model + verb dispatcher over the event-sourced
@@ -26,7 +26,7 @@ type SnapshotSource interface {
 
 // SQLiteSnapshotSource queries the agents projection table directly.
 // We don't go through agent.ReplayAll because that walks the entire
-// event log on every tick (250ms cadence) — wasteful when the
+// event log on every tick (250ms cadence) - wasteful when the
 // projection cache is exactly what we need. The query matches GetAgent's
 // column layout so the deserialization stays consistent.
 type SQLiteSnapshotSource struct {

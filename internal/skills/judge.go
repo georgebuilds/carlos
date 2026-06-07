@@ -1,11 +1,11 @@
-// judge.go — cross-provider triage judge.
+// judge.go - cross-provider triage judge.
 //
 // # Why cross-provider
 //
 // Zheng et al. NeurIPS 2023 ("Judging LLM-as-a-Judge") confirmed
 // self-preference bias is real: a model judging its own output rates
 // it higher than an outside judge does. carlos's multi-provider stack
-// makes the mitigation free — induce with Anthropic, judge with
+// makes the mitigation free - induce with Anthropic, judge with
 // OpenAI; induce with Ollama, judge with OpenRouter; etc.
 //
 // # Bias controls in the prompt
@@ -67,7 +67,7 @@ CANDIDATE:
 {{PROPOSAL_BODY}}
 `
 
-// Decision values returned by the judge. Stable strings — they land
+// Decision values returned by the judge. Stable strings - they land
 // in the SKILL.md frontmatter / artifact metadata.
 const (
 	DecisionAccept        = "accept"
@@ -183,7 +183,7 @@ func parseJudgeOutput(raw string) (*Score, error) {
 
 // SelectJudgeProvider picks the first provider in `available` that is
 // NOT the inducer's. Returns an error if no different provider is
-// available — the caller should fall back to "human-only review" in
+// available - the caller should fall back to "human-only review" in
 // that case (the proposal still queues for the user; it just lacks
 // the automated score).
 //

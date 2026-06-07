@@ -33,7 +33,7 @@ Type=simple
 ExecStart=%s daemon run
 Restart=always
 RestartSec=5
-# StandardOutput/StandardError default to journal — view with
+# StandardOutput/StandardError default to journal - view with
 #   journalctl --user -u carlos -f
 NoNewPrivileges=true
 

@@ -6,7 +6,7 @@ package gateway
 // channel to land a Decision wins; later decisions are still logged but
 // no-op.
 //
-// Empty lists mean "do not route this kind anywhere" — the broker
+// Empty lists mean "do not route this kind anywhere" - the broker
 // returns no receipts and never fails the send. This is the right shape
 // for the spec's default-quiet posture: a user that hasn't opted in
 // sees no traffic.
@@ -35,7 +35,7 @@ func DefaultRoutingConfig() RoutingConfig {
 }
 
 // ChannelsFor returns the routing list for k. Unknown kinds get an
-// empty slice rather than a panic — a future kind is a forward-compat
+// empty slice rather than a panic - a future kind is a forward-compat
 // concern, not a runtime fault.
 func (r RoutingConfig) ChannelsFor(k OutboundKind) []Source {
 	switch k {

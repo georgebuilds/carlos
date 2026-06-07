@@ -7,7 +7,7 @@
 //     accent-bordered, fixed skeleton
 //   - Always-visible footer hints (Zellij + Helix discoverability)
 //   - "/" opens an inline filter (universal idiom)
-//   - Empty state with a call-to-action ("no past sessions — run
+//   - Empty state with a call-to-action ("no past sessions - run
 //     `carlos` to start one")
 //   - No decorative motion; Lipgloss adaptive color via theme.Load
 //   - Sub-100ms response (the list is in memory; nothing to wait on)
@@ -35,7 +35,7 @@ import (
 )
 
 // errPickerCancelled is the sentinel callers (runDefault) treat as
-// "user backed out — exit cleanly without launching chat".
+// "user backed out - exit cleanly without launching chat".
 var errPickerCancelled = errors.New("session picker: cancelled by user")
 
 // runSessionPicker opens an interactive bubbletea list of past
@@ -83,7 +83,7 @@ func openStateDBForPicker() (*agent.SQLiteEventLog, error) {
 	dbPath := filepath.Join(home, ".carlos", "state.db")
 	if _, err := os.Stat(dbPath); err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			// No state.db yet — no sessions. Caller falls back
+			// No state.db yet - no sessions. Caller falls back
 			// to fresh-session.
 			return nil, agent.ErrNoSessions
 		}
@@ -105,7 +105,7 @@ func loadPickerPalette() theme.Palette {
 }
 
 // sessionPickerModel is the bubbletea Model for the picker. Tiny by
-// design — the whole UX is a list + filter + footer.
+// design - the whole UX is a list + filter + footer.
 type sessionPickerModel struct {
 	all      []agent.Session
 	filtered []int // indices into all that match the current filter
@@ -141,7 +141,7 @@ func (m sessionPickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		return m, nil
 	case tea.KeyMsg:
-		// Filter-mode key handling is its own tiny REPL — typing
+		// Filter-mode key handling is its own tiny REPL - typing
 		// adds to the filter, esc exits filter without clearing
 		// the picker, enter commits the highlighted match.
 		if m.filterMode {
@@ -250,7 +250,7 @@ func (m sessionPickerModel) View() string {
 		Foreground(m.pal.Muted).
 		Render(fmt.Sprintf("%d session%s · pick one to continue", len(m.filtered), pluralS(len(m.filtered))))
 
-	// Filter row — visible only while in filter mode OR a filter is set.
+	// Filter row - visible only while in filter mode OR a filter is set.
 	var filterRow string
 	if m.filterMode || m.filter != "" {
 		caret := ""
@@ -266,7 +266,7 @@ func (m sessionPickerModel) View() string {
 	var rows []string
 	if len(m.filtered) == 0 {
 		rows = append(rows, lipgloss.NewStyle().Foreground(m.pal.Muted).Render(
-			"(no matches — backspace to clear filter, esc to cancel)"))
+			"(no matches - backspace to clear filter, esc to cancel)"))
 	}
 	for i, idx := range m.filtered {
 		rows = append(rows, m.renderRow(m.all[idx], i == m.cursor, w))

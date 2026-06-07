@@ -18,7 +18,7 @@ import (
 const EventAgentID = "gateway"
 
 // OutboundPayload is the JSON body of an EvtGatewayOutbound event. One
-// row is written per (envelope, channel) pair — a single Send call
+// row is written per (envelope, channel) pair - a single Send call
 // that fans out to ntfy + Telegram produces two rows, each with its
 // own DeliveryReceipt. ArtifactID is duplicated from the envelope so
 // projections can filter by artifact without unmarshaling the full
@@ -86,7 +86,7 @@ func appendInbound(ctx context.Context, log *agent.SQLiteEventLog, p InboundPayl
 
 // DecodeOutboundPayload is exposed for projection consumers that want
 // to walk the event log offline (manage view, audit tools). Returns a
-// descriptive error if the row is corrupted rather than panicking — the
+// descriptive error if the row is corrupted rather than panicking - the
 // queue tolerates a few malformed rows the same way ListPendingApprovals
 // does.
 func DecodeOutboundPayload(raw []byte) (OutboundPayload, error) {
@@ -97,7 +97,7 @@ func DecodeOutboundPayload(raw []byte) (OutboundPayload, error) {
 	return p, nil
 }
 
-// DecodeInboundPayload — the inbound analogue of DecodeOutboundPayload.
+// DecodeInboundPayload - the inbound analogue of DecodeOutboundPayload.
 func DecodeInboundPayload(raw []byte) (InboundPayload, error) {
 	var p InboundPayload
 	if err := json.Unmarshal(raw, &p); err != nil {

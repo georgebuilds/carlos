@@ -16,7 +16,7 @@ import (
 //
 // Snapshot must be cheap (the chat re-reads on a ~250ms tick while the
 // panel is up). Implementations return an empty slice when no children
-// are running — the chat treats that as "fall back to the single-stack
+// are running - the chat treats that as "fall back to the single-stack
 // layout".
 type ChildrenView interface {
 	Snapshot() []ChildSnapshot
@@ -41,7 +41,7 @@ type ChildSnapshot struct {
 }
 
 // ChildSpend bundles the cost columns the panel surfaces inline. Tokens
-// roll up to "4.1k tok" and Cents to "$0.014" — both are best-effort
+// roll up to "4.1k tok" and Cents to "$0.014" - both are best-effort
 // summaries; the manage TUI owns the full ledger.
 type ChildSpend struct {
 	Tokens int
@@ -194,11 +194,11 @@ func shortChildID(id string) string {
 }
 
 // shortAgentType extracts a one-word label for the row. The spec calls
-// for "agent type", but SubAgent's Title is a free-form objective —
+// for "agent type", but SubAgent's Title is a free-form objective -
 // so we take the first short token. Falls back to "agent" when nothing
 // usable is available.
 func shortAgentType(lastEvent, id string) string {
-	// Strip any "phase:" / "diff:" / similar prefix from LastEvent —
+	// Strip any "phase:" / "diff:" / similar prefix from LastEvent -
 	// those go in the event column. The agent type lives in the head
 	// of LastEvent before any colon when LastEvent itself starts with
 	// a category word.
@@ -213,7 +213,7 @@ func shortAgentType(lastEvent, id string) string {
 }
 
 // isAgentTypeWord whitelists the strings we treat as an agent-type
-// label. Any lowercase ASCII token under 16 chars qualifies — strict
+// label. Any lowercase ASCII token under 16 chars qualifies - strict
 // enough to reject things like JSON fragments, loose enough to allow
 // future categories without code churn.
 func isAgentTypeWord(s string) bool {

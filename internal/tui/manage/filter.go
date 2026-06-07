@@ -16,8 +16,8 @@ type Filter struct {
 
 // Apply returns a filtered slice. Match policy: case-insensitive
 // substring against the agent's title OR state-name OR ID. We don't
-// pull in a real fuzzy library — the brief explicitly says substring
-// is enough — but matching the ID lets the user pin a known agent by
+// pull in a real fuzzy library - the brief explicitly says substring
+// is enough - but matching the ID lets the user pin a known agent by
 // typing its prefix.
 func (f Filter) Apply(rows []agent.AgentRow) []agent.AgentRow {
 	q := strings.TrimSpace(strings.ToLower(f.Query))

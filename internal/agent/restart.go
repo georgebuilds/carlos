@@ -17,7 +17,7 @@
 //   - retryCount(id) returns the count of attempts in the last
 //     restartMaxT window AND trims stale entries.
 //   - circuitBroken(id) flags the agent (and, eventually, its
-//     subtree — see TODO) as broken. Slice 4 will surface this as a
+//     subtree - see TODO) as broken. Slice 4 will surface this as a
 //     roster badge.
 //
 // What's deliberately TODO'd for slice 4:

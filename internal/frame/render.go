@@ -5,7 +5,7 @@ import "github.com/charmbracelet/lipgloss"
 // AccentColor maps the curated palette name to a lipgloss color. Names
 // outside the palette return the empty color so callers naturally fall
 // back to the theme's default foreground. Hex values are chosen to read
-// against both the light and dark theme variants — the test in
+// against both the light and dark theme variants - the test in
 // render_test.go covers the contrast contract.
 //
 // Used by the chat header pill, the future 3x2 takeover-switcher tile
@@ -40,7 +40,7 @@ func AccentColor(name string) lipgloss.Color {
 // don't lose the signal.
 //
 // Caller passes the glyph rather than the frame so this helper stays
-// pure — easier to test, easier to reuse from a Frame-less context (the
+// pure - easier to test, easier to reuse from a Frame-less context (the
 // new-frame wizard).
 func Pill(glyph, name, accent string, noColor bool) string {
 	if glyph == "" {

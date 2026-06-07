@@ -1,7 +1,7 @@
 // Package openrouter implements a pure-Go streaming client for the
 // OpenRouter chat-completions endpoint. OpenRouter is a routing proxy that
 // speaks the OpenAI Chat Completions wire format (request body, response
-// shape, SSE chunking, tools/tool_calls accumulation — all identical to
+// shape, SSE chunking, tools/tool_calls accumulation - all identical to
 // OpenAI's spec) and brokers requests across many upstream providers via
 // namespaced model IDs ("anthropic/claude-3.5-sonnet", "openai/gpt-4o",
 // "meta-llama/llama-3.3-70b", …).
@@ -23,7 +23,7 @@ import (
 	"github.com/georgebuilds/carlos/internal/providers/oacompat"
 )
 
-// Recommended OpenRouter attribution headers. Both optional — OpenRouter
+// Recommended OpenRouter attribution headers. Both optional - OpenRouter
 // uses them for analytics + leaderboard placement and to give the user a
 // pretty name in their dashboard. They cost nothing to send so we always do.
 const (
@@ -42,14 +42,14 @@ type Client struct {
 // New constructs a client with a 30-second response-header timeout. The
 // per-request read deadline is governed by the caller's context (cancel
 // ctx → cancel stream); we don't impose an overall deadline here because
-// streaming completions — especially via OpenRouter, which adds a routing
-// hop — can legitimately take minutes for long responses on slow upstreams.
+// streaming completions - especially via OpenRouter, which adds a routing
+// hop - can legitimately take minutes for long responses on slow upstreams.
 func New(apiKey string) *Client {
 	return &Client{
 		APIKey:  apiKey,
 		BaseURL: "https://openrouter.ai/api/v1",
 		HTTPClient: &http.Client{
-			// No overall Timeout — that aborts in-flight streams.
+			// No overall Timeout - that aborts in-flight streams.
 			Transport: &http.Transport{
 				ResponseHeaderTimeout: 30 * time.Second,
 			},
@@ -61,7 +61,7 @@ func (c *Client) Name() string { return "openrouter" }
 
 // Capabilities advertises the SERVICE'S capabilities, not any single upstream
 // model's. OpenRouter routes to hundreds of models with varying capabilities;
-// the user may pick a model that doesn't support, say, vision — in which case
+// the user may pick a model that doesn't support, say, vision - in which case
 // the request fails at provider time. That's correct behavior given the
 // current providers.Capabilities shape (one flag per provider). A future
 // refinement is a per-model capability table; see slice notes for the

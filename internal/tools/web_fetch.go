@@ -1,4 +1,4 @@
-// Package tools — WebFetchTool (Slice 11a).
+// Package tools - WebFetchTool (Slice 11a).
 //
 // HTTP GET with HTML-to-text extraction, exposed as the `web_fetch`
 // tool to the model. Pragmatic guard-rails:
@@ -75,7 +75,7 @@ func NewWebFetchTool() *WebFetchTool {
 	return &WebFetchTool{}
 }
 
-// defaults — exported as constants so tests can reference them.
+// defaults - exported as constants so tests can reference them.
 const (
 	defaultWebFetchTimeout      = 15 * time.Second
 	defaultWebFetchMaxBodyBytes = 5 * 1024 * 1024 // 5 MiB raw
@@ -159,7 +159,7 @@ func (t *WebFetchTool) Execute(ctx context.Context, input []byte) ([]byte, error
 	if respectRobots {
 		allowed, err := t.checkRobots(ctx, client, parsed)
 		if err != nil {
-			// robots.txt failures (404, network error) are NOT fatal —
+			// robots.txt failures (404, network error) are NOT fatal -
 			// per RFC 9309 a missing robots.txt means "allow all".
 			// We only block on an explicit Disallow.
 			_ = err
@@ -178,7 +178,7 @@ func (t *WebFetchTool) Execute(ctx context.Context, input []byte) ([]byte, error
 		maxText = defaultWebFetchMaxTextBytes
 	}
 
-	// HEAD probe — cheap pre-check of content-type and size.
+	// HEAD probe - cheap pre-check of content-type and size.
 	// Errors here are non-fatal; some servers refuse HEAD entirely. We
 	// proceed to GET and let it bite there if the content really is
 	// non-text or oversized.
@@ -351,7 +351,7 @@ func extractFromContentType(ct string, body []byte) (title, text string) {
 func extractHTML(body []byte) (title, text string) {
 	doc, err := html.Parse(bytes.NewReader(body))
 	if err != nil {
-		// Parse errors are unusual — html.Parse is famously tolerant.
+		// Parse errors are unusual - html.Parse is famously tolerant.
 		// Fall back to a raw normalize so the model still sees something.
 		return "", normalizeWhitespace(string(body))
 	}
@@ -509,7 +509,7 @@ func isPrivateHost(hostport string) (bool, string) {
 	defer cancel()
 	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
 	if err != nil {
-		// DNS failure is not "private" — surface it to the GET path
+		// DNS failure is not "private" - surface it to the GET path
 		// which will fail with a clearer error.
 		return false, ""
 	}
@@ -598,7 +598,7 @@ func (t *WebFetchTool) checkRobots(ctx context.Context, client *http.Client, tar
 
 // parseRobots is a minimal robots.txt parser: it understands
 // User-agent and Disallow directives, applied to the "*" group (we
-// don't try to match our specific UA — overkill for the use case).
+// don't try to match our specific UA - overkill for the use case).
 // Multi-group records are merged.
 //
 // This is intentionally not a full RFC 9309 implementation. The full

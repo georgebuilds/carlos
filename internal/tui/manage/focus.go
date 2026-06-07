@@ -40,8 +40,8 @@ const (
 // agent. Holds its own viewport + token ring; the orchestrator drives
 // agent changes via Bind(agentID).
 //
-// The pane is intentionally stateful — it owns the viewport's scroll
-// offset, the ring buffer, and the most-recent focus binding — so the
+// The pane is intentionally stateful - it owns the viewport's scroll
+// offset, the ring buffer, and the most-recent focus binding - so the
 // top-level Model doesn't have to thread those fields through every
 // message handler.
 type FocusPane struct {
@@ -76,7 +76,7 @@ func NewFocusPane() *FocusPane {
 
 // Bind switches the pane to a fresh agent. Clears the transcript +
 // ring so the next backfill paints from a known starting point. Does
-// NOT touch the viewport's scroll position — the orchestrator manages
+// NOT touch the viewport's scroll position - the orchestrator manages
 // that via Resize.
 func (f *FocusPane) Bind(agentID string) {
 	f.agentID = agentID
@@ -122,7 +122,7 @@ func (f *FocusPane) ApplyBackfill(events []agent.Event) {
 }
 
 // ApplyEvent folds a single live event into the pane. Tracks whether
-// the user has scrolled up — if they have, we don't auto-scroll.
+// the user has scrolled up - if they have, we don't auto-scroll.
 func (f *FocusPane) ApplyEvent(ev agent.Event) {
 	wasAtBottom := f.vp.AtBottom() || f.autoScroll
 	f.applyEvent(ev)
@@ -163,7 +163,7 @@ func (f *FocusPane) PageDown() {
 func (f *FocusPane) View() string { return f.vp.View() }
 
 // applyEvent updates entries + ring (for token_usage). Errors from
-// json.Unmarshal degrade to a system-note entry — the pane keeps
+// json.Unmarshal degrade to a system-note entry - the pane keeps
 // running so a single malformed payload doesn't kill the transcript.
 func (f *FocusPane) applyEvent(ev agent.Event) {
 	f.lastEventTS = ev.TS
@@ -235,7 +235,7 @@ func (f *FocusPane) applyEvent(ev agent.Event) {
 		if f.ring != nil {
 			f.ring.Add(t.DeltaOut)
 		}
-		// No transcript entry for token deltas — they're noise. The
+		// No transcript entry for token deltas - they're noise. The
 		// burn-rate sparkline carries the visualization.
 	case agent.EvtHeartbeat:
 		// Coalesce: at most one heartbeat marker per 5 seconds.

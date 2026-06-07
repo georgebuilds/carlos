@@ -1,7 +1,7 @@
 // Permissions policy engine (Phase T-1).
 //
 // Today's Approver decides per (tool, input) whether to ask the
-// user. That worked when every prompt was hand-y/N — but the same
+// user. That worked when every prompt was hand-y/N - but the same
 // noisy prompt fires for `notes_search` (reading your own configured
 // vault) and for `bash` (running arbitrary commands). Once auto-
 // approval lands we need a layered model that's auditable AND
@@ -12,12 +12,12 @@
 //  1. **Built-in** (hardcoded): tools that are read-only against
 //     user-owned state. notes_* (configured vault only), read, grep,
 //     glob, ls. Always allowed without prompting.
-//  2. **Workspace trust** (Phase T-2 — placeholder hooks here): when
+//  2. **Workspace trust** (Phase T-2 - placeholder hooks here): when
 //     the user marked the current cwd as trusted, a small set of
 //     read-only bash verbs (git status / diff / log, ls, cat, ...)
 //     run without prompting. Anything else still prompts.
 //  3. **Session "Always"** (today's behavior): the per-tool "Always"
-//     cache from the TUIApprover. Last resort — user explicitly
+//     cache from the TUIApprover. Last resort - user explicitly
 //     opted in via "A" on a prompt this session.
 //
 // If none of the three matches, we fall through to the wrapped
@@ -26,7 +26,7 @@
 // # Why a separate type
 //
 // The Approver interface stays the same. LayeredApprover wraps any
-// concrete Approver as its fallback — production wires
+// concrete Approver as its fallback - production wires
 // TUIApprover, tests can inject a recording fake. The chat loop
 // doesn't know layered-vs-single; it just calls ApproveToolCall.
 package agent
@@ -90,13 +90,13 @@ type LayeredApprover struct {
 // package doesn't import the disk schema.
 type WorkspacePolicy interface {
 	// Allows reports whether (tool, input) is permitted by the
-	// workspace-trust layer. False is the safe default — any
+	// workspace-trust layer. False is the safe default - any
 	// uncertainty falls through to the prompt path.
 	Allows(tool string, input []byte) bool
 }
 
 // AuditSink receives one notification per ApproveToolCall decision.
-// Implementations should be fast + non-blocking — the chat loop
+// Implementations should be fast + non-blocking - the chat loop
 // calls into the approver synchronously.
 type AuditSink interface {
 	RecordDecision(d Decision)
@@ -116,23 +116,23 @@ type Decision struct {
 type DecisionReason string
 
 const (
-	// ReasonBuiltinAllow — tool is in the hardcoded read-only
+	// ReasonBuiltinAllow - tool is in the hardcoded read-only
 	// builtins set.
 	ReasonBuiltinAllow DecisionReason = "builtin-allow"
-	// ReasonWorkspaceAllow — tool + input matches the trusted-
+	// ReasonWorkspaceAllow - tool + input matches the trusted-
 	// workspace policy (Phase T-2).
 	ReasonWorkspaceAllow DecisionReason = "workspace-allow"
-	// ReasonSessionAllow — wrapped Approver returned true (TUI
+	// ReasonSessionAllow - wrapped Approver returned true (TUI
 	// "Always" cache OR user pressed y).
 	ReasonSessionAllow DecisionReason = "session-allow"
-	// ReasonSessionDeny — wrapped Approver returned false.
+	// ReasonSessionDeny - wrapped Approver returned false.
 	ReasonSessionDeny DecisionReason = "session-deny"
-	// ReasonCrossFrameAllow — write/edit landed inside another frame's
+	// ReasonCrossFrameAllow - write/edit landed inside another frame's
 	// subtree and the user explicitly approved. Phase F-12. Bypasses
 	// the builtin + workspace shortcuts so the user always sees a
 	// cross-frame write distinctly.
 	ReasonCrossFrameAllow DecisionReason = "cross-frame-allow"
-	// ReasonCrossFrameDeny — same path but the user rejected.
+	// ReasonCrossFrameDeny - same path but the user rejected.
 	ReasonCrossFrameDeny DecisionReason = "cross-frame-deny"
 )
 
@@ -393,7 +393,7 @@ func (l *LayeredApprover) SetWorkspacePolicy(p WorkspacePolicy) {
 	l.mu.Unlock()
 }
 
-// sortStrings — insertion sort; the slices we care about top out at
+// sortStrings - insertion sort; the slices we care about top out at
 // a couple dozen entries, so dragging in sort.Strings would be
 // overkill.
 func sortStrings(a []string) {

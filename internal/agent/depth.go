@@ -20,7 +20,7 @@ import (
 // computeDepth returns the depth of an agent whose parent is parentID.
 // A spawn whose parentID is empty is the root (depth 0). A spawn whose
 // parent is the root returns 1. A spawn whose parent is a depth-1 agent
-// returns 2 — which would normally exceed maxSpawnDepth=1.
+// returns 2 - which would normally exceed maxSpawnDepth=1.
 //
 // The walk is capped at maxSpawnDepth+2 hops as a defensive guard
 // against pathological cycles in the parent_id column (which the
@@ -29,7 +29,7 @@ import (
 // belt-and-braces against corrupt rows).
 //
 // On a missing parent row, returns an error rather than silently
-// treating the parent as the root — a Spawn against a parentID that
+// treating the parent as the root - a Spawn against a parentID that
 // the supervisor doesn't know about is a caller bug we want to surface.
 func (s *Supervisor) computeDepth(ctx context.Context, parentID string) (int, error) {
 	if parentID == "" {
@@ -62,7 +62,7 @@ func (s *Supervisor) computeDepth(ctx context.Context, parentID string) (int, er
 		cur = row.ParentID
 	}
 	// Exceeded hop budget. We KNOW depth > maxSpawnDepth at this point,
-	// which is exactly the condition Spawn will refuse on — return the
+	// which is exactly the condition Spawn will refuse on - return the
 	// hop count so the caller's comparison still trips.
 	return depth, nil
 }

@@ -3,11 +3,11 @@
 //   - The on-disk Schedule record (lives in ~/.carlos/config.yaml under
 //     the `schedules:` key).
 //   - A 5-field cron expression parser (minute hour day-of-month month
-//     day-of-week) — enough grammar to cover everything ParseNatural
+//     day-of-week) - enough grammar to cover everything ParseNatural
 //     emits and the manual cron strings the user can paste in.
-//   - Schedule.Next(after) — the daemon's tick loop calls this per
+//   - Schedule.Next(after) - the daemon's tick loop calls this per
 //     schedule each pass to decide if it's due.
-//   - parse.go: ParseNatural — small natural-language frontend covering
+//   - parse.go: ParseNatural - small natural-language frontend covering
 //     the ~7 forms that account for ~90% of personal use; falls back to
 //     "parse as cron" so power users can paste a 5-field expression.
 //
@@ -117,7 +117,7 @@ func (s Schedule) Validate() error {
 }
 
 // Next returns the next firing time strictly after `after`, in local
-// time. If no future time matches within 4 years (effectively never —
+// time. If no future time matches within 4 years (effectively never -
 // a malformed cron) it returns the zero time.
 func (s Schedule) Next(after time.Time) time.Time {
 	c, err := ParseCron(s.Spec)
@@ -219,14 +219,14 @@ func contains(xs []int, v int) bool {
 
 // ParseCron parses a 5-field cron expression. Accepts:
 //
-//   - `*`           — every value in the field's range
-//   - `N`           — exact value (0..59 for minute, etc)
-//   - `N-M`         — inclusive range
-//   - `*/S`         — every S values in the full range (0, S, 2S, ...)
-//   - `N-M/S`       — every S values within range [N, M]
-//   - `A,B,C`       — list (each element follows the rules above)
-//   - day names     — SUN..SAT in the day-of-week field (case-insensitive)
-//   - month names   — JAN..DEC in the month field (case-insensitive)
+//   - `*`           - every value in the field's range
+//   - `N`           - exact value (0..59 for minute, etc)
+//   - `N-M`         - inclusive range
+//   - `*/S`         - every S values in the full range (0, S, 2S, ...)
+//   - `N-M/S`       - every S values within range [N, M]
+//   - `A,B,C`       - list (each element follows the rules above)
+//   - day names     - SUN..SAT in the day-of-week field (case-insensitive)
+//   - month names   - JAN..DEC in the month field (case-insensitive)
 //
 // Returns a descriptive error on the first malformed field so the user
 // can see which one they need to fix.

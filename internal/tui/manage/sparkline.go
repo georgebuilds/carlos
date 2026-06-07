@@ -44,7 +44,7 @@ type TokenRing struct {
 }
 
 // Add records a tokens-out delta in the most-recent slot. Per DESIGN
-// "coalesce streaming token deltas in memory" — we accumulate within
+// "coalesce streaming token deltas in memory" - we accumulate within
 // the current slot rather than always advancing, because real flushes
 // land at 250–500ms cadence and we want the sparkline's resolution to
 // match clock-time, not flush-event-count. The Advance method moves
@@ -149,13 +149,13 @@ func formatTokens(n int64) string {
 }
 
 // formatTokensColumn renders the <in>/<out> pair as a single string
-// constrained to a small budget — 11 chars covers up to "1.2M/1.2M".
+// constrained to a small budget - 11 chars covers up to "1.2M/1.2M".
 func formatTokensColumn(in, out int64) string {
 	return formatTokens(in) + "/" + formatTokens(out)
 }
 
 // formatCost renders cost_cents as $N.NN. Negative or zero costs
-// render as $0.00 — we never present a negative number to the user.
+// render as $0.00 - we never present a negative number to the user.
 func formatCost(cents int64) string {
 	if cents < 0 {
 		cents = 0
@@ -194,7 +194,7 @@ func zeropad2(n int) string {
 	return intStr(int64(n))
 }
 
-// decStr1k renders 1000..9999 as "1.2k" (truncated, not rounded — the
+// decStr1k renders 1000..9999 as "1.2k" (truncated, not rounded - the
 // roster value is a running counter, so we'd rather under-report than
 // claim a tick we haven't seen).
 func decStr1k(n int64) string {

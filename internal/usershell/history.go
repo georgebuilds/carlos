@@ -16,7 +16,7 @@ import (
 // chat composer to cycle previous "!cmd" entries via ↑/↓ when shell
 // mode is active (Phase U S7).
 //
-// Separate from the chat history because the vocabularies differ —
+// Separate from the chat history because the vocabularies differ -
 // the user pressing ↑ on `!cargo test` should get their last shell
 // command, not their last chat turn.
 //
@@ -47,7 +47,7 @@ func DefaultHistoryPath() string {
 
 // NewHistory loads the history file (or starts empty if absent).
 // path == "" falls back to DefaultHistoryPath. Errors reading an
-// existing-but-broken file are non-fatal — we start with an empty
+// existing-but-broken file are non-fatal - we start with an empty
 // in-memory log and the user just loses prior entries.
 func NewHistory(path string) *History {
 	if path == "" {
@@ -84,7 +84,7 @@ func (h *History) load() {
 }
 
 // Add records cmd and appends to the file. Empty / duplicate-of-last
-// entries are skipped — same recipe bash, zsh, and atuin all use.
+// entries are skipped - same recipe bash, zsh, and atuin all use.
 //
 // Returns nil on disk-write failure too; the in-memory entry still
 // lands so ↑/↓ works within the session even when persistence is
@@ -113,7 +113,7 @@ func (h *History) Add(cmd string) error {
 // persist writes the entries slice to disk via temp+rename. After
 // rotation (when entries exceeds maxLines) the full slice is
 // rewritten so the on-disk file matches; for the common no-rotation
-// case the temp+rename still happens — append-only with truncate
+// case the temp+rename still happens - append-only with truncate
 // after every write is the simplest correct shape, and shell-history
 // files are tiny.
 func (h *History) persist(entries []string) error {
@@ -176,7 +176,7 @@ func (h *History) Prev() string {
 }
 
 // Next returns the next entry while browsing forward (↓). Returns ""
-// when we've walked past the newest entry — the caller (composer)
+// when we've walked past the newest entry - the caller (composer)
 // clears the input on that signal.
 func (h *History) Next() string {
 	h.mu.Lock()

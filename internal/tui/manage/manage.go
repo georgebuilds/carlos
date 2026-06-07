@@ -116,7 +116,7 @@ func (m *Model) Run() (tea.Model, error) {
 // what populates the list (typically a closure over
 // agent.ListPendingApprovals + the user's state.db log); resolver is
 // called when the user accepts / rejects. Both may be nil to indicate
-// "approvals not wired" — the TUI still renders, the `A` key surfaces
+// "approvals not wired" - the TUI still renders, the `A` key surfaces
 // a status-bar line instead of panicking.
 //
 // Returns the Model for chaining so callers can keep New(...) terse:
@@ -238,7 +238,7 @@ func (m *Model) repumpFocus() tea.Cmd {
 //  1. Overlay (steer / confirm / filter) consumes everything until
 //     ESC or enter.
 //  2. Navigation (j/k, ↑/↓, enter, pgup/pgdn, home/end).
-//  3. Verb keys (s/i/x) — open the corresponding overlay.
+//  3. Verb keys (s/i/x) - open the corresponding overlay.
 //  4. Sort keys (1–5; Shift+key reverses).
 //  5. Filter key (/).
 //  6. ctrl-c → quit.
@@ -387,7 +387,7 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 // handleApprovalsKey routes keystrokes when the approval queue pane
 // is the active view. Most roster keys (sort, filter, verbs) are
-// disabled here — the approval pane has its own narrower vocabulary
+// disabled here - the approval pane has its own narrower vocabulary
 // because it's a focused review surface.
 func (m *Model) handleApprovalsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
@@ -463,7 +463,7 @@ func (m *Model) acceptSelectedApproval() tea.Cmd {
 		// repopulate. (Refresh tick scheduled in Init runs every
 		// snapshotRefreshInterval seconds; the approval pane piggy-
 		// backs on it via the manage Model's repumpFocus chain, but
-		// we don't have a per-pane tick — instead we issue a fetch
+		// we don't have a per-pane tick - instead we issue a fetch
 		// inline.)
 		return acceptedOrRejectedMsg{}
 	}
@@ -516,13 +516,13 @@ func (m *Model) openOverlay(o overlayKind) {
 	m.input.Focus()
 	switch o {
 	case overlaySteer:
-		m.input.Placeholder = "what to nudge the agent toward — enter to send, esc to cancel"
+		m.input.Placeholder = "what to nudge the agent toward - enter to send, esc to cancel"
 	case overlayFilter:
 		m.input.Placeholder = "fuzzy: intent | state | id substring"
 		m.input.SetValue(m.filter.Query)
 		m.input.SetCursor(len(m.filter.Query))
 	case overlayRejectReason:
-		m.input.Placeholder = "why are you rejecting this? — enter to confirm reject, esc to cancel"
+		m.input.Placeholder = "why are you rejecting this? - enter to confirm reject, esc to cancel"
 	}
 }
 
@@ -545,7 +545,7 @@ func (m *Model) commitOverlay() (tea.Model, tea.Cmd) {
 		}
 		return m, dispatchSteer(m.sup, id, text)
 	case overlayInterruptConfirm:
-		// Enter (no explicit y/n) defaults to "no" — confirm prompts
+		// Enter (no explicit y/n) defaults to "no" - confirm prompts
 		// must require the typed "y" so a stray Return doesn't kill an
 		// agent.
 		m.closeOverlay()
@@ -554,7 +554,7 @@ func (m *Model) commitOverlay() (tea.Model, tea.Cmd) {
 		m.closeOverlay()
 		return m, nil
 	case overlayFilter:
-		// Filter is "live" — enter just commits the current value and
+		// Filter is "live" - enter just commits the current value and
 		// closes the overlay; the filter persists.
 		m.overlay = overlayNone
 		m.input.Blur()

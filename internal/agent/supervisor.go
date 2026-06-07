@@ -187,7 +187,7 @@ type Supervisor struct {
 	// and registers it under the top-level agent id so the apply
 	// handler can find it on EvtApprovalAccepted / EvtApprovalRejected.
 	//
-	// The map is in-memory only — NOT persisted to the event log. If
+	// The map is in-memory only - NOT persisted to the event log. If
 	// carlos crashes between Propose and Accept the entry is gone and
 	// the user has to re-run the session (the worktree on disk is also
 	// orphaned and gets cleaned up by the next `git worktree prune`).
@@ -268,7 +268,7 @@ func (s *Supervisor) Run(ctx context.Context) {
 // Shutdown stops the orphan sweeper, every active heartbeat ticker,
 // and cancels every in-flight child context. Idempotent.
 //
-// Shutdown does NOT block on child completion — children's
+// Shutdown does NOT block on child completion - children's
 // SpawnResult channels still close in their own time once their
 // goroutines unwind. Callers that need to wait should drain the
 // channels they received from Spawn.
@@ -406,7 +406,7 @@ func (s *Supervisor) Spawn(ctx context.Context, parentID string, contract SpawnC
 
 	// 7. Heartbeat + active-children registration. We derive a
 	//    cancellable childCtx that is a *sibling* of the caller's
-	//    ctx — Shutdown can cancel it independently of the parent.
+	//    ctx - Shutdown can cancel it independently of the parent.
 	childCtx, childCancel := context.WithCancel(context.Background())
 	if contract.MaxWallClock > 0 {
 		childCtx, childCancel = context.WithTimeout(childCtx, contract.MaxWallClock)
@@ -496,7 +496,7 @@ var ErrAgentNotFound = errors.New("supervisor: agent not found among in-flight c
 // and prepends it as a user-role message tagged "[steer] ".
 //
 // If the child's steering channel is full (cap 16; user fired too many
-// nudges between tool-call boundaries), Steer returns nil — the audit
+// nudges between tool-call boundaries), Steer returns nil - the audit
 // event is appended but the runtime injection drops. The user can
 // re-steer once the queue drains.
 func (s *Supervisor) Steer(id, message string) error {
@@ -509,7 +509,7 @@ func (s *Supervisor) Steer(id, message string) error {
 	if !ok {
 		return ErrAgentNotFound
 	}
-	// Audit event first — the log is the source of truth, even if the
+	// Audit event first - the log is the source of truth, even if the
 	// runtime delivery drops on a full channel.
 	payload, _ := json.Marshal(struct {
 		Message string `json:"message"`
@@ -532,11 +532,11 @@ func (s *Supervisor) Steer(id, message string) error {
 // current turn (soft), keep the session and context alive, return
 // control." V0 implementation: we cancel the entire child context,
 // which terminates the agent.Run loop in flight. Tool calls already
-// completed (and committed to the event log) stay in place — the loop
+// completed (and committed to the event log) stay in place - the loop
 // runs to completion of the current iteration, then returns.
 //
 // V0 limitation flagged in SPEC: this collapses Interrupt and Stop's
-// runtime behavior (both cancel the loop) — a future refinement
+// runtime behavior (both cancel the loop) - a future refinement
 // introduces a per-iteration ctx so Interrupt truly aborts only the
 // current turn, not the whole agent.
 func (s *Supervisor) Interrupt(id string) error {
@@ -550,7 +550,7 @@ func (s *Supervisor) Interrupt(id string) error {
 	return nil
 }
 
-// Stop terminates the agent gracefully — cancels the child context;
+// Stop terminates the agent gracefully - cancels the child context;
 // the in-flight iteration completes naturally; transition to done /
 // failed is recorded by runChild's classifier. SPEC: "Default is
 // graceful drain: signal stop, wait for the agent to reach a safe
@@ -574,7 +574,7 @@ func (s *Supervisor) Stop(id string) error {
 
 // Kill is the hard-cancel verb. Today same as Stop (ctx cancel); the
 // future "hard-kill after drain timeout" semantic lives behind a
-// configurable timeout the supervisor wraps Stop with — TODO Phase 5.
+// configurable timeout the supervisor wraps Stop with - TODO Phase 5.
 func (s *Supervisor) Kill(id string) error {
 	return s.Stop(id)
 }
@@ -585,7 +585,7 @@ func (s *Supervisor) Kill(id string) error {
 // land within restartMaxT, the breaker trips for id and we return
 // ErrRestartIntensityExceeded.
 //
-// Retry does NOT actually re-spawn the child today — that's Slice 3e
+// Retry does NOT actually re-spawn the child today - that's Slice 3e
 // + future work. The breaker check is what slice 3b owes; the
 // concrete restart pipeline is the Agent tool's responsibility.
 //
@@ -759,7 +759,7 @@ func (s *Supervisor) SetRestartIntensity(maxR int, maxT time.Duration) {
 // (children spawned afterwards get no Tracker).
 //
 // Phase 5 slice 5a. The per-run Budget itself is supplied to the loop
-// via LoopOptions.Budget — Spawn pulls per-subtree caps from the
+// via LoopOptions.Budget - Spawn pulls per-subtree caps from the
 // SpawnContract (MaxTokens, MaxWallClock). Foreground integration
 // (cmd/carlos) is responsible for setting the parent Budget on its
 // own top-level Run invocation.
@@ -774,7 +774,7 @@ func (s *Supervisor) SetRunBudget(t *Tracker) {
 // StartHeartbeat begins emitting heartbeat events for agentID under
 // the supervisor's existing ticker. Idempotent (per-id no-op if
 // already started). Used by cmd/carlos.runDefault to keep the
-// stable chat-default agent alive across user-idle periods — without
+// stable chat-default agent alive across user-idle periods - without
 // it, agent.Recover would orphan the chat agent on every restart.
 func (s *Supervisor) StartHeartbeat(ctx context.Context, agentID string) {
 	if s == nil || s.heartbeat == nil || agentID == "" {
@@ -792,7 +792,7 @@ func (s *Supervisor) RunTracker() *Tracker {
 // SetAgentWorktree registers w as the sandbox for agentID. The apply
 // handler looks up the entry on EvtApprovalAccepted / EvtApprovalRejected
 // to decide what to Apply or Discard. Calling SetAgentWorktree twice
-// for the same agentID overwrites the previous entry — the foreground
+// for the same agentID overwrites the previous entry - the foreground
 // is the sole owner and is expected to call this once per session.
 //
 // Phase 7 slice 7e/7f. The map is in-memory only; see the worktrees

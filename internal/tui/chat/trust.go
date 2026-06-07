@@ -1,10 +1,10 @@
-// trust.go — chat-side handlers for the Phase T-2 workspace-trust
+// trust.go - chat-side handlers for the Phase T-2 workspace-trust
 // slash commands. Three verbs:
 //
-//   /trust    — persist the chat's cwd into the trust store and flip
+//   /trust    - persist the chat's cwd into the trust store and flip
 //               the in-session policy so the next tool call sees it
-//   /untrust  — opposite: remove cwd from store + clear session view
-//   /trusts   — list every trusted workspace (sorted by path)
+//   /untrust  - opposite: remove cwd from store + clear session view
+//   /trusts   - list every trusted workspace (sorted by path)
 //
 // All three return a tea.Cmd that surfaces a one-line statusMsg, so
 // the user sees what happened in the status bar without a modal. The
@@ -12,7 +12,7 @@
 // it stays compact (no overlay) because we render the manage view
 // for the dense case.
 //
-// Failure modes are all "not wired" — the slashes don't crash when
+// Failure modes are all "not wired" - the slashes don't crash when
 // the policy isn't attached (tests + the headless `please` path).
 
 package chat
@@ -92,7 +92,7 @@ func (m *Model) trustSlashList() tea.Cmd {
 	}
 	if len(entries) == 0 {
 		return func() tea.Msg {
-			return statusMsg{text: "no trusted workspaces yet — type /trust to add the current one", kind: statusInfo}
+			return statusMsg{text: "no trusted workspaces yet - type /trust to add the current one", kind: statusInfo}
 		}
 	}
 	var b strings.Builder

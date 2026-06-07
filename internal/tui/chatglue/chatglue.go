@@ -11,7 +11,7 @@
 // UI). chatglue lives one level up so it can import both without
 // closing the cycle, and so the chat dev-aid (which uses a stub
 // MemTextSource) and the production default-mode TUI (which uses
-// chatglue) share zero glue code — the seam is the TextSource
+// chatglue) share zero glue code - the seam is the TextSource
 // interface itself.
 package chatglue
 
@@ -30,7 +30,7 @@ import (
 )
 
 // TextSource is the publish seam the chat view polls each render
-// frame. Mirrors internal/tui/chat.TextSource by structural typing —
+// frame. Mirrors internal/tui/chat.TextSource by structural typing -
 // chatglue intentionally doesn't import chat to keep this package
 // reusable from other surfaces (e.g. a future web TUI).
 type TextSource interface {
@@ -49,7 +49,7 @@ type Config struct {
 	Model string
 	// Tools is the registry the model sees during a turn. The model
 	// can call any tool registered here; chatglue does not gate.
-	// Optional — a nil registry means "text only".
+	// Optional - a nil registry means "text only".
 	Tools *tools.Registry
 	// System is the system prompt. Optional; defaults to "" which
 	// lets the provider use its built-in default.
@@ -65,7 +65,7 @@ type Config struct {
 	MaxIterations int
 }
 
-// Loop is the per-session glue. One Loop runs per chat — it owns the
+// Loop is the per-session glue. One Loop runs per chat - it owns the
 // subscription to that agent's event log + the goroutine that drives
 // agent.Run on each user message. Lifecycle: NewLoop → Start → Stop
 // (idempotent). Start returns immediately; the work happens in the
@@ -125,7 +125,7 @@ func (l *Loop) Start(parentCtx context.Context) error {
 	return nil
 }
 
-// Stop terminates the run goroutine. Idempotent — safe to call from
+// Stop terminates the run goroutine. Idempotent - safe to call from
 // a defer + an explicit Shutdown path.
 func (l *Loop) Stop() {
 	l.stopOnce.Do(func() {
@@ -139,7 +139,7 @@ func (l *Loop) Stop() {
 // user message. Pipeline:
 //
 //  1. Build the message history from the event log (user + assistant
-//     events only — tool calls/results don't survive across turns in
+//     events only - tool calls/results don't survive across turns in
 //     v0; the model only sees the conversational arc).
 //  2. Append the just-arrived user message to the history.
 //  3. Stream the response into TextSource via a chunked writer that
@@ -200,7 +200,7 @@ func (l *Loop) handleUserMessage(ctx context.Context, _ agent.Event) {
 		// Some models (notably Gemini's tool-use flow) end a turn
 		// without a wrap-up message after the tool round-trip. The
 		// chat would otherwise show "tool ran" with no
-		// acknowledgement — looks like carlos hung. Surface a
+		// acknowledgement - looks like carlos hung. Surface a
 		// muted "no follow-up text" line so the user knows the turn
 		// is complete + the model just had nothing to add.
 		full = "(no follow-up text after tools)"
@@ -257,7 +257,7 @@ func (l *Loop) persistToolEvents(ctx context.Context, msgs []providers.Message) 
 				}
 				// Map back to a tool name: tool_result blocks don't
 				// carry one, but the preceding tool_use does. Walk
-				// msgs again to find the matching ToolUseID — short
+				// msgs again to find the matching ToolUseID - short
 				// O(N) is fine, N is tools-per-turn (usually <10).
 				name := lookupToolName(msgs, b.ToolUseID)
 				isErr := isErrorResult(b.ToolResult)
@@ -278,7 +278,7 @@ func (l *Loop) persistToolEvents(ctx context.Context, msgs []providers.Message) 
 
 // lookupToolName scans msgs for the tool_use block whose ToolUseID
 // matches id and returns its ToolName. Returns "" if not found
-// (defensive — shouldn't happen on well-formed Anthropic protocol).
+// (defensive - shouldn't happen on well-formed Anthropic protocol).
 func lookupToolName(msgs []providers.Message, id string) string {
 	for _, msg := range msgs {
 		for _, b := range msg.Content {
@@ -301,7 +301,7 @@ func isErrorResult(b []byte) bool {
 
 // buildHistory projects the event log into a []providers.Message
 // suitable for agent.Run's initial argument. Only EvtUserMessage and
-// EvtAssistantMessage events contribute — tool calls/results are not
+// EvtAssistantMessage events contribute - tool calls/results are not
 // re-played across turns (v0 limitation; the model still has them
 // inside a single turn via agent.Run's own loop). The just-arrived
 // user message is included because it was already appended to the
@@ -310,7 +310,7 @@ func isErrorResult(b []byte) bool {
 // EvtSessionReset resets the accumulator: anything before the latest
 // reset is dropped from the history the model sees. Pre-reset events
 // stay in the log for audit; they just don't feed the next turn.
-// This is the durable side of `/clear` — without it, "clear" would
+// This is the durable side of `/clear` - without it, "clear" would
 // only wipe the visual transcript while the model kept replying as
 // if mid-conversation.
 func (l *Loop) buildHistory(ctx context.Context) ([]providers.Message, error) {

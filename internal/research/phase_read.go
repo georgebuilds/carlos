@@ -10,7 +10,7 @@ import (
 
 // readSystem instructs the model to emit one JSON object per line
 // (JSONL). This is materially easier to parse than a JSON array
-// across providers — a malformed trailing brace breaks an array but
+// across providers - a malformed trailing brace breaks an array but
 // leaves prior lines intact. The "Skip if nothing relevant" escape
 // keeps us from forcing extractions when the source is genuinely
 // off-topic.
@@ -50,7 +50,7 @@ func (e *Engine) runRead(ctx context.Context, report *Report) (err error) {
 		return fmt.Errorf("no sources to read")
 	}
 	// Pair each source with the first sub-query that found it so the
-	// model has a focus. For v0 the pairing is approximate — we use
+	// model has a focus. For v0 the pairing is approximate - we use
 	// the first sub-query for every source since fetch doesn't carry
 	// the back-reference. Good enough for v0; the model still sees
 	// the original question via the source content.
@@ -68,7 +68,7 @@ func (e *Engine) runRead(ctx context.Context, report *Report) (err error) {
 		user := fmt.Sprintf(readUserTemplate, primaryFocus, src.URL, body)
 		out, err := e.callProvider(ctx, report, readSystem, user)
 		if err != nil {
-			// Budget exceeded mid-read is graceful — return the
+			// Budget exceeded mid-read is graceful - return the
 			// partial set, mark the concern.
 			if errors.Is(err, ErrBudgetExceeded) {
 				return err
@@ -96,7 +96,7 @@ func (e *Engine) runRead(ctx context.Context, report *Report) (err error) {
 // the model per read call. The web_fetch tool already caps extracted
 // text at 256 KiB; we re-cap at 32 KiB per source so several sources
 // at a time don't blow a small model's context. Chosen conservatively
-// — relevance lives at the top of most pages anyway.
+// - relevance lives at the top of most pages anyway.
 const readSourceCharCap = 32 * 1024
 
 func truncateForRead(s string) string {
@@ -108,7 +108,7 @@ func truncateForRead(s string) string {
 
 // parseReadJSONL walks the JSONL output. Each non-empty line is
 // expected to be a {"text":…,"relevance":…} object. Lines that fail
-// to parse are silently skipped — the model occasionally emits a
+// to parse are silently skipped - the model occasionally emits a
 // blank line or a stray prose comment despite the prompt, and we
 // don't want one bad line to nuke a whole source's passages.
 //

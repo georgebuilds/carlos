@@ -1,16 +1,16 @@
-// Phase 5 slice 5e — citations-required check for research artifacts.
+// Phase 5 slice 5e - citations-required check for research artifacts.
 //
 // SPEC § Manage mode § What the user monitors: "confidently-wrong /
-// drifting outputs — verification-failed flags, citation-missing
+// drifting outputs - verification-failed flags, citation-missing
 // markers." This file is the citation-missing detector.
 //
 // # What it does
 //
 // CitationAuditor scans an artifact body for two things:
 //
-//   1. Citations — every URL, file path, and bracketed numeric ref
+//   1. Citations - every URL, file path, and bracketed numeric ref
 //      that looks like a source pointer.
-//   2. Claims — every sentence that carries factual signal (numbers,
+//   2. Claims - every sentence that carries factual signal (numbers,
 //      dates, "according to" phrases, proper nouns capitalised
 //      mid-sentence).
 //
@@ -37,7 +37,7 @@
 //     larger window inflates false-negative rate.
 //   - Claims encoded as code snippets the heuristic doesn't recognise
 //     as factual (e.g. function names, variable values).
-//   - Citations that point at fictional sources — we don't fetch the
+//   - Citations that point at fictional sources - we don't fetch the
 //     URL or verify the path exists. Tool-grounded verification is
 //     Phase 5d's job.
 //
@@ -54,7 +54,7 @@
 // flagged requires_citations: true (today: heuristic = kind ==
 // ArtifactKindResearch). On a low Score, the artifact is queued via
 // ProposeApproval with "citations missing" in the title. This is
-// orthogonal to the LLM-as-judge verifier — both can fire on the same
+// orthogonal to the LLM-as-judge verifier - both can fire on the same
 // artifact and produce independent signals.
 package agent
 
@@ -107,7 +107,7 @@ type Audit struct {
 
 // urlRE matches http/https URLs. We deliberately keep this loose to
 // avoid the regex tarpit; the cost of a false positive (a non-URL
-// string flagged as a citation) is zero — the worst case is we say a
+// string flagged as a citation) is zero - the worst case is we say a
 // claim IS supported when it isn't, which the verifier or human
 // catches.
 var urlRE = regexp.MustCompile(`https?://[^\s)\]}>"'` + "`" + `]+`)
@@ -116,7 +116,7 @@ var urlRE = regexp.MustCompile(`https?://[^\s)\]}>"'` + "`" + `]+`)
 //   - absolute paths starting with /
 //   - dot-relative paths starting with ./ or ../
 // We do NOT accept bare relative names like "foo.txt" because too
-// many false positives — names of things in regular prose.
+// many false positives - names of things in regular prose.
 var pathRE = regexp.MustCompile(`(?:^|[\s(\[])((?:/|\.{1,2}/)[A-Za-z0-9_./\-]+)`)
 
 // refRE matches bracketed numeric refs like [1], [12], [42].
@@ -127,7 +127,7 @@ var refRE = regexp.MustCompile(`\[\d+\]`)
 // so command examples and code don't get flagged as factual prose.
 var codeFenceRE = regexp.MustCompile("(?s)```[^\n]*\n.*?```")
 
-// inlineCodeRE matches single-backtick inline code spans — also
+// inlineCodeRE matches single-backtick inline code spans - also
 // stripped from claim text so `ls /tmp` doesn't read as a claim.
 var inlineCodeRE = regexp.MustCompile("`[^`]+`")
 
@@ -137,7 +137,7 @@ var shellPrefixRE = regexp.MustCompile(`^\s*(?:\$|#|>)\s+`)
 
 // signalWords trigger a claim classification when found in a sentence
 // (case-insensitive). The list is the obvious "factual assertion"
-// vocabulary — it doesn't have to be exhaustive; numerics + proper
+// vocabulary - it doesn't have to be exhaustive; numerics + proper
 // nouns catch most cases that miss this list.
 var signalWords = []string{
 	"according to",
@@ -175,7 +175,7 @@ func (c *CitationAuditor) Audit(content []byte) Audit {
 
 	text := string(content)
 
-	// 1. Extract every citation — done on the raw text so URLs inside
+	// 1. Extract every citation - done on the raw text so URLs inside
 	//    code fences still register (they're still sources). Dedupe
 	//    while preserving first-appearance order.
 	citations := extractCitations(text)
@@ -185,7 +185,7 @@ func (c *CitationAuditor) Audit(content []byte) Audit {
 	stripped := stripCode(text)
 
 	// 3. Split into sentences. Naive split on . ! ? at sentence
-	//    boundary is enough for v0 — the heuristic is loose by design.
+	//    boundary is enough for v0 - the heuristic is loose by design.
 	sentences := splitSentences(stripped)
 
 	// 4. Per sentence: classify as claim / non-claim; record which
@@ -287,7 +287,7 @@ func stripCode(text string) string {
 
 // splitSentences chops text into sentence-shaped chunks. We split on
 // . ! ? followed by whitespace + capital letter OR end-of-string. Not
-// perfect — "Mr. Smith" splits — but at v0 the loose split is fine.
+// perfect - "Mr. Smith" splits - but at v0 the loose split is fine.
 func splitSentences(text string) []string {
 	// First, normalise newlines. A bare newline inside a paragraph
 	// is one space; a blank line (paragraph break) acts as a hard
@@ -314,7 +314,7 @@ func splitSentences(text string) []string {
 				start = end
 				break
 			}
-			// Skip trailing punctuation like "?!" or ".)" — extend i
+			// Skip trailing punctuation like "?!" or ".)" - extend i
 			// to include them.
 			for end < len(p) && (p[end] == '.' || p[end] == '!' || p[end] == '?' || p[end] == ')' || p[end] == ']' || p[end] == '"' || p[end] == '\'') {
 				end++
@@ -431,12 +431,12 @@ var ErrCitationCheckFailed = errors.New("citations: coverage below threshold")
 // "citations missing" in the title. Returns the Audit either way; the
 // returned error wraps ErrCitationCheckFailed on a low-score queue.
 //
-// Parallel to VerifyAndQueue (slice 5c) — same hook shape so the
+// Parallel to VerifyAndQueue (slice 5c) - same hook shape so the
 // foreground integrator can call them back-to-back on the same
 // artifact and get two independent signals.
 //
 // threshold is the minimum acceptable Score in [0.0, 1.0]. Zero means
-// "any coverage at all is acceptable" — only artifacts with all-
+// "any coverage at all is acceptable" - only artifacts with all-
 // unsupported claims get queued. 1.0 means "every claim must be
 // cited" (strict; will queue any artifact with even one unsupported
 // claim).

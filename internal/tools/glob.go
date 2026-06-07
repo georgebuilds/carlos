@@ -12,12 +12,12 @@ import (
 )
 
 // GlobTool returns paths matching a glob pattern, honouring `**`
-// recursion (which stdlib `filepath.Glob` does NOT support — hence the
+// recursion (which stdlib `filepath.Glob` does NOT support - hence the
 // custom walker). Like GrepTool, it respects .gitignore by default.
 //
 // Patterns are interpreted relative to `root` (default cwd). The full
 // pattern syntax is the same one used by the gitignore matcher: `*`, `?`,
-// `**`. Anchoring rules are simplified — a pattern without a leading `/`
+// `**`. Anchoring rules are simplified - a pattern without a leading `/`
 // is treated as a "match anywhere" wildcard, while a leading `/` anchors
 // it to root.
 type GlobTool struct {
@@ -103,7 +103,7 @@ func (t *GlobTool) Execute(ctx context.Context, input []byte) ([]byte, error) {
 		respect = *in.RespectGitignore
 	}
 
-	// Anchored vs not — leading `/` means "match from root", otherwise
+	// Anchored vs not - leading `/` means "match from root", otherwise
 	// treat as match-anywhere by prepending `**/` (gitignore-style).
 	pat := in.Pattern
 	anchored := false

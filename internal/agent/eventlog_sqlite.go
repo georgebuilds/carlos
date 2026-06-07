@@ -20,7 +20,7 @@ import (
 // concurrent readers alongside one writer.
 //
 // Subscribe fan-out: per-process, per-agent-id channels delivered to from
-// inside Append. Best-effort delivery — a slow subscriber that lets its
+// inside Append. Best-effort delivery - a slow subscriber that lets its
 // channel fill is dropped (we never block Append on a subscriber). The
 // TUI is the canonical consumer; if it falls behind, it re-reads from the
 // log via Read() instead of expecting Subscribe to backfill.
@@ -132,7 +132,7 @@ func (l *SQLiteEventLog) Append(ctx context.Context, ev Event) (int64, error) {
 }
 
 // publish delivers ev to every subscriber registered for ev.AgentID. A
-// channel that is full (cap 64) gets the event dropped silently — the
+// channel that is full (cap 64) gets the event dropped silently - the
 // subscriber is expected to fall back to Read() if it cares about a gap.
 func (l *SQLiteEventLog) publish(ev Event) {
 	l.subMu.Lock()
@@ -152,7 +152,7 @@ func (l *SQLiteEventLog) publish(ev Event) {
 		select {
 		case c <- ev:
 		default:
-			// drop — see contract in SQLiteEventLog doc
+			// drop - see contract in SQLiteEventLog doc
 		}
 	}
 }
@@ -211,7 +211,7 @@ func (l *SQLiteEventLog) Subscribe(agentID string) (<-chan Event, func(), error)
 			}
 		}
 		l.subMu.Unlock()
-		// Don't close ch — consumer may still be draining. GC will
+		// Don't close ch - consumer may still be draining. GC will
 		// reclaim it once references drop.
 	}
 	return ch, unsub, nil
@@ -244,7 +244,7 @@ func (l *SQLiteEventLog) Close() error {
 func (l *SQLiteEventLog) DB() *sql.DB { return l.db }
 
 // --- Slice 1h additions: projection-cache helpers used by lifecycle /
-// recovery / orphan sweep. These do NOT touch the events table — they read
+// recovery / orphan sweep. These do NOT touch the events table - they read
 // or update the `agents` projection cache that the supervisor populates
 // when it spawns an agent.
 //
@@ -359,7 +359,7 @@ func (l *SQLiteEventLog) UpdateHeartbeat(ctx context.Context, agentID string, ts
 
 // InsertAgent inserts a fresh projection-cache row for a newly-spawned
 // agent. Called by Supervisor.Spawn AFTER appending the corresponding
-// state_change kind=created event. Idempotent insert is NOT supported —
+// state_change kind=created event. Idempotent insert is NOT supported -
 // double-insert is a supervisor bug (each agent ID is a fresh ULID).
 func (l *SQLiteEventLog) InsertAgent(ctx context.Context, r AgentRow) error {
 	var parent any

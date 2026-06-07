@@ -17,7 +17,7 @@
 //     for the goroutines to drain. Idempotent.
 //
 // Gateway config is read at startup only. SIGHUP reloads schedules but
-// does NOT rebuild the gateway — changing adapters mid-flight is
+// does NOT rebuild the gateway - changing adapters mid-flight is
 // nuanced (in-flight retries, decision races) and the v0 stance is
 // "restart the daemon to pick up new channels". The CLI surfaces this
 // in the reload response.
@@ -61,7 +61,7 @@ type gatewayRuntime struct {
 }
 
 // startGateway is the daemon's entry point into the gateway subsystem.
-// Returns (nil, nil) when cfg.Enabled is false — the caller should
+// Returns (nil, nil) when cfg.Enabled is false - the caller should
 // treat that as "gateway disabled, nothing to do".
 //
 // log MAY be nil in test mode; we error out in that case because the
@@ -149,7 +149,7 @@ func startGateway(parent context.Context, log *agent.SQLiteEventLog, cfg config.
 
 	// HTTP listener first so a transient bind failure doesn't leave
 	// goroutines orphaned. http.Server.Serve returns http.ErrServerClosed
-	// on graceful shutdown — treat that as the happy path.
+	// on graceful shutdown - treat that as the happy path.
 	if rt.httpServer != nil {
 		rt.wg.Add(1)
 		go func() {
@@ -259,7 +259,7 @@ func buildTelegramAdapter(cfg config.TelegramConfig) (*telegram.Adapter, error) 
 
 // buildSignalAdapter constructs a *signal.Adapter. We always
 // construct (passing Enabled through) so the broker can register the
-// channel even when it's a no-op — routing configs that reference
+// channel even when it's a no-op - routing configs that reference
 // "signal" stay valid post-G6 without a config rewrite.
 func buildSignalAdapter(cfg config.SignalConfig) (*signal.Adapter, error) {
 	if !cfg.Enabled {
@@ -280,7 +280,7 @@ func buildSignalAdapter(cfg config.SignalConfig) (*signal.Adapter, error) {
 // ActionEndpoint (defaulting to /gateway/ntfy/action when the URL is
 // not parseable).
 //
-// The daemon intentionally does NOT terminate TLS — Tailscale Funnel
+// The daemon intentionally does NOT terminate TLS - Tailscale Funnel
 // or a reverse proxy in front of this listener handles that. Carlos
 // stays a single binary, no certificate management surface.
 func mountNtfyListener(cfg config.NtfyGatewayConfig, handler http.Handler) (net.Listener, *http.Server, error) {

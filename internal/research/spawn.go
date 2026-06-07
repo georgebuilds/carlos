@@ -1,4 +1,4 @@
-// Phase 11 slice 11d — research as sub-agent.
+// Phase 11 slice 11d - research as sub-agent.
 //
 // SpawnResearch wraps the synchronous Engine.Run with sub-agent
 // lifecycle plumbing: it mints an agent ID, writes the state-change +
@@ -51,7 +51,7 @@ import (
 // visible to the TUI (slice 11e wiring).
 //
 // InsertArtifact satisfies the artifactWriter contract WriteArtifact
-// uses internally — passing the log straight through means we don't
+// uses internally - passing the log straight through means we don't
 // need to type-assert *agent.SQLiteEventLog at the call site.
 type ResearchLog interface {
 	Append(ctx context.Context, ev agent.Event) (int64, error)
@@ -64,7 +64,7 @@ type ResearchLog interface {
 // closed). On success, Report is non-nil and Artifact carries the
 // persisted research_report ref; on failure, Err is set and one or
 // both of {Report, Artifact} may still be populated with partial
-// state — callers can inspect what was gathered before the abort.
+// state - callers can inspect what was gathered before the abort.
 type ResearchResult struct {
 	AgentID  string
 	Report   *Report
@@ -92,7 +92,7 @@ type ResearchResult struct {
 // as failed).
 //
 // If engine is nil the function returns (("", nil, error)) without
-// writing any events — the caller is expected to surface "research
+// writing any events - the caller is expected to surface "research
 // engine not wired" through its own UI path.
 func SpawnResearch(parentCtx context.Context, log ResearchLog, engine *Engine, question string) (string, <-chan ResearchResult, error) {
 	if log == nil {
@@ -108,7 +108,7 @@ func SpawnResearch(parentCtx context.Context, log ResearchLog, engine *Engine, q
 	agentID := newResearchAgentID(time.Now().UTC())
 	now := time.Now().UTC().Truncate(time.Millisecond)
 
-	// 1. state_change kind=created — installs the agent in the
+	// 1. state_change kind=created - installs the agent in the
 	//    projection cache via the standard event shape (no
 	//    research-specific schema drift).
 	created, err := agent.NewStateChangeCreated(agent.AgentCreated{
@@ -247,7 +247,7 @@ func runResearchSession(ctx context.Context, log ResearchLog, engine *Engine, ag
 
 // emitTransition writes a state_change kind=transition event. Unlike
 // the supervisor's transition() helper, we don't call UpdateAgentState
-// — the projection cache will see the event via Apply once the chat /
+// - the projection cache will see the event via Apply once the chat /
 // manage subscribers consume it, which is the path the manage roster
 // already uses for live state. Bypassing UpdateAgentState keeps the
 // research package independent of the SQL projection-row schema and
@@ -255,7 +255,7 @@ func runResearchSession(ctx context.Context, log ResearchLog, engine *Engine, ag
 //
 // The trade-off is that a fresh Replay() (e.g. after carlos restart)
 // will reconstruct the row from the event stream, not from the
-// projection table — which is the documented v0 contract anyway
+// projection table - which is the documented v0 contract anyway
 // (events are the source of truth).
 func emitTransition(ctx context.Context, log ResearchLog, agentID string, next agent.State) error {
 	payload, err := agent.NewStateChangeTransition(next)
@@ -298,7 +298,7 @@ func emitResearchPhase(ctx context.Context, log ResearchLog, agentID string, pl 
 // breadcrumb.
 //
 // Payload shape mirrors the field set parents already consume from
-// SpawnResult.FinalArtifact (id, kind, sha256, size, path) — no new
+// SpawnResult.FinalArtifact (id, kind, sha256, size, path) - no new
 // schema, just a JSON encoding of the existing ArtifactRef.
 func emitArtifactRef(ctx context.Context, log ResearchLog, agentID string, ref agent.ArtifactRef) {
 	payload, err := json.Marshal(struct {
@@ -327,7 +327,7 @@ func emitArtifactRef(ctx context.Context, log ResearchLog, agentID string, ref a
 
 // researchAgentIDMu serializes monotonic-suffix increments so two
 // SpawnResearch calls inside the same nanosecond still produce
-// distinct IDs (defensive — time.UnixNano() is usually unique enough
+// distinct IDs (defensive - time.UnixNano() is usually unique enough
 // on its own, but tests that fire spawns from a tight loop have
 // surprised us before).
 var (
@@ -361,7 +361,7 @@ func newResearchAgentID(now time.Time) string {
 // RenderMarkdown turns a *Report into a human-readable Markdown
 // document. Mirrors internal/tui/chat.RenderReportMarkdown so the
 // artifact persisted by SpawnResearch (this package) and the chat-
-// transcript message (chat package) carry the same prose — they're
+// transcript message (chat package) carry the same prose - they're
 // the same content, materialized in two places.
 //
 // We duplicate the renderer rather than depending on the chat
@@ -395,7 +395,7 @@ func RenderMarkdown(r *Report) string {
 			if title == "" {
 				title = "(untitled)"
 			}
-			fmt.Fprintf(&b, "- **%s** — %s — <%s>\n", s.ID, title, s.URL)
+			fmt.Fprintf(&b, "- **%s** - %s - <%s>\n", s.ID, title, s.URL)
 		}
 		b.WriteString("\n")
 	}

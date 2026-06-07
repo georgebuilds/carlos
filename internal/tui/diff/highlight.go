@@ -1,7 +1,7 @@
 //go:build !nochroma
 
 // Package diff's syntax-highlighting layer. Build with `-tags nochroma`
-// to compile this file out and use highlight_stub.go instead — useful
+// to compile this file out and use highlight_stub.go instead - useful
 // for binary-size-sensitive builds (chroma + its transitive
 // `github.com/dlclark/regexp2` add ~1 MiB to the static binary).
 //
@@ -10,7 +10,7 @@
 // sub-millisecond on the M-series machines we develop on; for the
 // approval pane (handful of files, hundreds of lines max) the cost is
 // invisible. If you find yourself rendering megabytes of diff with
-// Highlight=true, batch the work or memoize at the call site — this
+// Highlight=true, batch the work or memoize at the call site - this
 // package intentionally does not cache.
 
 package diff
@@ -52,7 +52,7 @@ func pickStyle() *chroma.Style {
 // highlightLine runs `line` through chroma's lexer for `lang` and
 // returns terminal-256-colored output. On any error (unknown lexer,
 // formatter failure) we return "" so the caller falls back to the
-// uncolored line — highlighting must never break rendering.
+// uncolored line - highlighting must never break rendering.
 //
 // We strip trailing newlines from chroma's output because the
 // formatter adds one and we're emitting per-line.
@@ -76,7 +76,7 @@ func highlightLine(lang, line string) string {
 }
 
 // getLexer returns a cached chroma.Lexer for `lang`, or nil if chroma
-// doesn't know it. We don't call lexers.Analyse — we already mapped
+// doesn't know it. We don't call lexers.Analyse - we already mapped
 // the file extension in detectLanguage; passing through chroma's
 // fallback would only slow us down.
 func getLexer(lang string) chroma.Lexer {

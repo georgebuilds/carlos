@@ -28,14 +28,14 @@ func renderITerm2(png []byte) (string, error) {
 // (small letterboxing is acceptable; the alternative of stretching looks
 // worse for a face).
 //
-// Unlike Kitty, iTerm2 has no "don't advance cursor" mode — the cursor
+// Unlike Kitty, iTerm2 has no "don't advance cursor" mode - the cursor
 // moves to the line below the image after render. Layout reservation:
 // emit the image, then `rows-1` blank lines of `cols` spaces. (The image
 // already advanced the cursor by one row; the remaining rows-1 brings
 // the cumulative visible footprint to `rows`.)
 //
 // In iTerm2 the image is part of the text layer (not above-text like
-// Kitty), so we cannot overprint with spaces — the fill MUST come AFTER
+// Kitty), so we cannot overprint with spaces - the fill MUST come AFTER
 // the image-advanced cursor, never where the image lives.
 func renderITerm2Cells(png []byte, cols, rows int) (string, error) {
 	if cols < 1 {

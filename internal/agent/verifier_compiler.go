@@ -1,4 +1,4 @@
-// Phase 5 slice 5d — Compiler adapter.
+// Phase 5 slice 5d - Compiler adapter.
 //
 // Runs the canonical build command for the detected language under
 // workdir. Exit code 0 → clean accept (score 10). Non-zero → reject
@@ -12,7 +12,7 @@
 //	go.mod         → go build ./...
 //	Cargo.toml     → cargo build
 //	package.json   → npm run build       (skipped if no "build" script)
-//	pyproject.toml → python -m compileall .  (best effort — Python doesn't
+//	pyproject.toml → python -m compileall .  (best effort - Python doesn't
 //	                 have a canonical "build" step; bytecode-compile
 //	                 catches at least syntax errors)
 //
@@ -39,13 +39,13 @@ import (
 type CompilerVerifier struct {
 	// Timeout caps the build command's wall-clock. Default (zero) =
 	// compilerDefaultTimeout. The bash tool's 30s is too tight for a
-	// full repo build — 90s is generous without being a denial-of-
+	// full repo build - 90s is generous without being a denial-of-
 	// service risk.
 	Timeout time.Duration
 
 	// MaxOutputBytes caps the combined stdout+stderr we keep. Default
 	// (zero) = compilerMaxOutputBytes. Errors are usually at the END
-	// of the build output, so we keep the TAIL, not the head — see
+	// of the build output, so we keep the TAIL, not the head - see
 	// truncateTail.
 	MaxOutputBytes int
 }
@@ -70,16 +70,16 @@ func (*CompilerVerifier) Name() string { return "compiler" }
 
 // ErrCompilerNoToolchain is returned when the detected language's
 // build tool is not on PATH. The caller should treat this as "verifier
-// could not run" — i.e. fall back to human review.
+// could not run" - i.e. fall back to human review.
 var ErrCompilerNoToolchain = errors.New("compiler: build toolchain not on PATH")
 
 // ErrCompilerUnknownLanguage is returned when no project marker is
-// found under workdir. Same semantics as ErrCompilerNoToolchain — the
+// found under workdir. Same semantics as ErrCompilerNoToolchain - the
 // verifier did not run.
 var ErrCompilerUnknownLanguage = errors.New("compiler: no recognised project marker under workdir")
 
 // Verify runs the build command for workdir's detected language. The
-// content arg is unused — the build is performed against whatever is
+// content arg is unused - the build is performed against whatever is
 // on disk in workdir. The slice-5d design intentionally separates
 // artifact text from the workdir snapshot: a diff artifact is APPLIED
 // into a Worktree by the caller before Verify is called, and the
@@ -110,7 +110,7 @@ func (v *CompilerVerifier) Verify(ctx context.Context, workdir string, content [
 	if !ok {
 		// Language detected but its tool isn't available (e.g.
 		// package.json with no "build" script). Treat as
-		// "cannot evaluate" — same as missing toolchain.
+		// "cannot evaluate" - same as missing toolchain.
 		return VerificationReport{
 			Decision:   VerificationReject,
 			Score:      1,
@@ -167,7 +167,7 @@ func (v *CompilerVerifier) Verify(ctx context.Context, workdir string, content [
 // compilerCommandFor returns the (cmd, args) tuple for the language's
 // canonical build, plus a bool indicating whether a usable command was
 // determined. For Node we additionally peek at package.json to confirm
-// a "build" script exists — projects that don't define one shouldn't be
+// a "build" script exists - projects that don't define one shouldn't be
 // blamed for "failing to build".
 func compilerCommandFor(lang detectedLang, workdir string) (string, []string, bool) {
 	switch lang {
@@ -192,7 +192,7 @@ func compilerCommandFor(lang detectedLang, workdir string) (string, []string, bo
 
 // hasNpmBuildScript peeks at package.json and reports whether a
 // "build" script is defined. We swallow JSON parse errors and missing
-// files (return false) — the worst case is we report "no build script"
+// files (return false) - the worst case is we report "no build script"
 // for a malformed package.json, which is correct behavior.
 func hasNpmBuildScript(workdir string) bool {
 	raw, err := os.ReadFile(filepath.Join(workdir, "package.json"))
@@ -212,7 +212,7 @@ func hasNpmBuildScript(workdir string) bool {
 // runBuildCommand executes cmd+args in workdir with the given timeout,
 // captures combined stdout+stderr (tail-truncated to maxLen), and
 // returns (output, exit code, timed-out). A non-zero exit from the
-// child is NOT signaled as a Go error here — it's part of the verdict.
+// child is NOT signaled as a Go error here - it's part of the verdict.
 //
 // Mirrors internal/tools/bash.go's process-group handling so a context
 // cancel kills grandchildren too (Go's build pulls in compile+link

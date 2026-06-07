@@ -15,7 +15,7 @@
 //   - The Broker owns retry/backoff, inbound dedupe, decision serialization
 //     per ArtifactID, and the event-log writes (EvtGatewayOutbound /
 //     EvtGatewayInbound).
-//   - The agent loop sees gateway inbound exactly like a TUI click —
+//   - The agent loop sees gateway inbound exactly like a TUI click -
 //     same approval queue, same resolver, no parallel control path.
 //
 // The CLI Gateway (the in-process TUI surface) is unrelated to this
@@ -29,17 +29,17 @@ package gateway
 type Source string
 
 const (
-	// SourceNtfy — fire-and-forget HTTP publish + ≤3 action buttons.
+	// SourceNtfy - fire-and-forget HTTP publish + ≤3 action buttons.
 	SourceNtfy Source = "ntfy"
-	// SourceTelegram — Bot API long-poll with inline keyboards.
+	// SourceTelegram - Bot API long-poll with inline keyboards.
 	SourceTelegram Source = "telegram"
-	// SourceSignal — signal-cli JSON-RPC. Post-v1; the adapter exists
+	// SourceSignal - signal-cli JSON-RPC. Post-v1; the adapter exists
 	// as a stub so the contract is exercised in tests.
 	SourceSignal Source = "signal"
-	// SourceCustom — Tailscale-only WebSocket from a custom phone app.
+	// SourceCustom - Tailscale-only WebSocket from a custom phone app.
 	// Post-v1; not implemented in this round.
 	SourceCustom Source = "custom"
-	// SourceFake — used by tests to stand a deterministic adapter in
+	// SourceFake - used by tests to stand a deterministic adapter in
 	// for any real channel. Never enabled in production config.
 	SourceFake Source = "fake"
 )
@@ -96,7 +96,7 @@ func (u Urgency) String() string {
 
 // ParseUrgency parses the string form back into the typed value. An
 // unknown string maps to UrgencyDefault so a typo in config is not
-// catastrophic — it's just middle-of-the-road.
+// catastrophic - it's just middle-of-the-road.
 func ParseUrgency(s string) Urgency {
 	switch s {
 	case "low":
@@ -110,7 +110,7 @@ func ParseUrgency(s string) Urgency {
 }
 
 // OutboundKind categorizes a broker→adapter envelope. Adapters that
-// can't render a kind faithfully degrade — e.g. ntfy renders an
+// can't render a kind faithfully degrade - e.g. ntfy renders an
 // ApprovalRequest by surfacing up to three Action buttons; ConversationReply
 // over ntfy is invalid and the broker drops the envelope for that channel
 // (the routing config should not point ConversationReply at ntfy in the
@@ -134,7 +134,7 @@ const (
 type InboundKind string
 
 const (
-	// InboundMessage is free-form text from the user — the start (or
+	// InboundMessage is free-form text from the user - the start (or
 	// continuation) of a conversation. Routes to the agent loop as a
 	// new user message event.
 	InboundMessage InboundKind = "message"

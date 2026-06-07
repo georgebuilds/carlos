@@ -16,7 +16,7 @@ const (
 	EvSpawnSucceeded
 	EvSpawnFailed
 	// EvQueueAdmitted was declared in the preflight skeleton but had no
-	// home in the transition function — `queued` is an initial-state
+	// home in the transition function - `queued` is an initial-state
 	// assignment owned by the supervisor, not a transition destination
 	// (SPEC § Manage mode § State machine; preflight finding).
 	EvProviderCallStarted
@@ -51,7 +51,7 @@ var ErrIllegalTransition = errors.New("agent: illegal state transition")
 //     last in (otherwise an agent stuck in `awaiting-input` could never be
 //     detected as lost).
 //
-// `queued` and `spawning` are initial-state assignments — no transition
+// `queued` and `spawning` are initial-state assignments - no transition
 // writes into them. A retry of a failed agent is a new attempt with a new
 // ULID, NOT a transition from `failed` back to `spawning`.
 func Transition(s State, ev EventKind) (State, error) {

@@ -1,4 +1,4 @@
-// runtime_tui.go — TUI bootstrap entry points (runDefault, runOnboard,
+// runtime_tui.go - TUI bootstrap entry points (runDefault, runOnboard,
 // dev-aid commands). Split out of main.go so codecov can ignore the
 // bubbletea program boundaries that resist unit testing.
 
@@ -36,11 +36,11 @@ import (
 //
 // only, when non-empty, restricts the flow to a single screen (see
 // onboardScreenByName). The existing config is loaded and merged so the
-// sub-flow only edits its slice — the rest of the config rounds-trips
+// sub-flow only edits its slice - the rest of the config rounds-trips
 // untouched.
 //
 // A ctrl-c during the flow returns onboarding.ErrAborted, which we treat as
-// a clean exit (code 0, no message) — the user opted out, no half-written
+// a clean exit (code 0, no message) - the user opted out, no half-written
 // state should remain.
 func runOnboard(force bool, only string) error {
 	// Onboarding runs BEFORE the config exists, so apply with nil
@@ -79,10 +79,10 @@ func runOnboard(force bool, only string) error {
 		// (launchd / systemd) happens behind `carlos daemon enable`
 		// because it may need to ask the user about an autostart slot.
 		fmt.Fprintln(os.Stderr,
-			"note: daemon preference saved — run `carlos daemon enable` to install the autostart unit.")
+			"note: daemon preference saved - run `carlos daemon enable` to install the autostart unit.")
 	}
 	if only != "" {
-		// Partial re-onboard: don't drop into the chat TUI — the user
+		// Partial re-onboard: don't drop into the chat TUI - the user
 		// was editing a single screen and likely wants to verify by
 		// hand. Print the config path and return.
 		fmt.Fprintln(os.Stderr, "config updated:", path)
@@ -90,12 +90,12 @@ func runOnboard(force bool, only string) error {
 	}
 	// Drop straight into the TUI so the user doesn't have to re-launch
 	// to start working. This mirrors what the default-mode path does
-	// when config already exists. Fresh-session — onboarding just
+	// when config already exists. Fresh-session - onboarding just
 	// finished, the user's first launch deserves a clean slate.
 	return runDefault(cfg, "")
 }
 
-// runChatDevAid is a Slice-1e development aid — NOT a stable public
+// runChatDevAid is a Slice-1e development aid - NOT a stable public
 // surface. It opens (or creates) a temp SQLite event log under
 // runDefault is the no-args TUI entrypoint: opens ~/.carlos/state.db,
 // reuses or seeds the persistent default agent, wires chatglue.Loop so
@@ -167,7 +167,7 @@ func runDefault(cfg *config.Config, sessionID string) error {
 	sup.StartHeartbeat(ctx, defaultAgentID)
 
 	// Phase 11 slice 11f: wire the research engine off the same
-	// provider + web tools the chat already uses. nil-safe — the
+	// provider + web tools the chat already uses. nil-safe - the
 	// chat-side /research handler echoes "not wired" when this is
 	// missing, so a degenerate registry (e.g. without web tools)
 	// just disables the feature rather than crashing.
@@ -178,8 +178,8 @@ func runDefault(cfg *config.Config, sessionID string) error {
 	defer approver.Close()
 	// Phase T-1/T-2: the loop sees a LayeredApprover that auto-
 	// approves the hardcoded read-only allowlist (notes_*,
-	// read/grep/glob/ls, git_status, …) AND — when the cwd is
-	// trusted via the workspace store — a small set of read-only
+	// read/grep/glob/ls, git_status, …) AND - when the cwd is
+	// trusted via the workspace store - a small set of read-only
 	// bash verbs (git status/diff/log/…, ls, pwd, cat, head, tail,
 	// wc, file, which, echo). Everything else falls through to the
 	// TUI prompt. The TUI surface still gets the bare approver via
@@ -516,7 +516,7 @@ func runDefault(cfg *config.Config, sessionID string) error {
 // stable default-mode agent id (first run), OR refreshes the row's
 // state + heartbeat (subsequent runs). The refresh path matters
 // because Recover orphans any non-terminal agent whose heartbeat is
-// stale, and the chat-default agent is always stale at startup —
+// stale, and the chat-default agent is always stale at startup -
 // there's no per-process supervisor heartbeat ticker for it. Without
 // the refresh, every restart shows the chat header stuck on
 // `[orphaned]`.
@@ -524,7 +524,7 @@ func runDefault(cfg *config.Config, sessionID string) error {
 // The projection-only refresh (no state-change event in the log) is
 // deliberate for the default chat agent: orphaned is terminal in the
 // state machine, so there's no legal Transition out of it. The chat
-// agent isn't a sub-agent with a meaningful lifecycle — it's a
+// agent isn't a sub-agent with a meaningful lifecycle - it's a
 // conversation handle. Direct projection edits are the right hammer.
 func ensureDefaultAgent(ctx context.Context, log *agent.SQLiteEventLog, id, provider, model, userName string) error {
 	now := time.Now().UTC()
@@ -538,7 +538,7 @@ func ensureDefaultAgent(ctx context.Context, log *agent.SQLiteEventLog, id, prov
 		// orphaned event sticks unless we append a follow-up
 		// transition event the projection respects. We bypass the
 		// state machine's terminal-state guard (orphaned would
-		// refuse Transition()) by writing the event directly — the
+		// refuse Transition()) by writing the event directly - the
 		// projection's Apply() is permissive about transition source
 		// state, which is exactly what we want here. The chat-default
 		// agent isn't a sub-agent with a meaningful lifecycle; it's
@@ -577,7 +577,7 @@ func ensureDefaultAgent(ctx context.Context, log *agent.SQLiteEventLog, id, prov
 	// Created leaves the projection in StateSpawning. Append the
 	// transition to Running immediately so the chat header reflects
 	// "active" instead of staying stuck at "◐ spawning" forever.
-	// Same recipe the resume branch above uses — without this, every
+	// Same recipe the resume branch above uses - without this, every
 	// fresh Phase R session showed the wrong badge.
 	trans, err := agent.NewStateChangeTransition(agent.StateRunning)
 	if err != nil {
@@ -635,13 +635,13 @@ func runChatDevAid() error {
 		}
 	}
 
-	fmt.Fprintln(os.Stderr, "carlos: chat dev-aid — Slice 1e smoke harness, not a public surface.")
+	fmt.Fprintln(os.Stderr, "carlos: chat dev-aid - Slice 1e smoke harness, not a public surface.")
 	fmt.Fprintf(os.Stderr, "carlos:   db = %s\n", dbPath)
 	fmt.Fprintf(os.Stderr, "carlos:   agent_id = %s\n", agentID)
 	fmt.Fprintln(os.Stderr, "carlos:   ctrl-c to quit; /help inside the TUI for commands.")
 
 	src := chat.NewMemTextSource()
-	src.Append(agentID, "(no real provider wired yet — Slice 1f will plug in the stream.)")
+	src.Append(agentID, "(no real provider wired yet - Slice 1f will plug in the stream.)")
 	m := chat.New(log, agentID, src)
 	if _, err := m.Run(); err != nil {
 		return fmt.Errorf("dev-aid run: %w", err)
@@ -649,17 +649,17 @@ func runChatDevAid() error {
 	// Slice 7g: /agents inside chat sets OpenManageRequested(); honor
 	// it by relaunching into the manage TUI. Dev-aid limitation: chat
 	// and manage use different smoke-harness DBs, so the chat agent
-	// won't appear in manage's roster — the swap mechanism still
+	// won't appear in manage's roster - the swap mechanism still
 	// exercises end-to-end; the shared-DB version lands with the
 	// unified default-mode TUI.
 	if m.OpenManageRequested() {
-		fmt.Fprintln(os.Stderr, "carlos: /agents — switching to manage TUI.")
+		fmt.Fprintln(os.Stderr, "carlos: /agents - switching to manage TUI.")
 		return runManageDevAid()
 	}
 	return nil
 }
 
-// runManageDevAid is the Slice-4 development aid — NOT a stable
+// runManageDevAid is the Slice-4 development aid - NOT a stable
 // surface. Opens a temp SQLite event log under
 // $TMPDIR/carlos-manage-devaid/state.db, seeds ~8 sample agents
 // covering most SPEC states plus a 3-level lineage, and drops into
@@ -668,7 +668,7 @@ func runChatDevAid() error {
 //
 // Pass a Supervisor=nil to the TUI so the verbs surface a "no
 // supervisor wired" line in the status bar rather than fanning out
-// to a real one. This is the smoke harness — not the product.
+// to a real one. This is the smoke harness - not the product.
 func runManageDevAid() error {
 	// Dev-aid: no cfg on disk; use env-only autodetect.
 	applyTheme(nil)
@@ -687,7 +687,7 @@ func runManageDevAid() error {
 		return fmt.Errorf("dev-aid seed: %w", err)
 	}
 
-	fmt.Fprintln(os.Stderr, "carlos: manage dev-aid — Slice 4 smoke harness, not a public surface.")
+	fmt.Fprintln(os.Stderr, "carlos: manage dev-aid - Slice 4 smoke harness, not a public surface.")
 	fmt.Fprintf(os.Stderr, "carlos:   db = %s\n", dbPath)
 	fmt.Fprintln(os.Stderr, "carlos:   ctrl-c to quit; verbs (s/i/x) surface 'not implemented' until Slice 3 verbs land.")
 

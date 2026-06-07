@@ -73,8 +73,8 @@ func stdinIsTTY() bool {
 //
 // Callers MUST handle the single-frame case themselves (skip the
 // picker, print a one-line dim "running in <name>" hint). The picker
-// still works correctly when given a single frame — it returns it
-// immediately on enter — but the caller's UX is better when it skips
+// still works correctly when given a single frame - it returns it
+// immediately on enter - but the caller's UX is better when it skips
 // the prompt entirely in that case.
 func RunInlineFramePicker(cmdName, prompt string, frames *frame.Config) (string, error) {
 	pal := loadPickerPalette()
@@ -98,7 +98,7 @@ func RunInlineFramePicker(cmdName, prompt string, frames *frame.Config) (string,
 }
 
 // inlinePickerModel is the bubbletea Model for the picker. Tiny by
-// design — the whole UX is a row of frames + a footer.
+// design - the whole UX is a row of frames + a footer.
 type inlinePickerModel struct {
 	cmdName string
 	prompt  string

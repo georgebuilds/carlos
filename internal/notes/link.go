@@ -10,7 +10,7 @@ import "strings"
 // Returns "" when no heading matches.
 //
 // Lives in link.go because it's the "follow a wikilink with #anchor"
-// helper, not the Obsidian resolver itself — but both concerns are
+// helper, not the Obsidian resolver itself - but both concerns are
 // link-shaped, so grouping them in one file keeps the package surface
 // scannable.
 func SectionBody(n *Note, sectionName string) string {
@@ -32,8 +32,8 @@ func SectionBody(n *Note, sectionName string) string {
 				startLevel = level
 				break
 			}
-			// Loose prefix match — "Phase 11" should match
-			// "Phase 11 — Research mode" without forcing the
+			// Loose prefix match - "Phase 11" should match
+			// "Phase 11 - Research mode" without forcing the
 			// model to quote the trailing em-dash phrase.
 			if strings.HasPrefix(strings.ToLower(text), target) {
 				startBody = i + 1

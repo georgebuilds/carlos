@@ -2,7 +2,7 @@ package telegram
 
 import "strings"
 
-// MarkdownV2 — Telegram's stricter markdown flavor — requires every
+// MarkdownV2 - Telegram's stricter markdown flavor - requires every
 // reserved character to be backslash-escaped, even inside what would
 // otherwise be a benign literal. The Bot API rejects the whole message
 // if a stray reserved char appears unescaped, which is a footgun the
@@ -11,7 +11,7 @@ import "strings"
 // We escape conservatively: every byte in markdownV2ReservedSet gets a
 // preceding backslash. We do NOT try to preserve formatting (no "escape
 // outside of bold/italic spans") because the agent's outbound text is
-// not authored with MarkdownV2 syntax in mind — Title and Body are
+// not authored with MarkdownV2 syntax in mind - Title and Body are
 // treated as plaintext and rendered as such.
 //
 // Reserved set per the Bot API docs:

@@ -9,7 +9,7 @@ import "context"
 // Returning an error means the broker failed to ingest (e.g. the event
 // log is down). Adapters should propagate the error to whatever loop
 // produced the envelope so the platform's retry semantics decide what
-// happens next — Telegram leaves update_id un-acked so the next poll
+// happens next - Telegram leaves update_id un-acked so the next poll
 // picks it up; ntfy returns a 5xx so the action button retries.
 type IngestFunc func(ctx context.Context, env InboundEnvelope) error
 
@@ -20,7 +20,7 @@ type IngestFunc func(ctx context.Context, env InboundEnvelope) error
 // The broker calls Start exactly once at process startup with the
 // broker's IngestFunc. The adapter is expected to spin its own inbound
 // machinery (Telegram long-poll, ntfy HTTP handler, signal-cli IPC) in
-// a background goroutine that respects ctx — when ctx is cancelled,
+// a background goroutine that respects ctx - when ctx is cancelled,
 // the adapter shuts down and Stop returns.
 //
 // Stop is called for graceful shutdown. Adapters must drain any in-
@@ -39,7 +39,7 @@ type IngestFunc func(ctx context.Context, env InboundEnvelope) error
 // Per the spec § Adapter interface: adapters stay dumb so the broker
 // owns retry, dedupe, decision serialization, and routing. Don't add
 // methods here without first asking whether the new responsibility
-// could live in the broker — the answer is usually yes.
+// could live in the broker - the answer is usually yes.
 type Adapter interface {
 	// Name returns the Source constant the broker uses to key the
 	// adapters map and to route per-channel events.
@@ -50,7 +50,7 @@ type Adapter interface {
 	OutboundCapabilities() OutboundCapabilities
 
 	// Send publishes env to the channel. The adapter does NOT retry on
-	// failure — broker owns that. The returned DeliveryReceipt's
+	// failure - broker owns that. The returned DeliveryReceipt's
 	// Status reflects what the adapter learned synchronously
 	// (Delivered if the platform acknowledged with an id, Unknown if
 	// the API is fire-and-forget, Failed if Send errored).

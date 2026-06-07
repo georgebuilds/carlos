@@ -24,7 +24,7 @@ const EventAgentID = "user-shell"
 const MaxInlineOutput = 30_000
 
 // StartPayload is the JSON body of EvtUserShellStart. Written when
-// a Job enters the running state — foreground OR background.
+// a Job enters the running state - foreground OR background.
 type StartPayload struct {
 	JobID      string    `json:"job_id"`
 	Command    string    `json:"command"`
@@ -55,12 +55,12 @@ type EndPayload struct {
 
 	// OutputPath is the on-disk path to the full output log. Empty
 	// when there was no output to persist (silent commands). Lives
-	// under <OutputDir>/<job-id>.log — see Options.OutputDir. The TUI
+	// under <OutputDir>/<job-id>.log - see Options.OutputDir. The TUI
 	// reads this on-demand when the user expands a job's detail view.
 	//
 	// We persist to a file rather than the agent artifact store
 	// because user-shell output is user-authored, not agent-authored
-	// — the artifact store's FK is to the agents table, and inventing
+	// - the artifact store's FK is to the agents table, and inventing
 	// a synthetic "user-shell" agent row would muddy that schema.
 	OutputPath string `json:"output_path,omitempty"`
 }
@@ -111,7 +111,7 @@ func AppendEnd(ctx context.Context, log *agent.SQLiteEventLog, p EndPayload) (in
 
 // DecodeStartPayload is the symmetric helper for projection consumers
 // (chatglue, manage view, audit tools). Returns a descriptive error
-// on a corrupted row rather than panicking — matches the gateway
+// on a corrupted row rather than panicking - matches the gateway
 // pattern.
 func DecodeStartPayload(raw []byte) (StartPayload, error) {
 	var p StartPayload
@@ -131,14 +131,14 @@ func DecodeEndPayload(raw []byte) (EndPayload, error) {
 }
 
 // TruncateForInline returns the output trimmed to MaxInlineOutput
-// bytes from the END (so we keep the last MaxInlineOutput bytes —
+// bytes from the END (so we keep the last MaxInlineOutput bytes -
 // usually the most relevant for cargo test output, error messages,
 // build failures), plus the number of bytes that were dropped from
 // the front. A zero-byte drop means the input fit.
 //
 // Keeping the tail (not the head) is the right call for the model
 // context: the head of a long log is usually "starting…", "compiling
-// crate 1/200…" — boilerplate. The tail is the result.
+// crate 1/200…" - boilerplate. The tail is the result.
 func TruncateForInline(output string) (inline string, dropped int) {
 	if len(output) <= MaxInlineOutput {
 		return output, 0

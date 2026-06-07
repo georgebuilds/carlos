@@ -32,7 +32,7 @@ const (
 // goroutines as long as callers don't mutate the fields concurrently
 // with Render.
 type Renderer struct {
-	// Width clamps total output cells. 0 disables clamping — useful when
+	// Width clamps total output cells. 0 disables clamping - useful when
 	// the consumer is wrapping in a viewport that already enforces a
 	// width.
 	Width int
@@ -45,7 +45,7 @@ type Renderer struct {
 	// no-op in that build).
 	Highlight bool
 	// Gutter prepends right-aligned source-line numbers (old | new) to
-	// each body line. Off by default — most call sites have a viewport
+	// each body line. Off by default - most call sites have a viewport
 	// chrome that already gives a sense of position.
 	Gutter bool
 }
@@ -55,7 +55,7 @@ type Renderer struct {
 // "siblings don't import siblings" rule for scope-disciplined TUI
 // packages.
 var (
-	colorAccent  = lipgloss.Color("#4a6bd6") // brand accent — borders, file headers
+	colorAccent  = lipgloss.Color("#4a6bd6") // brand accent - borders, file headers
 	colorMuted   = lipgloss.Color("240")     // dimmed metadata
 	colorSubtle  = lipgloss.Color("244")     // hunk header bg-hint via foreground
 	colorAdded   = lipgloss.Color("#22863a") // + lines (GitHub-style green)
@@ -94,7 +94,7 @@ func (r Renderer) Render(unified []byte) string {
 
 // renderFile emits the styled lines for one parsed file and returns
 // (lines, hunkIndices). The hunk indices are RELATIVE to the start of
-// this file's output — the caller offsets them by the file's
+// this file's output - the caller offsets them by the file's
 // startLine in the overall rendered string.
 func (r Renderer) renderFile(f parsedFile) ([]string, []HunkIndex) {
 	out := make([]string, 0, len(f.header)+len(f.hunks)*8)
@@ -131,7 +131,7 @@ func (r Renderer) renderFile(f parsedFile) ([]string, []HunkIndex) {
 }
 
 // styleHeaderLine picks a lipgloss style for a single header line based
-// on its prefix. Anything we don't recognize falls through as muted —
+// on its prefix. Anything we don't recognize falls through as muted -
 // safer than rendering it bare and surprising the operator with
 // uncolored debris in the middle of a colored block.
 func (r Renderer) styleHeaderLine(line string) string {
@@ -153,7 +153,7 @@ func (r Renderer) styleHeaderLine(line string) string {
 		strings.HasPrefix(line, "Binary files "):
 		return styleFileMuted.Render(line)
 	default:
-		// Empty or unknown — leave it as-is so we don't accidentally
+		// Empty or unknown - leave it as-is so we don't accidentally
 		// inject ANSI into a blank separator.
 		if strings.TrimSpace(line) == "" {
 			return line
@@ -168,7 +168,7 @@ func (r Renderer) styleHeaderLine(line string) string {
 // Line numbers in the gutter (when enabled) advance per real source
 // line: removed lines bump the old counter, added lines bump the new
 // counter, context lines bump both. "\ No newline at end of file"
-// does not bump either — it annotates the previous line.
+// does not bump either - it annotates the previous line.
 func (r Renderer) renderHunkInline(h parsedHunk, newPath string) ([]string, int, int) {
 	out := make([]string, 0, len(h.lines))
 	oldLine, newLine := h.oldStart, h.newStart
@@ -324,7 +324,7 @@ func (r Renderer) gutterCells(oldNum, newNum int) string {
 // added by the caller; this returns just the body fragment.
 //
 // When Highlight is on and a language is detected, the highlighter
-// colors tokens and we then layer the diff foreground on top — chroma
+// colors tokens and we then layer the diff foreground on top - chroma
 // uses 256-color ANSI which composes cleanly with our truecolor
 // foregrounds because terminals honor the most-recent SGR.
 func (r Renderer) styleBodyLine(body string, base lipgloss.Style, path string) string {
@@ -342,7 +342,7 @@ func (r Renderer) styleBodyLine(body string, base lipgloss.Style, path string) s
 // detectLanguage maps a file path to a chroma lexer alias. Returns ""
 // for unknown extensions; the caller skips highlighting in that case.
 //
-// The list is conservative on purpose — we'd rather skip highlighting
+// The list is conservative on purpose - we'd rather skip highlighting
 // than guess wrong and produce confusing output. Add extensions as the
 // approval pane surfaces them in real use.
 func detectLanguage(path string) string {

@@ -12,7 +12,7 @@ import (
 	"github.com/georgebuilds/carlos/internal/frame"
 )
 
-// CarlosAboutTool registers as `carlos_about` — a read-only
+// CarlosAboutTool registers as `carlos_about` - a read-only
 // introspection tool the model can call mid-conversation to learn
 // carlos's own current state without re-reading config or guessing.
 //

@@ -4,16 +4,16 @@
 // a TUI Feel Awesome in 2026.md:
 //
 //   - "perceived responsiveness ... never block the UI; never block on
-//     I/O" — the engine runs in a goroutine, the bubbletea loop
+//     I/O" - the engine runs in a goroutine, the bubbletea loop
 //     consumes phase events as tea.Msg
 //   - "spinner only for ≥200ms operations; output IS the activity
-//     indicator when it's streaming" — the spinner is the activity
+//     indicator when it's streaming" - the spinner is the activity
 //     indicator here because research phases don't stream
-//   - "always-visible contextual help" — keybind hint at the bottom
+//   - "always-visible contextual help" - keybind hint at the bottom
 //   - "bordered panel rather than full-screen takeover for compact
-//     surfaces" — bubbletea inline (no AltScreen) so the terminal
+//     surfaces" - bubbletea inline (no AltScreen) so the terminal
 //     resumes cleanly on exit
-//   - "no decorative motion; motion communicates state or progress" —
+//   - "no decorative motion; motion communicates state or progress" -
 //     spinner runs only while a phase is in flight
 //
 // Visual shape (3 logical content rows inside a rounded accent
@@ -44,7 +44,7 @@ import (
 )
 
 // researchBrowserUA is the User-Agent the user-initiated research
-// fetcher announces. Current stable Chrome on macOS — common enough
+// fetcher announces. Current stable Chrome on macOS - common enough
 // to look like normal traffic on sites that 403 the polite-bot UA
 // (Yelp listings, DoorDash, YellowPages, Superpages). Not a
 // deception posture; we document this in the research command and
@@ -55,7 +55,7 @@ import (
 // headers too.
 const researchBrowserUA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 
-// researchPhases is the fixed phase order — must match the engine's
+// researchPhases is the fixed phase order - must match the engine's
 // runtime order (internal/research/engine.go). Used for the
 // per-phase progress glyph row.
 var researchPhases = []string{
@@ -246,7 +246,7 @@ func (m researchStatusModel) View() string {
 	muted := lipgloss.NewStyle().Foreground(m.pal.Muted)
 	subtle := lipgloss.NewStyle().Foreground(m.pal.Subtle).Italic(true)
 
-	// Line 1 — spinner + headline + elapsed since start.
+	// Line 1 - spinner + headline + elapsed since start.
 	spinner := spinnerFrames[m.spinnerFrame]
 	if m.done {
 		spinner = "✓"
@@ -257,7 +257,7 @@ func (m researchStatusModel) View() string {
 		muted.Render(truncateOneLineForResearch(m.question, boxW-len(spinner)-20)) +
 		muted.Render(fmt.Sprintf("   · %s elapsed", formatResearchDuration(elapsed)))
 
-	// Line 2 — current phase or completion summary.
+	// Line 2 - current phase or completion summary.
 	var line2 string
 	if m.done {
 		line2 = subtle.Render("done · rendering report…")
@@ -270,7 +270,7 @@ func (m researchStatusModel) View() string {
 		line2 = subtle.Render("starting…")
 	}
 
-	// Line 3 — per-phase progress glyphs in fixed order.
+	// Line 3 - per-phase progress glyphs in fixed order.
 	line3 := m.renderPhaseGlyphs()
 
 	body := lipgloss.JoinVertical(lipgloss.Left, line1, "  "+line2, "  "+line3)

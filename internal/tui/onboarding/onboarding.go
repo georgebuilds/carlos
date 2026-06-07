@@ -58,11 +58,11 @@ func screenTitle(s Screen) string {
 }
 
 // ErrAborted is the sentinel Run returns when the user ctrl-c's out of the
-// flow. Callers treat this as "do not write config" — NOT as an error to
+// flow. Callers treat this as "do not write config" - NOT as an error to
 // surface to the user. main() exits 0 in that case.
 var ErrAborted = errors.New("onboarding: aborted by user")
 
-// Brand palette — package-level vars populated by [ApplyPalette].
+// Brand palette - package-level vars populated by [ApplyPalette].
 //
 // Onboarding was the historical source of truth for the brand colors
 // (cap navy + the brighter accent borders). As of Phase 9 slice 9a the
@@ -96,7 +96,7 @@ func ApplyPalette(p theme.Palette) {
 	rebuildStyles()
 }
 
-// Layout constants. Left rail is a fixed cell width — the portrait is
+// Layout constants. Left rail is a fixed cell width - the portrait is
 // rendered into it at known aspect (cols == 2×rows preserves square aspect
 // on terminals where cells are ~1:2 W:H).
 //
@@ -157,10 +157,10 @@ func rebuildStyles() {
 //
 // Height(height - 4) + a two-row leading margin in View leaves enough
 // breathing room for terminals with overlaid tab bars (Ghostty's
-// tabbed mode is the empirical motivator — its tab chrome overlaps
+// tabbed mode is the empirical motivator - its tab chrome overlaps
 // the first two cell rows; iTerm2 tabs + tmux status lines fit too).
 // One row of margin (the original v0.2.0 behavior) was not enough in
-// Ghostty. Two rows is universal — the cost in untabbed terminals is
+// Ghostty. Two rows is universal - the cost in untabbed terminals is
 // two blank rows above the border, which is invisible to the eye.
 func outerBorderStyle(width, height int) lipgloss.Style {
 	return lipgloss.NewStyle().
@@ -210,7 +210,7 @@ type Flow struct {
 }
 
 // pulseFrameDuration is how long each pulse frame is visible.
-// 100ms × 3 frames = 300ms total animation per advance — long
+// 100ms × 3 frames = 300ms total animation per advance - long
 // enough to register, short enough to not feel sluggish.
 const pulseFrameDuration = 100 * time.Millisecond
 
@@ -221,7 +221,7 @@ func New() *Flow {
 }
 
 // Options tunes Flow construction. Zero value matches New()'s historical
-// behavior — start at the name screen, framed by the welcome → done
+// behavior - start at the name screen, framed by the welcome → done
 // sequence. StartingScreen jumps the user past every earlier screen and
 // terminates at Done after the target screen finishes, used by
 // `carlos onboard --only <screen>` to re-enter a single sub-flow.
@@ -637,7 +637,7 @@ func schedulePulseTick() tea.Cmd {
 }
 
 // advance is called by Update when a child screen returns nextScreenMsg.
-// At the Done screen, advance is a no-op — Done returns quitMsg separately.
+// At the Done screen, advance is a no-op - Done returns quitMsg separately.
 //
 // Conditional skip: the gateway is daemon-owned (see
 // internal/daemon/gateway.go), so when the user declined the daemon

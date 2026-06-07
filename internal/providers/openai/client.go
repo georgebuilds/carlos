@@ -1,5 +1,5 @@
 // Package openai implements a pure-Go streaming client for the OpenAI
-// Chat Completions API. No SDK — we hit the HTTP endpoint directly so the
+// Chat Completions API. No SDK - we hit the HTTP endpoint directly so the
 // capability map stays honest about what the API actually offers versus
 // what an SDK papers over.
 //
@@ -23,7 +23,7 @@ import (
 //
 // BaseURL is exposed so OpenAI-compatible servers (vLLM, Together, local
 // llama.cpp, etc.) can reuse this client by pointing at a different host.
-// We do NOT special-case any of them here — the wire format IS the contract.
+// We do NOT special-case any of them here - the wire format IS the contract.
 // (OpenRouter has its own thin adapter because it needs attribution headers
 // and exposes a slightly different capability set; the core wire handling
 // is the same code in oacompat.)
@@ -42,7 +42,7 @@ func New(apiKey string) *Client {
 		APIKey:  apiKey,
 		BaseURL: "https://api.openai.com",
 		HTTPClient: &http.Client{
-			// No overall Timeout — that aborts in-flight streams.
+			// No overall Timeout - that aborts in-flight streams.
 			Transport: &http.Transport{
 				ResponseHeaderTimeout: 30 * time.Second,
 			},
@@ -86,7 +86,7 @@ func (c *Client) Stream(ctx context.Context, req providers.Request) (<-chan prov
 
 // mapFinishReason converts OpenAI's finish_reason to the canonical stop
 // vocabulary the agent loop branches on. The loop only special-cases
-// "tool_use" — everything else is opaque routing for the projection layer.
+// "tool_use" - everything else is opaque routing for the projection layer.
 //
 //	tool_calls       → tool_use   (the loop's tool-dispatch branch)
 //	stop             → end_turn   (Anthropic's idiom; mirrors clean termination)

@@ -14,7 +14,7 @@ import (
 // Wire-format docs:
 //   https://github.com/ollama/ollama/blob/main/docs/api.md#generate-a-chat-completion
 //
-// Tool format mirrors OpenAI verbatim — Ollama adopted that shape. The
+// Tool format mirrors OpenAI verbatim - Ollama adopted that shape. The
 // only place the wire diverges from OpenAI: the tool_call's
 // function.arguments field is a JSON OBJECT on Ollama (not a string the
 // way OpenAI ships it). Adapter logic in client.go marshals that object
@@ -49,7 +49,7 @@ type apiMsg struct {
 }
 
 // apiToolCall is one tool invocation. Arguments is a JSON object on the
-// wire (object literal, not a string) — we keep it as RawMessage so the
+// wire (object literal, not a string) - we keep it as RawMessage so the
 // shape round-trips faithfully when the caller is replaying a recorded
 // assistant turn.
 type apiToolCall struct {
@@ -78,7 +78,7 @@ type apiToolSchema struct {
 // buildRequest converts the canonical providers.Request to Ollama's
 // /api/chat wire shape. System prompts go in as a leading role=system
 // message (Ollama supports the same convention as OpenAI). num_predict
-// defaults to 4096 — Ollama's own default is -1 (unbounded until the
+// defaults to 4096 - Ollama's own default is -1 (unbounded until the
 // model emits its stop token), but we cap to keep partial-failure
 // behavior similar to the other providers.
 func buildRequest(req providers.Request) (*chatRequest, error) {
@@ -127,7 +127,7 @@ func buildRequest(req providers.Request) (*chatRequest, error) {
 //   - Plain text user/assistant → one wire message; multiple text blocks
 //     get concatenated since Ollama has no typed-block shape.
 //
-// Unknown block kinds are rejected — silently dropping them produces
+// Unknown block kinds are rejected - silently dropping them produces
 // confusing model behavior (Anthropic-style design choice, kept for
 // consistency across providers).
 func toAPIMessages(m providers.Message) ([]apiMsg, error) {
@@ -176,7 +176,7 @@ func toAPIMessages(m providers.Message) ([]apiMsg, error) {
 
 	// Text + tool_calls collapse into a single wire message for the
 	// originating role. Skip emission entirely if there's nothing to
-	// say AND we already fanned out tool_results — sending an empty
+	// say AND we already fanned out tool_results - sending an empty
 	// assistant message would just confuse the server.
 	hasText := len(textParts) > 0
 	hasCalls := len(toolCalls) > 0

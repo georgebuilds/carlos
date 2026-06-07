@@ -1,4 +1,4 @@
-// policy.go — the workspace-trust gate plugged into LayeredApprover.
+// policy.go - the workspace-trust gate plugged into LayeredApprover.
 //
 // A Policy is the read side of the trust store, paired with the
 // read-only bash classifier. The chat path constructs one Policy per
@@ -7,7 +7,7 @@
 // engine consults it for layer-2 allowances:
 //
 //	1. builtin   ← tool name in hardcoded allowlist (Phase T-1)
-//	2. workspace ← THIS layer — only fires when cwd is in store
+//	2. workspace ← THIS layer - only fires when cwd is in store
 //	3. fallback  ← TUI prompt
 //
 // The Allows hook is called for every tool call. Performance: each
@@ -27,7 +27,7 @@ type Policy struct {
 	store *Store
 	// cwd is the directory the session anchored to, normalized
 	// once at construction. The Allows hook compares against it
-	// rather than re-resolving os.Getwd on each call — the chat
+	// rather than re-resolving os.Getwd on each call - the chat
 	// loop's cwd is fixed for the session.
 	cwd string
 	// trustedAtStart caches the cwd's trust status at session
@@ -92,7 +92,7 @@ func (p *Policy) IsTrusted() bool {
 // SetTrusted updates the in-session view of the cwd's trust status.
 // Used by the /trust + /untrust slash handlers so the next tool call
 // sees the new state without a chat restart. Disk persistence is the
-// caller's responsibility — slash handlers call store.Trust /
+// caller's responsibility - slash handlers call store.Trust /
 // store.Untrust separately.
 func (p *Policy) SetTrusted(v bool) {
 	if p == nil {

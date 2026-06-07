@@ -56,7 +56,7 @@ type rawPricing struct {
 // FetchModels returns the OpenRouter catalog, sorted by ascending input
 // price. The 24h cache lives at <cacheDir>/openrouter-models.json; a
 // corrupt or expired cache file falls back to a fresh HTTP fetch. On any
-// fetch error the caller decides whether to surface or to ignore — the
+// fetch error the caller decides whether to surface or to ignore - the
 // onboarding picker treats it as "use the curated list instead".
 func FetchModels(ctx context.Context, cacheDir string, ttl time.Duration) ([]ModelInfo, error) {
 	if cacheDir != "" {
@@ -75,7 +75,7 @@ func FetchModels(ctx context.Context, cacheDir string, ttl time.Duration) ([]Mod
 }
 
 // readCache reads + decodes the cache file when fresh. ok=false on a
-// stale, missing, or corrupt cache — callers refetch.
+// stale, missing, or corrupt cache - callers refetch.
 func readCache(cacheDir string, ttl time.Duration) ([]ModelInfo, bool) {
 	path := filepath.Join(cacheDir, cacheFileName)
 	st, err := os.Stat(path)
@@ -162,7 +162,7 @@ func httpFetch(ctx context.Context) ([]ModelInfo, error) {
 }
 
 // parsePricePerMillion converts the OpenRouter per-token decimal string
-// into USD per million tokens. Returns 0 on parse failure — the
+// into USD per million tokens. Returns 0 on parse failure - the
 // renderer prints "$0" which reads correctly for free tiers and
 // degrades politely if the upstream format ever changes.
 func parsePricePerMillion(s string) float64 {

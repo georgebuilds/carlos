@@ -9,9 +9,9 @@
 //
 // Two tabs in v1:
 //
-//   - Built-in   — the hardcoded Phase T-1 allowlist. Read-only;
+//   - Built-in   - the hardcoded Phase T-1 allowlist. Read-only;
 //                  the model never gets to extend it.
-//   - Workspace  — Phase T-2 trusted workspaces. Each row can be
+//   - Workspace  - Phase T-2 trusted workspaces. Each row can be
 //                  untrusted with `d`; `t` trusts the chat's cwd.
 //
 // A Session-"Always" tab is reserved for a later slice when the
@@ -20,13 +20,13 @@
 //
 // Key handling (handleOverlayKey):
 //
-//   - tab / shift+tab  — cycle tabs
-//   - up / down / k / j — navigate rows
-//   - g / G            — jump to top / bottom of the active tab
-//   - /                — enter filter mode (rows re-narrow on each rune)
-//   - d                — untrust the highlighted workspace (Workspace tab)
-//   - t                — trust the chat's cwd (Workspace tab)
-//   - esc              — close
+//   - tab / shift+tab  - cycle tabs
+//   - up / down / k / j - navigate rows
+//   - g / G            - jump to top / bottom of the active tab
+//   - /                - enter filter mode (rows re-narrow on each rune)
+//   - d                - untrust the highlighted workspace (Workspace tab)
+//   - t                - trust the chat's cwd (Workspace tab)
+//   - esc              - close
 //
 // Unknown keys are swallowed while the overlay is open so they don't
 // land in the textarea.

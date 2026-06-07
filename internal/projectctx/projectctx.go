@@ -5,7 +5,7 @@
 //
 // # Why both AGENTS.md and CLAUDE.md?
 //
-// AGENTS.md is the open standard (agents.io) — provider-neutral, the one
+// AGENTS.md is the open standard (agents.io) - provider-neutral, the one
 // the user wants every tool to adopt. CLAUDE.md is Claude Code's
 // convention; we load it too so projects that only ship CLAUDE.md still
 // work, but AGENTS.md is the preferred name.
@@ -19,14 +19,14 @@
 // whichever is shallower. At each level it looks for, in priority order
 // per-name (first found wins per name, but ALL four names are loaded):
 //
-//   - AGENTS.md            — open standard
-//   - CLAUDE.md            — Claude Code convention
-//   - .claude/CLAUDE.md    — Claude Code with .claude/ namespace
-//   - .agents/AGENTS.md    — agents.io with .agents/ namespace
+//   - AGENTS.md            - open standard
+//   - CLAUDE.md            - Claude Code convention
+//   - .claude/CLAUDE.md    - Claude Code with .claude/ namespace
+//   - .agents/AGENTS.md    - agents.io with .agents/ namespace
 //
 // Returned files are ordered Level=0 first (cwd) → deeper Levels (further
 // from cwd). Load reverses this so that in the final concatenated output
-// SHALLOWER levels appear first and DEEPER levels appear last — this way
+// SHALLOWER levels appear first and DEEPER levels appear last - this way
 // the closest-to-cwd conventions extend / override the parent-project
 // ones in the model's reading order.
 //
@@ -133,7 +133,7 @@ func Discover(cwd string) ([]DiscoveredFile, error) {
 		return nil, fmt.Errorf("projectctx: cwd %s is not a directory", abs)
 	}
 
-	home, _ := os.UserHomeDir() // empty is fine — we just won't stop at $HOME
+	home, _ := os.UserHomeDir() // empty is fine - we just won't stop at $HOME
 
 	var out []DiscoveredFile
 	cur := abs
@@ -141,7 +141,7 @@ func Discover(cwd string) ([]DiscoveredFile, error) {
 	for {
 		// Hidden-directory skip: never look INSIDE .git or similar dot-dirs.
 		// We're walking UP, so the only way a dot-dir ends up "cur" is if
-		// the user literally cd'd into one — in which case we still respect
+		// the user literally cd'd into one - in which case we still respect
 		// it as the walk start. We DO refuse to recurse into a .git as a
 		// candidate location for AGENTS.md (the candidate paths above are
 		// just .agents/ and .claude/, both intentional).
@@ -184,7 +184,7 @@ func Discover(cwd string) ([]DiscoveredFile, error) {
 	return out, nil
 }
 
-// isGitRoot returns true iff dir contains a `.git` entry (file OR dir —
+// isGitRoot returns true iff dir contains a `.git` entry (file OR dir -
 // `.git` is a file inside git worktrees, pointing at the real gitdir).
 func isGitRoot(dir string) bool {
 	_, err := os.Stat(filepath.Join(dir, ".git"))
@@ -202,7 +202,7 @@ func isGitRoot(dir string) bool {
 // parent-project conventions.
 //
 // Errors only on fatal IO. A failed @-include is replaced inline with a
-// "[project context: include failed — <path>: <err>]" stub so a single
+// "[project context: include failed - <path>: <err>]" stub so a single
 // missing file doesn't abort the whole load.
 func Load(files []DiscoveredFile) (*Context, error) {
 	// Sort for output ordering: shallowest level FIRST (parent context
@@ -231,8 +231,8 @@ func Load(files []DiscoveredFile) (*Context, error) {
 		raw, err := os.ReadFile(df.Path)
 		if err != nil {
 			// A file vanishing between Discover and Load is rare but
-			// shouldn't kill the whole load — emit a stub and continue.
-			stub := fmt.Sprintf("# [project context: %s]\n\n[project context: read failed — %s: %v]\n\n", df.RelPath, df.RelPath, err)
+			// shouldn't kill the whole load - emit a stub and continue.
+			stub := fmt.Sprintf("# [project context: %s]\n\n[project context: read failed - %s: %v]\n\n", df.RelPath, df.RelPath, err)
 			b.WriteString(stub)
 			ctx.TotalBytes += int64(len(stub))
 			continue

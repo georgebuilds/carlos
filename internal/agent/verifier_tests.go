@@ -1,4 +1,4 @@
-// Phase 5 slice 5d — TestRunner adapter.
+// Phase 5 slice 5d - TestRunner adapter.
 //
 // Runs the canonical test command for the detected language under
 // workdir, parses pass/fail counts from the output, and scores:
@@ -8,7 +8,7 @@
 //	              decisionFromRatio (>=0.95 accept; <0.5 reject; else
 //	              needs_revision)
 //
-// File name is verifier_tests.go (plural) NOT verifier_test.go — files
+// File name is verifier_tests.go (plural) NOT verifier_test.go - files
 // ending in _test.go are interpreted as test files by `go test`, which
 // would mean ToolGroundedVerifier doesn't exist in production binaries.
 //
@@ -20,7 +20,7 @@
 //	pyproject.toml → pytest -q           (also tried for pytest.ini, setup.py)
 //
 // Output parsing is best-effort per language; document each pattern
-// in countResults. Timeout default 5 minutes — test suites are
+// in countResults. Timeout default 5 minutes - test suites are
 // inherently slower than builds.
 package agent
 
@@ -77,7 +77,7 @@ var ErrTestRunnerNoToolchain = errors.New("tests: test toolchain not on PATH")
 var ErrTestRunnerUnknownLanguage = errors.New("tests: no recognised project marker under workdir")
 
 // Verify runs the test command for workdir's detected language and
-// scores the outcome. content is unused — see CompilerVerifier.Verify
+// scores the outcome. content is unused - see CompilerVerifier.Verify
 // for the same content-is-on-disk discipline.
 func (v *TestRunnerVerifier) Verify(ctx context.Context, workdir string, content []byte) (VerificationReport, error) {
 	_ = content

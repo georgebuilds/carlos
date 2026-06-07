@@ -8,7 +8,7 @@ import (
 	"github.com/georgebuilds/carlos/internal/notes"
 )
 
-// NotesResolveTool registers as `notes_resolve` — tells the model what
+// NotesResolveTool registers as `notes_resolve` - tells the model what
 // a `[[link]]` would resolve to before it calls `notes_get`. Useful
 // when the same title appears in multiple folders.
 type NotesResolveTool struct {

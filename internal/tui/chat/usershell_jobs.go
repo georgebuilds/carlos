@@ -20,10 +20,10 @@ import (
 //
 // Sections, in priority order:
 //
-//   - Running  — fg slot, accent ▶
-//   - Queued   — pending fg, dim ▸
-//   - Background — running bg, ⬡
-//   - Recent   — terminal states (done/failed/cancelled), badge per state
+//   - Running  - fg slot, accent ▶
+//   - Queued   - pending fg, dim ▸
+//   - Background - running bg, ⬡
+//   - Recent   - terminal states (done/failed/cancelled), badge per state
 //
 // Keys (handled in chat.go Update):
 //
@@ -31,7 +31,7 @@ import (
 //   - enter         foreground the highlighted job (no-op for already-fg)
 //   - d             cancel the highlighted job
 //   - c             clear all terminal-state entries from the manager
-//                   (not yet implemented — needs Manager.ClearTerminal())
+//                   (not yet implemented - needs Manager.ClearTerminal())
 //   - /             filter
 //   - esc           dismiss
 
@@ -146,10 +146,10 @@ func renderJobsOverlay(jobs []usershell.Snapshot, filter string, filterMode bool
 		sb.WriteString("\n")
 		if filter != "" {
 			sb.WriteString(subtleStyle.Render(
-				"(no matches — backspace clears the filter)"))
+				"(no matches - backspace clears the filter)"))
 		} else {
 			sb.WriteString(subtleStyle.Render(
-				"no jobs — type `!<cmd>` in the composer to start one"))
+				"no jobs - type `!<cmd>` in the composer to start one"))
 		}
 		sb.WriteString("\n")
 		footer := renderJobsFooter(false)
@@ -316,7 +316,7 @@ func (m *Model) handleJobsOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) 
 
 	switch msg.String() {
 	case "ctrl+c":
-		// Don't swallow ctrl+c — the user can still quit even with
+		// Don't swallow ctrl+c - the user can still quit even with
 		// the overlay open. Fall through.
 		return m, nil, false
 	case "esc", "ctrl+j":
@@ -388,7 +388,7 @@ func (m *Model) commitJobsOverlay() (tea.Model, tea.Cmd, bool) {
 	case jobsSectionQueued:
 		return m, func() tea.Msg {
 			return statusMsg{
-				text: fmt.Sprintf("shell: j%s is queued — wait for fg slot to free", shortID(id)),
+				text: fmt.Sprintf("shell: j%s is queued - wait for fg slot to free", shortID(id)),
 				kind: statusInfo,
 			}
 		}, true
@@ -400,7 +400,7 @@ func (m *Model) commitJobsOverlay() (tea.Model, tea.Cmd, bool) {
 			}
 		}, true
 	default:
-		// Recent/terminal — show output? For v1, just echo.
+		// Recent/terminal - show output? For v1, just echo.
 		return m, func() tea.Msg {
 			return statusMsg{
 				text: fmt.Sprintf("shell: j%s already completed (exit %d)", shortID(id), row.snap.ExitCode),

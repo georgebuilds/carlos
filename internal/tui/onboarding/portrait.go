@@ -5,7 +5,7 @@
 //
 // The cascade is intentional: a terminal that supports the highest-fidelity
 // protocol takes that path; everything else falls through to lower-fidelity
-// renderers. The face MUST always appear at some fidelity — choosing ASCII
+// renderers. The face MUST always appear at some fidelity - choosing ASCII
 // without first trying the cascade is a bug.
 package onboarding
 
@@ -23,7 +23,7 @@ import (
 
 // The portrait assets live at the repo's branding root and are embedded via
 // the package-local assets directory (symlinks aren't allowed by go:embed,
-// so we keep duplicates synchronized — see assets/README.md). Keeping the
+// so we keep duplicates synchronized - see assets/README.md). Keeping the
 // embed paths package-local avoids the relative-path foot-gun where the
 // embed directive resolves against the package dir, not the module root.
 
@@ -35,7 +35,7 @@ var portraitPNG []byte
 // the build is happy. When the user drops a regenerated low-res variant
 // at assets/carlos-portrait-small.png (e.g. 128×128 with simplified
 // detail and higher edge contrast for half-block sampling), the rail's
-// half-block fallback picks it up automatically — see RenderRailCells.
+// half-block fallback picks it up automatically - see RenderRailCells.
 //
 //go:embed assets/carlos-portrait-small.png
 var portraitSmallPNG []byte
@@ -44,7 +44,7 @@ var portraitSmallPNG []byte
 var portraitASCII string
 
 // RenderProtocol enumerates the terminal image cascade from highest to
-// lowest fidelity. Order matters — DetectProtocol returns the first match.
+// lowest fidelity. Order matters - DetectProtocol returns the first match.
 type RenderProtocol int
 
 const (
@@ -56,7 +56,7 @@ const (
 	ProtoASCII
 )
 
-// String returns a stable lower-case identifier for the protocol — useful
+// String returns a stable lower-case identifier for the protocol - useful
 // for logging, telemetry, and the --print-protocol debug hook.
 func (p RenderProtocol) String() string {
 	switch p {
@@ -78,7 +78,7 @@ func (p RenderProtocol) String() string {
 
 // DetectProtocol picks the highest-fidelity protocol the current terminal
 // claims to support, based on environment variables. Detection is a one-shot
-// at TUI startup (cached via DetectProtocolCached) — re-running per-frame
+// at TUI startup (cached via DetectProtocolCached) - re-running per-frame
 // would re-stat env vars unnecessarily.
 //
 // Env-var detection is best-effort: it matches what the terminal advertises,
@@ -133,7 +133,7 @@ func DetectProtocol() RenderProtocol {
 	// Sixel detection without DA1 probing is heuristic. We match a small
 	// allow-list of TERMs known to advertise sixel out of the box. DA1
 	// probing in a bubbletea pre-render path is hairy (raw mode, timing,
-	// cooperation with the tea program loop) — we punt to Phase 8 when
+	// cooperation with the tea program loop) - we punt to Phase 8 when
 	// the daemon owns the terminal lifecycle. See notes file.
 	term := os.Getenv("TERM")
 	switch term {
@@ -172,7 +172,7 @@ func DetectProtocolCached() RenderProtocol {
 // Render produces the portrait as a string ready to embed in a bubbletea
 // view. The returned string includes the terminal escape sequences for
 // image protocols (Kitty/iTerm2) so the bubbletea renderer must pass it
-// through verbatim — lipgloss padding must not surround it.
+// through verbatim - lipgloss padding must not surround it.
 //
 // Cascade behavior: if the requested protocol fails (e.g. PNG decode error,
 // terminal rejects the escape), the function falls through to ASCII rather
@@ -210,7 +210,7 @@ func Render(p RenderProtocol) (string, error) {
 }
 
 // RenderRail produces a portrait sized to fit a left-rail cell box of
-// (cols × rows) using the half-block protocol — universal fallback.
+// (cols × rows) using the half-block protocol - universal fallback.
 //
 // Most callers want RenderRailCells, which picks the best available
 // protocol and falls back here. This helper remains for tests and for

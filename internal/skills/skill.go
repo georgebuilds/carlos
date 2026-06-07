@@ -1,12 +1,12 @@
 // Package skills implements carlos's skill-induction subsystem per
 // SPEC § Skill model + § Skill induction.
 //
-// # Architectural commitments (load-bearing — see vault note
-// "2026-06-04 Skill Induction — decisions adopted")
+// # Architectural commitments (load-bearing - see vault note
+// "2026-06-04 Skill Induction - decisions adopted")
 //
 //   - Propose, don't publish. Every induced skill is a PROPOSAL until it
 //     passes the human gate in the 4h approval queue. There is no path
-//     from "model decided" to "skill is live" — see SPEC § Skill
+//     from "model decided" to "skill is live" - see SPEC § Skill
 //     induction § Headline.
 //   - agentskills.io SKILL.md format. Directory layout with YAML
 //     frontmatter + markdown body, optional scripts/ + reference/.
@@ -22,15 +22,15 @@
 //
 // # Module split (DESIGN § Skill induction § Module split)
 //
-//   - skill.go       — Skill struct + SKILL.md parse/write (this file)
-//   - library.go     — load library from convention paths, dedup
-//   - index.go       — description-embedding index + top-k retrieval
-//   - trigger.go     — pure conjunctive trigger evaluator
-//   - inducer.go     — single-call inducer (LLM)
-//   - judge.go       — cross-provider triage judge (LLM)
-//   - curator.go     — staleness/archive sweep
-//   - metrics.go     — instrumentation: acceptance, reuse, survival
-//   - skillwire/wire.go — agent/event-log integration: Propose+Promote
+//   - skill.go       - Skill struct + SKILL.md parse/write (this file)
+//   - library.go     - load library from convention paths, dedup
+//   - index.go       - description-embedding index + top-k retrieval
+//   - trigger.go     - pure conjunctive trigger evaluator
+//   - inducer.go     - single-call inducer (LLM)
+//   - judge.go       - cross-provider triage judge (LLM)
+//   - curator.go     - staleness/archive sweep
+//   - metrics.go     - instrumentation: acceptance, reuse, survival
+//   - skillwire/wire.go - agent/event-log integration: Propose+Promote
 //
 // The skillwire/ sub-package exists to avoid an import cycle: agent
 // imports skills (for the Library type held in agent.Config), so the
@@ -69,7 +69,7 @@ const (
 )
 
 // Body / directory caps per SPEC § Skill model.
-// 5,000 tokens — the directory cap is 500 lines per agentskills.io. We
+// 5,000 tokens - the directory cap is 500 lines per agentskills.io. We
 // also cap raw file count per directory at ~50 as a defensive guard
 // against a malformed skill exploding the loader. The token cap is
 // approximated by character count: ~4 chars/token average → 20_000 chars
@@ -85,7 +85,7 @@ const (
 // it is appended below the frontmatter at write time.
 //
 // Field order in YAML output is governed by the struct tag order. Keep
-// this stable — it shows up in user-facing diffs in the approval queue.
+// this stable - it shows up in user-facing diffs in the approval queue.
 type Skill struct {
 	Name         string     `json:"name"`
 	Description  string     `json:"description"`
@@ -223,7 +223,7 @@ func LoadBundleSkill(filePath string) (*Skill, error) {
 		return nil, fmt.Errorf("skills: parse %s: %w", absPath, err)
 	}
 	if !found {
-		return nil, fmt.Errorf("skills: %s has no frontmatter — bundle skills require name + description", absPath)
+		return nil, fmt.Errorf("skills: %s has no frontmatter - bundle skills require name + description", absPath)
 	}
 	var s Skill
 	if err := miniyaml.UnmarshalStruct(fm, &s); err != nil {
@@ -239,7 +239,7 @@ func LoadBundleSkill(filePath string) (*Skill, error) {
 
 // WriteSkill writes <dir>/SKILL.md atomically. The directory is created
 // at mode 0700 if absent; the file is written at mode 0600 (matches
-// config.go — skill content may reference private paths/contents).
+// config.go - skill content may reference private paths/contents).
 //
 // Atomic recipe: open <dir>/SKILL.md.tmp, write, fsync, rename. On any
 // error mid-write the temp file is removed; the destination remains in

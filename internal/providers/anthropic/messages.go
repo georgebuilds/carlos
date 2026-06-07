@@ -38,9 +38,9 @@ type apiMsg struct {
 
 // apiBlock is one content block. Type discriminates on:
 //
-//	text        — {type: text, text: "..."}
-//	tool_use    — {type: tool_use, id, name, input}
-//	tool_result — {type: tool_result, tool_use_id, content}
+//	text        - {type: text, text: "..."}
+//	tool_use    - {type: tool_use, id, name, input}
+//	tool_result - {type: tool_result, tool_use_id, content}
 type apiBlock struct {
 	Type       string          `json:"type"`
 	Text       string          `json:"text,omitempty"`
@@ -87,7 +87,7 @@ func buildRequest(req providers.Request) (*messagesRequest, error) {
 }
 
 // toAPIBlocks converts canonical providers.Block slices to wire-format
-// apiBlock. Unknown Kind values are rejected — silently dropping them
+// apiBlock. Unknown Kind values are rejected - silently dropping them
 // would produce confusing model behavior.
 func toAPIBlocks(in []providers.Block) ([]apiBlock, error) {
 	out := make([]apiBlock, 0, len(in))

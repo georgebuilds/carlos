@@ -37,7 +37,7 @@ import (
 // ParseCron as a fallback so a power user can paste "0 9 * * 1-5"
 // directly. The fallback's error is surfaced as the final error.
 //
-// The Schedule returned has Name unset — caller supplies it (the
+// The Schedule returned has Name unset - caller supplies it (the
 // /schedule add handler defaults to a slugified prefix of the prompt
 // + a timestamp suffix; tests pass an explicit name).
 func ParseNatural(s string) (Schedule, error) {
@@ -145,7 +145,7 @@ func tryEveryDay(s string) (Schedule, bool, error) {
 	return Schedule{Spec: fmt.Sprintf("%d %d * * *", min, h)}, true, nil
 }
 
-// "every weekday morning" / "every weekend morning" — uses 9am as the
+// "every weekday morning" / "every weekend morning" - uses 9am as the
 // fixture for "morning". A future slice can let the user override the
 // morning anchor via config.
 func tryEveryWeekdayMorning(s string) (Schedule, bool, error) {
@@ -177,7 +177,7 @@ func tryEveryDayName(s string) (Schedule, bool, error) {
 	return Schedule{Spec: fmt.Sprintf("%d %d * * %s", min, h, dow)}, true, nil
 }
 
-// "tomorrow at 3pm" — one-shot. Resolved against `now` so tests can
+// "tomorrow at 3pm" - one-shot. Resolved against `now` so tests can
 // inject a fixed clock; production callers pass time.Now().
 var reTomorrow = regexp.MustCompile(`^tomorrow\s+at\s+(.+)$`)
 

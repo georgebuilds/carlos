@@ -1,4 +1,4 @@
-// Phase 7 slice 7e — apply handler.
+// Phase 7 slice 7e - apply handler.
 //
 // The apply handler is the foreground-side companion to PlanTool. When
 // the user resolves a pending approval whose artifact is of kind
@@ -6,7 +6,7 @@
 // was editing inside:
 //
 //   - EvtApprovalAccepted → Worktree.Apply (ff-only merge into parent
-//     branch; refuses if parent HEAD has moved — the user sees the
+//     branch; refuses if parent HEAD has moved - the user sees the
 //     plan stay in the queue, can re-trigger after a rebase).
 //   - EvtApprovalRejected → Worktree.Discard (drop the branch + dir).
 //
@@ -24,7 +24,7 @@
 //   - EvtArtifactWritten with kind `apply_outcome` carrying an
 //     ApplyOutcome JSON payload (Status, Error, ResolvedAt).
 //
-// That kind doesn't graduate to ArtifactKind* — it's a satellite
+// That kind doesn't graduate to ArtifactKind* - it's a satellite
 // record like PlanArtifactMetaKind, not part of the SPEC-documented
 // artifact taxonomy.
 package agent
@@ -39,13 +39,13 @@ import (
 
 // ApplyOutcomeKind is the artifact kind written for each apply / discard
 // resolution. Stable string; the (eventual) post-mortem CLI greps for
-// it. Not in artifacts.go's ArtifactKind* set — same reason as
+// it. Not in artifacts.go's ArtifactKind* set - same reason as
 // PlanArtifactMetaKind.
 const ApplyOutcomeKind = "apply_outcome"
 
 // ApplyOutcome is the structured record written to the event log after
 // each plan resolution. The producing agent's id is the AgentID field
-// on the wrapping Artifact row — not duplicated here.
+// on the wrapping Artifact row - not duplicated here.
 type ApplyOutcome struct {
 	// PlanArtifactID is the artifact the user accepted or rejected.
 	PlanArtifactID string `json:"plan_artifact_id"`
@@ -59,7 +59,7 @@ type ApplyOutcome struct {
 	// through JSON cleanly.
 	Error string `json:"error,omitempty"`
 	// ResolvedAt is when the handler finished processing (apply or
-	// discard returned). Distinct from the resolution event's TS —
+	// discard returned). Distinct from the resolution event's TS -
 	// that's when the user clicked accept.
 	ResolvedAt time.Time `json:"resolved_at"`
 }
@@ -83,7 +83,7 @@ type ApplyHandler struct {
 //
 // Returns nil on clean shutdown (ctx cancellation); returns an error
 // only for setup failures. Per-event errors are recorded as
-// ApplyOutcome artifacts, never bubbled out — the handler is the
+// ApplyOutcome artifacts, never bubbled out - the handler is the
 // "always-run, never-die" supervisor of the gate.
 func (h *ApplyHandler) Run(ctx context.Context) error {
 	if h == nil || h.Supervisor == nil || h.Log == nil {
@@ -109,7 +109,7 @@ func (h *ApplyHandler) Run(ctx context.Context) error {
 
 // handle processes one resolution event. Routes accept→Apply and
 // reject→Discard, writes an ApplyOutcome artifact for both paths.
-// Skips events whose artifact isn't a plan — the resolver-namespace
+// Skips events whose artifact isn't a plan - the resolver-namespace
 // subscription catches every Accept/Reject regardless of kind.
 func (h *ApplyHandler) handle(ctx context.Context, ev Event) {
 	if ev.Type != EvtApprovalAccepted && ev.Type != EvtApprovalRejected {
@@ -179,7 +179,7 @@ func (h *ApplyHandler) lookupArtifact(ctx context.Context, id string) (string, s
 }
 
 // writeOutcome records an ApplyOutcome artifact. Failure to write is
-// not fatal — the apply / discard already happened on disk; we just
+// not fatal - the apply / discard already happened on disk; we just
 // lose one telemetry record. The handler MUST stay running so other
 // resolutions still process.
 func (h *ApplyHandler) writeOutcome(ctx context.Context, agentID string, o ApplyOutcome) {

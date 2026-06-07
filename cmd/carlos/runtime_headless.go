@@ -1,4 +1,4 @@
-// runtime_headless.go — headless agent loop entry points (runHeadless,
+// runtime_headless.go - headless agent loop entry points (runHeadless,
 // runResearch, stdinApprover). Split out of main.go so codecov can
 // ignore the long-running, network-driven code paths that resist unit
 // testing.
@@ -43,14 +43,14 @@ func runHeadless(prompt string, opts pleaseOptions) error {
 	path := config.DefaultPath()
 	cfg, err := config.Load(path)
 	if errors.Is(err, fs.ErrNotExist) {
-		fmt.Fprintln(os.Stderr, "carlos: run `carlos onboard` first — headless mode needs a configured provider.")
+		fmt.Fprintln(os.Stderr, "carlos: run `carlos onboard` first - headless mode needs a configured provider.")
 		os.Exit(1)
 	}
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
 	if !config.IsComplete(cfg) {
-		fmt.Fprintln(os.Stderr, "carlos: config incomplete — run `carlos onboard`.")
+		fmt.Fprintln(os.Stderr, "carlos: config incomplete - run `carlos onboard`.")
 		os.Exit(1)
 	}
 
@@ -69,7 +69,7 @@ func runHeadless(prompt string, opts pleaseOptions) error {
 	// State.db lifecycle (Phase 1h): open ~/.carlos/state.db (created
 	// at 0700 if absent), recover any leftover non-terminal agents
 	// from a prior process kill into `orphaned`. Logged but not auto-
-	// retried — the user explicitly retries via the TUI.
+	// retried - the user explicitly retries via the TUI.
 	home, _ := os.UserHomeDir()
 	migrateFrameLayout(home)
 	// Phase F-19: inline TTY frame picker. When the user didn't pass
@@ -156,11 +156,11 @@ func runHeadless(prompt string, opts pleaseOptions) error {
 		}()
 	}
 
-	// Base registry — what children inherit (filtered by their spawn
+	// Base registry - what children inherit (filtered by their spawn
 	// contract's tool_allowlist). Phase 7 adds the full coding-agent
 	// tool set: bash + file ops + git read-only. The Agent tool
 	// itself is added to the PARENT'S registry only (below), NOT the
-	// base — children at depth 1 (the v0 cap) can't further spawn.
+	// base - children at depth 1 (the v0 cap) can't further spawn.
 	baseReg := tools.NewDefaultRegistryWithIdentity(baseDir, cfg.Vault, cfg.Frames, cfg.Frames.Active, tools.ProviderSummariesFromConfig(cfg.Providers), cfg.UserName)
 
 	// Supervisor takes the resolved provider + base registry. Its
@@ -218,7 +218,7 @@ func runHeadless(prompt string, opts pleaseOptions) error {
 	// Phase T-1: wrap the fallback in the LayeredApprover so the
 	// built-in read-only allowlist (notes_*, read, grep, glob, ls,
 	// git_status, …) bypasses any prompt. Same policy in the headless
-	// runDispatch path as in the chat path below — the model can't
+	// runDispatch path as in the chat path below - the model can't
 	// learn one set of approval rules from one entry point and a
 	// different set from another.
 	layered := agent.NewLayeredApprover(approver, agent.DefaultBuiltinAllow, nil)
@@ -266,7 +266,7 @@ func runHeadless(prompt string, opts pleaseOptions) error {
 	}
 	// Phase F-18: resolve the active frame for this please run. Honours
 	// CARLOS_FRAME, then --frame, then cwd-hint match, then persisted
-	// active. Headless run, no TTY picker — the persisted active is
+	// active. Headless run, no TTY picker - the persisted active is
 	// the canonical fallback for cron / pipe invocations.
 	pleaseFrameInfo := agent.FrameInfo{}
 	if res, ok := frame.ResolveActive(&cfg.Frames, frame.Input{
@@ -302,7 +302,7 @@ func runHeadless(prompt string, opts pleaseOptions) error {
 		TextSink: os.Stdout,
 	}, initial)
 	// Newline keeps the terminal prompt clean regardless of how the loop
-	// finished — the model's last text may not end with one.
+	// finished - the model's last text may not end with one.
 	fmt.Println()
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
@@ -325,20 +325,20 @@ func runHeadless(prompt string, opts pleaseOptions) error {
 func runResearchInternal(args []string) error {
 	question := strings.TrimSpace(strings.Join(args, " "))
 	if question == "" {
-		fmt.Fprintln(os.Stderr, `carlos: research-internal needs a question — e.g. carlos research-internal "what is the current state of WebGPU in Safari?"`)
+		fmt.Fprintln(os.Stderr, `carlos: research-internal needs a question - e.g. carlos research-internal "what is the current state of WebGPU in Safari?"`)
 		os.Exit(2)
 	}
 	path := config.DefaultPath()
 	cfg, err := config.Load(path)
 	if errors.Is(err, fs.ErrNotExist) {
-		fmt.Fprintln(os.Stderr, "carlos: run `carlos onboard` first — research-internal needs a configured provider.")
+		fmt.Fprintln(os.Stderr, "carlos: run `carlos onboard` first - research-internal needs a configured provider.")
 		os.Exit(1)
 	}
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
 	if !config.IsComplete(cfg) {
-		fmt.Fprintln(os.Stderr, "carlos: config incomplete — run `carlos onboard`.")
+		fmt.Fprintln(os.Stderr, "carlos: config incomplete - run `carlos onboard`.")
 		os.Exit(1)
 	}
 	d, err := buildDispatchForFrame(cfg, pleaseOptions{}, activeFrameForDispatch(cfg, ""))
@@ -377,8 +377,8 @@ func runResearchInternal(args []string) error {
 }
 
 // runResearch is the Phase 11 slice 11f user-facing headless command:
-// `carlos research <question>`. Mirrors runResearchInternal's setup —
-// load config, build dispatch, construct engine — but with friendlier
+// `carlos research <question>`. Mirrors runResearchInternal's setup -
+// load config, build dispatch, construct engine - but with friendlier
 // stderr framing, and saves the rendered markdown report to
 // ~/.carlos/research/<slug>-<unix-ts>.md so the user can reference it
 // later or pipe to other tooling.
@@ -386,7 +386,7 @@ func runResearchInternal(args []string) error {
 // Like research-internal, this is synchronous: the chat-side `/research`
 // slash command shares the same engine but runs in a goroutine so the
 // TUI stays interactive. The headless variant blocks because there's
-// nothing else competing for the terminal — the user explicitly asked
+// nothing else competing for the terminal - the user explicitly asked
 // for a research arc.
 func runResearch(args []string) error {
 	frameOverride, rest, ferr := parseLeadingFrameFlag(args)
@@ -396,20 +396,20 @@ func runResearch(args []string) error {
 	}
 	question := strings.TrimSpace(strings.Join(rest, " "))
 	if question == "" {
-		fmt.Fprintln(os.Stderr, `carlos: research needs a question — e.g. carlos research "what is the current state of WebGPU in Safari?"`)
+		fmt.Fprintln(os.Stderr, `carlos: research needs a question - e.g. carlos research "what is the current state of WebGPU in Safari?"`)
 		os.Exit(2)
 	}
 	path := config.DefaultPath()
 	cfg, err := config.Load(path)
 	if errors.Is(err, fs.ErrNotExist) {
-		fmt.Fprintln(os.Stderr, "carlos: run `carlos onboard` first — research needs a configured provider.")
+		fmt.Fprintln(os.Stderr, "carlos: run `carlos onboard` first - research needs a configured provider.")
 		os.Exit(1)
 	}
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
 	if !config.IsComplete(cfg) {
-		fmt.Fprintln(os.Stderr, "carlos: config incomplete — run `carlos onboard`.")
+		fmt.Fprintln(os.Stderr, "carlos: config incomplete - run `carlos onboard`.")
 		os.Exit(1)
 	}
 	// F-17: resolve the active frame so the saved report lands under
@@ -462,7 +462,7 @@ func runResearch(args []string) error {
 	//
 	//  - Realistic browser User-Agent. Listing sites (Yelp,
 	//    DoorDash, Superpages, YellowPages) return HTTP 403 to
-	//    anything advertising as a bot — the model's tool calls
+	//    anything advertising as a bot - the model's tool calls
 	//    keep the polite-bot UA so site logs see "carlos"
 	//    clearly, but the user-facing research command uses a
 	//    realistic Chrome-on-macOS UA to actually get content.
@@ -488,7 +488,7 @@ func runResearch(args []string) error {
 	fmt.Fprintf(os.Stderr, "carlos: provider=%s model=%s search=%s\n",
 		d.name, d.model, searchTool.Backend.Name())
 
-	// Live status panel via bubbletea inline (no AltScreen) —
+	// Live status panel via bubbletea inline (no AltScreen) -
 	// matches the TUI feel without taking over the terminal. On
 	// completion the panel clears itself and the rendered report
 	// prints inline below.
@@ -512,7 +512,7 @@ func runResearch(args []string) error {
 
 	// Persist the markdown under the active frame's research dir so the
 	// user has a stable artifact to share or revisit. Errors here are
-	// surfaced but don't fail the whole command — the rendered report
+	// surfaced but don't fail the whole command - the rendered report
 	// is already on stdout and the user got what they asked for.
 	saved, saveErr := saveResearchReport(question, rendered, researchFrameName, time.Now())
 	if saveErr != nil {
@@ -537,7 +537,7 @@ func runResearch(args []string) error {
 // artifacts. Returns the generated agent id.
 //
 // Slice 7e: PlanTool needs AgentID to be a real row. The headless `please`
-// command otherwise has no persistent agent identity — agent.Run runs
+// command otherwise has no persistent agent identity - agent.Run runs
 // anonymously. Once a unified default-mode TUI lands, the parent agent
 // the chat session represents will replace this seed.
 func seedHeadlessParentAgent(ctx context.Context, log *agent.SQLiteEventLog, provider, model string) (string, error) {
@@ -565,7 +565,7 @@ func seedHeadlessParentAgent(ctx context.Context, log *agent.SQLiteEventLog, pro
 }
 
 // stdinApprover prompts on stderr and reads y/N/Always from stdin. An
-// "always" answer is remembered for the rest of the session — common
+// "always" answer is remembered for the rest of the session - common
 // pattern when a model wants to run a few related commands.
 type stdinApprover struct {
 	always map[string]bool

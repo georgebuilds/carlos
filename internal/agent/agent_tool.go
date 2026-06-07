@@ -12,7 +12,7 @@ import (
 
 // AgentTool is the "Agent" primitive the parent model calls to delegate
 // work to a sub-agent. It is the user-facing wrapper around
-// Supervisor.Spawn — when the parent emits a tool_use for this tool,
+// Supervisor.Spawn - when the parent emits a tool_use for this tool,
 // the supervisor builds a SpawnContract from the typed input, runs the
 // child loop, waits for SpawnResult, and returns the child's typed
 // deliverable as the tool_result.
@@ -20,7 +20,7 @@ import (
 // # When the model should call this (and when it should NOT)
 //
 // CarlOS's stance, per SPEC § Goals and § Manage mode, is **single-
-// agent by default**. The tool description below hammers this — the
+// agent by default**. The tool description below hammers this - the
 // model is told to delegate ONLY when:
 //
 //   - The task is parallel-read-heavy (research, exploration, multi-
@@ -32,7 +32,7 @@ import (
 //
 // It explicitly steers AWAY from delegation for sequential reasoning,
 // coding, writing, and tightly-coupled decisions. SPEC § Goals goal #4
-// is "single-agent by default" — this tool's description is the wire
+// is "single-agent by default" - this tool's description is the wire
 // where that decision is enforced.
 //
 // # Caps + safety
@@ -41,7 +41,7 @@ import (
 // per-parent concurrency (default 5), and restart intensity. Sub-agents
 // auto-approve their own tool calls (AutoApprover; Phase 4 surfaces
 // per-child tool prompts in the manage roster). All of these are
-// transparent to the model — it just sees a tool that delegates.
+// transparent to the model - it just sees a tool that delegates.
 //
 // # Output shape
 //
@@ -57,7 +57,7 @@ import (
 //	}
 //
 // final_text is the cheap-to-read summary; artifact_ref points at the
-// full final-turn JSON written by spawn.go's runChild — the parent can
+// full final-turn JSON written by spawn.go's runChild - the parent can
 // follow it with a read_artifact tool (Phase 4) to inspect the entire
 // turn including any tool_use blocks.
 type AgentTool struct {
@@ -78,21 +78,21 @@ func (*AgentTool) Description() string {
 
   - The sub-task is read-heavy or parallelizable (research, search, summarize many sources, fan-out exploration).
   - The aggregate context the sub-task needs would exceed your own window.
-  - The sub-task is decoupled — the child can finish without coordinating with siblings mid-flight.
+  - The sub-task is decoupled - the child can finish without coordinating with siblings mid-flight.
 
-Do NOT delegate for: coding/editing (sequential, decision-dense — single-agent wins on SWE-bench-style tasks), writing/composition (multi-agent produces inconsistent voice), single-source lookups (just do it yourself), anything you could finish in 1-2 of your own turns. The evidence is unambiguous: above ~45% single-agent baseline accuracy, multi-agent coordination NETS NEGATIVE on a task class. Default to doing it yourself.
+Do NOT delegate for: coding/editing (sequential, decision-dense - single-agent wins on SWE-bench-style tasks), writing/composition (multi-agent produces inconsistent voice), single-source lookups (just do it yourself), anything you could finish in 1-2 of your own turns. The evidence is unambiguous: above ~45% single-agent baseline accuracy, multi-agent coordination NETS NEGATIVE on a task class. Default to doing it yourself.
 
 Inputs:
   - objective (required): one-paragraph description of what the child must accomplish.
-  - output_format (required): exact shape the child should return — be specific about fields, not just "a summary".
-  - tool_allowlist (required): subset of your tool names the child may call. EMPTY allowlist = pure reasoning child, no tools. Restrict aggressively — give the child only what it needs.
+  - output_format (required): exact shape the child should return - be specific about fields, not just "a summary".
+  - tool_allowlist (required): subset of your tool names the child may call. EMPTY allowlist = pure reasoning child, no tools. Restrict aggressively - give the child only what it needs.
   - max_turns (optional, default 25): hard cap on child's agent-loop iterations. For research, 10-15 is usually plenty.
   - success_criteria (optional): how the child knows it's done; surfaced in the child's initial prompt.
 
-The child returns its final assistant turn as JSON, plus an artifact_ref to the persisted full turn. You'll get the deliverable atomically — there's no streaming or mid-flight communication.`
+The child returns its final assistant turn as JSON, plus an artifact_ref to the persisted full turn. You'll get the deliverable atomically - there's no streaming or mid-flight communication.`
 }
 
-// Schema is the JSON schema for the Agent tool's input — passed to the
+// Schema is the JSON schema for the Agent tool's input - passed to the
 // provider in the tools array so the model can construct valid calls.
 // Schema mirrors SpawnContract: every required field is required here,
 // types and descriptions match.
@@ -147,14 +147,14 @@ type agentToolOutput struct {
 // returns the typed output as JSON.
 //
 // The depth cap is the safety net for accidental fan-out: if a child
-// somehow gets this tool too (it shouldn't — parent must explicitly
+// somehow gets this tool too (it shouldn't - parent must explicitly
 // allowlist "agent" for the child, which the description discourages),
 // the supervisor's depth check refuses with ErrSpawnDepthExceeded and
 // we return that as the tool_result error. Model sees the failure and
 // adapts.
 //
 // Sub-agent errors (depth/concurrency/restart-intensity, provider
-// error, MaxIterations exceeded) are returned as tool_result text —
+// error, MaxIterations exceeded) are returned as tool_result text -
 // NOT as Tool.Execute errors. The parent loop sees a successful tool
 // call with an "error" field in the output JSON; the model decides
 // how to handle.
@@ -179,13 +179,13 @@ func (t *AgentTool) Execute(ctx context.Context, input []byte) ([]byte, error) {
 		MaxTurns:        in.MaxTurns,
 		SuccessCriteria: in.SuccessCriteria,
 	}
-	// parentID == "" — the top-level agent in this process owns the
+	// parentID == "" - the top-level agent in this process owns the
 	// spawn. Future Phase 4 work threads a real parentID when the
 	// caller is itself a sub-agent (deep chains gated by depth cap).
 	sub, resultCh, err := t.sup.Spawn(ctx, "", contract)
 	if err != nil {
 		// Cap rejections (depth/concurrency/restart) surface to the
-		// model as a tool_result, not as an infra error — model can
+		// model as a tool_result, not as an infra error - model can
 		// adapt (e.g., "I'll do this myself").
 		out := agentToolOutput{Error: err.Error()}
 		return mustMarshal(out), nil
@@ -217,7 +217,7 @@ func (t *AgentTool) Execute(ctx context.Context, input []byte) ([]byte, error) {
 // extractFinalText concatenates text blocks from the child's final
 // assistant message. Tool_use blocks are skipped (they're internal to
 // the child's loop, not its deliverable). Returns empty string if the
-// turn had no text blocks — caller should also read the artifact ref
+// turn had no text blocks - caller should also read the artifact ref
 // for the full structured turn in that case.
 func extractFinalText(m providers.Message) string {
 	if len(m.Content) == 0 {
@@ -239,7 +239,7 @@ func mustMarshal(v any) []byte {
 	b, err := json.Marshal(v)
 	if err != nil {
 		// Programmer error: every field above is JSON-serializable.
-		// Panic is appropriate — this isn't a user-input failure.
+		// Panic is appropriate - this isn't a user-input failure.
 		panic(fmt.Sprintf("agent tool: marshal output: %v", err))
 	}
 	return b

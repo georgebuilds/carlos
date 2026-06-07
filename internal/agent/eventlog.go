@@ -15,12 +15,12 @@ const (
 	EvtToolResult   EventType = "tool_result"
 	EvtTokenUsage   EventType = "token_usage"
 	EvtUserMessage EventType = "user_message"
-	// MessagePayload — see below: declared after the EventType block.
+	// MessagePayload - see below: declared after the EventType block.
 	// EvtAssistantMessage is the sealed text of one assistant turn,
 	// appended after the provider stream completes. Live tokens are
 	// surfaced via chat.TextSource during the stream; this event is the
 	// persistent record the transcript replays on reload. Payload shape
-	// mirrors EvtUserMessage (a single Text field) — see chat package.
+	// mirrors EvtUserMessage (a single Text field) - see chat package.
 	EvtAssistantMessage EventType = "assistant_message"
 	// EvtSessionReset marks a conversational fresh-start. Producers
 	// (`/clear` in chat today; a future `/compact` later) append one
@@ -37,7 +37,7 @@ const (
 	// Approval-queue events. ProposeApproval marks an artifact as
 	// awaiting human decision; Accept / Reject close it. The "pending"
 	// queue is the set of artifacts with a Propose event and no
-	// subsequent Accept/Reject — derived at query time. See
+	// subsequent Accept/Reject - derived at query time. See
 	// internal/agent/approval.go.
 	EvtApprovalProposed EventType = "approval_proposed"
 	EvtApprovalAccepted EventType = "approval_accepted"
@@ -52,7 +52,7 @@ const (
 	// append these to the agent's event stream.
 	EvtResearchPhase EventType = "research_phase"
 
-	// Gateway events — the messaging-broker integration. The broker
+	// Gateway events - the messaging-broker integration. The broker
 	// owns the payload shapes (see internal/gateway/events.go); the
 	// constants live here so the event log knows the type strings and
 	// projections can filter for them without a circular import.
@@ -67,10 +67,10 @@ const (
 	// the decision.
 	EvtGatewayInbound EventType = "gateway_inbound"
 
-	// User-shell events — Phase U "!"-prefix feature. The usershell
+	// User-shell events - Phase U "!"-prefix feature. The usershell
 	// Manager owns the payload shapes (internal/usershell/events.go);
 	// the constants live here for the same reason the gateway pair
-	// does — the event log + projections need to filter on them
+	// does - the event log + projections need to filter on them
 	// without a circular import.
 	//
 	// EvtUserShellStart is written when a job enters the running state
@@ -106,7 +106,7 @@ type MessagePayload struct {
 // signals the engine finished the phase (start events carry Done=false
 // + Elapsed=0); Err carries any failure reason on the done event.
 // SubQuery is reserved for future fine-grained progress inside phases
-// that iterate (e.g. per-sub-query search/read) — the spawn helper
+// that iterate (e.g. per-sub-query search/read) - the spawn helper
 // leaves it empty for now, sticking to phase-boundary granularity.
 type ResearchPhasePayload struct {
 	Phase    string        `json:"phase"`
