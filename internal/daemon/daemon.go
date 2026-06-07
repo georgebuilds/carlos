@@ -14,6 +14,7 @@ import (
 
 	"github.com/georgebuilds/carlos/internal/agent"
 	"github.com/georgebuilds/carlos/internal/config"
+	"github.com/georgebuilds/carlos/internal/frame"
 	"github.com/georgebuilds/carlos/internal/providers"
 	"github.com/georgebuilds/carlos/internal/schedule"
 	"github.com/georgebuilds/carlos/internal/tools"
@@ -80,6 +81,20 @@ type Options struct {
 	// disabled. Production typically wires &SystemNotifier{}; tests
 	// pass a recording fake to assert content.
 	Notifier Notifier
+
+	// Home is the user's home directory. Used by Phase F-14 to build
+	// per-frame paths via frame.PathsFor. Empty means the daemon won't
+	// thread frame-scoped paths into the fire-time tool registry.
+	Home string
+
+	// ProviderBuilder, when non-nil, lets the daemon construct a fresh
+	// provider client per scheduled fire so a frame's provider_override
+	// is honoured. Phase F-14. Receiving a nil/zero ResolvedProvider
+	// means the caller refused to construct (caller decides whether to
+	// fall back to opts.Provider). When ProviderBuilder is itself nil,
+	// every fire uses opts.Provider unconditionally — the legacy
+	// behaviour.
+	ProviderBuilder func(frame.ResolvedProvider) (providers.Provider, error)
 }
 
 // Daemon is one running carlos daemon process: it owns the UDS listener,
@@ -120,6 +135,15 @@ type Daemon struct {
 	gw         *gatewayRuntime
 	startedAt  time.Time
 	reloadAt   time.Time
+
+	// Phase F-14: cached cfg fields the per-fire frame resolver needs.
+	// Snapshotted by loadConfig (and refreshed on reload) so fire() does
+	// not have to re-read the YAML from disk on every tick.
+	userName        string
+	defaultProvider string
+	frameCfg        frame.Config
+	providersCfg    map[string]config.ProviderConfig
+	vaultCfg        config.VaultConfig
 
 	// activeCount tracks in-flight scheduled spawns so the status
 	// response can surface "n schedules running right now".
@@ -346,6 +370,14 @@ func (d *Daemon) loadConfig() error {
 	d.mu.Lock()
 	d.schedules = good
 	d.gatewayCfg = cfg.Gateway
+	// Phase F-14: snapshot the cfg fields the fire path needs to resolve
+	// a schedule's frame at run time. Cheap to copy; saves us a re-read
+	// on every tick.
+	d.userName = cfg.UserName
+	d.defaultProvider = cfg.DefaultProvider
+	d.frameCfg = cfg.Frames
+	d.providersCfg = cfg.Providers
+	d.vaultCfg = cfg.Vault
 	d.mu.Unlock()
 	return nil
 }
@@ -401,13 +433,30 @@ func (d *Daemon) tick(ctx context.Context) {
 // In test mode (Spawner returns immediately) we still wait on the
 // returned channel so the loop's "don't double-fire" invariant holds.
 func (d *Daemon) fire(ctx context.Context, s schedule.Schedule) bool {
+	// Phase F-14: resolve the schedule's frame and build the per-fire
+	// sysprompt, tool registry, and (when ProviderBuilder is set)
+	// provider. Empty Schedule.Frame falls back to cfg.Frames.Active,
+	// then cfg.Frames.Default, then frame.DefaultPersonalName.
+	frameName, frameInfo, frameReg, frameProvider, frameModel := d.resolveFrameForFire(s)
+
+	d.mu.Lock()
+	userName := d.userName
+	d.mu.Unlock()
+
 	contract := agent.SpawnContract{
 		Objective:    s.Prompt,
 		MaxTokens:    s.BudgetTokens,
 		MaxWallClock: 0, // honored separately if the user sets it
-		// Tool allowlist is intentionally empty; child gets the parent's
-		// base registry the supervisor wires through buildChildRegistry.
+		System:       agent.SystemPromptWithFrame(userName, "", "", frameInfo),
+		Model:        frameModel,
+		// Tool allowlist is intentionally empty; the frame-scoped registry
+		// is handed through verbatim via OverrideRegistry.
+		OverrideRegistry: frameReg,
+		OverrideProvider: frameProvider,
 	}
+
+	fmt.Fprintf(os.Stderr, "carlos daemon: firing schedule %q in frame=%s\n", s.Name, frameName)
+
 	d.mu.Lock()
 	d.activeCount++
 	d.mu.Unlock()
@@ -435,6 +484,84 @@ func (d *Daemon) fire(ctx context.Context, s schedule.Schedule) bool {
 	case <-ctx.Done():
 		return false
 	}
+}
+
+// resolveFrameForFire walks Schedule.Frame → cfg.Frames.Active →
+// cfg.Frames.Default → frame.DefaultPersonalName and builds the per-fire
+// FrameInfo, registry, and (when ProviderBuilder is wired) provider + model.
+func (d *Daemon) resolveFrameForFire(s schedule.Schedule) (string, agent.FrameInfo, *tools.Registry, providers.Provider, string) {
+	d.mu.Lock()
+	frameCfg := d.frameCfg
+	defaultProvider := d.defaultProvider
+	providersCfg := d.providersCfg
+	vaultCfg := d.vaultCfg
+	d.mu.Unlock()
+
+	name := s.Frame
+	if name == "" {
+		name = frameCfg.Active
+	}
+	if name == "" {
+		name = frameCfg.Default
+	}
+	if name == "" {
+		name = frame.DefaultPersonalName
+	}
+
+	f := frameCfg.Find(name)
+	if f == nil {
+		// Unknown frame name on the schedule. Walk the fallbacks; we never
+		// abort the fire over a stale schedule.Frame.
+		if alt := frameCfg.Find(frameCfg.Active); alt != nil {
+			f = alt
+			name = alt.Name
+		} else if alt := frameCfg.Find(frameCfg.Default); alt != nil {
+			f = alt
+			name = alt.Name
+		}
+	}
+
+	frameInfo := agent.FrameInfo{Name: name}
+	if f != nil {
+		frameInfo.Append = f.SystemPromptAppend
+		frameInfo.Mode = frame.EffectiveMode(*f)
+	}
+
+	// Per-fire registry. Empty baseDir matches the foreground daemon
+	// boot path in cmd/carlos/daemon.go: scheduled runs share the home
+	// dir as their sandbox root.
+	reg := tools.NewDefaultRegistryWithBaseDirAndFrames("", vaultCfg, frameCfg, name)
+
+	// Per-fire paths are reserved for the daemon daily-digest feature;
+	// reading PathsFor here keeps the import live and signals intent
+	// without changing behaviour for v1 schedules.
+	_ = frame.PathsFor(d.opts.Home, name)
+
+	// Per-fire provider. Skipped when no builder is wired (test mode) or
+	// when the resolved provider is empty.
+	var prov providers.Provider
+	var model string
+	if d.opts.ProviderBuilder != nil && f != nil {
+		pantry := make(map[string]frame.SharedProvider, len(providersCfg))
+		for n, pc := range providersCfg {
+			pantry[n] = frame.SharedProvider{
+				APIKey:       pc.APIKey,
+				BaseURL:      pc.BaseURL,
+				DefaultModel: pc.DefaultModel,
+			}
+		}
+		if resolved, ok := frame.ResolveProvider(*f, defaultProvider, pantry); ok {
+			built, err := d.opts.ProviderBuilder(resolved)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "carlos daemon: provider build for %q failed, falling back: %v\n", s.Name, err)
+			} else {
+				prov = built
+				model = resolved.Model
+			}
+		}
+	}
+
+	return name, frameInfo, reg, prov, model
 }
 
 // pushNotification dispatches a desktop banner for a finished

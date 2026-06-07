@@ -257,7 +257,21 @@ func (s *Supervisor) runChild(ctx context.Context, child *runningChild, p provid
 	if maxTurns <= 0 {
 		maxTurns = 25
 	}
-	specs := buildChildToolSpecs(reg, contract.ToolAllowlist)
+	// Phase F-14: when the contract carries OverrideRegistry the daemon
+	// has already built a frame-scoped registry; surface every tool to
+	// the provider rather than gating through ToolAllowlist (which is
+	// the parent-child allowlist mechanism, not relevant for daemon-fired
+	// scheduled runs).
+	var specs []providers.ToolSpec
+	if contract.OverrideRegistry != nil {
+		for _, t := range reg.All() {
+			specs = append(specs, providers.ToolSpec{
+				Name: t.Name(), Description: t.Description(), Schema: t.Schema(),
+			})
+		}
+	} else {
+		specs = buildChildToolSpecs(reg, contract.ToolAllowlist)
+	}
 	initial := []providers.Message{
 		{
 			Role: "user",
@@ -276,6 +290,8 @@ func (s *Supervisor) runChild(ctx context.Context, child *runningChild, p provid
 		MaxWallClock: contract.MaxWallClock,
 	}
 	messages, runErr := Run(ctx, p, reg, LoopOptions{
+		Model:         contract.Model,
+		System:        contract.System,
 		Tools:         specs,
 		Approver:      AutoApprover{},
 		MaxIterations: maxTurns,

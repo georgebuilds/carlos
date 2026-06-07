@@ -24,6 +24,13 @@ import (
 
 	"github.com/georgebuilds/carlos/internal/config"
 	"github.com/georgebuilds/carlos/internal/daemon"
+	"github.com/georgebuilds/carlos/internal/frame"
+	"github.com/georgebuilds/carlos/internal/providers"
+	"github.com/georgebuilds/carlos/internal/providers/anthropic"
+	"github.com/georgebuilds/carlos/internal/providers/gemini"
+	"github.com/georgebuilds/carlos/internal/providers/ollama"
+	"github.com/georgebuilds/carlos/internal/providers/openai"
+	"github.com/georgebuilds/carlos/internal/providers/openrouter"
 	"github.com/georgebuilds/carlos/internal/schedule"
 	"github.com/georgebuilds/carlos/internal/tools"
 )
@@ -73,13 +80,15 @@ func runDaemonRun() error {
 	}
 
 	dmn, err := daemon.New(daemon.Options{
-		ConfigPath:   cfgPath,
-		StateDBPath:  dbPath,
-		SocketPath:   daemon.DefaultSocketPath(),
-		Provider:     d.provider,
-		BaseTools:    tools.NewDefaultRegistryWithBaseDirAndFrames("", cfg.Vault, cfg.Frames, cfg.Frames.Active),
-		TickInterval: 30 * time.Second,
-		Notifier:     &daemon.SystemNotifier{}, // slice 8d: desktop banners on fire
+		ConfigPath:      cfgPath,
+		StateDBPath:     dbPath,
+		SocketPath:      daemon.DefaultSocketPath(),
+		Provider:        d.provider,
+		BaseTools:       tools.NewDefaultRegistryWithBaseDirAndFrames("", cfg.Vault, cfg.Frames, cfg.Frames.Active),
+		TickInterval:    30 * time.Second,
+		Notifier:        &daemon.SystemNotifier{}, // slice 8d: desktop banners on fire
+		Home:            home,
+		ProviderBuilder: buildProviderForFrame,
 	})
 	if err != nil {
 		return fmt.Errorf("daemon run: %w", err)
@@ -374,6 +383,24 @@ func signalDaemonReload() bool {
 		return false
 	}
 	return resp.Ok
+}
+
+// buildProviderForFrame mirrors buildDispatch's switch so the daemon's per-fire provider matches the chat path's set of backends.
+func buildProviderForFrame(r frame.ResolvedProvider) (providers.Provider, error) {
+	switch r.Provider {
+	case "anthropic":
+		return anthropic.New(r.APIKey), nil
+	case "openai":
+		return openai.New(r.APIKey), nil
+	case "gemini":
+		return gemini.New(r.APIKey), nil
+	case "openrouter":
+		return openrouter.New(r.APIKey), nil
+	case "ollama":
+		return ollama.New(r.BaseURL), nil
+	default:
+		return nil, fmt.Errorf("daemon: unknown provider %q", r.Provider)
+	}
 }
 
 // _ keeps the json import live for a future enhancement (the daemon

@@ -13,6 +13,7 @@ import (
 
 	"github.com/georgebuilds/carlos/internal/agent"
 	"github.com/georgebuilds/carlos/internal/config"
+	"github.com/georgebuilds/carlos/internal/frame"
 	"github.com/georgebuilds/carlos/internal/schedule"
 )
 
@@ -38,16 +39,18 @@ func (c *fakeClock) Set(t time.Time) {
 // fakeSpawner records every Spawn call and returns an immediately-done
 // SpawnResult. The Spawn count is the test's primary observable.
 type fakeSpawner struct {
-	count int32
-	calls []string // captured objectives, in order
-	mu    sync.Mutex
-	err   error
+	count     int32
+	calls     []string                // captured objectives, in order
+	contracts []agent.SpawnContract  // full contracts captured for frame-plumbing tests
+	mu        sync.Mutex
+	err       error
 }
 
 func (f *fakeSpawner) Spawn(ctx context.Context, parentID string, c agent.SpawnContract) (*agent.SubAgent, <-chan agent.SpawnResult, error) {
 	atomic.AddInt32(&f.count, 1)
 	f.mu.Lock()
 	f.calls = append(f.calls, c.Objective)
+	f.contracts = append(f.contracts, c)
 	f.mu.Unlock()
 	if f.err != nil {
 		return nil, nil, f.err
@@ -65,6 +68,14 @@ func (f *fakeSpawner) Calls() []string {
 	defer f.mu.Unlock()
 	out := make([]string, len(f.calls))
 	copy(out, f.calls)
+	return out
+}
+
+func (f *fakeSpawner) Contracts() []agent.SpawnContract {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]agent.SpawnContract, len(f.contracts))
+	copy(out, f.contracts)
 	return out
 }
 
@@ -475,5 +486,169 @@ func TestDaemon_InvalidScheduleIsSkipped(t *testing.T) {
 	// Bad schedule didn't fire; good one did.
 	if fs.Count() == 0 {
 		t.Fatal("good schedule should have fired despite bad sibling")
+	}
+}
+
+// TestDaemon_FrameWiredIntoSpawnContract — Phase F-14. A schedule with
+// an explicit Frame field should fire with a per-run system prompt that
+// names the frame, and the contract handed to Spawn should carry the
+// frame-scoped registry override so the loop reaches the model with
+// the right tool set.
+func TestDaemon_FrameWiredIntoSpawnContract(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+
+	cfg := &config.Config{
+		UserName: "Tester",
+		Providers: map[string]config.ProviderConfig{
+			"anthropic": {APIKey: "sk-test", DefaultModel: "claude-test"},
+		},
+		DefaultProvider: "anthropic",
+		Frames: frame.Config{
+			Default: "personal",
+			Active:  "personal",
+			List: []frame.Frame{
+				frame.NewPersonal("anthropic", "claude-test"),
+				{
+					Name:               "work",
+					Glyph:              "▣",
+					Accent:             "slate",
+					Provider:           "anthropic",
+					Model:              "claude-test",
+					SystemPromptAppend: "Work frame. Tone: terse.",
+					Mode:               frame.ModeOrchestrator,
+				},
+			},
+		},
+		Schedules: []schedule.Schedule{{
+			Name:   "work-sync",
+			Spec:   "0 9 * * *",
+			Prompt: "summarize my work inbox",
+			Frame:  "work",
+		}},
+	}
+	if err := config.Save(cfgPath, cfg); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+
+	clock := &fakeClock{now: time.Date(2026, 6, 5, 9, 0, 0, 0, time.Local)}
+
+	fs := &fakeSpawner{}
+	d, err := New(Options{
+		ConfigPath:     cfgPath,
+		SocketPath:     shortSock(t),
+		Spawner:        fs,
+		TickInterval:   50 * time.Millisecond,
+		Now:            clock,
+		DisableSignals: true,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- d.Run(ctx) }()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && fs.Count() == 0 {
+		time.Sleep(20 * time.Millisecond)
+	}
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatalf("Run returned: %v", err)
+	}
+
+	if fs.Count() < 1 {
+		t.Fatalf("expected at least one Spawn, got %d", fs.Count())
+	}
+
+	contracts := fs.Contracts()
+	c := contracts[0]
+	if c.Objective != "summarize my work inbox" {
+		t.Fatalf("Objective = %q", c.Objective)
+	}
+	if !strings.Contains(c.System, "Frame: work") {
+		t.Fatalf("System prompt should mention frame=work; got:\n%s", c.System)
+	}
+	if !strings.Contains(c.System, "Work frame. Tone: terse.") {
+		t.Fatalf("System prompt should include the frame's system_prompt_append; got:\n%s", c.System)
+	}
+	if !strings.Contains(c.System, "orchestrator mode") {
+		t.Fatalf("System prompt should record orchestrator mode; got:\n%s", c.System)
+	}
+	if c.OverrideRegistry == nil {
+		t.Fatalf("OverrideRegistry should be set so the loop sees the frame-scoped tool set")
+	}
+	// No ProviderBuilder wired → contract.OverrideProvider stays nil
+	// and the supervisor falls back to its preconfigured provider.
+	if c.OverrideProvider != nil {
+		t.Fatalf("OverrideProvider should be nil without a ProviderBuilder; got %T", c.OverrideProvider)
+	}
+}
+
+// TestDaemon_FrameFallsBackToActiveWhenScheduleFrameEmpty — Phase F-14.
+// An empty Schedule.Frame should resolve through the configured active
+// frame; the resulting sysprompt names that fallback frame.
+func TestDaemon_FrameFallsBackToActiveWhenScheduleFrameEmpty(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+
+	cfg := &config.Config{
+		UserName: "Tester",
+		Providers: map[string]config.ProviderConfig{
+			"anthropic": {APIKey: "sk-test", DefaultModel: "claude-test"},
+		},
+		DefaultProvider: "anthropic",
+		Frames: frame.Config{
+			Default: "personal",
+			Active:  "personal",
+			List: []frame.Frame{
+				frame.NewPersonal("anthropic", "claude-test"),
+			},
+		},
+		Schedules: []schedule.Schedule{{
+			Name:   "morning",
+			Spec:   "0 9 * * *",
+			Prompt: "x",
+			// Frame intentionally empty — exercises the fallback chain.
+		}},
+	}
+	if err := config.Save(cfgPath, cfg); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+
+	clock := &fakeClock{now: time.Date(2026, 6, 5, 9, 0, 0, 0, time.Local)}
+
+	fs := &fakeSpawner{}
+	d, err := New(Options{
+		ConfigPath:     cfgPath,
+		SocketPath:     shortSock(t),
+		Spawner:        fs,
+		TickInterval:   50 * time.Millisecond,
+		Now:            clock,
+		DisableSignals: true,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- d.Run(ctx) }()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && fs.Count() == 0 {
+		time.Sleep(20 * time.Millisecond)
+	}
+	cancel()
+	<-done
+
+	if fs.Count() < 1 {
+		t.Fatalf("expected at least one Spawn, got %d", fs.Count())
+	}
+	contracts := fs.Contracts()
+	if !strings.Contains(contracts[0].System, "Frame: personal") {
+		t.Fatalf("System prompt should fall back to active=personal; got:\n%s", contracts[0].System)
 	}
 }

@@ -96,6 +96,31 @@ type SpawnContract struct {
 	MaxTurns        int
 	MaxWallClock    time.Duration
 	SuccessCriteria string
+
+	// System is the system prompt the loop hands the provider. Empty
+	// means "no system prompt" (provider falls back to its built-in
+	// default). Phase F-14: the daemon populates this with
+	// agent.SystemPromptWithFrame so scheduled runs see the same frame
+	// framing the chat path does.
+	System string
+
+	// Model is the provider model id (e.g. "claude-sonnet-4-6"). Empty
+	// means the provider picks its built-in default. Phase F-14: the
+	// daemon resolves this from the frame's ResolveProvider result.
+	Model string
+
+	// OverrideProvider, when non-nil, is used in place of the
+	// supervisor's pre-wired provider for this single Spawn. Phase F-14
+	// uses it so a scheduled run honours a frame's provider_override
+	// without rebuilding the whole supervisor.
+	OverrideProvider providers.Provider
+
+	// OverrideRegistry, when non-nil, is used as the child's tool
+	// registry directly (NOT filtered through ToolAllowlist). The
+	// daemon's per-fire registry is already frame-scoped via
+	// tools.NewDefaultRegistryWithBaseDirAndFrames; the supervisor
+	// passes it through as-is.
+	OverrideRegistry *tools.Registry
 }
 
 // Errors surfaced by Spawn / Retry. Exported so Slice 3e's Agent tool
@@ -285,7 +310,14 @@ func (s *Supervisor) Spawn(ctx context.Context, parentID string, contract SpawnC
 	if s.log == nil {
 		return nil, nil, errors.New("supervisor.Spawn: nil log (constructed without state.db)")
 	}
-	if s.provider == nil {
+	// Pick the per-spawn provider: contract override wins so the daemon
+	// can honour a frame's provider_override without rebuilding the
+	// whole supervisor.
+	spawnProvider := contract.OverrideProvider
+	if spawnProvider == nil {
+		spawnProvider = s.provider
+	}
+	if spawnProvider == nil {
 		return nil, nil, errors.New("supervisor.Spawn: nil provider (constructor passed nil)")
 	}
 
@@ -418,8 +450,18 @@ func (s *Supervisor) Spawn(ctx context.Context, parentID string, contract SpawnC
 
 	// 8. Launch the worker.
 	resultCh := make(chan SpawnResult, 1)
-	childReg := buildChildRegistry(s.baseReg, contract.ToolAllowlist)
-	go s.runChild(childCtx, child, s.provider, childReg, contract, resultCh)
+	// Phase F-14: a contract may carry its own pre-built registry
+	// (the daemon does this so scheduled fires see a frame-scoped tool
+	// set without round-tripping through ToolAllowlist). When set we
+	// hand it through verbatim; otherwise fall back to the legacy
+	// allowlist-filtered child registry.
+	var childReg *tools.Registry
+	if contract.OverrideRegistry != nil {
+		childReg = contract.OverrideRegistry
+	} else {
+		childReg = buildChildRegistry(s.baseReg, contract.ToolAllowlist)
+	}
+	go s.runChild(childCtx, child, spawnProvider, childReg, contract, resultCh)
 
 	return &SubAgent{
 		ID:              id,
