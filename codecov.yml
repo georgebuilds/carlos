@@ -1,0 +1,10 @@
+ignore:
+  # TUI bubbletea programs and dev-aid entry points. Their bodies
+  # bootstrap the chat / manage / onboarding TUI and can't be reasonably
+  # unit-tested; integration coverage lives in internal/tui/*.
+  - "cmd/carlos/runtime_tui.go"
+  # Headless long-running entry points (carlos please / carlos research)
+  # plus the stdin approver. Drive a live model + tool-use loop; not
+  # unit-testable. Underlying logic lives in internal/agent + internal/
+  # research where it is covered.
+  - "cmd/carlos/runtime_headless.go"
