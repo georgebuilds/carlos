@@ -52,7 +52,7 @@ docs/               GitHub Pages site + llms.txt
 
 ## Test discipline
 
-- `go test ./...` is the floor. ~2050 tests across 39 packages today; new code
+- `go test ./...` is the floor. ~2180 tests across 39 packages today; new code
   aims for 80%+ coverage on touched packages.
 - `go vet ./...` must be clean.
 - `go build ./...` must build cleanly for the four release targets

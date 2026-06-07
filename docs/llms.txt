@@ -8,7 +8,7 @@ Two distinguishing bets. First, skill induction: carlos watches transcripts and 
 
 ## Frames + modes
 
-Sessions run inside a frame (personal + N user-defined: work, research, side projects, etc.). Each frame carries its own glyph, accent from an 8-name palette, provider + model, vault subtree, `system_prompt_append`, cwd_hints (auto-pick at fresh launch), capabilities, and orchestrator `mode` (solo / tight / orchestrator). Per-frame on-disk layout under `~/.carlos/frames/<name>/{research,usershell,worktrees,digest}/`. Cross-frame READ is free; cross-frame WRITE prompts with a distinct audit reason. Ctrl+F opens the full-screen 3×2 takeover switcher; `/frame switch <name>` swaps the live provider/model without losing the transcript. `/mode <name>` flips the orchestrator mode, which gates the supervisor's spawn cap (solo=0, tight=1, orchestrator=5). `/whoami` echoes the current frame + mode + provider + model.
+Sessions run inside a frame (personal + N user-defined: work, research, side projects, etc.). Each frame carries its own glyph, accent from an 8-name palette, provider + model + `provider_override` (per-frame billing keys + base URLs that shadow the shared pantry), vault subtree, `system_prompt_append`, cwd_hints (auto-pick at fresh launch), capabilities, and orchestrator `mode` (solo / tight / orchestrator). Per-frame on-disk layout under `~/.carlos/frames/<name>/{research,usershell,worktrees,digest}/`. Cross-frame READ is free; cross-frame WRITE prompts with a distinct audit reason. Ctrl+F opens the full-screen 3×2 takeover switcher; `/frame switch <name>` swaps the live provider/model without losing the transcript and refreshes the in-process FrameUI (mode, capabilities, glyph, accent). `/mode <name>` flips the orchestrator mode, which gates the supervisor's spawn cap (solo=0, tight=1, orchestrator=5). When the user submits a non-trivial prompt in orchestrator mode, a five-checkbox heuristic overlay nudges them to delegate or stay solo. When sub-agents are live and the chat width is >= 120 cols, the transcript splits horizontally with a right-side roster. `/whoami` echoes the current frame + mode + provider + model.
 
 ## Canonical references
 
@@ -37,9 +37,13 @@ Three layers, evaluated in order, in `internal/agent/policy.go`:
 
 Every decision is captured by an optional `AuditSink`. Reasons: `ReasonBuiltinAllow`, `ReasonWorkspaceAllow`, `ReasonSessionAllow`, `ReasonSessionDeny`, `ReasonCrossFrameAllow`, `ReasonCrossFrameDeny`. The Phase F-12 cross-frame detector forces the prompt path on write/edit inputs whose path lands in a non-active frame's subtree.
 
+A first-launch trust prompt surfaces in the overlay slot when the cwd contains a project marker (.git, go.mod, package.json, etc.) and isn't already trusted. Y persists via the same store the /trust slash uses; N/Esc dismiss for the session.
+
+Identity hardening: provider clients run every EventError through `providers.ScrubModelName` so "I am Gemini" / "I am Claude" reveals become "I am carlos". `cmd/carlos.scrubProviderName` runs the same scrub at the stderr boundary. A regression test pins the system prompt against user-injection attempts.
+
 ## Slash commands
 
-Owned by `internal/tui/slash`. Mirrored from Claude Code: `/clear`, `/help`, `/exit` (alias `/quit`, `/q`), `/compact`, `/model`, `/review`. Carlos-specific: `/insights`, `/skills`, `/memory`, `/schedule`, `/daemon`, `/agents`, `/research`, `/resume`, `/shell`, `/jobs`, `/fg`, `/bg`, `/trust`, `/untrust`, `/trusts`, `/permissions`, `/frame`, `/mode`, `/capabilities`, `/whoami`.
+Owned by `internal/tui/slash`. Mirrored from Claude Code: `/clear`, `/help`, `/exit` (alias `/quit`, `/q`), `/compact`, `/model`, `/review`. Carlos-specific: `/insights`, `/skills`, `/memory`, `/schedule`, `/daemon`, `/agents`, `/research`, `/resume`, `/shell`, `/jobs`, `/fg`, `/bg`, `/trust`, `/untrust`, `/trusts`, `/permissions`, `/frame`, `/mode`, `/capabilities`, `/whoami`. CLI verbs adjacent: `carlos gateway test <channel>`, `carlos gateway add`, `carlos onboard --only <screen>`, `carlos memory search -f <frame> <query>`.
 
 ## Subsystems
 
