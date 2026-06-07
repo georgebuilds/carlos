@@ -385,6 +385,22 @@ type FrameUI struct {
 	// /whoami. Surfaced as the third line of the slash echo so users
 	// can confirm the live-swap actually flipped the dispatch.
 	Identity func() (provider, model string)
+	// LookupFrame returns the render fields (glyph, accent, mode,
+	// capabilities) for a frame name. frameSwitchCmd calls this after
+	// a successful SwitchActive so the chat's in-process FrameUI
+	// reflects the new frame's settings without waiting for the next
+	// session. nil disables the refresh — Mode + Capabilities stay
+	// what they were until the next restart.
+	LookupFrame func(name string) (FrameUIUpdate, bool)
+}
+
+// FrameUIUpdate carries the post-switch render fields the chat refreshes
+// in place when a frame switch succeeds. Sent through FrameUI.LookupFrame.
+type FrameUIUpdate struct {
+	Glyph        string
+	Accent       string
+	Mode         string
+	Capabilities map[string]string
 }
 
 type statusKind int

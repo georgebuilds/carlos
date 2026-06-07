@@ -483,7 +483,19 @@ type dispatch struct {
 // config entry, and resolves the model the same way (flag → config → built-in
 // default per provider).
 func buildDispatch(cfg *config.Config, opts pleaseOptions) (*dispatch, error) {
+	return buildDispatchForFrame(cfg, opts, nil)
+}
+
+// buildDispatchForFrame is the Phase F-9 variant. When activeFrame is
+// non-nil, frame.ResolveProvider applies the frame's provider_override
+// against the shared providers pantry so per-frame billing keys + base
+// URLs win over the legacy cfg.Providers entry. nil activeFrame keeps
+// the legacy pantry-only behaviour.
+func buildDispatchForFrame(cfg *config.Config, opts pleaseOptions, activeFrame *frame.Frame) (*dispatch, error) {
 	name := opts.provider
+	if name == "" && activeFrame != nil {
+		name = activeFrame.Provider
+	}
 	if name == "" {
 		name = cfg.DefaultProvider
 	}
@@ -503,35 +515,88 @@ func buildDispatch(cfg *config.Config, opts pleaseOptions) (*dispatch, error) {
 		return nil, errors.New("no provider configured — run `carlos onboard`")
 	}
 
-	pc, ok := cfg.Providers[name]
-	if !ok || (pc.APIKey == "" && pc.BaseURL == "") {
+	apiKey, baseURL, frameDefaultModel := resolveProviderCreds(cfg, name, activeFrame)
+	if apiKey == "" && baseURL == "" {
 		return nil, fmt.Errorf("provider %q not configured — run `carlos onboard`", name)
 	}
 
 	var p providers.Provider
 	switch name {
 	case "anthropic":
-		p = anthropic.New(pc.APIKey)
+		p = anthropic.New(apiKey)
 	case "openai":
-		p = openai.New(pc.APIKey)
+		p = openai.New(apiKey)
 	case "gemini":
-		p = gemini.New(pc.APIKey)
+		p = gemini.New(apiKey)
 	case "openrouter":
-		p = openrouter.New(pc.APIKey)
+		p = openrouter.New(apiKey)
 	case "ollama":
-		p = ollama.New(pc.BaseURL)
+		p = ollama.New(baseURL)
 	default:
 		return nil, fmt.Errorf("unknown provider %q (expected anthropic | openai | gemini | openrouter | ollama)", name)
 	}
 
 	model := opts.model
+	if model == "" && activeFrame != nil {
+		model = activeFrame.Model
+	}
 	if model == "" {
-		model = pc.DefaultModel
+		model = frameDefaultModel
 	}
 	if model == "" {
 		model = providerDefaultModel(name)
 	}
 	return &dispatch{provider: p, name: name, model: model}, nil
+}
+
+// activeFrameForDispatch returns a pointer to the active frame's record
+// in cfg.Frames.List, honouring CARLOS_FRAME env + cwd + persisted-active
+// resolution. Returns nil when frames aren't wired or the resolved name
+// can't be found. nil is the legacy single-shelf signal — buildDispatch
+// then uses the shared pantry without applying provider_override.
+func activeFrameForDispatch(cfg *config.Config, flag string) *frame.Frame {
+	if len(cfg.Frames.List) == 0 {
+		return nil
+	}
+	cwd, _ := os.Getwd()
+	res, ok := frame.ResolveActive(&cfg.Frames, frame.Input{
+		Env:  os.Getenv("CARLOS_FRAME"),
+		Flag: flag,
+		Cwd:  cwd,
+	})
+	if !ok {
+		return nil
+	}
+	return cfg.Frames.Find(res.Frame)
+}
+
+// resolveProviderCreds returns the resolved (api_key, base_url, default_model)
+// for a provider, with the active frame's provider_override (Phase F-9)
+// applied on top of the shared pantry. Returns zero strings when neither
+// source has the provider configured; the caller treats that as "not
+// configured" and prompts re-onboarding.
+func resolveProviderCreds(cfg *config.Config, providerName string, activeFrame *frame.Frame) (apiKey, baseURL, defaultModel string) {
+	pc, ok := cfg.Providers[providerName]
+	if ok {
+		apiKey = pc.APIKey
+		baseURL = pc.BaseURL
+		defaultModel = pc.DefaultModel
+	}
+	if activeFrame == nil {
+		return apiKey, baseURL, defaultModel
+	}
+	if ov, ok := activeFrame.ProviderOverride[providerName]; ok {
+		if ov.APIKey != "" {
+			apiKey = ov.APIKey
+		}
+		if ov.BaseURL != "" {
+			baseURL = ov.BaseURL
+		}
+		if ov.DefaultModel != "" {
+			defaultModel = ov.DefaultModel
+		}
+	}
+	return apiKey, baseURL, defaultModel
 }
 
 // extractCapabilityBackends collapses a frame's full Capabilities map
@@ -606,7 +671,7 @@ func runHeadless(prompt string, opts pleaseOptions) error {
 	applyTheme(cfg)
 	warnGatewayOrphaned(cfg)
 
-	d, err := buildDispatch(cfg, opts)
+	d, err := buildDispatchForFrame(cfg, opts, activeFrameForDispatch(cfg, opts.frame))
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "carlos:", err)
 		os.Exit(1)
@@ -879,7 +944,7 @@ func runResearchInternal(args []string) error {
 		fmt.Fprintln(os.Stderr, "carlos: config incomplete — run `carlos onboard`.")
 		os.Exit(1)
 	}
-	d, err := buildDispatch(cfg, pleaseOptions{})
+	d, err := buildDispatchForFrame(cfg, pleaseOptions{}, activeFrameForDispatch(cfg, ""))
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "carlos:", err)
 		os.Exit(1)
@@ -985,7 +1050,7 @@ func runResearch(args []string) error {
 	}); ok {
 		researchFrameName = res.Frame
 	}
-	d, err := buildDispatch(cfg, pleaseOptions{})
+	d, err := buildDispatchForFrame(cfg, pleaseOptions{}, cfg.Frames.Find(researchFrameName))
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "carlos:", err)
 		os.Exit(1)
@@ -1318,7 +1383,7 @@ func runDefault(cfg *config.Config, sessionID string) error {
 	}
 	defer log.Close()
 
-	d, err := buildDispatch(cfg, pleaseOptions{})
+	d, err := buildDispatchForFrame(cfg, pleaseOptions{}, activeFrameForDispatch(cfg, ""))
 	if err != nil {
 		return err
 	}
@@ -1525,6 +1590,18 @@ func runDefault(cfg *config.Config, sessionID string) error {
 					defer loopMu.Unlock()
 					return liveDispatch.name, liveDispatch.model
 				},
+				LookupFrame: func(name string) (chat.FrameUIUpdate, bool) {
+					f := cfg.Frames.Find(name)
+					if f == nil {
+						return chat.FrameUIUpdate{}, false
+					}
+					return chat.FrameUIUpdate{
+						Glyph:        f.Glyph,
+						Accent:       f.Accent,
+						Mode:         frame.EffectiveMode(*f),
+						Capabilities: extractCapabilityBackends(*f),
+					}, true
+				},
 			}
 		}
 	}
@@ -1554,7 +1631,7 @@ func runDefault(cfg *config.Config, sessionID string) error {
 		if f == nil {
 			return fmt.Errorf("unknown frame: %s", newFrameName)
 		}
-		newDispatch, err := buildDispatch(cfg, pleaseOptions{provider: f.Provider, model: f.Model})
+		newDispatch, err := buildDispatchForFrame(cfg, pleaseOptions{provider: f.Provider, model: f.Model}, f)
 		if err != nil {
 			return fmt.Errorf("rebuild dispatch: %w", err)
 		}

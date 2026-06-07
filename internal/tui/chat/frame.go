@@ -71,12 +71,20 @@ func (m *Model) frameSwitchCmd(target string) tea.Cmd {
 		return statusCmd("switch failed: "+err.Error(), statusWarn)
 	}
 	m.frame.Active = target
+	// Refresh the per-frame render fields in place so the header pill
+	// + /whoami reflect the new frame immediately. The live-swap loop
+	// has already replaced the underlying chatglue.Loop; this picks up
+	// the new frame's Mode / Capabilities / Glyph / Accent.
+	if m.frame.LookupFrame != nil {
+		if upd, ok := m.frame.LookupFrame(target); ok {
+			m.frame.Glyph = upd.Glyph
+			m.frame.Accent = upd.Accent
+			m.frame.Mode = upd.Mode
+			m.frame.Capabilities = upd.Capabilities
+		}
+	}
 	m.rerenderViewport()
-	return statusCmd(
-		"switched to "+target+
-			" (provider/model take effect at next session start)",
-		statusInfo,
-	)
+	return statusCmd("switched to "+target, statusInfo)
 }
 
 // frameKnown reports whether name is in the wired Available list. Used

@@ -91,8 +91,40 @@ func TestFrameSlash_SwitchPersistsAndUpdatesActive(t *testing.T) {
 	if !strings.Contains(s.text, "switched to work") {
 		t.Errorf("expected confirmation; got %q", s.text)
 	}
-	if !strings.Contains(s.text, "next session") {
-		t.Errorf("expected restart hint; got %q", s.text)
+}
+
+func TestFrameSlash_SwitchRefreshesInProcessFields(t *testing.T) {
+	m := newFramedModel(t, FrameUI{
+		Active:    "personal",
+		Glyph:     "◉",
+		Accent:    "cream",
+		Mode:      "solo",
+		Available: []string{"personal", "work"},
+		SwitchActive: func(string) error { return nil },
+		LookupFrame: func(name string) (FrameUIUpdate, bool) {
+			if name != "work" {
+				return FrameUIUpdate{}, false
+			}
+			return FrameUIUpdate{
+				Glyph:        "▣",
+				Accent:       "rust",
+				Mode:         "orchestrator",
+				Capabilities: map[string]string{"calendar": "caldav"},
+			}, true
+		},
+	})
+	runStatusCmd(t, m.frameSlash("switch work"))
+	if m.frame.Glyph != "▣" {
+		t.Errorf("Glyph not refreshed: %q", m.frame.Glyph)
+	}
+	if m.frame.Accent != "rust" {
+		t.Errorf("Accent not refreshed: %q", m.frame.Accent)
+	}
+	if m.frame.Mode != "orchestrator" {
+		t.Errorf("Mode not refreshed: %q", m.frame.Mode)
+	}
+	if m.frame.Capabilities["calendar"] != "caldav" {
+		t.Errorf("Capabilities not refreshed: %v", m.frame.Capabilities)
 	}
 }
 
