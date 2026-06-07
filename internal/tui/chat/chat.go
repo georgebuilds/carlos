@@ -341,6 +341,15 @@ type Model struct {
 	// to bridge to trustSlashEnable without restructuring the y/n
 	// routing.
 	queuedCmds []tea.Cmd
+
+	// Phase O five-checkbox heuristic. When the active frame is in
+	// orchestrator mode and the user submits a non-trivial prompt, the
+	// submit path stashes the prompt here and toggles showHeuristic.
+	showHeuristic     bool
+	heuristicChecks   [heuristicQuestionCount]bool
+	heuristicPending  string
+	heuristicHelp     bool
+	heuristicDisabled bool
 }
 
 // FrameUI is the Phase F display + switch contract the chat Model
@@ -621,6 +630,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// waiting and a frame switch shouldn't interrupt that.
 		if m.showFrameSwitcher {
 			next, cmd, handled := m.handleFrameSwitcherKey(msg)
+			if handled {
+				return next, cmd
+			}
+		}
+		// Phase O five-checkbox heuristic. The overlay sits in the same
+		// modal slot as jobs / perms; keys 1-5 toggle the checks, d/s
+		// pick an action, esc cancels and restores the prompt to the
+		// composer. ctrl+c falls through to the quit handler.
+		if m.showHeuristic {
+			next, cmd, handled := m.handleHeuristicKey(msg)
 			if handled {
 				return next, cmd
 			}
@@ -1149,6 +1168,13 @@ func (m *Model) submit() tea.Cmd {
 		return func() tea.Msg {
 			return errMsg{err: fmt.Errorf("slash parse: %w", err)}
 		}
+	}
+	// Phase O: when the active frame runs in orchestrator mode and the
+	// prompt is non-trivial, pause and ask the user to evaluate the
+	// five-checkbox heuristic before dispatching to the model.
+	if shouldShowHeuristic(m.frame.Mode, raw, m.heuristicDisabled) {
+		m.openHeuristic(raw)
+		return nil
 	}
 	return m.appendUserMessage(raw)
 }

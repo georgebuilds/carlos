@@ -74,12 +74,13 @@ func (m *Model) renderInner(innerW, innerH int) string {
 		inputH = lipgloss.Height(input)
 	}
 
-	// Approval prompt OR frame switcher OR jobs overlay OR help
-	// overlay is a bordered panel above the input. Compute height
-	// first so we can reserve it from the transcript area. They're
-	// mutually exclusive — approval is modal (model is waiting),
-	// jobs / perms / help / switcher are dismiss-on-keypress;
-	// precedence: approval > switcher > jobs > perms > help.
+	// Approval prompt OR frame switcher OR heuristic OR jobs overlay
+	// OR help overlay is a bordered panel above the input. Compute
+	// height first so we can reserve it from the transcript area.
+	// They're mutually exclusive — approval is modal (model is
+	// waiting), jobs / perms / help / switcher / heuristic are
+	// dismiss-on-keypress; precedence: approval > switcher >
+	// heuristic > jobs > perms > help.
 	var approval string
 	approvalH := 0
 	if m.pendingApproval != nil {
@@ -109,6 +110,14 @@ func (m *Model) renderInner(innerW, innerH int) string {
 			innerW,
 			switcherH,
 			m.switcherHelp,
+		)
+		approvalH = lipgloss.Height(approval)
+	} else if m.showHeuristic {
+		approval = renderHeuristicOverlay(
+			m.heuristicPending,
+			m.heuristicChecks,
+			m.heuristicHelp,
+			innerW,
 		)
 		approvalH = lipgloss.Height(approval)
 	} else if m.showJobs && m.usershell != nil {
