@@ -41,6 +41,7 @@ import (
 	"path/filepath"
 	"runtime/debug"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -1418,6 +1419,12 @@ func runDefault(cfg *config.Config, sessionID string) error {
 		Env: os.Getenv("CARLOS_FRAME"),
 		Cwd: cwd,
 	})
+	// swapLoop is filled in once the chatglue.Loop is constructed
+	// further down. The frame's SwitchActive closure captures the
+	// variable so it can call the assigned closure even though we
+	// can't build it yet (the Loop needs systemPrompt which needs
+	// frameInfo which needs frameOK).
+	var swapLoop func(name string) error
 	var activeFrame frame.Frame
 	frameInfo := agent.FrameInfo{}
 	frameUI := chat.FrameUI{}
@@ -1440,7 +1447,13 @@ func runDefault(cfg *config.Config, sessionID string) error {
 						return fmt.Errorf("unknown frame: %s", name)
 					}
 					cfg.Frames.Active = name
-					return config.Save(config.DefaultPath(), cfg)
+					if err := config.Save(config.DefaultPath(), cfg); err != nil {
+						return err
+					}
+					if swapLoop != nil {
+						return swapLoop(name)
+					}
+					return nil
 				},
 				SwitchMode: func(mode string) error {
 					f := cfg.Frames.Find(activeFrame.Name)
@@ -1494,7 +1507,62 @@ func runDefault(cfg *config.Config, sessionID string) error {
 	if err := loop.Start(ctx); err != nil {
 		return err
 	}
-	defer loop.Stop()
+	// Phase F live-swap: liveLoop holds the currently-running loop.
+	// swapLoop rebuilds it against a new frame's provider/model/sysprompt
+	// without losing the transcript (the new loop subscribes to the same
+	// event log). Mutex-guarded so /frame switch can race with the chat
+	// goroutine reading the pointer.
+	var (
+		loopMu   sync.Mutex
+		liveLoop = loop
+	)
+	defer func() {
+		loopMu.Lock()
+		l := liveLoop
+		loopMu.Unlock()
+		l.Stop()
+	}()
+	swapLoop = func(newFrameName string) error {
+		f := cfg.Frames.Find(newFrameName)
+		if f == nil {
+			return fmt.Errorf("unknown frame: %s", newFrameName)
+		}
+		newDispatch, err := buildDispatch(cfg, pleaseOptions{provider: f.Provider, model: f.Model})
+		if err != nil {
+			return fmt.Errorf("rebuild dispatch: %w", err)
+		}
+		newInfo := agent.FrameInfo{
+			Name:   f.Name,
+			Append: f.SystemPromptAppend,
+			Mode:   frame.EffectiveMode(*f),
+		}
+		newSys := agent.SystemPromptWithFrame(cfg.UserName, chatCwd, chatProjectCtx, newInfo)
+		newLoop := chatglue.NewLoop(chatglue.Config{
+			Provider: newDispatch.provider,
+			Model:    newDispatch.model,
+			Tools:    baseReg,
+			Approver: layered,
+			System:   newSys,
+		}, log, src, defaultAgentID)
+		if err := newLoop.Start(ctx); err != nil {
+			return fmt.Errorf("start new loop: %w", err)
+		}
+		loopMu.Lock()
+		old := liveLoop
+		liveLoop = newLoop
+		loopMu.Unlock()
+		old.Stop()
+		// Refresh the cross-frame approver's notion of which frame is
+		// active so write/edit prompts label the new frame correctly.
+		if len(cfg.Frames.List) > 0 && home != "" {
+			subtrees := make(map[string]string, len(cfg.Frames.List))
+			for _, fr := range cfg.Frames.List {
+				subtrees[fr.Name] = frame.PathsFor(home, fr.Name).Root
+			}
+			layered.SetFrameSubtrees(newFrameName, subtrees)
+		}
+		return nil
+	}
 
 	// Phase 9 slice 9j: build the summarizer the chat-side /compact verb
 	// uses. The provider is always non-nil at this point (runDefault
