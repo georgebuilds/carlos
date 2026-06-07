@@ -86,5 +86,15 @@ jobs:
       - name: Test
         # `-count=1` disables the test cache so the run reflects the
         # current code. `-timeout=5m` is generous given local wall
-        # time is ~40s.
-        run: go test ./... -count=1 -timeout=5m
+        # time is ~40s. `-coverprofile`/`-covermode=atomic` feed the
+        # Codecov upload below.
+        run: go test ./... -count=1 -timeout=5m -coverprofile=coverage.txt -covermode=atomic
+
+      - name: Upload coverage to Codecov
+        # Requires CODECOV_TOKEN as a repo Actions secret. Same wiring
+        # as the anneal repo. Failing the CI on upload errors would be
+        # noisy for a docs-only PR; the action defaults to non-blocking.
+        uses: codecov/codecov-action@v6
+        with:
+          files: coverage.txt
+          token: ${{ secrets.CODECOV_TOKEN }}
