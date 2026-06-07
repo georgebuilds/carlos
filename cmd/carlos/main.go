@@ -687,7 +687,7 @@ func runHeadless(prompt string, opts pleaseOptions) error {
 
 	d, err := buildDispatchForFrame(cfg, opts, activeFrameForDispatch(cfg, opts.frame))
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "carlos:", err)
+		fmt.Fprintln(os.Stderr, "carlos:", scrubProviderName(err))
 		os.Exit(1)
 	}
 
@@ -960,7 +960,7 @@ func runResearchInternal(args []string) error {
 	}
 	d, err := buildDispatchForFrame(cfg, pleaseOptions{}, activeFrameForDispatch(cfg, ""))
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "carlos:", err)
+		fmt.Fprintln(os.Stderr, "carlos:", scrubProviderName(err))
 		os.Exit(1)
 	}
 
@@ -988,7 +988,7 @@ func runResearchInternal(args []string) error {
 		if errors.Is(runErr, context.Canceled) {
 			return nil
 		}
-		fmt.Fprintf(os.Stderr, "carlos: research run ended with: %v\n", runErr)
+		fmt.Fprintf(os.Stderr, "carlos: research run ended with: %s\n", scrubProviderName(runErr))
 	}
 	return nil
 }
@@ -1066,7 +1066,7 @@ func runResearch(args []string) error {
 	}
 	d, err := buildDispatchForFrame(cfg, pleaseOptions{}, cfg.Frames.Find(researchFrameName))
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "carlos:", err)
+		fmt.Fprintln(os.Stderr, "carlos:", scrubProviderName(err))
 		os.Exit(1)
 	}
 
@@ -1119,7 +1119,7 @@ func runResearch(args []string) error {
 		// missing-input pre-flight errors leave it nil. Surface those
 		// without crashing.
 		if runErr != nil {
-			fmt.Fprintf(os.Stderr, "carlos: research failed: %v\n", runErr)
+			fmt.Fprintf(os.Stderr, "carlos: research failed: %s\n", scrubProviderName(runErr))
 			return runErr
 		}
 		return errors.New("carlos: research produced no report (unexpected)")
@@ -1143,7 +1143,7 @@ func runResearch(args []string) error {
 		// (budget exceeded, phase failure). The rendered markdown
 		// already encodes the Concerns; we just surface the top-line
 		// error so scripts can see something went sideways.
-		fmt.Fprintf(os.Stderr, "carlos: research run ended with: %v\n", runErr)
+		fmt.Fprintf(os.Stderr, "carlos: research run ended with: %s\n", scrubProviderName(runErr))
 	}
 	return nil
 }
@@ -2099,8 +2099,25 @@ func exit(err error) {
 	if errors.Is(err, errFramePickerCancelled) {
 		os.Exit(130)
 	}
-	fmt.Fprintln(os.Stderr, "carlos:", err)
+	fmt.Fprintln(os.Stderr, "carlos:", scrubProviderName(err))
 	os.Exit(1)
+}
+
+// scrubProviderName runs the model-name scrub over an error's display
+// string before it reaches stderr. The existing structural lines
+// ("carlos: provider=X model=Y") are deliberate and stay — the user
+// configured them. The hardening here is about errors bubbled up from
+// a provider client: when those carry a "I am Gemini" / "Claude:"
+// reveal in their wire payload, we rewrite the visible string to
+// "carlos" so the framing is consistent with the chat surface.
+//
+// Returns "" for a nil error so the caller can use it inline with
+// Fprintln/Fprintf without a separate guard.
+func scrubProviderName(err error) string {
+	if err == nil {
+		return ""
+	}
+	return providers.ScrubModelNameString(err.Error())
 }
 
 // runMemory dispatches `carlos memory search <query>` and friends.
