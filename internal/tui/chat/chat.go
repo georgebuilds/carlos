@@ -381,6 +381,10 @@ type FrameUI struct {
 	// the same as "blank". nil is also fine; the wizard hides the
 	// copy-personal option and falls back to blank.
 	PersonalTemplate func() frame.Frame
+	// Identity returns the current provider + model strings for
+	// /whoami. Surfaced as the third line of the slash echo so users
+	// can confirm the live-swap actually flipped the dispatch.
+	Identity func() (provider, model string)
 }
 
 type statusKind int
@@ -1376,6 +1380,8 @@ func (m *Model) dispatchSlash(c slash.Command) tea.Cmd {
 		return m.capabilitiesSlash()
 	case "mode":
 		return m.modeSlash(strings.TrimSpace(c.Args))
+	case "whoami":
+		return m.whoamiSlash()
 	}
 	if _, ok := slash.Lookup(c.Name); ok {
 		return func() tea.Msg {

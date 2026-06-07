@@ -1419,12 +1419,19 @@ func runDefault(cfg *config.Config, sessionID string) error {
 		Env: os.Getenv("CARLOS_FRAME"),
 		Cwd: cwd,
 	})
-	// swapLoop is filled in once the chatglue.Loop is constructed
-	// further down. The frame's SwitchActive closure captures the
-	// variable so it can call the assigned closure even though we
-	// can't build it yet (the Loop needs systemPrompt which needs
-	// frameInfo which needs frameOK).
-	var swapLoop func(name string) error
+	// Phase F live-swap state. liveLoop holds the currently-running
+	// chatglue.Loop; liveDispatch mirrors d so /whoami reflects the
+	// currently-active provider + model after a swap. swapLoop is
+	// filled in once the initial Loop is constructed further down;
+	// SwitchActive captures the var so it can call the eventual
+	// closure even though the Loop needs the systemPrompt which needs
+	// frameInfo which needs frameOK to be resolved first.
+	var (
+		loopMu       sync.Mutex
+		liveLoop     *chatglue.Loop
+		liveDispatch = d
+		swapLoop     func(name string) error
+	)
 	var activeFrame frame.Frame
 	frameInfo := agent.FrameInfo{}
 	frameUI := chat.FrameUI{}
@@ -1490,6 +1497,11 @@ func runDefault(cfg *config.Config, sessionID string) error {
 					}
 					return frame.Frame{}
 				},
+				Identity: func() (string, string) {
+					loopMu.Lock()
+					defer loopMu.Unlock()
+					return liveDispatch.name, liveDispatch.model
+				},
 			}
 		}
 	}
@@ -1507,15 +1519,7 @@ func runDefault(cfg *config.Config, sessionID string) error {
 	if err := loop.Start(ctx); err != nil {
 		return err
 	}
-	// Phase F live-swap: liveLoop holds the currently-running loop.
-	// swapLoop rebuilds it against a new frame's provider/model/sysprompt
-	// without losing the transcript (the new loop subscribes to the same
-	// event log). Mutex-guarded so /frame switch can race with the chat
-	// goroutine reading the pointer.
-	var (
-		loopMu   sync.Mutex
-		liveLoop = loop
-	)
+	liveLoop = loop
 	defer func() {
 		loopMu.Lock()
 		l := liveLoop
@@ -1550,6 +1554,7 @@ func runDefault(cfg *config.Config, sessionID string) error {
 		loopMu.Lock()
 		old := liveLoop
 		liveLoop = newLoop
+		liveDispatch = newDispatch
 		loopMu.Unlock()
 		old.Stop()
 		// Refresh the cross-frame approver's notion of which frame is

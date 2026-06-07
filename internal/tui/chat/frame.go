@@ -135,6 +135,39 @@ func (m *Model) modeSlash(args string) tea.Cmd {
 	return statusCmd("mode is now "+args+" in "+m.frame.Active, statusInfo)
 }
 
+// whoamiSlash echoes a concise identity surface: frame, mode, provider,
+// model. Useful after a /frame switch when the user wants to confirm
+// the live swap actually flipped the dispatch. When the chat is
+// running in legacy single-shelf mode (no frame wired) the slash
+// returns just the model name surfaced in the header.
+func (m *Model) whoamiSlash() tea.Cmd {
+	if m.frame.Active == "" {
+		return statusCmd("carlos (no frame wired)", statusInfo)
+	}
+	mode := m.frame.Mode
+	if mode == "" {
+		mode = "solo"
+	}
+	parts := []string{
+		"carlos in frame " + m.frame.Active + " (" + mode + ")",
+	}
+	if m.frame.Identity != nil {
+		provider, model := m.frame.Identity()
+		if provider != "" || model != "" {
+			parts = append(parts, "provider="+provider+" model="+model)
+		}
+	}
+	if len(m.frame.Capabilities) > 0 {
+		caps := make([]string, 0, len(m.frame.Capabilities))
+		for k, v := range m.frame.Capabilities {
+			caps = append(caps, k+"="+v)
+		}
+		sort.Strings(caps)
+		parts = append(parts, "capabilities: "+strings.Join(caps, ", "))
+	}
+	return statusCmd(strings.Join(parts, " · "), statusInfo)
+}
+
 // capabilitiesSlash echoes the wired capability -> backend map for the
 // active frame. Phase C-7. Empty map prints a CTA pointing the user at
 // the config block they need to populate.

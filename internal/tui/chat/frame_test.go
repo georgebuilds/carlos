@@ -325,6 +325,41 @@ func TestRenderHeader_IncludesModeWhenNonSolo(t *testing.T) {
 	}
 }
 
+func TestWhoamiSlash_LegacySingleShelfEcho(t *testing.T) {
+	m := newFramedModel(t, FrameUI{})
+	s := runStatusCmd(t, m.whoamiSlash())
+	if !strings.Contains(s.text, "no frame wired") {
+		t.Errorf("legacy whoami echo wrong: %q", s.text)
+	}
+}
+
+func TestWhoamiSlash_RendersFrameModeIdentity(t *testing.T) {
+	m := newFramedModel(t, FrameUI{
+		Active: "work",
+		Mode:   "orchestrator",
+		Capabilities: map[string]string{
+			"calendar": "caldav",
+		},
+		Identity: func() (string, string) {
+			return "anthropic", "claude-sonnet-4-6"
+		},
+	})
+	s := runStatusCmd(t, m.whoamiSlash())
+	for _, want := range []string{"work", "orchestrator", "anthropic", "claude-sonnet-4-6", "calendar=caldav"} {
+		if !strings.Contains(s.text, want) {
+			t.Errorf("missing %q in whoami: %q", want, s.text)
+		}
+	}
+}
+
+func TestWhoamiSlash_HandlesNilIdentity(t *testing.T) {
+	m := newFramedModel(t, FrameUI{Active: "personal", Mode: "solo"})
+	s := runStatusCmd(t, m.whoamiSlash())
+	if !strings.Contains(s.text, "personal") || !strings.Contains(s.text, "solo") {
+		t.Errorf("frame+mode missing: %q", s.text)
+	}
+}
+
 func TestRenderHeader_OmitsModeWhenSolo(t *testing.T) {
 	m := newFramedModel(t, FrameUI{
 		Active: "personal",

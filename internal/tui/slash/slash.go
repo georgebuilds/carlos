@@ -111,6 +111,10 @@ var Builtins = []Spec{
 	// Orchestrator-mode: show or switch the active frame's mode
 	// (solo / tight / orchestrator). Persisted alongside the frame.
 	{Name: "mode", ArgsHint: "[solo|tight|orchestrator]", Description: "show or set the active frame's orchestrator mode"},
+
+	// Identity surface: print frame, mode, provider, model. Useful
+	// after a /frame switch to confirm the live swap.
+	{Name: "whoami", Description: "show the active frame, mode, provider, and model"},
 }
 
 // Lookup returns the Spec for name (case-insensitive), or (Spec{}, false).
