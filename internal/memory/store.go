@@ -106,7 +106,62 @@ func applySchema(db *sql.DB) error {
 	if _, err := db.Exec(schemaSQL); err != nil {
 		return fmt.Errorf("memory: apply schema: %w", err)
 	}
+	// Phase F-13 migration: add summaries.frame to legacy databases.
+	// CREATE TABLE IF NOT EXISTS won't touch an existing summaries table
+	// that predates the frame column, so we probe + ALTER explicitly.
+	if err := migrateSummariesFrame(db); err != nil {
+		return fmt.Errorf("memory: migrate summaries.frame: %w", err)
+	}
+	if err := ensureFrameIndex(db); err != nil {
+		return fmt.Errorf("memory: ensure frame index: %w", err)
+	}
 	return nil
+}
+
+// migrateSummariesFrame adds the `frame` column to an existing
+// summaries table when it's missing. Idempotent: a second run on the
+// already-migrated database is a no-op. The matching frame index is
+// covered by schemaSQL's CREATE INDEX IF NOT EXISTS, so we only need
+// the column add here.
+func migrateSummariesFrame(db *sql.DB) error {
+	rows, err := db.Query(`PRAGMA table_info(summaries)`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var (
+			cid     int
+			name    string
+			ctype   string
+			notnull int
+			dflt    sql.NullString
+			pk      int
+		)
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+			return err
+		}
+		if name == "frame" {
+			return nil
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`ALTER TABLE summaries ADD COLUMN frame TEXT NOT NULL DEFAULT ''`); err != nil {
+		return err
+	}
+	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS summaries_by_frame ON summaries(frame, closed_at DESC)`)
+	return err
+}
+
+// ensureFrameIndex creates summaries_by_frame on fresh databases (where
+// the frame column was created by schemaSQL, not the migration ALTER).
+// Called from applySchema after migrateSummariesFrame so both the
+// fresh-create and legacy-migrate paths end with the index present.
+func ensureFrameIndex(db *sql.DB) error {
+	_, err := db.Exec(`CREATE INDEX IF NOT EXISTS summaries_by_frame ON summaries(frame, closed_at DESC)`)
+	return err
 }
 
 // withTx is a small helper for the few methods that mutate more than

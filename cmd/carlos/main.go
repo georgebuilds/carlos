@@ -1923,11 +1923,20 @@ func runMemory(args []string) error {
 	}
 	switch args[0] {
 	case "search":
-		query := strings.Join(args[1:], " ")
+		rest := args[1:]
+		// Phase F-13: -f|--frame scopes the query to one frame's
+		// summaries. Empty (no flag) returns cross-frame hits which is
+		// the legacy behaviour and the most useful default for `memory
+		// search` invoked from a script.
+		frameArg, rest, ferr := parseLeadingFrameFlag(rest)
+		if ferr != nil {
+			return ferr
+		}
+		query := strings.Join(rest, " ")
 		if strings.TrimSpace(query) == "" {
 			return errors.New("memory search: query required")
 		}
-		return memory.RunSearch(query, 10)
+		return memory.RunSearchInFrame(query, frameArg, 10)
 	default:
 		return fmt.Errorf("memory: unknown subcommand %q (expected: search)", args[0])
 	}

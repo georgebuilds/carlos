@@ -28,13 +28,21 @@ import (
 // `memory search <query>`; we keep the surface here so the foreground
 // agent's change is a one-liner.
 func RunSearch(query string, limit int) error {
-	return RunSearchTo(os.Stdout, query, limit, "")
+	return RunSearchTo(os.Stdout, query, limit, "", "")
+}
+
+// RunSearchInFrame is the frame-aware variant. Empty frame returns the
+// cross-frame behaviour (every hit). Phase F-13.
+func RunSearchInFrame(query, frame string, limit int) error {
+	return RunSearchTo(os.Stdout, query, limit, "", frame)
 }
 
 // RunSearchTo is the testable variant of RunSearch. It accepts an
 // io.Writer (for capture in tests) and an explicit dbPath ("" falls
-// back to the resolution rules in RunSearch).
-func RunSearchTo(out io.Writer, query string, limit int, dbPath string) error {
+// back to the resolution rules in RunSearch). The frame argument
+// scopes the FTS5 query to one frame's summaries; empty returns every
+// frame's hits.
+func RunSearchTo(out io.Writer, query string, limit int, dbPath, frame string) error {
 	if strings.TrimSpace(query) == "" {
 		return errors.New("memory: search: empty query")
 	}
@@ -51,7 +59,7 @@ func RunSearchTo(out io.Writer, query string, limit int, dbPath string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	hits, err := store.Search(ctx, query, limit)
+	hits, err := store.SearchInFrame(ctx, query, frame, limit)
 	if err != nil {
 		return err
 	}
@@ -67,10 +75,11 @@ func RunSearchTo(out io.Writer, query string, limit int, dbPath string) error {
 
 // formatSearchHit renders one summary as a single line:
 //
-//	<RFC3339>  [<agent-id first 8 chars>]  <text first 200 chars>
+//	<RFC3339>  [<agent-id first 8 chars>]  [<frame>]  <text first 200 chars>
 //
 // Newlines inside the summary are collapsed to spaces so the line
-// stays scannable.
+// stays scannable. Empty frame is suppressed (legacy single-shelf
+// rows still render compactly).
 func formatSearchHit(h Summary) string {
 	short := h.AgentID
 	if len(short) > 8 {
@@ -79,6 +88,10 @@ func formatSearchHit(h Summary) string {
 	text := strings.ReplaceAll(h.Text, "\n", " ")
 	if r := []rune(text); len(r) > 200 {
 		text = string(r[:200]) + "…"
+	}
+	if h.Frame != "" {
+		return fmt.Sprintf("%s  [%s]  [%s]  %s",
+			h.ClosedAt.Format(time.RFC3339), short, h.Frame, text)
 	}
 	return fmt.Sprintf("%s  [%s]  %s",
 		h.ClosedAt.Format(time.RFC3339), short, text)

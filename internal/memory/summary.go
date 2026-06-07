@@ -15,7 +15,8 @@ import (
 // stamps this. ClosedAt is the wall-clock close time in UTC ms;
 // SourceSeq is the last events.seq covered by the summary (so a
 // future incremental summarizer can pick up where the previous one
-// stopped).
+// stopped). Frame is the active frame at conversation close (Phase
+// F-13); empty string is the legacy single-shelf value.
 type Summary struct {
 	ID        int64
 	AgentID   string
@@ -23,6 +24,7 @@ type Summary struct {
 	Text      string
 	Tokens    int
 	SourceSeq int64
+	Frame     string
 }
 
 // AppendSummary inserts one summary row. The AFTER INSERT trigger on
@@ -48,9 +50,9 @@ func (s *Store) AppendSummary(ctx context.Context, sum Summary) (int64, error) {
 	}
 	closedAt = closedAt.UTC().Truncate(time.Millisecond)
 	res, err := s.db.ExecContext(ctx,
-		`INSERT INTO summaries(agent_id, closed_at, text, tokens, source_seq)
-		 VALUES (?, ?, ?, ?, ?)`,
-		sum.AgentID, closedAt.UnixMilli(), sum.Text, sum.Tokens, sum.SourceSeq,
+		`INSERT INTO summaries(agent_id, closed_at, text, tokens, source_seq, frame)
+		 VALUES (?, ?, ?, ?, ?, ?)`,
+		sum.AgentID, closedAt.UnixMilli(), sum.Text, sum.Tokens, sum.SourceSeq, sum.Frame,
 	)
 	if err != nil {
 		return 0, fmt.Errorf("memory: insert summary: %w", err)
@@ -69,7 +71,18 @@ func (s *Store) AppendSummary(ctx context.Context, sum Summary) (int64, error) {
 // The query is passed straight to FTS5 — callers may use the full
 // FTS5 query grammar (quoted phrases, AND/OR/NOT, NEAR/N, prefix*).
 // Bad-syntax queries surface the FTS5 error wrapped.
+//
+// Legacy callers using two-arg Search get every frame's hits. Use
+// SearchInFrame to scope a search.
 func (s *Store) Search(ctx context.Context, query string, limit int) ([]Summary, error) {
+	return s.SearchInFrame(ctx, query, "", limit)
+}
+
+// SearchInFrame runs an FTS5 MATCH and filters to the named frame.
+// Empty frame returns every match (the legacy cross-frame behaviour).
+// Phase F-13. The summaries_by_frame index makes the per-frame scan
+// cheap even on large stores.
+func (s *Store) SearchInFrame(ctx context.Context, query, frame string, limit int) ([]Summary, error) {
 	if s == nil {
 		return nil, errors.New("memory: nil store")
 	}
@@ -79,13 +92,29 @@ func (s *Store) Search(ctx context.Context, query string, limit int) ([]Summary,
 	if limit <= 0 {
 		limit = 10
 	}
+	if frame == "" {
+		rows, err := s.db.QueryContext(ctx, `
+			SELECT id, agent_id, closed_at, text, tokens, source_seq, frame
+			  FROM summaries
+			 WHERE id IN (SELECT rowid FROM summaries_fts WHERE summaries_fts MATCH ?)
+			 ORDER BY closed_at DESC
+			 LIMIT ?`,
+			query, limit,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("memory: search: %w", err)
+		}
+		defer rows.Close()
+		return scanSummaries(rows)
+	}
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, agent_id, closed_at, text, tokens, source_seq
+		SELECT id, agent_id, closed_at, text, tokens, source_seq, frame
 		  FROM summaries
-		 WHERE id IN (SELECT rowid FROM summaries_fts WHERE summaries_fts MATCH ?)
+		 WHERE frame = ?
+		   AND id IN (SELECT rowid FROM summaries_fts WHERE summaries_fts MATCH ?)
 		 ORDER BY closed_at DESC
 		 LIMIT ?`,
-		query, limit,
+		frame, query, limit,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("memory: search: %w", err)
@@ -97,18 +126,41 @@ func (s *Store) Search(ctx context.Context, query string, limit int) ([]Summary,
 // RecentSummaries returns the top-N summaries by closed_at DESC. Used
 // by the agent boot path to seed working memory ("here's what we
 // last talked about") without invoking FTS5.
+//
+// Legacy two-arg callers get every frame's hits. Use RecentInFrame to
+// scope by frame.
 func (s *Store) RecentSummaries(ctx context.Context, limit int) ([]Summary, error) {
+	return s.RecentInFrame(ctx, "", limit)
+}
+
+// RecentInFrame returns the top-N summaries scoped to one frame.
+// Empty frame returns every frame's rows. Phase F-13.
+func (s *Store) RecentInFrame(ctx context.Context, frame string, limit int) ([]Summary, error) {
 	if s == nil {
 		return nil, errors.New("memory: nil store")
 	}
 	if limit <= 0 {
 		limit = 10
 	}
+	if frame == "" {
+		rows, err := s.db.QueryContext(ctx, `
+			SELECT id, agent_id, closed_at, text, tokens, source_seq, frame
+			  FROM summaries
+			 ORDER BY closed_at DESC
+			 LIMIT ?`, limit,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("memory: recent summaries: %w", err)
+		}
+		defer rows.Close()
+		return scanSummaries(rows)
+	}
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, agent_id, closed_at, text, tokens, source_seq
+		SELECT id, agent_id, closed_at, text, tokens, source_seq, frame
 		  FROM summaries
+		 WHERE frame = ?
 		 ORDER BY closed_at DESC
-		 LIMIT ?`, limit,
+		 LIMIT ?`, frame, limit,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("memory: recent summaries: %w", err)
@@ -131,7 +183,7 @@ func scanSummaries(rows interface {
 			sum     Summary
 			closeMs int64
 		)
-		if err := rows.Scan(&sum.ID, &sum.AgentID, &closeMs, &sum.Text, &sum.Tokens, &sum.SourceSeq); err != nil {
+		if err := rows.Scan(&sum.ID, &sum.AgentID, &closeMs, &sum.Text, &sum.Tokens, &sum.SourceSeq, &sum.Frame); err != nil {
 			return nil, fmt.Errorf("memory: scan summary: %w", err)
 		}
 		sum.ClosedAt = time.UnixMilli(closeMs).UTC()

@@ -27,6 +27,12 @@ package memory
 // AFTER INSERT trigger forwards new rows into the index. We deliberately
 // do NOT add update / delete triggers: summaries are append-only at v0
 // (mirrors the events table). Phase 7 follow-up adds compaction.
+//
+// Phase F-13: summaries.frame stores the active frame at conversation
+// close. Empty string is the legacy single-shelf value; the migration
+// in OpenStore stamps existing rows with "" so /memory search defaults
+// remain stable. Cross-frame search is opt-in (search supplies frame=""
+// to bypass the filter).
 const schemaSQL = `
 CREATE TABLE IF NOT EXISTS summaries (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -34,9 +40,13 @@ CREATE TABLE IF NOT EXISTS summaries (
   closed_at   INTEGER NOT NULL,
   text        TEXT NOT NULL,
   tokens      INTEGER NOT NULL DEFAULT 0,
-  source_seq  INTEGER NOT NULL DEFAULT 0
+  source_seq  INTEGER NOT NULL DEFAULT 0,
+  frame       TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS summaries_by_closed_at ON summaries(closed_at DESC);
+-- summaries_by_frame is created by migrateSummariesFrame after the
+-- ALTER TABLE has run on legacy databases, so we don't try to index a
+-- column that does not yet exist.
 
 CREATE VIRTUAL TABLE IF NOT EXISTS summaries_fts USING fts5(
   text,
