@@ -73,6 +73,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/oklog/ulid/v2"
@@ -328,7 +329,19 @@ func randomSuffix() (string, error) {
 // generator into a package-level var here so the artifacts ULIDs sort by
 // creation time the same way the agents-table ULIDs do — useful when a
 // future roster query orders artifacts by id).
+//
+// Guarded by artifactULIDMu because ulid.MonotonicEntropy is not safe
+// for concurrent reads (its Read mutates shared state without internal
+// locking). WriteArtifact is called from many goroutines under
+// supervisor fan-out, so a sub-microsecond lock around the mint keeps
+// concurrent same-millisecond writers from minting duplicate ULIDs and
+// tripping the artifacts.id PRIMARY KEY constraint on insert. Same
+// recipe as internal/gateway/envelope.go newEnvelopeID,
+// cmd/carlos/sessions.go mintSessionID, and
+// internal/usershell/manager.go newJobID.
 func newArtifactRowID(now time.Time) (string, error) {
+	artifactULIDMu.Lock()
+	defer artifactULIDMu.Unlock()
 	u, err := ulid.New(uint64(now.UnixMilli()), artifactULIDEntropy)
 	if err != nil {
 		return "", err
@@ -340,4 +353,7 @@ func newArtifactRowID(now time.Time) (string, error) {
 // IDs. Crypto-random base, monotonic increment within the same
 // millisecond — same recipe as ulid_test.go validates for the agents
 // table.
-var artifactULIDEntropy = ulid.Monotonic(rand.Reader, 0)
+var (
+	artifactULIDMu      sync.Mutex
+	artifactULIDEntropy = ulid.Monotonic(rand.Reader, 0)
+)
