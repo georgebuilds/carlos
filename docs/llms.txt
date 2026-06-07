@@ -13,7 +13,6 @@ Sessions run inside a frame (personal + N user-defined: work, research, side pro
 ## Canonical references
 
 - [README.md](https://github.com/georgebuilds/carlos/blob/main/README.md): user-facing intro, install, layout
-- [SPEC.md](https://github.com/georgebuilds/carlos/blob/main/SPEC.md): full specification with line refs into the implementation
 - [Releases](https://github.com/georgebuilds/carlos/releases): version history and signed tarballs
 - [Issues](https://github.com/georgebuilds/carlos/issues): open work and discussion
 

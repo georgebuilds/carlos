@@ -22,6 +22,11 @@ go.work.sum
 # Claude Code's local working area (worktrees, transcripts, settings).
 /.claude/
 
-# CLAUDE.md is a local pointer to AGENTS.md (the committed source of truth);
-# Claude Code auto-loads it but we don't ship it.
+# Planning / agent-onboarding documents stay out of the repo. CLAUDE.md
+# and AGENTS.md are recognised by Claude Code / Codex / Cursor as local
+# context pointers; we use them locally but they describe our internal
+# process, not the shipped software. SPEC.md (when present) is a
+# planning artefact — the canonical spec lives in the private vault.
 /CLAUDE.md
+/AGENTS.md
+/SPEC.md
