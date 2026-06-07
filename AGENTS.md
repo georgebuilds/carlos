@@ -29,8 +29,8 @@ internal/
   theme/            light / dark / NO_COLOR / configurable accent
   tools/            bash, file ops, grep / glob, git_*, web_*, notes_*, obsidian_*
   tui/              bubbletea chat / manage / onboarding / slash registry
-  usershell/        Phase U user-shell driver (! prefix, jobs, history)
-  workspace/        Phase T-2 trusted-workspaces store + read-only bash classifier
+  usershell/        user-shell driver (! prefix, jobs, history)
+  workspace/        trusted-workspaces store + read-only bash classifier
 skills/             bundled starter skills (calendar/, ...)
 docs/               GitHub Pages site + llms.txt
 ```
@@ -58,19 +58,6 @@ docs/               GitHub Pages site + llms.txt
 - `go build ./...` must build cleanly for the four release targets
   (darwin + linux x amd64 + arm64). Cross-compile checks are cheap; run them
   when touching anything that imports OS-specific paths.
-
-## Phase model
-
-`SPEC.md` is authoritative; line-anchored references point at the canonical
-implementation, not a paraphrase. Read it for the current state of:
-
-- Phase F (frames)
-- Phase G (gateway)
-- Phase T (permissions: T-1 builtin allowlist, T-2 workspace trust, T-3 overlay)
-- Phase U (user-shell)
-- Phase C (capability taxonomy)
-- Phase O (orchestrator modes)
-- Phases 0-8 (foundation)
 
 ## Conventions
 
