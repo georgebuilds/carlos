@@ -22,6 +22,17 @@ type VerbDispatcher interface {
 	Stop(id string) error
 }
 
+// ModeReporter is an optional interface implementations of
+// VerbDispatcher can satisfy to surface the active orchestrator mode +
+// effective spawn cap in the manage header. *agent.Supervisor
+// implements this naturally; tests may opt in by embedding a tiny
+// stub. When the wired dispatcher does NOT implement ModeReporter the
+// header skips the "mode=... (cap N)" line.
+type ModeReporter interface {
+	Mode() string
+	SpawnCap() int
+}
+
 // noopDispatcher is the zero-value dispatcher used before a real one
 // is wired. Returns a not-wired error for each call so the status bar
 // can surface the failure exactly like a not-implemented error from a

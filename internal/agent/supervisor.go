@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/georgebuilds/carlos/internal/frame"
 	"github.com/georgebuilds/carlos/internal/providers"
 	"github.com/georgebuilds/carlos/internal/tools"
 )
@@ -100,9 +101,18 @@ type SpawnContract struct {
 // Errors surfaced by Spawn / Retry. Exported so Slice 3e's Agent tool
 // can errors.Is them and turn them into tool_result text for the
 // model.
+//
+// ErrSpawnRefusedSolo + ErrSpawnBusyTight are the frame-mode variants
+// of the concurrency cap: they let the model distinguish "delegation is
+// off entirely for this frame" from "one child is already running, try
+// again when it finishes" from the legacy "too many siblings at once"
+// case. All three wrap ErrConcurrencyExceeded so older callers doing
+// errors.Is(err, ErrConcurrencyExceeded) keep working.
 var (
 	ErrSpawnDepthExceeded       = errors.New("supervisor: spawn depth cap exceeded")
 	ErrConcurrencyExceeded      = errors.New("supervisor: concurrency cap exceeded")
+	ErrSpawnRefusedSolo         = fmt.Errorf("supervisor: spawn refused, frame mode 'solo' disables delegation: %w", ErrConcurrencyExceeded)
+	ErrSpawnBusyTight           = fmt.Errorf("supervisor: spawn refused, frame mode 'tight' allows one in-flight child at a time: %w", ErrConcurrencyExceeded)
 	ErrRestartIntensityExceeded = errors.New("supervisor: restart intensity exceeded (circuit broken)")
 )
 
@@ -114,6 +124,16 @@ type Supervisor struct {
 	maxSpawnDepth         int
 	restartMaxR           int
 	restartMaxT           time.Duration
+
+	// mode is the active frame's orchestrator mode (solo / tight /
+	// orchestrator). It drives the per-parent spawn cap: solo refuses
+	// every spawn, tight allows one in-flight child, orchestrator
+	// allows up to maxConcurrentChildren. cmd/carlos calls SetMode at
+	// session boot and again whenever /frame switch or /mode flips the
+	// active frame so the cap stays in lock-step with the sysprompt.
+	// Empty defaults to ModeOrchestrator to preserve the pre-modes
+	// behaviour (cap 5) for tests + headless callers.
+	mode string
 
 	log       *SQLiteEventLog
 	provider  providers.Provider
@@ -190,12 +210,17 @@ func NewSupervisor(log *SQLiteEventLog, p providers.Provider, baseReg *tools.Reg
 		maxSpawnDepth:         1,
 		restartMaxR:           3,
 		restartMaxT:           60 * time.Second,
-		log:                   log,
-		provider:              p,
-		baseReg:               baseReg,
-		children:              map[string]*runningChild{},
-		retries:               map[string]*retryAttempts{},
-		worktrees:             map[string]AgentWorktree{},
+		// Default to orchestrator so pre-modes callers (tests, headless
+		// dispatch before frame resolution) keep the legacy cap of 5.
+		// cmd/carlos overrides this with the active frame's mode at
+		// session boot.
+		mode:      frame.ModeOrchestrator,
+		log:       log,
+		provider:  p,
+		baseReg:   baseReg,
+		children:  map[string]*runningChild{},
+		retries:   map[string]*retryAttempts{},
+		worktrees: map[string]AgentWorktree{},
 	}
 	if log != nil {
 		s.heartbeat = NewHeartbeatTicker(log, RealClock{}, HeartbeatInterval)
@@ -283,7 +308,12 @@ func (s *Supervisor) Spawn(ctx context.Context, parentID string, contract SpawnC
 
 	// 5. Concurrency cap, per-parent. A manager with N siblings
 	//    shouldn't be starved by a peer subtree, so we count only
-	//    children whose parent_id == this Spawn's parentID.
+	//    children whose parent_id == this Spawn's parentID. The
+	//    effective cap is the smaller of maxConcurrentChildren (the
+	//    legacy hard ceiling, default 5) and the frame mode's cap (solo
+	//    = 0, tight = 1, orchestrator = maxConcurrentChildren). Solo
+	//    and tight return distinct errors so the model sees which
+	//    mode-level constraint refused the delegation.
 	s.mu.Lock()
 	active := 0
 	for _, c := range s.children {
@@ -291,11 +321,19 @@ func (s *Supervisor) Spawn(ctx context.Context, parentID string, contract SpawnC
 			active++
 		}
 	}
-	if active >= s.maxConcurrentChildren {
-		s.mu.Unlock()
-		return nil, nil, ErrConcurrencyExceeded
-	}
+	cap := s.effectiveSpawnCapLocked()
+	mode := s.mode
 	s.mu.Unlock()
+	if active >= cap {
+		switch mode {
+		case frame.ModeSolo:
+			return nil, nil, ErrSpawnRefusedSolo
+		case frame.ModeTight:
+			return nil, nil, ErrSpawnBusyTight
+		default:
+			return nil, nil, ErrConcurrencyExceeded
+		}
+	}
 
 	// 6. Event-log writes.
 	id := newSpawnIDStrong()
@@ -553,6 +591,61 @@ func (s *Supervisor) SetMaxSpawnDepth(n int) { s.maxSpawnDepth = n }
 // SetMaxConcurrentChildren overrides the default per-parent
 // concurrency cap. Test-only knob.
 func (s *Supervisor) SetMaxConcurrentChildren(n int) { s.maxConcurrentChildren = n }
+
+// SetMode updates the active frame mode that drives the per-parent
+// spawn cap. cmd/carlos calls this once at session boot with the
+// resolved frame's mode and again whenever /frame switch or /mode
+// flips the active frame, so the cap stays in lock-step with the
+// system prompt. Empty / unknown modes fall back to ModeSolo (the
+// safest stance: no delegation), matching frame.SpawnCapFor.
+func (s *Supervisor) SetMode(mode string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if frame.IsValidMode(mode) {
+		s.mode = mode
+	} else {
+		s.mode = frame.ModeSolo
+	}
+}
+
+// Mode returns the supervisor's current frame mode. Exposed so the
+// manage TUI and tests can render / assert the active cap-driver.
+func (s *Supervisor) Mode() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.mode
+}
+
+// SpawnCap returns the effective per-parent spawn cap. Exposed so the
+// manage TUI can render the "mode=orchestrator (cap 5)" line without
+// reaching into Supervisor internals.
+func (s *Supervisor) SpawnCap() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.effectiveSpawnCapLocked()
+}
+
+// effectiveSpawnCapLocked computes the per-parent spawn cap from the
+// active mode + the legacy hard ceiling. Caller must hold s.mu.
+// Orchestrator mode honours maxConcurrentChildren (default 5);
+// solo / tight cap below it; the smaller wins so test knobs that lower
+// the ceiling stay authoritative.
+func (s *Supervisor) effectiveSpawnCapLocked() int {
+	modeCap := frame.SpawnCapFor(s.mode)
+	if s.mode == frame.ModeOrchestrator {
+		// Orchestrator wants the legacy hard ceiling; SpawnCapFor's
+		// constant (5) matches today's default but the
+		// SetMaxConcurrentChildren test knob may lower it.
+		if s.maxConcurrentChildren < modeCap {
+			return s.maxConcurrentChildren
+		}
+		return modeCap
+	}
+	if s.maxConcurrentChildren < modeCap {
+		return s.maxConcurrentChildren
+	}
+	return modeCap
+}
 
 // SetRestartIntensity overrides MaxR + MaxT. Test-only knob.
 func (s *Supervisor) SetRestartIntensity(maxR int, maxT time.Duration) {

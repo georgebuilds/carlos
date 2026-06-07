@@ -258,6 +258,58 @@ func (r *recordingDispatcher) Stop(id string) error {
 	return r.err
 }
 
+// modeReportingDispatcher embeds the recording dispatcher and also
+// satisfies the ModeReporter optional interface so the manage header
+// renders the "mode=X (cap N)" chip. Used by
+// TestHeader_ShowsModeChipWhenReporterWired.
+type modeReportingDispatcher struct {
+	recordingDispatcher
+	mode string
+	cap  int
+}
+
+func (r *modeReportingDispatcher) Mode() string  { return r.mode }
+func (r *modeReportingDispatcher) SpawnCap() int { return r.cap }
+
+// TestHeader_ShowsModeChipWhenReporterWired asserts the manage header
+// gains a "mode=... (cap N)" chip when the wired VerbDispatcher also
+// implements ModeReporter. Production wires *agent.Supervisor which
+// implements both; the recording double in the prior test does not, so
+// that test path keeps reading the chip-less header.
+func TestHeader_ShowsModeChipWhenReporterWired(t *testing.T) {
+	log := openTempLog(t)
+	seedAgent(t, log, "01HV0000000000000000000001", "", "demo", "fake", agent.StateRunning)
+
+	rep := &modeReportingDispatcher{mode: "orchestrator", cap: 5}
+	src := NewSQLiteSnapshotSource(log)
+	m := New(src, log, rep)
+	m = driveModel(t, m, 160, 60)
+
+	view := m.View()
+	if !strings.Contains(view, "mode=orchestrator") {
+		t.Errorf("header missing 'mode=orchestrator' chip; view:\n%s", view)
+	}
+	if !strings.Contains(view, "cap 5") {
+		t.Errorf("header missing 'cap 5' chip; view:\n%s", view)
+	}
+}
+
+// TestHeader_SkipsModeChipWithoutReporter confirms the header gracefully
+// omits the chip when the wired dispatcher is a plain VerbDispatcher
+// (recording double, noop fallback, etc.).
+func TestHeader_SkipsModeChipWithoutReporter(t *testing.T) {
+	log := openTempLog(t)
+	seedAgent(t, log, "01HV0000000000000000000001", "", "demo", "fake", agent.StateRunning)
+
+	src := NewSQLiteSnapshotSource(log)
+	m := New(src, log, &recordingDispatcher{})
+	m = driveModel(t, m, 160, 60)
+
+	if view := m.View(); strings.Contains(view, "mode=") {
+		t.Errorf("plain dispatcher should not surface mode chip; view:\n%s", view)
+	}
+}
+
 // TestVerbs_TriggerSupervisorCalls walks the s/i/x keys, commits each
 // overlay, and asserts the recording dispatcher saw the expected
 // calls.

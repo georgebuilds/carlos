@@ -205,6 +205,34 @@ func EffectiveMode(f Frame) string {
 	return ModeSolo
 }
 
+// SpawnCap* are the per-mode supervisor concurrency caps. Solo disables
+// delegation outright (any Spawn attempt returns an error so the model
+// sees the refusal as a tool_result and adjusts). Tight allows one
+// in-flight child so the user can still ask carlos to fan out a single
+// focused side task without losing the single-task-focus posture.
+// Orchestrator preserves the legacy cap of 5.
+const (
+	SpawnCapSolo         = 0
+	SpawnCapTight        = 1
+	SpawnCapOrchestrator = 5
+)
+
+// SpawnCapFor returns the per-parent supervisor concurrency cap that
+// matches mode. Unknown / empty modes fall back to the solo cap so a
+// misconfigured frame defaults to the safest stance (no delegation)
+// rather than silently allowing fan-out.
+func SpawnCapFor(mode string) int {
+	switch mode {
+	case ModeOrchestrator:
+		return SpawnCapOrchestrator
+	case ModeTight:
+		return SpawnCapTight
+	case ModeSolo:
+		return SpawnCapSolo
+	}
+	return SpawnCapSolo
+}
+
 // MigrateFromLegacy returns a Config with a synthetic personal frame
 // derived from the supplied legacy provider + model. Idempotent: if
 // existing already has a List, it is returned unchanged.

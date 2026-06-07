@@ -715,6 +715,15 @@ func runHeadless(prompt string, opts pleaseOptions) error {
 	sup := agent.NewSupervisor(log, d.provider, baseReg)
 	sup.Run(ctx)
 	defer sup.Shutdown()
+	// Align the supervisor's spawn cap with the active frame's mode.
+	// The headless dispatch has no /frame switch, so this is a one-shot
+	// at session boot. Empty frame name falls back to the supervisor's
+	// default (orchestrator) which preserves pre-modes behaviour.
+	if activeFrameName != "" {
+		if f := cfg.Frames.Find(activeFrameName); f != nil {
+			sup.SetMode(frame.EffectiveMode(*f))
+		}
+	}
 
 	// Parent's registry = base + Agent tool (Phase 3e). The parent
 	// can delegate to sub-agents; the description steers strongly
@@ -1443,6 +1452,12 @@ func runDefault(cfg *config.Config, sessionID string) error {
 				Append: activeFrame.SystemPromptAppend,
 				Mode:   frame.EffectiveMode(activeFrame),
 			}
+			// Wire the supervisor's spawn cap to the active frame's
+			// mode at session boot. Without this the sysprompt would
+			// say "delegate aggressively" while the supervisor still
+			// enforced the legacy hard ceiling (or refused everything
+			// because the default flipped to solo).
+			sup.SetMode(frame.EffectiveMode(activeFrame))
 			frameUI = chat.FrameUI{
 				Active:    activeFrame.Name,
 				Glyph:     activeFrame.Glyph,
@@ -1457,6 +1472,13 @@ func runDefault(cfg *config.Config, sessionID string) error {
 					if err := config.Save(config.DefaultPath(), cfg); err != nil {
 						return err
 					}
+					// Keep the supervisor's spawn cap aligned with the
+					// new frame's mode. Without this update the cap
+					// would still reflect the previous frame until the
+					// next session restart.
+					if nf := cfg.Frames.Find(name); nf != nil {
+						sup.SetMode(frame.EffectiveMode(*nf))
+					}
 					if swapLoop != nil {
 						return swapLoop(name)
 					}
@@ -1468,6 +1490,7 @@ func runDefault(cfg *config.Config, sessionID string) error {
 						return fmt.Errorf("active frame %q vanished", activeFrame.Name)
 					}
 					f.Mode = mode
+					sup.SetMode(mode)
 					return config.Save(config.DefaultPath(), cfg)
 				},
 				Capabilities: extractCapabilityBackends(activeFrame),

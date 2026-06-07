@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/georgebuilds/carlos/internal/agent"
+	"github.com/georgebuilds/carlos/internal/frame"
 	"github.com/georgebuilds/carlos/internal/providers"
 	"github.com/georgebuilds/carlos/internal/providers/fake"
 	"github.com/georgebuilds/carlos/internal/tools"
@@ -382,6 +383,161 @@ func TestSpawn_NilProviderRejected(t *testing.T) {
 
 	if _, _, err := sup.Spawn(context.Background(), "", agent.SpawnContract{Objective: "noprov"}); err == nil {
 		t.Fatalf("expected nil-provider error")
+	}
+}
+
+// TestSpawn_FrameMode_SoloRejectsEverySpawn covers the Phase O cap
+// mapping: in solo mode the supervisor refuses every Spawn so the
+// model gets a tool-result error and adjusts. The frame-mode default
+// for the supervisor is orchestrator (preserves legacy), so we have
+// to SetMode("solo") explicitly here.
+func TestSpawn_FrameMode_SoloRejectsEverySpawn(t *testing.T) {
+	dir := t.TempDir()
+	log, err := agent.OpenStateDB(filepath.Join(dir, "state.db"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer agent.CloseStateDB(log)
+	ctx := context.Background()
+
+	sup := agent.NewSupervisor(log, newHangingProvider(), nil)
+	defer sup.Shutdown()
+	sup.SetMode(frame.ModeSolo)
+
+	_, _, err = sup.Spawn(ctx, "", agent.SpawnContract{Objective: "denied"})
+	if !errors.Is(err, agent.ErrSpawnRefusedSolo) {
+		t.Fatalf("solo Spawn err = %v, want ErrSpawnRefusedSolo", err)
+	}
+	if !errors.Is(err, agent.ErrConcurrencyExceeded) {
+		t.Fatalf("ErrSpawnRefusedSolo must wrap ErrConcurrencyExceeded; got %v", err)
+	}
+	// The error message must name the mode so the model can read it.
+	if !strings.Contains(err.Error(), "solo") {
+		t.Errorf("solo error missing 'solo' marker: %v", err)
+	}
+	if !strings.Contains(err.Error(), "disables delegation") {
+		t.Errorf("solo error missing 'disables delegation' phrasing: %v", err)
+	}
+}
+
+// TestSpawn_FrameMode_TightAllowsOneRejectsSecond covers tight: one
+// in-flight child is fine; the second concurrent Spawn at the same
+// parentID returns the busy error.
+func TestSpawn_FrameMode_TightAllowsOneRejectsSecond(t *testing.T) {
+	dir := t.TempDir()
+	log, err := agent.OpenStateDB(filepath.Join(dir, "state.db"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer agent.CloseStateDB(log)
+	ctx := context.Background()
+
+	sup := agent.NewSupervisor(log, newHangingProvider(), nil)
+	defer sup.Shutdown()
+	sup.SetMode(frame.ModeTight)
+
+	if _, _, err := sup.Spawn(ctx, "", agent.SpawnContract{Objective: "first"}); err != nil {
+		t.Fatalf("first tight Spawn: %v", err)
+	}
+	_, _, err = sup.Spawn(ctx, "", agent.SpawnContract{Objective: "second"})
+	if !errors.Is(err, agent.ErrSpawnBusyTight) {
+		t.Fatalf("second tight Spawn err = %v, want ErrSpawnBusyTight", err)
+	}
+	if !errors.Is(err, agent.ErrConcurrencyExceeded) {
+		t.Fatalf("ErrSpawnBusyTight must wrap ErrConcurrencyExceeded; got %v", err)
+	}
+	if !strings.Contains(err.Error(), "tight") {
+		t.Errorf("tight error missing 'tight' marker: %v", err)
+	}
+}
+
+// TestSpawn_FrameMode_OrchestratorAllowsFiveRejectsSixth preserves the
+// legacy cap of 5: orchestrator mode = today's default. The 6th spawn
+// at the same parent must surface ErrConcurrencyExceeded (NOT the
+// solo/tight variants).
+func TestSpawn_FrameMode_OrchestratorAllowsFiveRejectsSixth(t *testing.T) {
+	dir := t.TempDir()
+	log, err := agent.OpenStateDB(filepath.Join(dir, "state.db"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer agent.CloseStateDB(log)
+	ctx := context.Background()
+
+	sup := agent.NewSupervisor(log, newHangingProvider(), nil)
+	defer sup.Shutdown()
+	// Orchestrator is the constructor default but be explicit so the
+	// test reads as "verify orchestrator's cap".
+	sup.SetMode(frame.ModeOrchestrator)
+
+	for i := 0; i < 5; i++ {
+		if _, _, err := sup.Spawn(ctx, "", agent.SpawnContract{Objective: "ok"}); err != nil {
+			t.Fatalf("spawn %d under orchestrator: %v", i, err)
+		}
+	}
+	_, _, err = sup.Spawn(ctx, "", agent.SpawnContract{Objective: "overflow"})
+	if !errors.Is(err, agent.ErrConcurrencyExceeded) {
+		t.Fatalf("6th orchestrator Spawn err = %v, want ErrConcurrencyExceeded", err)
+	}
+	// Importantly the orchestrator path returns the bare
+	// concurrency-exceeded error, NOT the solo or tight variants.
+	if errors.Is(err, agent.ErrSpawnRefusedSolo) {
+		t.Errorf("orchestrator overflow misclassified as solo: %v", err)
+	}
+	if errors.Is(err, agent.ErrSpawnBusyTight) {
+		t.Errorf("orchestrator overflow misclassified as tight: %v", err)
+	}
+}
+
+// TestSpawn_FrameMode_SetModeUpdatesCapForNextSpawn covers the
+// runtime switch: SetMode while the supervisor is live changes the
+// cap for the very next Spawn. /frame switch and /mode rely on this.
+func TestSpawn_FrameMode_SetModeUpdatesCapForNextSpawn(t *testing.T) {
+	dir := t.TempDir()
+	log, err := agent.OpenStateDB(filepath.Join(dir, "state.db"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer agent.CloseStateDB(log)
+	ctx := context.Background()
+
+	sup := agent.NewSupervisor(log, newHangingProvider(), nil)
+	defer sup.Shutdown()
+	// Start in orchestrator: a spawn lands fine.
+	sup.SetMode(frame.ModeOrchestrator)
+	if sup.Mode() != frame.ModeOrchestrator {
+		t.Fatalf("Mode() = %q, want orchestrator", sup.Mode())
+	}
+	if sup.SpawnCap() != frame.SpawnCapOrchestrator {
+		t.Fatalf("orchestrator SpawnCap() = %d, want %d", sup.SpawnCap(), frame.SpawnCapOrchestrator)
+	}
+	if _, _, err := sup.Spawn(ctx, "", agent.SpawnContract{Objective: "first"}); err != nil {
+		t.Fatalf("orch spawn: %v", err)
+	}
+
+	// Flip to solo. The NEXT spawn (under any parent) must be refused.
+	sup.SetMode(frame.ModeSolo)
+	if sup.SpawnCap() != frame.SpawnCapSolo {
+		t.Fatalf("solo SpawnCap() = %d, want %d", sup.SpawnCap(), frame.SpawnCapSolo)
+	}
+	if _, _, err := sup.Spawn(ctx, "", agent.SpawnContract{Objective: "denied"}); !errors.Is(err, agent.ErrSpawnRefusedSolo) {
+		t.Fatalf("post-SetMode solo Spawn err = %v, want ErrSpawnRefusedSolo", err)
+	}
+
+	// Flip to tight; existing in-flight child counts toward the cap,
+	// so the next Spawn returns the busy error.
+	sup.SetMode(frame.ModeTight)
+	if sup.SpawnCap() != frame.SpawnCapTight {
+		t.Fatalf("tight SpawnCap() = %d, want %d", sup.SpawnCap(), frame.SpawnCapTight)
+	}
+	if _, _, err := sup.Spawn(ctx, "", agent.SpawnContract{Objective: "busy"}); !errors.Is(err, agent.ErrSpawnBusyTight) {
+		t.Fatalf("post-SetMode tight Spawn err = %v, want ErrSpawnBusyTight", err)
+	}
+
+	// Unknown mode falls back to solo (safest).
+	sup.SetMode("garbage")
+	if sup.Mode() != frame.ModeSolo {
+		t.Fatalf("invalid mode should fall back to solo; got %q", sup.Mode())
 	}
 }
 

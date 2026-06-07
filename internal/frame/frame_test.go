@@ -72,6 +72,23 @@ func TestNewPersonal_DefaultsToSoloMode(t *testing.T) {
 	}
 }
 
+func TestSpawnCapFor(t *testing.T) {
+	cases := map[string]int{
+		ModeSolo:         SpawnCapSolo,
+		ModeTight:        SpawnCapTight,
+		ModeOrchestrator: SpawnCapOrchestrator,
+		// Unknown / empty modes fall back to the safest stance.
+		"":        SpawnCapSolo,
+		"garbage": SpawnCapSolo,
+		"AUTO":    SpawnCapSolo,
+	}
+	for mode, want := range cases {
+		if got := SpawnCapFor(mode); got != want {
+			t.Errorf("SpawnCapFor(%q) = %d, want %d", mode, got, want)
+		}
+	}
+}
+
 func TestIsValidAccent(t *testing.T) {
 	for _, ok := range []string{"rust", "slate", "olive", "teal", "plum", "cream", "sand", "navy"} {
 		if !IsValidAccent(ok) {

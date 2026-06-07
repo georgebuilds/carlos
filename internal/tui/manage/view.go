@@ -128,7 +128,9 @@ func (m *Model) renderInner(innerW, innerH int) string {
 }
 
 // renderHeader is the top bar: brand, agent count, filter chip,
-// sort indicator.
+// sort indicator. When the wired VerbDispatcher implements ModeReporter
+// we append a "mode=X (cap N)" chip so the operator can see at a glance
+// which orchestrator mode is gating new Spawn calls.
 func (m *Model) renderHeader(w int) string {
 	brand := lipgloss.NewStyle().Bold(true).Foreground(colorAccent).Render("carlos")
 	sep := lipgloss.NewStyle().Foreground(colorMuted).Render(" · ")
@@ -142,6 +144,13 @@ func (m *Model) renderHeader(w int) string {
 	)
 
 	left := brand + sep + mode + sep + count + sep + sortStr
+
+	if reporter, ok := m.sup.(ModeReporter); ok {
+		chip := lipgloss.NewStyle().Foreground(colorSubtle).Render(
+			fmt.Sprintf("mode=%s (cap %d)", reporter.Mode(), reporter.SpawnCap()),
+		)
+		left += sep + chip
+	}
 
 	if m.filter.Active() {
 		chip := lipgloss.NewStyle().
