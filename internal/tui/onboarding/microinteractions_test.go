@@ -9,7 +9,9 @@ import (
 
 // TestRenderStepDots_PulseFramesGoIntermediate proves the slice-9e
 // microinteraction renders the current dot through ◐ → ◉ → ● over
-// three pulse frames before settling.
+// three pulse frames before settling to the outlined-current glyph.
+// Three-tier behavior: completed steps show ●, current shows ○, pending
+// shows ·.
 func TestRenderStepDots_PulseFramesGoIntermediate(t *testing.T) {
 	const total = 6
 	const cur = 2
@@ -17,10 +19,10 @@ func TestRenderStepDots_PulseFramesGoIntermediate(t *testing.T) {
 		frame int
 		want  string
 	}{
-		{0, "●"}, // no animation in flight; static fill
+		{0, "○"}, // no animation in flight; outlined current
 		{1, "◐"}, // first frame
 		{2, "◉"}, // mid frame (brightest)
-		{3, "●"}, // settle frame
+		{3, "●"}, // settle frame (transient before next idle)
 	}
 	for _, c := range cases {
 		out := renderStepDots(cur, total, c.frame)
@@ -30,6 +32,16 @@ func TestRenderStepDots_PulseFramesGoIntermediate(t *testing.T) {
 		if got := dots[cur]; got != c.want {
 			t.Errorf("frame=%d: dot[%d] = %q, want %q (full row %q)", c.frame, cur, got, c.want, out)
 		}
+	}
+}
+
+// TestRenderStepDots_ThreeTiers pins the three glyph tiers: completed
+// (●), current (○), pending (·). cur=2 of total=5 gives ● ● ○ · ·.
+func TestRenderStepDots_ThreeTiers(t *testing.T) {
+	out := stripStyle(renderStepDots(2, 5, 0))
+	want := "● ● ○ · ·"
+	if out != want {
+		t.Errorf("three-tier render: want %q got %q", want, out)
 	}
 }
 

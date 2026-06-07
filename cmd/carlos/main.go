@@ -169,7 +169,17 @@ func main() {
 			fmt.Println("carlos " + versionString())
 			return
 		case "onboard":
-			if err := runOnboard(true); err != nil {
+			only, oerr := parseOnboardOnly(args[1:])
+			if oerr != nil {
+				fmt.Fprintln(os.Stderr, "carlos:", oerr)
+				os.Exit(2)
+			}
+			if err := runOnboard(true, only); err != nil {
+				exit(err)
+			}
+			return
+		case "gateway":
+			if err := runGateway(args[1:]); err != nil {
 				exit(err)
 			}
 			return
@@ -288,7 +298,7 @@ func main() {
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
 		// First run — no message, just launch onboarding.
-		if err := runOnboard(false); err != nil {
+		if err := runOnboard(false, ""); err != nil {
 			exit(err)
 		}
 		return
@@ -299,7 +309,7 @@ func main() {
 
 	if !config.IsComplete(cfg) {
 		fmt.Fprintln(os.Stderr, "carlos: config incomplete, re-running onboarding")
-		if err := runOnboard(false); err != nil {
+		if err := runOnboard(false, ""); err != nil {
 			exit(err)
 		}
 		return
@@ -367,26 +377,48 @@ func resolveSessionFromFlag(mode string) (string, error) {
 	return "", nil
 }
 
-// runOnboard runs the six-screen flow and persists the resulting config.
+// runOnboard runs the onboarding flow and persists the resulting config.
 // If force is true (carlos onboard), prompts before overwriting an existing
 // config. If force is false (auto-trigger), runs unconditionally.
+//
+// only, when non-empty, restricts the flow to a single screen (see
+// onboardScreenByName). The existing config is loaded and merged so the
+// sub-flow only edits its slice — the rest of the config rounds-trips
+// untouched.
 //
 // A ctrl-c during the flow returns onboarding.ErrAborted, which we treat as
 // a clean exit (code 0, no message) — the user opted out, no half-written
 // state should remain.
-func runOnboard(force bool) error {
+func runOnboard(force bool, only string) error {
 	// Onboarding runs BEFORE the config exists, so apply with nil
 	// (env-only autodetect: NO_COLOR + COLORFGBG). The post-onboarding
 	// chat/manage paths re-apply with the user's saved Theme settings.
 	applyTheme(nil)
 	path := config.DefaultPath()
-	if force && config.Exists(path) {
+	if only == "" && force && config.Exists(path) {
 		if !confirmOverwrite(path) {
 			fmt.Println("Aborted; existing config left in place.")
 			return nil
 		}
 	}
-	flow := onboarding.New()
+	var flow *onboarding.Flow
+	if only != "" {
+		screen, ok := onboardScreenByName(only)
+		if !ok {
+			return fmt.Errorf("unknown screen %q (valid: name, providers, models, skills, vault, daemon, gateway)", only)
+		}
+		existing, lerr := config.Load(path)
+		if lerr != nil && !errors.Is(lerr, fs.ErrNotExist) {
+			return fmt.Errorf("load config: %w", lerr)
+		}
+		flow = onboarding.NewWithOptions(onboarding.Options{
+			StartingScreen: screen,
+			Only:           true,
+			ExistingConfig: existing,
+		})
+	} else {
+		flow = onboarding.New()
+	}
 	cfg, err := flow.Run()
 	if err != nil {
 		if errors.Is(err, onboarding.ErrAborted) {
@@ -404,11 +436,106 @@ func runOnboard(force bool) error {
 		fmt.Fprintln(os.Stderr,
 			"note: daemon preference saved — run `carlos daemon enable` to install the autostart unit.")
 	}
+	if only != "" {
+		// Partial re-onboard: don't drop into the chat TUI — the user
+		// was editing a single screen and likely wants to verify by
+		// hand. Print the config path and return.
+		fmt.Fprintln(os.Stderr, "config updated:", path)
+		return nil
+	}
 	// Drop straight into the TUI so the user doesn't have to re-launch
 	// to start working. This mirrors what the default-mode path does
 	// when config already exists. Fresh-session — onboarding just
 	// finished, the user's first launch deserves a clean slate.
 	return runDefault(cfg, "")
+}
+
+// parseOnboardOnly strips an optional --only <screen> flag from args.
+// Returns the screen name (or "") and an error if the flag was used
+// without a value.
+func parseOnboardOnly(args []string) (string, error) {
+	for len(args) > 0 {
+		switch args[0] {
+		case "--only", "-only":
+			if len(args) < 2 {
+				return "", errors.New("--only requires a screen name (name|providers|models|skills|vault|daemon|gateway)")
+			}
+			return args[1], nil
+		default:
+			return "", fmt.Errorf("unknown argument %q (expected --only <screen>)", args[0])
+		}
+	}
+	return "", nil
+}
+
+// onboardScreenByName maps the --only flag value to the onboarding
+// Screen enum. Names are the lowercase short form so a user typing
+// `--only providers` lands on the provider screen without surprises.
+func onboardScreenByName(name string) (onboarding.Screen, bool) {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "name":
+		return onboarding.ScreenName, true
+	case "providers", "provider":
+		return onboarding.ScreenProvider, true
+	case "models", "model":
+		return onboarding.ScreenModel, true
+	case "skills":
+		return onboarding.ScreenSkills, true
+	case "vault":
+		return onboarding.ScreenVault, true
+	case "daemon":
+		return onboarding.ScreenDaemon, true
+	case "gateway":
+		return onboarding.ScreenGateway, true
+	}
+	return 0, false
+}
+
+// runGateway is the standalone `carlos gateway add` wizard. Runs the
+// same gateway sub-flow the onboarding presents, but bypasses the
+// "later or now" gate so the user lands directly on the enable / channel
+// pickers. Result merges back into the existing config; other fields
+// round-trip untouched.
+func runGateway(args []string) error {
+	if len(args) == 0 || args[0] != "add" {
+		return errors.New("usage: carlos gateway add")
+	}
+	applyTheme(nil)
+	path := config.DefaultPath()
+	cfg, err := config.Load(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return errors.New("no config yet. Run `carlos onboard` first")
+	}
+	if err != nil {
+		return fmt.Errorf("load config: %w", err)
+	}
+	// Daemon must be enabled for the gateway to do anything useful.
+	// Warn the user instead of failing — they may be staging config
+	// for a separate `carlos daemon enable` run.
+	if !cfg.Daemon.Enabled {
+		fmt.Fprintln(os.Stderr, "note: daemon is disabled. Run `carlos daemon enable` once the gateway is configured.")
+	}
+	flow := onboarding.NewWithOptions(onboarding.Options{
+		StartingScreen: onboarding.ScreenGateway,
+		Only:           true,
+		ExistingConfig: cfg,
+	})
+	// Bypass the "set later" gate: the user explicitly asked for the
+	// wizard. PrimeGatewayStandalone wires the gateway model directly
+	// into the enable stage.
+	flow.PrimeGatewayStandalone()
+	out, err := flow.Run()
+	if err != nil {
+		if errors.Is(err, onboarding.ErrAborted) {
+			return nil
+		}
+		return err
+	}
+	if err := config.Save(path, out); err != nil {
+		return fmt.Errorf("save config: %w", err)
+	}
+	fmt.Fprintln(os.Stderr, "gateway config updated:", path)
+	return nil
 }
 
 // pleaseOptions collects parsed flags from `carlos please [flags] <prompt>`.
