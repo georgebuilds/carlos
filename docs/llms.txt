@@ -23,8 +23,9 @@ Sessions run inside a frame (personal + N user-defined: work, research, side pro
 - Filesystem mutate: `write`, `edit`. Always prompt unless the session cached "Always".
 - Shell: `bash`. Non-PTY by default; `bash_pty` available as a separate registration.
 - Git read-only: `git_status`, `git_diff`, `git_log`, `git_blame`, `git_show`.
-- Web: `web_fetch` (HTML to text, configurable UA and robots policy), `web_search` (Brave, SearXNG, or DuckDuckGo HTML fallback), `http_request` (method-parametric for REST, GraphQL, webhooks).
-- Notes, pinned to the configured Obsidian vault: `notes_get`, `notes_search`, `notes_backlinks`, `notes_tagged`, `notes_neighbors`, `notes_recent`, `notes_resolve`. Schema does not accept `vault:`. These are auto-approved by layer 1 of the permission model.
+- Web: `web_fetch` (HTML to text, configurable UA and robots policy), `web_search` (Brave, SearXNG, or DuckDuckGo HTML fallback), `http_request` (method-parametric for REST, GraphQL, webhooks), `code_search` (concurrent fan-out to Codewiki + Context7 + DeepWiki; defaults to carlos's own repo for self-reference).
+- Introspection: `carlos_about` returns carlos's own state — vault path, active frame, all configured frames, capabilities, providers, user name. Auto-approved; never leaks API keys.
+- Notes, pinned to the configured Obsidian vault: `notes_get`, `notes_search`, `notes_backlinks`, `notes_tagged`, `notes_neighbors`, `notes_recent`, `notes_resolve`, `notes_write`. Schema does not accept `vault:`. Auto-approved by layer 1 of the permission model. `notes_write` is scoped to the active frame's `vault_subtree`; cross-vault or cross-subtree writes are rejected and have to go through the generic `write` tool.
 - Notes, arbitrary vault: `obsidian_get`, `obsidian_search`, `obsidian_backlinks`, `obsidian_tagged`, `obsidian_neighbors`, `obsidian_recent`, `obsidian_resolve`. Schema requires `vault:`. Always prompts.
 
 ## Permission model

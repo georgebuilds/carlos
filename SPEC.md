@@ -48,10 +48,12 @@ docs/               GitHub Pages site + llms.txt
 ### Read-only filesystem
 
 - `read`, `grep`, `glob`, `ls` — sandboxed by `BaseDir` when carlos is running inside a `sandbox.Worktree`.
+- `carlos_about` — read-only introspection of carlos's own state: vault path, active frame, all configured frames + their settings, capabilities, providers, user name. Auto-approved. Optional `section` arg filters output (frames / active / capabilities / providers / vault / user). API keys never appear in the output.
 
 ### Mutating filesystem
 
 - `write`, `edit` — same BaseDir sandboxing, always prompt unless overridden by session "Always".
+- `notes_write` — atomic markdown write into the configured vault, scoped to the active frame's `vault_subtree`. Relative paths join with the subtree; absolute paths must resolve inside vault+subtree. Auto-appends `.md` when extension missing. Mode `create` (default) or `overwrite`. Auto-approved via `DefaultBuiltinAllow` because the trust anchor is the same as the read-only `notes_*` family AND writes are confined to the active subtree. `internal/tools/notes_write.go`.
 
 ### Shell
 
@@ -66,6 +68,7 @@ docs/               GitHub Pages site + llms.txt
 - `web_fetch` — fetch + HTML→text. Configurable `UserAgent` and `RespectRobots` for use in research mode.
 - `web_search` — Brave (if `BRAVE_API_KEY`), SearXNG (if `SEARXNG_URL`), or DuckDuckGo HTML fallback.
 - `http_request` — method-parametric HTTP for JSON / REST / GraphQL / webhooks. Returns raw status + headers + body.
+- `code_search` — concurrent fan-out to Codewiki + Context7 + DeepWiki for code-research questions against any indexed public repo. Default repo is `georgebuilds/carlos` so the no-arg call is the self-reference path: carlos looks up its own architecture via the indexers rather than reading its source tree. Per-service 5s timeout, structured envelope per service (URL + status + title + excerpt + error). `internal/tools/code_search.go`.
 
 ### Obsidian-flavored notes
 
