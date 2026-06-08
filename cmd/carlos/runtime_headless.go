@@ -508,12 +508,11 @@ func runResearch(args []string) error {
 		return errors.New("carlos: research produced no report (unexpected)")
 	}
 	rendered := chat.RenderReportMarkdown(report)
-	fmt.Print(rendered)
 
 	// Persist the markdown under the active frame's research dir so the
-	// user has a stable artifact to share or revisit. Errors here are
-	// surfaced but don't fail the whole command - the rendered report
-	// is already on stdout and the user got what they asked for.
+	// user has a stable artifact to share or revisit. The CLI prints
+	// only the saved-path link; the full rendered report lives on disk.
+	// Errors saving are surfaced but don't fail the whole command.
 	saved, saveErr := saveResearchReport(question, rendered, researchFrameName, time.Now())
 	if saveErr != nil {
 		fmt.Fprintf(os.Stderr, "\ncarlos: could not save report to disk: %v\n", saveErr)
