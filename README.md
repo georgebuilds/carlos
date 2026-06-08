@@ -31,9 +31,17 @@ Onboarding takes ~30 seconds:
 4. Whether to enable the background daemon (scheduled runs, gateway delivery)
 5. Optional Obsidian vault path
 
+<p align="center">
+  <img src="docs/branding/screenshots/onboarding-name.png" alt="carlos onboarding step 1: 'What should I call you?' with 'Boss' typed in" width="640">
+</p>
+
 Everything lands in `~/.carlos/config.yaml` (mode 0600). Re-enter any single screen later with `carlos onboard --only providers` (or `models`, `daemon`, `gateway`, etc.).
 
 After onboarding you're in the chat TUI. Type a question. carlos answers, calls tools when needed (prompting for the risky ones), and keeps the transcript in a SQLite event log at `~/.carlos/state.db`.
+
+<p align="center">
+  <img src="docs/branding/screenshots/chat-greeting.png" alt="carlos chat TUI on first open, greeting 'Hey Boss - what are we working on?'" width="640">
+</p>
 
 ### Keys worth knowing
 
@@ -58,6 +66,12 @@ carlos daemon enable|disable     # background service
 ```
 
 All accept `-f <frame>` (or `--frame`) to scope to a specific frame.
+
+`carlos research` shows a live phase tracker (decompose, search, fetch, read, synthesize, verify) and writes a cited report under `~/.carlos/frames/<frame>/research/`:
+
+<p align="center">
+  <img src="docs/branding/screenshots/research-done.png" alt="carlos research finished: 1m6s elapsed, all six phases checked, saved to ~/.carlos/frames/personal/research/" width="720">
+</p>
 
 ---
 
