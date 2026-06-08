@@ -4,7 +4,7 @@
 
 # carlos
 
-A pure-Go TUI agent. Single binary under 16 MB. No CGO. Cross-compiled for darwin + linux × amd64 + arm64.
+A pure-Go TUI agent. Single binary under 30 MB. No CGO. Cross-compiled for darwin + linux × amd64 + arm64.
 
 Marketing copy and feature tour live at [georgebuilds.github.io/carlos](https://georgebuilds.github.io/carlos/). This README is for getting carlos running and for Go developers who want to contribute.
 
