@@ -3,63 +3,88 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>carlos vs claude code: agent loop comparison</title>
-  <meta name="description" content="Side-by-side comparison of how carlos and Claude Code structure their agent loops." />
+  <title>carlos vs claude code vs codex · agent loop comparison</title>
+  <meta name="description" content="Side-by-side comparison of how carlos, Claude Code, and OpenAI Codex structure their agent loops. Cross-column phase highlighting." />
   <link rel="icon" type="image/png" href="./branding/carlos-portrait.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
     rel="stylesheet"
-    href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+    href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
   />
   <style>
     :root {
-      --paper: #f1eadc;
-      --paper-hi: #f7f1e3;
-      --paper-lo: #e7decb;
-      --ink: #161b25;
-      --ink-soft: #2a2f3a;
-      --muted: #6b6357;
-      --brace: #b3a791;
-      --accent: #c64a2c;
-      --accent-soft: rgba(198, 74, 44, 0.12);
-      --carlos: #c64a2c;
-      --claude: #d97706;
-      --shared: #5b6b8a;
-      --shadow: rgba(20, 22, 30, 0.16);
-      --rule: rgba(20, 22, 30, 0.12);
-      --card: #fbf5e6;
+      /* paper layer */
+      --paper:    #f4ecd8;
+      --paper-hi: #fdf7e6;
+      --paper-lo: #ece4d2;
+      --card:     #fdf7e6;
+
+      /* sky / atmosphere */
+      --sky:      #d8e2ee;
+      --sky-soft: rgba(216, 226, 238, 0.65);
+
+      /* primaries */
+      --navy:      #2c4a78;
+      --navy-soft: rgba(44, 74, 120, 0.14);
+      --navy-deep: #1f3658;
+      --clay:      #c64a2c;
+      --clay-soft: rgba(198, 74, 44, 0.14);
+      --sage:      #7a9676;
+      --sage-soft: rgba(122, 150, 118, 0.20);
+      --sun:       #e8a635;
+      --sun-soft:  rgba(232, 166, 53, 0.18);
+
+      /* ink */
+      --ink:      #1b1812;
+      --ink-soft: #3a342a;
+      --muted:    #6b6357;
+      --rule:     rgba(27, 24, 18, 0.18);
+      --rule-soft:rgba(27, 24, 18, 0.10);
+      --shadow:   rgba(20, 22, 30, 0.10);
+
+      /* column identities */
+      --claude:    #b56a16;
+      --carlos:    #2c4a78;
+      --codex:     #3b6f3a;
     }
 
     @media (prefers-color-scheme: dark) {
       :root {
-        --paper: #11131a;
-        --paper-hi: #181b24;
+        --paper:    #15171c;
+        --paper-hi: #1c1f27;
         --paper-lo: #0b0d12;
-        --ink: #ece4d2;
+        --card:     #1a1d27;
+        --sky:      #1f2a3c;
+        --sky-soft: rgba(31, 42, 60, 0.5);
+        --navy:      #7aa0d4;
+        --navy-soft: rgba(122, 160, 212, 0.18);
+        --navy-deep: #a8c3e8;
+        --clay:      #e87a55;
+        --clay-soft: rgba(232, 122, 85, 0.18);
+        --sage:      #a3c0a0;
+        --sage-soft: rgba(163, 192, 160, 0.18);
+        --sun:       #f3c886;
+        --sun-soft:  rgba(243, 200, 134, 0.18);
+        --ink:      #ece4d2;
         --ink-soft: #c9c1ad;
-        --muted: #8a8170;
-        --brace: #4d4738;
-        --accent: #e16a4a;
-        --accent-soft: rgba(225, 106, 74, 0.16);
-        --carlos: #e16a4a;
-        --claude: #f59e0b;
-        --shared: #8aa3c8;
-        --shadow: rgba(0, 0, 0, 0.5);
-        --rule: rgba(236, 228, 210, 0.12);
-        --card: #1a1d27;
+        --muted:    #8a8170;
+        --rule:     rgba(236, 228, 210, 0.18);
+        --rule-soft:rgba(236, 228, 210, 0.08);
+        --shadow:   rgba(0, 0, 0, 0.5);
+        --claude:    #f0b067;
+        --carlos:    #7aa0d4;
+        --codex:     #a3c0a0;
       }
     }
 
-    *,
-    *::before,
-    *::after { box-sizing: border-box; }
-
+    *, *::before, *::after { box-sizing: border-box; }
     html, body { margin: 0; padding: 0; min-height: 100%; }
 
     body {
       background:
-        radial-gradient(ellipse 90% 60% at 50% 0%, var(--paper-hi), transparent 70%),
+        radial-gradient(ellipse 60% 40% at 20% 0%, var(--sky-soft), transparent 65%),
+        radial-gradient(ellipse 70% 50% at 85% 30%, var(--sky-soft), transparent 60%),
         radial-gradient(ellipse 90% 60% at 50% 100%, var(--paper-lo), transparent 70%),
         var(--paper);
       background-attachment: fixed;
@@ -71,465 +96,908 @@
       line-height: 1.55;
     }
 
-    /* paper grain — same as index */
+    /* paper grain */
     body::before {
-      content: '';
-      position: fixed; inset: 0;
-      pointer-events: none;
-      z-index: 1;
-      opacity: 0.45;
-      mix-blend-mode: multiply;
-      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.05 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+      content: ''; position: fixed; inset: 0;
+      pointer-events: none; z-index: 1;
+      opacity: 0.5; mix-blend-mode: multiply;
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.06 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
     }
-
     @media (prefers-color-scheme: dark) {
       body::before { mix-blend-mode: screen; opacity: 0.3; }
     }
 
+    /* ── ambient doodles ─────────────────────────────────────── */
+    .doodle { position: fixed; pointer-events: none; z-index: 1; opacity: 0.55; }
+    .doodle path { fill: none; stroke: var(--navy); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+    .doodle.ink path { stroke: var(--ink); }
+    .doodle.sage path { stroke: var(--sage); }
+    .doodle-cloud-1 { top: 90px;  right: 4%;   width: 220px; }
+    .doodle-cloud-2 { top: 380px; left: -20px; width: 170px; opacity: 0.42; }
+    .doodle-cloud-3 { top: 880px; right: -40px; width: 240px; opacity: 0.42; }
+    .doodle-cloud-4 { top: 1500px; left: 2%;   width: 150px; opacity: 0.40; transform: rotate(4deg); }
+    .doodle-star    { top: 520px; right: 8%;   width: 32px; opacity: 0.6; }
+    .doodle-loop    { top: 1080px; left: 4%;    width: 70px; opacity: 0.50; }
+    @media (max-width: 800px) {
+      .doodle-cloud-1, .doodle-cloud-3 { display: none; }
+    }
+
+    /* ── chrome ─────────────────────────────────────────────── */
     header, footer {
       position: relative; z-index: 3;
-      padding: 28px 36px;
+      padding: 26px 36px;
       display: flex; align-items: center; justify-content: space-between;
-      font-size: 11px; letter-spacing: 0.28em;
+      font-size: 11px; letter-spacing: 0.26em;
       text-transform: uppercase;
       color: var(--muted); font-weight: 500;
     }
-
-    header .mark { color: var(--ink); letter-spacing: 0.18em; font-weight: 500; }
+    header nav { display: flex; gap: 22px; align-items: center; }
+    header .mark {
+      color: var(--ink); letter-spacing: 0.18em; font-weight: 600;
+      text-decoration: none;
+      display: inline-flex; align-items: center; gap: 10px;
+      transition: color 0.15s;
+    }
+    header .mark:hover { color: var(--navy); }
     header .mark::before {
-      content: '';
-      display: inline-block;
-      width: 6px; height: 6px;
-      border-radius: 50%;
-      background: var(--accent);
-      margin-right: 10px;
-      vertical-align: 2px;
-      box-shadow: 0 0 0 3px var(--accent-soft);
+      content: '🧢';
+      font-size: 18px;
+      line-height: 1;
+      letter-spacing: normal;
+      transform: translateY(-1px);
     }
     header a {
-      color: var(--muted);
-      text-decoration: none;
-      letter-spacing: 0.28em;
+      color: var(--muted); text-decoration: none;
+      letter-spacing: 0.24em;
+      padding-bottom: 2px;
+      border-bottom: 1px dotted transparent;
+      transition: color 0.15s, border-color 0.15s;
     }
-    header a:hover { color: var(--ink); }
+    header a:hover { color: var(--ink); border-bottom-color: var(--navy); }
 
     main {
       position: relative; z-index: 2;
-      max-width: 1100px;
+      max-width: 1240px;
       margin: 0 auto;
       padding: 24px 36px 80px;
     }
 
+    /* ── hero ───────────────────────────────────────────────── */
+    .hero { margin-bottom: 42px; }
+    .hero .eyebrow {
+      font-family: 'Caveat', cursive; font-weight: 500;
+      font-size: 22px; color: var(--clay);
+      transform: rotate(-1deg); display: inline-block;
+      margin-bottom: 4px;
+    }
     h1 {
-      font-family: 'Instrument Serif', 'Times New Roman', serif;
-      font-weight: 400;
-      font-size: clamp(34px, 5vw, 58px);
-      line-height: 1.08;
-      letter-spacing: -0.012em;
+      font-family: 'Caveat', cursive;
+      font-weight: 700;
+      font-size: clamp(48px, 7vw, 86px);
+      line-height: 0.98;
+      letter-spacing: 0;
+      color: var(--ink);
       margin: 0 0 18px;
     }
-
+    h1 .accent { color: var(--navy); position: relative; }
+    h1 .accent::after {
+      content: '';
+      position: absolute; left: -1%; right: -1%; bottom: -10px;
+      height: 12px;
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 12' preserveAspectRatio='none'><path d='M2 7 Q 28 2, 60 6 T 120 6 T 178 5 T 198 7' fill='none' stroke='%232c4a78' stroke-width='2.4' stroke-linecap='round'/></svg>");
+      background-repeat: no-repeat; background-size: 100% 100%;
+    }
     .subhead {
+      max-width: 70ch;
+      font-size: 17px; line-height: 1.55;
+      color: var(--ink-soft);
+      margin: 0;
+    }
+    .subhead code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 14px;
+      background: var(--navy-soft);
+      padding: 1px 6px; border-radius: 4px;
+      color: var(--navy-deep);
+    }
+
+    /* ── phase legend (interactive) ─────────────────────────── */
+    .phase-legend {
+      margin: 30px 0 14px;
+      display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+      font-size: 12px;
+    }
+    .phase-legend .label {
+      font-family: 'Caveat', cursive; font-size: 17px;
+      color: var(--muted);
+      margin-right: 4px;
+    }
+    .phase-chip {
+      font-family: 'Inter', sans-serif;
+      font-size: 11px;
+      letter-spacing: 0.04em;
+      padding: 4px 12px;
+      border-radius: 999px;
+      border: 1.5px solid var(--rule);
+      background: var(--paper-hi);
+      color: var(--ink-soft);
+      cursor: pointer;
+      transition: background 0.12s, border-color 0.12s, color 0.12s, transform 0.12s;
+      font-weight: 500;
+    }
+    .phase-chip:hover, .phase-chip:focus-visible {
+      outline: none;
+      border-color: var(--navy);
+      color: var(--navy-deep);
+      background: var(--navy-soft);
+      transform: translateY(-1px);
+    }
+    .phase-chip[aria-pressed="true"] {
+      background: var(--navy);
+      color: var(--paper-hi);
+      border-color: var(--navy);
+    }
+    .phase-chip .dot {
+      display: inline-block;
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--navy);
+      margin-right: 6px;
+      vertical-align: 0;
+    }
+    .phase-chip[data-phase="input"]  .dot { background: var(--muted); }
+    .phase-chip[data-phase="context"].dot,
+    .phase-chip[data-phase="context"] .dot { background: var(--sun); }
+    .phase-chip[data-phase="log"]    .dot { background: var(--ink); }
+    .phase-chip[data-phase="plan"]   .dot { background: var(--sage); }
+    .phase-chip[data-phase="model"]  .dot { background: var(--clay); }
+    .phase-chip[data-phase="decide"] .dot { background: var(--navy); }
+    .phase-chip[data-phase="gate"]   .dot { background: #b91c1c; }
+    .phase-chip[data-phase="exec"]   .dot { background: var(--sage); }
+    .phase-chip[data-phase="compact"].dot,
+    .phase-chip[data-phase="compact"] .dot { background: var(--clay); }
+    .phase-chip .clear {
+      font-family: 'Caveat', cursive;
       color: var(--muted);
       font-size: 16px;
-      max-width: 70ch;
-      margin: 0 0 56px;
+      border: 0; background: transparent; cursor: pointer;
+      padding: 0 0 0 6px;
     }
-
-    h2 {
-      font-family: 'Instrument Serif', serif;
-      font-weight: 400;
-      font-size: 28px;
-      letter-spacing: -0.008em;
-      margin: 56px 0 14px;
-    }
-
-    h3 {
-      font-family: 'Inter', sans-serif;
-      font-size: 13px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.16em;
+    .clear-chip {
+      font-family: 'Caveat', cursive;
+      font-size: 17px;
       color: var(--muted);
-      margin: 32px 0 12px;
+      background: transparent;
+      border: 0;
+      cursor: pointer;
+      padding: 4px 8px;
     }
+    .clear-chip:hover { color: var(--ink); }
 
-    p { margin: 0 0 14px; max-width: 72ch; }
-
-    code, .mono {
-      font-family: 'JetBrains Mono', ui-monospace, monospace;
-      font-size: 13.5px;
-    }
-    p code, li code {
-      background: var(--accent-soft);
-      color: var(--ink);
-      padding: 1px 6px;
-      border-radius: 4px;
-      font-size: 12.5px;
-    }
-
+    /* ── diagrams grid ──────────────────────────────────────── */
     .diagrams {
       display: grid;
       grid-template-columns: 1fr;
-      gap: 28px;
-      margin: 24px 0 48px;
+      gap: 24px;
+      margin: 8px 0 40px;
     }
-    @media (min-width: 900px) {
-      .diagrams { grid-template-columns: 1fr 1fr; }
+    @media (min-width: 920px) {
+      .diagrams { grid-template-columns: 1fr 1fr 1fr; gap: 20px; }
     }
 
     .diagram-card {
       background: var(--card);
-      border: 1px solid var(--rule);
       border-radius: 14px;
       padding: 22px 22px 18px;
-      box-shadow: 0 12px 24px var(--shadow);
+      box-shadow:
+        0 1px 0 var(--rule-soft) inset,
+        0 14px 28px var(--shadow);
+      position: relative;
+      transition: transform 0.18s ease, box-shadow 0.18s ease;
+    }
+    .diagram-card.claude { transform: rotate(-0.4deg); }
+    .diagram-card.carlos { transform: rotate(0.3deg); }
+    .diagram-card.codex  { transform: rotate(-0.2deg); }
+    .diagram-card:hover { transform: rotate(0deg) translateY(-2px); box-shadow: 0 1px 0 var(--rule-soft) inset, 0 20px 40px var(--shadow); }
+
+    /* sketch border via filtered SVG outline */
+    .diagram-card::before {
+      content: ''; position: absolute; inset: 0;
+      border-radius: 14px;
+      padding: 1.5px;
+      background:
+        linear-gradient(135deg, var(--ink) 0%, var(--ink) 100%);
+      -webkit-mask:
+        linear-gradient(#000 0 0) content-box,
+        linear-gradient(#000 0 0);
+      -webkit-mask-composite: xor;
+              mask-composite: exclude;
+      opacity: 0.30;
+      pointer-events: none;
     }
 
     .diagram-card h2 {
-      margin: 0 0 4px;
-      font-size: 22px;
+      font-family: 'Caveat', cursive;
+      font-weight: 700;
+      font-size: 36px;
+      margin: 0 0 2px;
+      letter-spacing: 0;
+      line-height: 1;
     }
     .diagram-card .who {
-      font-size: 11px;
+      font-size: 10.5px;
       text-transform: uppercase;
-      letter-spacing: 0.18em;
+      letter-spacing: 0.22em;
       color: var(--muted);
       margin-bottom: 18px;
     }
     .diagram-card.claude h2 { color: var(--claude); }
     .diagram-card.carlos h2 { color: var(--carlos); }
+    .diagram-card.codex  h2 { color: var(--codex); }
 
-    /* Diagram nodes */
+    /* flow nodes */
     .flow {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      font-family: 'JetBrains Mono', ui-monospace, monospace;
-      font-size: 12.5px;
+      display: flex; flex-direction: column;
+      gap: 6px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
       line-height: 1.4;
     }
     .node {
       background: var(--paper);
       border: 1px solid var(--rule);
-      border-left: 3px solid var(--brace);
-      border-radius: 8px;
-      padding: 10px 12px;
+      border-radius: 7px;
+      padding: 9px 11px 10px;
+      transition: background 0.15s, border-color 0.15s, transform 0.15s, opacity 0.2s;
+      cursor: default;
+      position: relative;
+      padding-right: 58px; /* room for the corner phase tag */
     }
-    .node.start  { border-left-color: var(--shared); }
-    .node.model  { border-left-color: var(--accent); }
-    .node.tool   { border-left-color: var(--brace); }
-    .node.gate   { border-left-color: #b91c1c; }
-    .node.exit   { border-left-color: #16a34a; }
-    .node strong { font-family: 'Inter', sans-serif; font-weight: 600; font-size: 12px; letter-spacing: 0.04em; }
-    .node .desc { color: var(--muted); font-size: 11.5px; margin-top: 3px; }
+    .node strong {
+      font-family: 'Inter', sans-serif;
+      font-weight: 600;
+      font-size: 11.5px;
+      letter-spacing: 0.03em;
+      color: var(--ink);
+    }
+    .node .desc {
+      font-size: 11px; color: var(--muted);
+      margin-top: 3px;
+    }
+
+    /* phase = small handwritten margin tag in the top-right.
+       The phase color is per data-phase via a CSS custom property; the tag
+       itself is the only place that color appears, replacing the old
+       left-edge stripe pattern. */
+    .node {
+      --phase-c: var(--muted);
+    }
+    .node[data-phase="input"]   { --phase-c: var(--muted); }
+    .node[data-phase="context"] { --phase-c: #b07a17; }   /* readable amber */
+    .node[data-phase="log"]     { --phase-c: var(--ink); }
+    .node[data-phase="plan"]    { --phase-c: #4f7a4d; }   /* readable sage */
+    .node[data-phase="model"]   { --phase-c: var(--clay); }
+    .node[data-phase="decide"]  { --phase-c: var(--navy); }
+    .node[data-phase="gate"]    { --phase-c: #b91c1c; }
+    .node[data-phase="exec"]    { --phase-c: #4f7a4d; }
+    .node[data-phase="compact"] { --phase-c: var(--clay); }
+
+    .node .phase-tag {
+      position: absolute;
+      top: 6px; right: 11px;
+      font-family: 'Caveat', cursive;
+      font-weight: 500;
+      font-size: 16px;
+      line-height: 1;
+      letter-spacing: 0;
+      color: var(--phase-c);
+      opacity: 0.72;
+      transform: rotate(-2deg);
+      transform-origin: right top;
+      pointer-events: none;
+    }
+
+    /* phase-sync interactive states */
+    .diagrams.phase-active .node:not(.phase-active) {
+      opacity: 0.32;
+    }
+    .node.phase-active {
+      background: var(--paper-hi);
+      border-color: var(--phase-c);
+      box-shadow: 0 4px 12px var(--shadow);
+    }
+    .node.phase-active .phase-tag { opacity: 1; transform: rotate(-2deg) scale(1.08); }
+
+    /* arrow connector */
     .arrow {
       align-self: center;
+      width: 14px; height: 14px;
       color: var(--muted);
-      font-size: 14px;
-      line-height: 1;
     }
+    .arrow svg { width: 14px; height: 14px; }
+    .arrow svg path { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+
+    /* branching block */
     .branch {
       display: grid;
-      grid-template-columns: 1fr 18px 1fr;
+      grid-template-columns: 1fr 22px 1fr;
       gap: 6px;
       align-items: stretch;
     }
     .branch .label {
       align-self: center;
       text-align: center;
-      font-size: 10px;
+      font-family: 'Caveat', cursive;
+      font-size: 16px;
       color: var(--muted);
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
+      letter-spacing: 0;
+      text-transform: lowercase;
     }
     .loop-back {
       align-self: center;
-      color: var(--accent);
-      font-size: 11px;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      padding: 4px 0;
+      font-family: 'Caveat', cursive;
+      color: var(--clay);
+      font-size: 17px;
+      text-transform: lowercase;
+      padding: 6px 0 2px;
+      letter-spacing: 0;
     }
+    .loop-back::before { content: '↻ '; }
     .ring {
-      border: 1px dashed var(--rule);
+      border: 1.5px dashed var(--rule);
       border-radius: 12px;
       padding: 12px;
-      background: rgba(0,0,0,0.02);
-    }
-    @media (prefers-color-scheme: dark) {
-      .ring { background: rgba(255,255,255,0.03); }
+      background: var(--paper-hi);
     }
 
-    /* Comparison table */
+    /* ── narrative ──────────────────────────────────────────── */
+    section.narrative {
+      margin-top: 56px;
+      max-width: 70ch;
+    }
+    section.narrative + section.narrative { margin-top: 36px; }
+    /* divergence section breaks out: heading + intro stay narrow,
+       the table itself uses the full main width */
+    section.narrative.divergence { max-width: none; }
+    section.narrative.divergence > h2,
+    section.narrative.divergence > p { max-width: 70ch; }
+    h2 {
+      font-family: 'Caveat', cursive;
+      font-weight: 700;
+      font-size: 38px;
+      line-height: 1;
+      letter-spacing: 0;
+      margin: 0 0 16px;
+      color: var(--ink);
+    }
+    h2 .accent { color: var(--navy); }
+    p { font-size: 16px; line-height: 1.65; color: var(--ink-soft); margin: 0 0 16px; }
+    p code, td code, .footnote code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      background: var(--paper-hi);
+      padding: 1px 6px; border-radius: 4px;
+      color: var(--ink);
+      border: 1px solid var(--rule-soft);
+    }
+
+    /* ── divergence table ───────────────────────────────────── */
+    .divergence {
+      margin-top: 56px;
+    }
+    .divergence-wrap {
+      margin: 18px -8px 0;
+      padding: 8px 8px 14px;
+      /* No overflow-x here: a scroll container would scope `position: sticky`
+         away from the viewport. At viewports narrower than the table's
+         min-width, the page itself horizontal-scrolls; sticky stays viewport-
+         aligned. */
+    }
     table {
       width: 100%;
-      border-collapse: collapse;
-      margin: 24px 0;
+      min-width: 880px;
+      border-collapse: separate; /* `separate` lets sticky th render its bg cleanly */
+      border-spacing: 0;
       font-size: 14px;
+      table-layout: fixed;
     }
+    td { word-wrap: break-word; }
     th, td {
       text-align: left;
-      padding: 12px 14px;
+      padding: 14px 14px;
       border-bottom: 1px solid var(--rule);
       vertical-align: top;
     }
+    /* Sticky header.
+       - `position: sticky` on both <thead> and each <th>; the latter is the
+         broadly-compatible primary, <thead> is the modern shorthand.
+       - `top: 0` aligns to viewport top while the table is in-view; sticky
+         naturally releases when the table's bottom scrolls past.
+       - Opaque background so body rows don't bleed through.
+       - The bottom shadow is barely visible at rest, reads as elevation when
+         the header is actually floating over content. */
+    thead { position: sticky; top: 0; z-index: 5; }
     th {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      background: var(--paper);
+      font-family: 'Inter', sans-serif;
       font-size: 11px;
       text-transform: uppercase;
-      letter-spacing: 0.16em;
+      letter-spacing: 0.18em;
       color: var(--muted);
       font-weight: 600;
+      border-bottom: 2px solid var(--rule);
+      padding-top: 16px;
+      padding-bottom: 12px;
+      box-shadow: 0 6px 10px -8px rgba(20, 22, 30, 0.28);
     }
-    td.claude-col { color: var(--ink-soft); }
-    td.carlos-col { color: var(--ink-soft); }
-    tr:hover td { background: var(--accent-soft); }
-
-    .pill {
-      display: inline-block;
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 11px;
-      padding: 2px 7px;
-      border-radius: 4px;
-      background: var(--accent-soft);
-      color: var(--accent);
-      margin-right: 4px;
+    th.col-claude { color: var(--claude); }
+    th.col-carlos { color: var(--carlos); }
+    th.col-codex  { color: var(--codex);  }
+    td.row-label { font-weight: 600; color: var(--ink); }
+    tbody tr:hover td {
+      background: var(--sun-soft);
     }
+    td.claude-col, td.carlos-col, td.codex-col { color: var(--ink-soft); }
+    .divergence-wrap::-webkit-scrollbar { height: 10px; }
+    .divergence-wrap::-webkit-scrollbar-track { background: transparent; }
+    .divergence-wrap::-webkit-scrollbar-thumb { background: var(--rule); border-radius: 999px; }
 
-    ul { padding-left: 20px; margin: 0 0 14px; }
-    ul li { margin-bottom: 6px; }
-
+    /* ── footnote ───────────────────────────────────────────── */
     .footnote {
-      margin-top: 48px;
-      padding-top: 18px;
+      margin-top: 64px;
+      padding-top: 22px;
       border-top: 1px solid var(--rule);
       color: var(--muted);
       font-size: 13px;
     }
-    .footnote a { color: var(--accent); text-decoration: none; border-bottom: 1px solid var(--accent-soft); }
-    .footnote a:hover { border-bottom-color: var(--accent); }
+    .footnote a {
+      color: var(--navy);
+      text-decoration: none;
+      border-bottom: 1px solid var(--navy-soft);
+    }
+    .footnote a:hover { border-bottom-color: var(--navy); }
+
+    /* ── section rule (sketchy line) ────────────────────────── */
+    .rule-sketch {
+      margin: 56px auto 16px;
+      width: 100%;
+      max-width: 480px;
+      display: flex; justify-content: center;
+    }
+    .rule-sketch svg { width: 100%; height: 14px; }
+    .rule-sketch svg path { fill: none; stroke: var(--navy); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; opacity: 0.6; }
+
+    /* tighten on mobile */
+    @media (max-width: 700px) {
+      h1 { font-size: 44px; }
+      h2 { font-size: 30px; }
+      header, footer { padding: 20px 22px; }
+      main { padding: 16px 22px 60px; }
+      .diagram-card { transform: none !important; }
+    }
   </style>
 </head>
 <body>
+  <!-- ambient doodles -->
+  <svg class="doodle doodle-cloud-1" viewBox="0 0 240 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path d="M30 70 Q 10 70, 12 50 Q 14 30, 40 32 Q 48 14, 80 18 Q 110 6, 130 24 Q 160 16, 170 42 Q 200 38, 200 60 Q 210 78, 184 80 L 50 80 Q 30 82, 30 70 Z"/>
+  </svg>
+  <svg class="doodle doodle-cloud-2 ink" viewBox="0 0 240 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path d="M30 70 Q 10 70, 12 50 Q 14 30, 40 32 Q 48 14, 80 18 Q 110 6, 130 24 Q 160 16, 170 42 Q 200 38, 200 60 Q 210 78, 184 80 L 50 80 Q 30 82, 30 70 Z"/>
+  </svg>
+  <svg class="doodle doodle-cloud-3 sage" viewBox="0 0 240 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path d="M30 70 Q 10 70, 12 50 Q 14 30, 40 32 Q 48 14, 80 18 Q 110 6, 130 24 Q 160 16, 170 42 Q 200 38, 200 60 Q 210 78, 184 80 L 50 80 Q 30 82, 30 70 Z"/>
+  </svg>
+  <svg class="doodle doodle-cloud-4 ink" viewBox="0 0 240 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path d="M30 70 Q 10 70, 12 50 Q 14 30, 40 32 Q 48 14, 80 18 Q 110 6, 130 24 Q 160 16, 170 42 Q 200 38, 200 60 Q 210 78, 184 80 L 50 80 Q 30 82, 30 70 Z"/>
+  </svg>
+  <svg class="doodle doodle-star" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path d="M20 4 L 22 16 L 36 18 L 24 26 L 28 38 L 20 30 L 12 38 L 16 26 L 4 18 L 18 16 Z" stroke="#c64a2c"/>
+  </svg>
+  <svg class="doodle doodle-loop sage" viewBox="0 0 80 60" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path d="M10 30 Q 20 8, 40 14 Q 64 22, 56 42 Q 46 58, 28 50 Q 14 44, 18 30 Q 22 18, 36 22"/>
+  </svg>
+
   <header>
-    <span class="mark">carlos</span>
-    <a href="./">back</a>
+    <a class="mark" href="./" aria-label="carlos home">carlos</a>
+    <nav>
+      <a href="./skills.html">skills</a>
+      <a href="./">home</a>
+    </nav>
   </header>
 
   <main>
-    <h1>Agent loops, compared</h1>
-    <p class="subhead">
-      Carlos and Claude Code both run an LLM-in-a-loop pattern: prompt, parse, dispatch tools, feed
-      results back, repeat. Below: side-by-side diagrams of how each iteration actually flows, plus
-      a table of the cross-cutting machinery around each loop.
-    </p>
+    <section class="hero">
+      <span class="eyebrow">three agents, one shape</span>
+      <h1>Agent loops, <span class="accent">compared.</span></h1>
+      <p class="subhead">
+        Claude Code, carlos, and OpenAI Codex all run the same inner primitive: stream a model, parse text plus tool calls, dispatch tools under a safety gate, feed results back, repeat. Where they differ is in the machinery <em>around</em> that loop: how they remember, how they ask for permission, who watches them when you're not. Hover a step in any column to see the equivalent step light up in the other two.
+      </p>
+    </section>
 
-    <section class="diagrams">
+    <!-- phase legend (interactive) -->
+    <div class="phase-legend" role="group" aria-label="Highlight a phase across all three loops">
+      <span class="label">phases:</span>
+      <button class="phase-chip" data-phase="input"   type="button" aria-pressed="false"><span class="dot"></span>input</button>
+      <button class="phase-chip" data-phase="context" type="button" aria-pressed="false"><span class="dot"></span>context</button>
+      <button class="phase-chip" data-phase="log"     type="button" aria-pressed="false"><span class="dot"></span>log</button>
+      <button class="phase-chip" data-phase="plan"    type="button" aria-pressed="false"><span class="dot"></span>plan</button>
+      <button class="phase-chip" data-phase="model"   type="button" aria-pressed="false"><span class="dot"></span>model</button>
+      <button class="phase-chip" data-phase="decide"  type="button" aria-pressed="false"><span class="dot"></span>decide</button>
+      <button class="phase-chip" data-phase="gate"    type="button" aria-pressed="false"><span class="dot"></span>gate</button>
+      <button class="phase-chip" data-phase="exec"    type="button" aria-pressed="false"><span class="dot"></span>exec</button>
+      <button class="phase-chip" data-phase="compact" type="button" aria-pressed="false"><span class="dot"></span>compact</button>
+      <button class="clear-chip" type="button" data-action="clear">~ clear ~</button>
+    </div>
+
+    <section class="diagrams" id="diagrams">
 
       <!-- ─── CLAUDE CODE ─── -->
       <div class="diagram-card claude">
         <h2>Claude Code</h2>
-        <div class="who">harness around an Anthropic model</div>
-
+        <div class="who">interactive harness</div>
         <div class="flow">
-          <div class="node start"><strong>USER PROMPT</strong><div class="desc">terminal input, file refs via @, piped data</div></div>
-          <div class="arrow">↓</div>
+          <div class="node" data-phase="input"><strong>USER PROMPT</strong><div class="desc">terminal input, file refs via @, piped data</div></div>
+          <div class="arrow"><svg viewBox="0 0 14 14"><path d="M7 2 Q 8 7, 7 12 M3 9 L 7 12 L 11 9"/></svg></div>
 
-          <div class="node"><strong>load context</strong><div class="desc">CLAUDE.md + auto-memory + skill descriptions + system prompt</div></div>
-          <div class="arrow">↓</div>
+          <div class="node" data-phase="context"><strong>load context</strong><div class="desc">CLAUDE.md + auto-memory + skill descriptions + system prompt</div></div>
+          <div class="arrow"><svg viewBox="0 0 14 14"><path d="M7 2 Q 8 7, 7 12 M3 9 L 7 12 L 11 9"/></svg></div>
 
           <div class="ring">
             <div class="flow">
-              <div class="node model"><strong>model turn</strong><div class="desc">three phases blend: gather → act → verify</div></div>
-              <div class="arrow">↓</div>
+              <div class="node" data-phase="model"><strong>model turn</strong><div class="desc">three phases blend: gather → act → verify</div></div>
+              <div class="arrow"><svg viewBox="0 0 14 14"><path d="M7 2 Q 8 7, 7 12 M3 9 L 7 12 L 11 9"/></svg></div>
+
               <div class="branch">
-                <div class="node tool"><strong>tool_use</strong><div class="desc">read · edit · bash · grep · glob · fetch · spawn subagent · ask user</div></div>
+                <div class="node" data-phase="decide"><strong>tool_use</strong><div class="desc">read · edit · bash · grep · glob · fetch · spawn subagent</div></div>
                 <div class="label">or</div>
-                <div class="node exit"><strong>final text</strong><div class="desc">stop_reason ≠ tool_use → return to user</div></div>
+                <div class="node" data-phase="decide"><strong>final text</strong><div class="desc">stop_reason ≠ tool_use → return to user</div></div>
               </div>
-              <div class="arrow">↓</div>
-              <div class="node"><strong>execute</strong><div class="desc">permission gate: default / auto-accept / plan / auto mode</div></div>
-              <div class="arrow">↓</div>
-              <div class="node"><strong>hooks fire</strong><div class="desc">PreToolUse / PostToolUse / Stop · scripts can block or rewrite</div></div>
-              <div class="arrow">↓</div>
-              <div class="node"><strong>checkpoint</strong><div class="desc">file snapshot before each edit · esc-esc to rewind</div></div>
-              <div class="arrow">↓</div>
-              <div class="node"><strong>result → context</strong><div class="desc">appended as user-role tool_result message</div></div>
-              <div class="loop-back">↻ next iteration</div>
+              <div class="arrow"><svg viewBox="0 0 14 14"><path d="M7 2 Q 6 7, 7 12 M3 9 L 7 12 L 11 9"/></svg></div>
+
+              <div class="node" data-phase="gate"><strong>permission gate</strong><div class="desc">default / auto-accept / plan / auto with classifier</div></div>
+              <div class="arrow"><svg viewBox="0 0 14 14"><path d="M7 2 Q 8 7, 7 12 M3 9 L 7 12 L 11 9"/></svg></div>
+
+              <div class="node" data-phase="exec"><strong>hooks fire</strong><div class="desc">PreToolUse / PostToolUse / Stop · scripts can block or rewrite</div></div>
+              <div class="arrow"><svg viewBox="0 0 14 14"><path d="M7 2 Q 8 7, 7 12 M3 9 L 7 12 L 11 9"/></svg></div>
+
+              <div class="node" data-phase="exec"><strong>checkpoint</strong><div class="desc">file snapshot before each edit · esc-esc to rewind</div></div>
+              <div class="arrow"><svg viewBox="0 0 14 14"><path d="M7 2 Q 8 7, 7 12 M3 9 L 7 12 L 11 9"/></svg></div>
+
+              <div class="node" data-phase="log"><strong>result → context</strong><div class="desc">appended as user-role tool_result message</div></div>
+              <div class="loop-back">next iteration</div>
             </div>
           </div>
 
-          <div class="arrow">↓</div>
-          <div class="node gate"><strong>context fills</strong><div class="desc">auto-compaction · summarize history · keep recent code + decisions</div></div>
+          <div class="arrow"><svg viewBox="0 0 14 14"><path d="M7 2 Q 8 7, 7 12 M3 9 L 7 12 L 11 9"/></svg></div>
+          <div class="node" data-phase="compact"><strong>context fills</strong><div class="desc">auto-compaction · summarize history · keep recent code + decisions</div></div>
         </div>
       </div>
 
       <!-- ─── CARLOS ─── -->
       <div class="diagram-card carlos">
         <h2>carlos</h2>
-        <div class="who">event-sourced agent over multi-provider streams</div>
-
+        <div class="who">event-sourced agent</div>
         <div class="flow">
-          <div class="node start"><strong>USER PROMPT</strong><div class="desc">chat TUI, /research, /please headless, scheduled cron</div></div>
-          <div class="arrow">↓</div>
+          <div class="node" data-phase="input"><strong>USER PROMPT</strong><div class="desc">chat TUI, /research, /please headless, scheduled cron</div></div>
+          <div class="arrow"><svg viewBox="0 0 14 14"><path d="M7 2 Q 8 7, 7 12 M3 9 L 7 12 L 11 9"/></svg></div>
 
-          <div class="node"><strong>load context</strong><div class="desc">AGENTS.md + CLAUDE.md (walk + @-include) + .claude/skills + .agents/skills</div></div>
-          <div class="arrow">↓</div>
+          <div class="node" data-phase="context"><strong>load context</strong><div class="desc">AGENTS.md + CLAUDE.md walk + .claude/skills + .agents/skills</div></div>
+          <div class="arrow"><svg viewBox="0 0 14 14"><path d="M7 2 Q 8 7, 7 12 M3 9 L 7 12 L 11 9"/></svg></div>
 
-          <div class="node"><strong>EvtUserMessage → eventlog</strong><div class="desc">SQLite WAL, source of truth · projection cache derives</div></div>
-          <div class="arrow">↓</div>
+          <div class="node" data-phase="log"><strong>EvtUserMessage → eventlog</strong><div class="desc">SQLite WAL, source of truth · projection cache derives</div></div>
+          <div class="arrow"><svg viewBox="0 0 14 14"><path d="M7 2 Q 8 7, 7 12 M3 9 L 7 12 L 11 9"/></svg></div>
 
           <div class="ring">
             <div class="flow">
-              <div class="node gate"><strong>drain steering</strong><div class="desc">supervisor-injected nudges at iteration boundary</div></div>
-              <div class="arrow">↓</div>
-              <div class="node gate"><strong>budget gate</strong><div class="desc">tokens / cents / wall-clock · ErrBudgetExceeded → clean halt</div></div>
-              <div class="arrow">↓</div>
-              <div class="node model"><strong>provider.Stream</strong><div class="desc">canonical event shape across anthropic / openai / openrouter / ollama / cpu</div></div>
-              <div class="arrow">↓</div>
-              <div class="node"><strong>collectAssistant</strong><div class="desc">SSE deltas → text + tool_use blocks · stop_reason</div></div>
-              <div class="arrow">↓</div>
+              <div class="node" data-phase="plan"><strong>drain steering</strong><div class="desc">supervisor-injected nudges at iteration boundary</div></div>
+              <div class="arrow"><svg viewBox="0 0 14 14"><path d="M7 2 Q 8 7, 7 12 M3 9 L 7 12 L 11 9"/></svg></div>
+
+              <div class="node" data-phase="plan"><strong>budget gate</strong><div class="desc">tokens / cents / wall-clock · ErrBudgetExceeded → clean halt</div></div>
+              <div class="arrow"><svg viewBox="0 0 14 14"><path d="M7 2 Q 8 7, 7 12 M3 9 L 7 12 L 11 9"/></svg></div>
+
+              <div class="node" data-phase="model"><strong>provider.Stream</strong><div class="desc">canonical event shape across anthropic / openai / openrouter / ollama / cpu</div></div>
+              <div class="arrow"><svg viewBox="0 0 14 14"><path d="M7 2 Q 6 7, 7 12 M3 9 L 7 12 L 11 9"/></svg></div>
+
               <div class="branch">
-                <div class="node tool"><strong>tool_use</strong><div class="desc">read · write · edit · bash (PTY) · grep · glob · git_* · web_fetch · web_search · plan</div></div>
+                <div class="node" data-phase="decide"><strong>tool_use</strong><div class="desc">read · write · edit · bash (PTY) · grep · git · web_fetch · plan</div></div>
                 <div class="label">or</div>
-                <div class="node exit"><strong>end_turn</strong><div class="desc">EvtAssistantMessage → eventlog · return</div></div>
+                <div class="node" data-phase="decide"><strong>end_turn</strong><div class="desc">EvtAssistantMessage → eventlog · return</div></div>
               </div>
-              <div class="arrow">↓</div>
-              <div class="node gate"><strong>approver.ApproveToolCall</strong><div class="desc">AutoApprover · stdin · in-chat overlay (y/N/Always)</div></div>
-              <div class="arrow">↓</div>
-              <div class="node"><strong>reg.Execute</strong><div class="desc">tools resolve paths against worktree BaseDir if --worktree</div></div>
-              <div class="arrow">↓</div>
-              <div class="node"><strong>EvtToolCall + EvtToolResult</strong><div class="desc">manage TUI roster updates in real time via Subscribe</div></div>
-              <div class="arrow">↓</div>
-              <div class="node"><strong>tool_results → user message</strong></div>
-              <div class="loop-back">↻ next iteration (max 25)</div>
+              <div class="arrow"><svg viewBox="0 0 14 14"><path d="M7 2 Q 8 7, 7 12 M3 9 L 7 12 L 11 9"/></svg></div>
+
+              <div class="node" data-phase="gate"><strong>approver.Approve</strong><div class="desc">AutoApprover · stdin · in-chat overlay (y/N/Always)</div></div>
+              <div class="arrow"><svg viewBox="0 0 14 14"><path d="M7 2 Q 8 7, 7 12 M3 9 L 7 12 L 11 9"/></svg></div>
+
+              <div class="node" data-phase="exec"><strong>reg.Execute</strong><div class="desc">tools resolve paths against worktree BaseDir if --worktree</div></div>
+              <div class="arrow"><svg viewBox="0 0 14 14"><path d="M7 2 Q 8 7, 7 12 M3 9 L 7 12 L 11 9"/></svg></div>
+
+              <div class="node" data-phase="log"><strong>EvtToolCall + EvtToolResult</strong><div class="desc">manage TUI roster updates in real time via Subscribe</div></div>
+              <div class="loop-back">next iteration (max 25)</div>
             </div>
           </div>
 
-          <div class="arrow">↓</div>
-          <div class="node gate"><strong>/compact (manual)</strong><div class="desc">summarizer rebuilds history · EvtSessionReset + synthetic recap</div></div>
+          <div class="arrow"><svg viewBox="0 0 14 14"><path d="M7 2 Q 8 7, 7 12 M3 9 L 7 12 L 11 9"/></svg></div>
+          <div class="node" data-phase="compact"><strong>/compact (manual)</strong><div class="desc">summarizer rebuilds history · EvtSessionReset + synthetic recap</div></div>
+        </div>
+      </div>
+
+      <!-- ─── CODEX ─── -->
+      <div class="diagram-card codex">
+        <h2>Codex</h2>
+        <div class="who">sandbox-first ReAct</div>
+        <div class="flow">
+          <div class="node" data-phase="input"><strong>USER PROMPT</strong><div class="desc">codex TUI, codex exec for CI, ChatGPT handoff</div></div>
+          <div class="arrow"><svg viewBox="0 0 14 14"><path d="M7 2 Q 8 7, 7 12 M3 9 L 7 12 L 11 9"/></svg></div>
+
+          <div class="node" data-phase="context"><strong>load context</strong><div class="desc">AGENTS.md (global → project → subtree) + profile config</div></div>
+          <div class="arrow"><svg viewBox="0 0 14 14"><path d="M7 2 Q 8 7, 7 12 M3 9 L 7 12 L 11 9"/></svg></div>
+
+          <div class="node" data-phase="log"><strong>session.jsonl</strong><div class="desc">~/.codex/sessions/ · /resume restores a saved conversation</div></div>
+          <div class="arrow"><svg viewBox="0 0 14 14"><path d="M7 2 Q 8 7, 7 12 M3 9 L 7 12 L 11 9"/></svg></div>
+
+          <div class="ring">
+            <div class="flow">
+              <div class="node" data-phase="plan"><strong>/plan mode?</strong><div class="desc">user-toggled · proposes strategy before any edits</div></div>
+              <div class="arrow"><svg viewBox="0 0 14 14"><path d="M7 2 Q 8 7, 7 12 M3 9 L 7 12 L 11 9"/></svg></div>
+
+              <div class="node" data-phase="model"><strong>model turn</strong><div class="desc">GPT-5 · o-series · configurable via profile</div></div>
+              <div class="arrow"><svg viewBox="0 0 14 14"><path d="M7 2 Q 6 7, 7 12 M3 9 L 7 12 L 11 9"/></svg></div>
+
+              <div class="branch">
+                <div class="node" data-phase="decide"><strong>tool_use</strong><div class="desc">shell · apply_patch · web_search · image_input · MCP</div></div>
+                <div class="label">or</div>
+                <div class="node" data-phase="decide"><strong>final text</strong><div class="desc">model emits no tool call → return</div></div>
+              </div>
+              <div class="arrow"><svg viewBox="0 0 14 14"><path d="M7 2 Q 8 7, 7 12 M3 9 L 7 12 L 11 9"/></svg></div>
+
+              <div class="node" data-phase="gate"><strong>approval × sandbox</strong><div class="desc">policy: untrusted / on-failure / on-request / never</div></div>
+              <div class="arrow"><svg viewBox="0 0 14 14"><path d="M7 2 Q 8 7, 7 12 M3 9 L 7 12 L 11 9"/></svg></div>
+
+              <div class="node" data-phase="exec"><strong>os sandbox exec</strong><div class="desc">seatbelt (mac) · landlock+seccomp (linux) · wsl (win)</div></div>
+              <div class="arrow"><svg viewBox="0 0 14 14"><path d="M7 2 Q 8 7, 7 12 M3 9 L 7 12 L 11 9"/></svg></div>
+
+              <div class="node" data-phase="log"><strong>result → context</strong><div class="desc">jsonl append · child process exit code surfaced</div></div>
+              <div class="loop-back">next iteration</div>
+            </div>
+          </div>
+
+          <div class="arrow"><svg viewBox="0 0 14 14"><path d="M7 2 Q 8 7, 7 12 M3 9 L 7 12 L 11 9"/></svg></div>
+          <div class="node" data-phase="compact"><strong>/compact (manual)</strong><div class="desc">summarize the visible conversation to free tokens</div></div>
         </div>
       </div>
 
     </section>
 
-    <h2>Where they converge</h2>
-    <p>
-      The inner loop is the same primitive both projects converge on: stream the model, parse
-      text plus tool calls, dispatch tools, feed results back, terminate when the model stops
-      asking for tools. Both expose the same handful of file / shell / search tools as the
-      coding-agent floor, both keep <code>CLAUDE.md</code> as conversation-start context, both
-      ship a permission gate, and both support subagents that get a fresh context window.
-    </p>
+    <div class="rule-sketch">
+      <svg viewBox="0 0 480 14" preserveAspectRatio="none"><path d="M4 8 Q 60 2, 130 7 T 260 7 T 380 8 T 476 6"/></svg>
+    </div>
 
-    <h2>Where they diverge</h2>
+    <section class="narrative">
+      <h2>Where they <span class="accent">converge</span>.</h2>
+      <p>
+        The inner loop is the primitive all three projects land on: stream the model, parse text plus tool calls, dispatch tools, feed results back, terminate when the model stops asking for tools. All three expose the same handful of file / shell / search tools as the coding-agent floor. All three keep an instructions file (<code>CLAUDE.md</code>, <code>AGENTS.md</code>) as conversation-start context. All three ship a gate between "model proposes a tool call" and "tool actually runs." All three support subagents that get a fresh context window.
+      </p>
+      <p>
+        That shared spine is not a coincidence; it's the shape the task forces. An LLM with tools, iterating against environmental feedback, until either the model is satisfied or a safety rail trips. The interesting question is what each one builds <em>around</em> the spine.
+      </p>
+    </section>
 
-    <table>
-      <thead>
-        <tr>
-          <th style="width: 22%">concern</th>
-          <th style="width: 39%">claude code</th>
-          <th style="width: 39%">carlos</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td><strong>source of truth</strong></td>
-          <td class="claude-col">JSONL transcripts under <code>~/.claude/projects/</code>; projection rebuilt from log on resume</td>
-          <td class="carlos-col">SQLite WAL eventlog under <code>~/.carlos/state.db</code>; every action (user_message, tool_call, tool_result, state_change, heartbeat, approval, research_phase) is an event; projection is derived</td>
-        </tr>
-        <tr>
-          <td><strong>provider surface</strong></td>
-          <td class="claude-col">Anthropic only (Claude models)</td>
-          <td class="carlos-col">anthropic, openai, openrouter, ollama, plus a pure-Go CPU backend; one canonical event shape; openai + openrouter share an <code>oacompat</code> wire</td>
-        </tr>
-        <tr>
-          <td><strong>safety gate</strong></td>
-          <td class="claude-col">permission modes (default / auto-accept / plan / auto with classifier); <code>/permissions</code> allowlist; sandboxing via OS</td>
-          <td class="carlos-col">pluggable <code>Approver</code> interface (AutoApprover / stdin / in-chat y/N/Always overlay); session-level Always cache per tool; sandboxing via opt-in <code>--worktree</code> git-worktree isolation</td>
-        </tr>
-        <tr>
-          <td><strong>plan / preview / apply</strong></td>
-          <td class="claude-col">plan mode is a read-only inspection step; user approves plan, then implementation runs in default mode</td>
-          <td class="carlos-col"><code>PlanTool</code> queues a worktree diff as an approval-queue artifact; <code>apply_handler</code> subscribes to <code>EvtApprovalAccepted</code> and ff-merges the worktree on accept, discards on reject; failure stays in queue with "needs rebase"</td>
-        </tr>
-        <tr>
-          <td><strong>context compaction</strong></td>
-          <td class="claude-col">auto-triggered when context fills; <code>/compact &lt;focus&gt;</code> for targeted; per-message <code>/rewind</code> partial summarization</td>
-          <td class="carlos-col">manual <code>/compact</code> only; uses <code>memory.Summarizer</code> (Naive or LLM); emits <code>EvtSessionReset</code> + a synthetic <code>EvtUserMessage</code> carrying the summary so the model sees prior context as one block</td>
-        </tr>
-        <tr>
-          <td><strong>budget enforcement</strong></td>
-          <td class="claude-col">no per-loop budget gate; user observes spend via the status bar / cost telemetry</td>
-          <td class="carlos-col"><code>Budget</code> + <code>Tracker</code> per scope (run + subtree, rolls up); gate fires <em>before</em> each provider call; clean <code>ErrBudgetExceeded</code> halt classified as graceful end, not infra error</td>
-        </tr>
-        <tr>
-          <td><strong>steering mid-flight</strong></td>
-          <td class="claude-col">type a correction during a tool call; the running tool finishes, then the correction is read before next step</td>
-          <td class="carlos-col">supervisor-owned steering channel; messages drain at the iteration boundary (after collectAssistant, before next provider call); same "next tool-call boundary" contract</td>
-        </tr>
-        <tr>
-          <td><strong>sub-agents</strong></td>
-          <td class="claude-col">Task tool spawns a subagent with its own context + restricted tools; returns a summary back; configured via <code>.claude/agents/</code> markdown</td>
-          <td class="carlos-col">Supervisor.Spawn → SubAgent with full lifecycle (10-state machine: spawning → queued → running → awaiting-input → blocked → paused-by-user → compacting → cancelling → done → failed → orphaned); restart intensity (3-in-60s breaker); per-agent heartbeat ticker; the manage TUI surfaces every live sub-agent</td>
-        </tr>
-        <tr>
-          <td><strong>liveness detection</strong></td>
-          <td class="claude-col">none surfaced; a crashed Claude Code is gone with its session</td>
-          <td class="carlos-col">5s heartbeat emit + 10s sweep; stale agents (heartbeat &gt; 2× interval) transition to <code>orphaned</code> at next process startup via <code>Recover</code></td>
-        </tr>
-        <tr>
-          <td><strong>scheduled / autonomous runs</strong></td>
-          <td class="claude-col">non-interactive <code>claude -p</code> for CI/cron, but no daemon</td>
-          <td class="carlos-col"><code>carlos daemon</code> with UDS IPC + launchd plist / systemd unit; <code>/schedule add "every weekday at 9am ..."</code>; daemon-fired runs spawn sub-agents whose results surface in the next TUI open; desktop notifications on completion</td>
-        </tr>
-        <tr>
-          <td><strong>skill induction</strong></td>
-          <td class="claude-col">user-authored skills only (<code>.claude/skills/SKILL.md</code>); model surfaces them on relevance match</td>
-          <td class="carlos-col">propose-don't-publish: inducer watches usage, judge scores cross-provider, replay-eval scores with-vs-without on historical transcripts using slice 5d verifier adapters; skill lands in the approval queue, never auto-publishes</td>
-        </tr>
-        <tr>
-          <td><strong>research mode</strong></td>
-          <td class="claude-col">no first-class research orchestrator; user chains tools manually or installs MCP servers</td>
-          <td class="carlos-col">decompose → web_search → web_fetch → read → synthesize → verify pipeline with citation tracking (stable sN/pN IDs); <code>/research</code> spawns as sub-agent so chat keeps flowing; live phase progress via <code>EvtResearchPhase</code> events; final report persists as a <code>research_report</code> artifact</td>
-        </tr>
-        <tr>
-          <td><strong>hooks / extensibility</strong></td>
-          <td class="claude-col">deterministic scripts at PreToolUse / PostToolUse / Stop / etc.; MCP server protocol for arbitrary external tools; plugin marketplace</td>
-          <td class="carlos-col">no shell-script hook system yet; extensibility is in-process via the <code>tools.Registry</code>, the <code>Approver</code> interface, the <code>memory.Summarizer</code> interface, and the verifier <code>Dispatcher</code>; MCP client is in the post-v1 backlog</td>
-        </tr>
-      </tbody>
-    </table>
+    <section class="narrative divergence">
+      <h2>Where they <span class="accent">diverge</span>.</h2>
+      <p>Categories with cross-cutting machinery: what the loop touches outside the model call. Hover a row to scan it.</p>
 
-    <h2>The headline difference</h2>
-    <p>
-      Claude Code is an <em>interactive harness</em>. The loop is tight, the user is in the
-      tight feedback loop, and the architecture is shaped around getting out of the way of one
-      person at a keyboard. Carlos is an <em>event-sourced agent</em>. The loop is identical in
-      shape but every step writes to a durable log, every sub-agent has a lifecycle the
-      supervisor manages, and the surface area is wider: scheduled runs via the daemon,
-      autonomous research with citation grounding, propose-don't-publish skill induction. The
-      cost is more machinery; the payoff is that carlos works when you're not watching.
-    </p>
+      <div class="divergence-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th style="width: 20%">concern</th>
+            <th class="col-claude" style="width: 27%">claude code</th>
+            <th class="col-carlos" style="width: 27%">carlos</th>
+            <th class="col-codex"  style="width: 26%">codex</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="row-label">source of truth</td>
+            <td class="claude-col">JSONL transcripts under <code>~/.claude/projects/</code>; projection rebuilt from log on resume</td>
+            <td class="carlos-col">SQLite WAL eventlog under <code>~/.carlos/state.db</code>; every action is an event; projection is derived</td>
+            <td class="codex-col">JSONL sessions under <code>~/.codex/sessions/</code>; <code>/resume</code> restores a named conversation</td>
+          </tr>
+          <tr>
+            <td class="row-label">runtime</td>
+            <td class="claude-col">Node.js + TypeScript</td>
+            <td class="carlos-col">pure Go, no CGO; single static binary under 30 MB</td>
+            <td class="codex-col">Rust (<code>codex-rs</code>, 96% Rust); fast cold start, single static binary</td>
+          </tr>
+          <tr>
+            <td class="row-label">provider surface</td>
+            <td class="claude-col">Anthropic only (Claude models)</td>
+            <td class="carlos-col">anthropic, openai, openrouter, ollama, plus a Go CPU backend; one canonical event shape</td>
+            <td class="codex-col">OpenAI models (GPT, o-series) via profile config; <code>config.toml</code> selects model + reasoning level</td>
+          </tr>
+          <tr>
+            <td class="row-label">safety gate</td>
+            <td class="claude-col">permission modes (default / auto-accept / plan / auto with classifier); <code>/permissions</code> allowlist</td>
+            <td class="carlos-col">pluggable <code>Approver</code> interface (AutoApprover / stdin / in-chat y/N/Always overlay); session-level Always cache per tool</td>
+            <td class="codex-col"><strong>orthogonal matrix</strong>: approval policy × sandbox mode. Approval: untrusted / on-failure / on-request / never. Sandbox: read-only / workspace-write / danger-full</td>
+          </tr>
+          <tr>
+            <td class="row-label">OS sandbox layer</td>
+            <td class="claude-col">none surfaced; relies on the underlying OS + user permissions</td>
+            <td class="carlos-col">opt-in <code>--worktree</code> git-worktree isolation; tools resolve paths against the worktree base dir</td>
+            <td class="codex-col"><strong>first-class</strong>: macOS Seatbelt via <code>sandbox-exec</code>, Linux <code>bwrap</code> + seccomp, Windows WSL2; child processes spawned inside the box</td>
+          </tr>
+          <tr>
+            <td class="row-label">plan / preview / apply</td>
+            <td class="claude-col">plan mode is a read-only inspection step; user approves plan, then implementation runs in default mode</td>
+            <td class="carlos-col"><code>PlanTool</code> queues a worktree diff as an approval-queue artifact; <code>apply_handler</code> ff-merges on accept, discards on reject</td>
+            <td class="codex-col"><code>/plan</code> switches to plan mode; proposes a strategy before any edit. No diff-as-artifact concept; the conversation carries the plan</td>
+          </tr>
+          <tr>
+            <td class="row-label">context compaction</td>
+            <td class="claude-col">auto-triggered when context fills; <code>/compact &lt;focus&gt;</code> for targeted; per-message <code>/rewind</code></td>
+            <td class="carlos-col">manual <code>/compact</code> only; uses <code>memory.Summarizer</code> (Naive or LLM); emits <code>EvtSessionReset</code> + a synthetic recap</td>
+            <td class="codex-col">manual <code>/compact</code> only; summarizes the visible conversation to free tokens. No auto-trigger</td>
+          </tr>
+          <tr>
+            <td class="row-label">budget enforcement</td>
+            <td class="claude-col">no per-loop budget gate; user observes spend via the status bar</td>
+            <td class="carlos-col"><code>Budget</code> + <code>Tracker</code> per scope (run + subtree, rolls up); gate fires <em>before</em> each provider call; clean halt classified as graceful end</td>
+            <td class="codex-col">no per-loop budget gate; user observes spend via the status line and provider dashboard</td>
+          </tr>
+          <tr>
+            <td class="row-label">steering mid-flight</td>
+            <td class="claude-col">type a correction during a tool call; running tool finishes, then the correction is read before next step</td>
+            <td class="carlos-col">supervisor-owned steering channel; messages drain at the iteration boundary (after collectAssistant, before next provider call)</td>
+            <td class="codex-col">type into the input field; the in-flight turn is interruptible, next step reads the new input</td>
+          </tr>
+          <tr>
+            <td class="row-label">sub-agents</td>
+            <td class="claude-col"><code>Task</code> tool spawns a subagent with its own context + restricted tools; returns a summary; configured via <code>.claude/agents/</code> markdown</td>
+            <td class="carlos-col"><code>Supervisor.Spawn → SubAgent</code> with 10-state lifecycle; restart breaker (3-in-60s); per-agent heartbeat ticker; manage TUI roster surfaces every live sub-agent</td>
+            <td class="codex-col">subagent support framed as parallelization; spawn-and-summarize pattern; less elaborate lifecycle than carlos</td>
+          </tr>
+          <tr>
+            <td class="row-label">liveness detection</td>
+            <td class="claude-col">none surfaced; a crashed Claude Code is gone with its session</td>
+            <td class="carlos-col">5s heartbeat emit + 10s sweep; stale agents (heartbeat &gt; 2× interval) transition to <code>orphaned</code> at next startup via <code>Recover</code></td>
+            <td class="codex-col">none in the local CLI; the Cloud agent surface monitors its own runs</td>
+          </tr>
+          <tr>
+            <td class="row-label">scheduled / autonomous runs</td>
+            <td class="claude-col">non-interactive <code>claude -p</code> for CI/cron, but no daemon</td>
+            <td class="carlos-col"><code>carlos daemon</code> with UDS IPC + launchd / systemd unit; <code>/schedule add "every weekday at 9am ..."</code>; daemon-fired runs spawn sub-agents</td>
+            <td class="codex-col"><code>codex exec</code> for non-interactive CI; <strong>Codex Cloud</strong> hosts long-running web-agent tasks separate from the local CLI</td>
+          </tr>
+          <tr>
+            <td class="row-label">cloud handoff</td>
+            <td class="claude-col">none</td>
+            <td class="carlos-col">none</td>
+            <td class="codex-col"><strong>distinguishing feature</strong>: kick off a Cloud task from the local editor, monitor progress, apply resulting diffs back to your workspace</td>
+          </tr>
+          <tr>
+            <td class="row-label">skill induction</td>
+            <td class="claude-col">user-authored only (<code>.claude/skills/SKILL.md</code>); model surfaces them on relevance match</td>
+            <td class="carlos-col"><strong>propose-don't-publish</strong>: inducer watches usage, judge scores cross-provider, replay-eval scores with-vs-without on historical transcripts; skill lands in the approval queue, never auto-publishes</td>
+            <td class="codex-col"><code>SKILL.md</code> packaged workflows invoked via <code>/skills</code> or implicit description match; MCP dependencies declared via <code>agents/openai.yaml</code>. No auto-induction</td>
+          </tr>
+          <tr>
+            <td class="row-label">research mode</td>
+            <td class="claude-col">no first-class research orchestrator; user chains tools manually or installs MCP servers</td>
+            <td class="carlos-col">decompose → web_search → web_fetch → read → synthesize → verify pipeline with citation tracking (stable sN/pN IDs); <code>/research</code> spawns as sub-agent</td>
+            <td class="codex-col">web_search is a built-in tool; no orchestrated pipeline. ChatGPT integration covers deep-research at a different layer</td>
+          </tr>
+          <tr>
+            <td class="row-label">extensibility</td>
+            <td class="claude-col">PreToolUse / PostToolUse / Stop hooks; MCP server protocol for arbitrary external tools; plugin marketplace</td>
+            <td class="carlos-col">in-process via <code>tools.Registry</code>, <code>Approver</code>, <code>memory.Summarizer</code>, verifier <code>Dispatcher</code>; MCP client in the post-v1 backlog</td>
+            <td class="codex-col">MCP for third-party tools; Skills bundle scripts + prompts + MCP deps as a unit. No shell-hook system in the Claude Code sense</td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+    </section>
 
-    <p>
-      Neither model is universally better. The inner loop converges because the task does: an
-      LLM with tools, iterating against environmental feedback, until either the model stops
-      asking for tools or a safety rail trips. Everything outside that core is product
-      positioning.
-    </p>
+    <section class="narrative">
+      <h2>The <span class="accent">headline</span> difference.</h2>
+      <p>
+        <strong>Claude Code is an interactive harness.</strong> The loop is tight, the user is in the tight feedback loop, and the architecture is shaped around getting out of the way of one person at a keyboard. Hooks, plan mode, checkpoints: extension points that assume you're there to type.
+      </p>
+      <p>
+        <strong>carlos is an event-sourced agent.</strong> The inner loop is the same shape, but every step writes to a durable log, every sub-agent has a lifecycle the supervisor manages, and the surface widens: scheduled runs via the daemon, autonomous research with citation grounding, propose-don't-publish skill induction. More machinery, paid for by the property that carlos still works when you've gone to dinner.
+      </p>
+      <p>
+        <strong>Codex is a sandbox-first ReAct loop.</strong> The architectural commitment is OS-level isolation as a peer of approval, not a fallback. Approval policy and sandbox mode are independent axes; the default <code>Auto</code> preset means workspace-write + on-request. Pair that with the Cloud handoff and Codex is the only one of the three that treats "this might run somewhere I'm not" as a first-class case at the protocol level.
+      </p>
+      <p>
+        None of them is universally better. The shared spine is the floor; the rest is product positioning, and the right one for any given week is the one whose machinery matches what the work needs.
+      </p>
+    </section>
 
     <div class="footnote">
       Sources: Claude Code <a href="https://code.claude.com/docs/en/how-claude-code-works">"How Claude Code works"</a>
-      and <a href="https://code.claude.com/docs/en/best-practices">"Best practices"</a> from
-      Anthropic's docs (read October 2026); carlos's loop is
+      and <a href="https://code.claude.com/docs/en/best-practices">"Best practices"</a> from Anthropic's docs;
+      Codex from <a href="https://developers.openai.com/codex/cli">OpenAI Codex CLI docs</a> + the
+      <a href="https://github.com/openai/codex">openai/codex</a> repo (read June 2026); carlos's loop is
       <code>internal/agent/loop.go</code> in this repo.
     </div>
   </main>
 
   <footer>
-    <span>carlos · agent loop comparison</span>
-    <span>2026</span>
+    <span>carlos · agent loop comparison · 2026</span>
+    <a href="./">← home</a>
   </footer>
+
+  <script>
+    // Cross-column phase highlighting.
+    // Hovering any [data-phase] node toggles `.phase-active` on all nodes sharing
+    // that phase across the three diagram cards. Phase chips in the legend pin
+    // the highlight (click to lock; click again to unpin).
+    (function () {
+      const diagrams = document.getElementById('diagrams');
+      const nodes    = Array.from(diagrams.querySelectorAll('.node[data-phase]'));
+      const chips    = Array.from(document.querySelectorAll('.phase-chip[data-phase]'));
+      const clearBtn = document.querySelector('[data-action="clear"]');
+
+      // Inject a Caveat margin-tag naming the phase in each node's top-right.
+      // Replaces the old left-edge colored stripe pattern with a handwritten
+      // corner label that sits in the same brand language as the rest of the page.
+      nodes.forEach(n => {
+        if (n.querySelector('.phase-tag')) return;
+        const tag = document.createElement('span');
+        tag.className = 'phase-tag';
+        tag.textContent = n.dataset.phase;
+        tag.setAttribute('aria-hidden', 'true');
+        n.appendChild(tag);
+      });
+
+      let pinned = null; // phase name or null
+
+      function apply(phase) {
+        if (!phase) {
+          diagrams.classList.remove('phase-active');
+          nodes.forEach(n => n.classList.remove('phase-active'));
+          return;
+        }
+        diagrams.classList.add('phase-active');
+        nodes.forEach(n => {
+          n.classList.toggle('phase-active', n.dataset.phase === phase);
+        });
+      }
+      function syncChips() {
+        chips.forEach(c => c.setAttribute('aria-pressed', c.dataset.phase === pinned ? 'true' : 'false'));
+      }
+
+      // hover / focus from nodes
+      nodes.forEach(n => {
+        n.addEventListener('mouseenter', () => { if (!pinned) apply(n.dataset.phase); });
+        n.addEventListener('mouseleave', () => { if (!pinned) apply(null); });
+        n.tabIndex = 0;
+        n.addEventListener('focus', () => { if (!pinned) apply(n.dataset.phase); });
+        n.addEventListener('blur',  () => { if (!pinned) apply(null); });
+      });
+
+      // chip click → pin / unpin
+      chips.forEach(c => {
+        c.addEventListener('click', () => {
+          const ph = c.dataset.phase;
+          if (pinned === ph) { pinned = null; apply(null); }
+          else                { pinned = ph;  apply(ph);  }
+          syncChips();
+        });
+        // hover preview while not pinned
+        c.addEventListener('mouseenter', () => { if (!pinned) apply(c.dataset.phase); });
+        c.addEventListener('mouseleave', () => { if (!pinned) apply(null); });
+      });
+
+      if (clearBtn) {
+        clearBtn.addEventListener('click', () => { pinned = null; apply(null); syncChips(); });
+      }
+    })();
+  </script>
 </body>
 </html>

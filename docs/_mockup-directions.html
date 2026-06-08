@@ -1,0 +1,684 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>carlos · design directions mockup</title>
+  <link rel="icon" type="image/png" href="./branding/carlos-portrait.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    rel="stylesheet"
+    href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Caveat:wght@500;700&display=swap"
+  />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+      color: #161b25;
+      background: #2a2620;
+    }
+
+    /* ── global scratch-mode chrome ─────────────────────────── */
+    .mockup-bar {
+      position: sticky; top: 0; z-index: 50;
+      background: #1a1714;
+      color: #f5efe1;
+      padding: 12px 24px;
+      display: flex; gap: 20px; align-items: center;
+      border-bottom: 1px solid #3a342d;
+      font-size: 12px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+    }
+    .mockup-bar strong { color: #f3c886; letter-spacing: 0.22em; }
+    .mockup-bar a {
+      color: #d7cebe; text-decoration: none;
+      border-bottom: 1px dotted #6a6055;
+      padding-bottom: 1px;
+    }
+    .mockup-bar a:hover { color: #fff; border-bottom-color: #fff; }
+    .mockup-bar .sp { flex: 1; }
+
+    .direction {
+      padding: 56px 36px 80px;
+      position: relative;
+      overflow: hidden;
+    }
+    .direction-name {
+      font-family: 'Inter', sans-serif;
+      font-size: 10px;
+      letter-spacing: 0.34em;
+      text-transform: uppercase;
+      margin: 0 0 28px;
+      opacity: 0.6;
+    }
+    .sample {
+      max-width: 1180px;
+      margin: 0 auto;
+      position: relative;
+      z-index: 2;
+    }
+    .hero h1 {
+      font-family: 'Instrument Serif', serif;
+      font-weight: 400;
+      font-size: clamp(40px, 5.6vw, 68px);
+      line-height: 1.04;
+      letter-spacing: -0.01em;
+      margin: 0 0 14px;
+    }
+    .hero p.sub {
+      max-width: 56ch;
+      font-size: 17px;
+      line-height: 1.55;
+      margin: 0 0 22px;
+    }
+    .hero .meta {
+      font-size: 13px;
+      letter-spacing: 0.04em;
+      display: flex; gap: 14px; align-items: center; flex-wrap: wrap;
+    }
+    .hero .meta .dot {
+      display: inline-block; width: 4px; height: 4px; border-radius: 50%;
+      background: currentColor; opacity: 0.5;
+    }
+
+    .loops {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 22px;
+      margin-top: 44px;
+    }
+    @media (min-width: 1000px) {
+      .loops { grid-template-columns: 1fr 1fr 1fr; }
+    }
+
+    .loop-card {
+      padding: 22px 22px 18px;
+      position: relative;
+    }
+    .loop-card h3 {
+      font-family: 'Instrument Serif', serif;
+      font-weight: 400;
+      font-size: 24px;
+      margin: 0 0 4px;
+    }
+    .loop-card .who {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.22em;
+      margin-bottom: 16px;
+      opacity: 0.6;
+    }
+    .flow {
+      display: flex; flex-direction: column;
+      gap: 6px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      line-height: 1.4;
+    }
+    .node {
+      padding: 9px 11px;
+      border-radius: 7px;
+    }
+    .node strong { font-family: 'Inter', sans-serif; font-size: 11.5px; font-weight: 600; letter-spacing: 0.04em; }
+    .node .desc { font-size: 11px; margin-top: 3px; opacity: 0.7; }
+    .arrow { align-self: center; line-height: 1; font-size: 14px; opacity: 0.55; }
+
+    .section-rule {
+      margin: 56px 0 32px;
+      height: 18px;
+      display: flex; align-items: center; justify-content: center;
+    }
+
+    .callout {
+      margin-top: 28px;
+      max-width: 60ch;
+      font-size: 14px;
+      line-height: 1.6;
+      opacity: 0.85;
+    }
+
+    .chips {
+      display: flex; gap: 8px; flex-wrap: wrap;
+      margin-top: 18px;
+    }
+    .chip {
+      font-size: 11px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      letter-spacing: 0.04em;
+    }
+
+    /* ╔══════════════════════════════════════════════════════════╗
+       ║   DIRECTION A — SUNDAY AFTERNOON                         ║
+       ╚══════════════════════════════════════════════════════════╝ */
+    .sunday {
+      --paper:  #f5efe1;
+      --paper-hi:#fbf6e9;
+      --paper-lo:#ebe2cd;
+      --sky:    #e6eef5;
+      --sage:   #8ea98b;
+      --sage-soft: rgba(142, 169, 139, 0.18);
+      --clay:   #c64a2c;
+      --clay-soft: rgba(198, 74, 44, 0.12);
+      --sun:    #e8a635;
+      --ink:    #161b25;
+      --ink-soft:#3a3a44;
+      --muted:  #6b6357;
+      --rule:   rgba(20,22,30,0.12);
+      background:
+        radial-gradient(ellipse 70% 50% at 20% 0%, var(--sky), transparent 60%),
+        radial-gradient(ellipse 80% 60% at 80% 100%, var(--paper-lo), transparent 70%),
+        var(--paper);
+      color: var(--ink);
+    }
+    /* paper grain */
+    .sunday::before {
+      content: ''; position: absolute; inset: 0;
+      pointer-events: none; z-index: 1;
+      opacity: 0.40; mix-blend-mode: multiply;
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.05 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+    }
+    /* drifting cloud — subtle, in a gutter */
+    .sunday .cloud-a {
+      position: absolute; top: 80px; right: -40px;
+      width: 240px; opacity: 0.55; z-index: 1;
+      pointer-events: none;
+    }
+    .sunday .cloud-b {
+      position: absolute; top: 380px; left: -60px;
+      width: 180px; opacity: 0.45; z-index: 1;
+      pointer-events: none;
+    }
+    .sunday .hero h1 .accent {
+      position: relative;
+      color: var(--clay);
+    }
+    .sunday .hero h1 .accent::after {
+      content: '';
+      position: absolute; left: -2%; right: -2%; bottom: -6px;
+      height: 10px;
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 10' preserveAspectRatio='none'><path d='M2 6 Q 30 1, 60 5 T 120 5 T 180 4 T 198 6' fill='none' stroke='%23c64a2c' stroke-width='2.2' stroke-linecap='round'/></svg>");
+      background-repeat: no-repeat; background-size: 100% 100%;
+    }
+    .sunday .meta { color: var(--muted); }
+    .sunday .meta .marker {
+      font-family: 'Caveat', cursive; font-weight: 700;
+      color: var(--clay); font-size: 18px;
+      transform: rotate(-1.5deg) translateY(-1px);
+      display: inline-block;
+    }
+    .sunday .loop-card {
+      background: #fbf6e9;
+      border: 1px solid var(--rule);
+      border-radius: 14px;
+      box-shadow: 0 14px 26px rgba(20,22,30,0.06);
+    }
+    .sunday .loop-card.claude h3 { color: #b56a16; }
+    .sunday .loop-card.carlos h3 { color: var(--clay); }
+    .sunday .loop-card.codex  h3 { color: #3b6f3a; }
+    .sunday .node {
+      background: var(--paper);
+      border: 1px solid var(--rule);
+      border-left: 3px solid var(--sage);
+    }
+    .sunday .node.model { border-left-color: var(--clay); }
+    .sunday .node.gate  { border-left-color: #b91c1c; }
+    .sunday .node.tool  { border-left-color: var(--sage); }
+    .sunday .node.exit  { border-left-color: #2f7a3e; }
+    .sunday .node .marker {
+      font-family: 'Caveat', cursive; font-weight: 500;
+      font-size: 13px; color: var(--clay); opacity: 0.78;
+      transform: rotate(-0.7deg); display: inline-block;
+      margin-top: 4px;
+    }
+    .sunday .arrow svg { stroke: var(--sage); }
+    .sunday .section-rule svg path { stroke: var(--sage); }
+    .sunday .callout { color: var(--ink-soft); }
+    .sunday .chip {
+      background: var(--sage-soft);
+      color: #3b6f3a;
+      border: 1px solid rgba(142,169,139,0.5);
+    }
+    .sunday .chip.clay {
+      background: var(--clay-soft); color: var(--clay);
+      border-color: rgba(198,74,44,0.4);
+    }
+
+    /* ╔══════════════════════════════════════════════════════════╗
+       ║   DIRECTION B — SANDLOT SKETCHBOOK                       ║
+       ╚══════════════════════════════════════════════════════════╝ */
+    .sandlot {
+      --paper:  #f4ecd8;
+      --sky:    #cfdfec;
+      --sage:   #7a9676;
+      --sage-soft: rgba(122,150,118,0.22);
+      --clay:   #c64a2c;
+      --clay-soft: rgba(198,74,44,0.16);
+      --sun:    #e8a635;
+      --ink:    #1b1812;
+      --ink-soft: #3a342a;
+      --muted:  #6b6357;
+      --rule:   rgba(27,24,18,0.22);
+      background:
+        radial-gradient(ellipse 60% 40% at 50% 0%, var(--sky), transparent 65%),
+        var(--paper);
+      color: var(--ink);
+    }
+    .sandlot::before {
+      content: ''; position: absolute; inset: 0;
+      pointer-events: none; z-index: 1;
+      opacity: 0.55; mix-blend-mode: multiply;
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.08 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+    }
+    /* peppered doodles */
+    .sandlot .cloud-a { position: absolute; top: 60px; right: 6%; width: 200px; opacity: 0.7; z-index: 1; pointer-events: none; }
+    .sandlot .cloud-b { position: absolute; top: 240px; left: 4%; width: 160px; opacity: 0.6; z-index: 1; pointer-events: none; }
+    .sandlot .cloud-c { position: absolute; top: 520px; right: 40%; width: 130px; opacity: 0.5; z-index: 1; pointer-events: none; transform: rotate(6deg); }
+    .sandlot .doodle-star {
+      position: absolute; top: 320px; right: 12%; width: 36px;
+      opacity: 0.7; z-index: 1; pointer-events: none;
+    }
+    .sandlot .doodle-loop {
+      position: absolute; bottom: 200px; left: 8%; width: 80px;
+      opacity: 0.55; z-index: 1; pointer-events: none;
+    }
+    .sandlot .hero h1 {
+      font-family: 'Caveat', cursive;
+      font-weight: 700;
+      font-size: clamp(56px, 7vw, 92px);
+      line-height: 0.98;
+      letter-spacing: 0;
+    }
+    .sandlot .hero h1 .accent { color: var(--clay); }
+    .sandlot .meta { color: var(--muted); font-family: 'Caveat', cursive; font-size: 22px; }
+    .sandlot .loop-card {
+      background: #fdf7e6;
+      border-radius: 14px;
+      padding: 24px 22px 20px;
+      position: relative;
+      box-shadow: 0 14px 30px rgba(20,22,30,0.10);
+    }
+    .sandlot .loop-card::before {
+      content: ''; position: absolute; inset: 0;
+      border-radius: 14px;
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 200' preserveAspectRatio='none'><path d='M6 8 Q 80 4, 150 6 T 294 8 L 294 192 Q 220 196, 150 194 T 6 192 Z' fill='none' stroke='%231b1812' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+      background-size: 100% 100%;
+      pointer-events: none;
+    }
+    .sandlot .loop-card.claude  { transform: rotate(-0.6deg); }
+    .sandlot .loop-card.carlos  { transform: rotate(0.4deg); }
+    .sandlot .loop-card.codex   { transform: rotate(-0.3deg); }
+    .sandlot .loop-card h3 {
+      font-family: 'Caveat', cursive;
+      font-weight: 700;
+      font-size: 32px;
+    }
+    .sandlot .loop-card.claude h3 { color: #b56a16; }
+    .sandlot .loop-card.carlos h3 { color: var(--clay); }
+    .sandlot .loop-card.codex  h3 { color: #3b6f3a; }
+    .sandlot .node {
+      background: var(--paper);
+      border-radius: 7px;
+      border: 1.5px solid var(--ink);
+      border-left: 4px solid var(--sage);
+    }
+    .sandlot .node.model { border-left-color: var(--clay); }
+    .sandlot .node.gate  { border-left-color: #b91c1c; }
+    .sandlot .node.exit  { border-left-color: #2f7a3e; }
+    .sandlot .arrow svg { stroke: var(--ink); }
+    .sandlot .section-rule svg path { stroke: var(--ink); }
+    .sandlot .chip {
+      background: var(--sage-soft); color: #3b6f3a;
+      font-family: 'Caveat', cursive; font-size: 17px;
+      border: 1.5px solid var(--sage);
+      transform: rotate(-1deg);
+    }
+    .sandlot .chip.clay {
+      background: var(--clay-soft); color: var(--clay);
+      border-color: var(--clay);
+      transform: rotate(1.2deg);
+    }
+    .sandlot .callout { color: var(--ink-soft); font-size: 15px; }
+
+    /* ╔══════════════════════════════════════════════════════════╗
+       ║   DIRECTION C — WHITEWASHED LETTERPRESS                  ║
+       ╚══════════════════════════════════════════════════════════╝ */
+    .letterpress {
+      --paper:  #f7f1e3;
+      --paper-hi: #fbf6e9;
+      --paper-lo: #ece4d2;
+      --ink:    #161b25;
+      --ink-soft: #3a3a44;
+      --muted:  #6b6357;
+      --clay:   #c64a2c;
+      --clay-soft: rgba(198,74,44,0.10);
+      --rule:   rgba(20,22,30,0.18);
+      background:
+        radial-gradient(ellipse 90% 60% at 50% 0%, var(--paper-hi), transparent 70%),
+        radial-gradient(ellipse 90% 60% at 50% 100%, var(--paper-lo), transparent 70%),
+        var(--paper);
+      color: var(--ink);
+    }
+    .letterpress::before {
+      content: ''; position: absolute; inset: 0;
+      pointer-events: none; z-index: 1;
+      opacity: 0.4; mix-blend-mode: multiply;
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.05 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+    }
+    .letterpress .hero h1 .accent {
+      font-style: italic;
+      color: var(--clay);
+    }
+    .letterpress .meta { color: var(--muted); }
+    .letterpress .loop-card {
+      background: #fbf5e6;
+      border: 1px solid var(--rule);
+      border-radius: 10px;
+      box-shadow: 0 10px 22px rgba(20,22,30,0.08);
+    }
+    .letterpress .loop-card h3 { color: var(--ink); }
+    .letterpress .loop-card .who::before {
+      content: '§ '; color: var(--clay);
+    }
+    .letterpress .node {
+      background: var(--paper-hi);
+      border: 1px solid var(--rule);
+      border-left: 3px solid var(--ink);
+    }
+    .letterpress .node.model { border-left-color: var(--clay); }
+    .letterpress .node.gate  { border-left-color: #b91c1c; }
+    .letterpress .arrow svg { stroke: var(--ink); opacity: 0.5; }
+    .letterpress .section-rule svg path { stroke: var(--ink); }
+    .letterpress .callout {
+      color: var(--ink-soft);
+      font-family: 'Instrument Serif', serif;
+      font-size: 22px;
+      line-height: 1.4;
+      font-style: italic;
+    }
+    .letterpress .chip {
+      background: var(--clay-soft); color: var(--clay);
+      border: 1px solid var(--clay);
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* ── shared svg wrappers ───────────────────────────────── */
+    .arrow svg { width: 14px; height: 14px; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .section-rule svg { width: 100%; max-width: 520px; height: 14px; }
+    .section-rule svg path { fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  </style>
+</head>
+<body>
+  <div class="mockup-bar">
+    <strong>carlos · design mockup</strong>
+    <span class="sp"></span>
+    <a href="#sunday">A · sunday afternoon</a>
+    <a href="#sandlot">B · sandlot sketchbook</a>
+    <a href="#letterpress">C · whitewashed letterpress</a>
+  </div>
+
+  <!-- =========================================================
+       DIRECTION A — SUNDAY AFTERNOON
+       ========================================================= -->
+  <section class="direction sunday" id="sunday">
+    <!-- cloud SVGs -->
+    <svg class="cloud-a" viewBox="0 0 240 100" xmlns="http://www.w3.org/2000/svg">
+      <path d="M30 70 Q 10 70, 12 50 Q 14 30, 40 32 Q 48 14, 80 18 Q 110 6, 130 24 Q 160 16, 170 42 Q 200 38, 200 60 Q 210 78, 184 80 L 50 80 Q 30 82, 30 70 Z"
+        fill="none" stroke="#8ea98b" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" opacity="0.7"/>
+    </svg>
+    <svg class="cloud-b" viewBox="0 0 240 100" xmlns="http://www.w3.org/2000/svg">
+      <path d="M30 70 Q 10 70, 12 50 Q 14 30, 40 32 Q 48 14, 80 18 Q 110 6, 130 24 Q 160 16, 170 42 Q 200 38, 200 60 Q 210 78, 184 80 L 50 80 Q 30 82, 30 70 Z"
+        fill="none" stroke="#8ea98b" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" opacity="0.6"/>
+    </svg>
+
+    <p class="direction-name">A · sunday afternoon</p>
+    <div class="sample">
+      <div class="hero">
+        <h1>An agent that <span class="accent">stays at the desk</span><br>after you've left for dinner.</h1>
+        <p class="sub">Carlos is a pure-Go TUI agent. He keeps frames separate, writes everything to a durable log, and asks before he reaches for anything sharp. Single binary, under 30 MB, no Python, no Docker.</p>
+        <p class="meta">
+          <span>under 30 MB binary</span>
+          <span class="dot"></span>
+          <span>no Python, no Docker</span>
+          <span class="dot"></span>
+          <span class="marker">~ shipped with care ~</span>
+        </p>
+        <div class="chips">
+          <span class="chip">multi-provider</span>
+          <span class="chip">durable log</span>
+          <span class="chip clay">approval-gated</span>
+          <span class="chip">skill induction</span>
+        </div>
+      </div>
+
+      <div class="loops">
+        <div class="loop-card claude">
+          <h3>Claude Code</h3>
+          <p class="who">interactive harness</p>
+          <div class="flow">
+            <div class="node"><strong>read user turn</strong><div class="desc">stdin + transcript</div></div>
+            <div class="arrow"><svg viewBox="0 0 14 14"><path d="M7 2 Q 8 7, 7 12 M3 9 L 7 12 L 11 9"/></svg></div>
+            <div class="node model"><strong>ask model</strong><div class="desc">tools inlined</div><div class="marker">~ tight loop ~</div></div>
+            <div class="arrow"><svg viewBox="0 0 14 14"><path d="M7 2 Q 6 7, 7 12 M3 9 L 7 12 L 11 9"/></svg></div>
+            <div class="node tool"><strong>permission gate</strong><div class="desc">classifier or prompt</div></div>
+            <div class="arrow"><svg viewBox="0 0 14 14"><path d="M7 2 Q 8 7, 7 12 M3 9 L 7 12 L 11 9"/></svg></div>
+            <div class="node tool"><strong>dispatch tool</strong></div>
+          </div>
+        </div>
+
+        <div class="loop-card carlos">
+          <h3>carlos</h3>
+          <p class="who">event-sourced agent</p>
+          <div class="flow">
+            <div class="node"><strong>append user event</strong><div class="desc">sqlite log + fts</div></div>
+            <div class="arrow"><svg viewBox="0 0 14 14"><path d="M7 2 Q 8 7, 7 12 M3 9 L 7 12 L 11 9"/></svg></div>
+            <div class="node model"><strong>stream model</strong><div class="desc">multi-provider</div><div class="marker">~ steerable ~</div></div>
+            <div class="arrow"><svg viewBox="0 0 14 14"><path d="M7 2 Q 6 7, 7 12 M3 9 L 7 12 L 11 9"/></svg></div>
+            <div class="node gate"><strong>approver.Approve</strong><div class="desc">in-chat y/N/Always</div></div>
+            <div class="arrow"><svg viewBox="0 0 14 14"><path d="M7 2 Q 8 7, 7 12 M3 9 L 7 12 L 11 9"/></svg></div>
+            <div class="node tool"><strong>dispatch + log</strong></div>
+          </div>
+        </div>
+
+        <div class="loop-card codex">
+          <h3>Codex</h3>
+          <p class="who">sandbox-first ReAct</p>
+          <div class="flow">
+            <div class="node"><strong>read turn + AGENTS.md</strong></div>
+            <div class="arrow"><svg viewBox="0 0 14 14"><path d="M7 2 Q 8 7, 7 12 M3 9 L 7 12 L 11 9"/></svg></div>
+            <div class="node model"><strong>plan? then act</strong><div class="desc">/plan toggle</div><div class="marker">~ rust core ~</div></div>
+            <div class="arrow"><svg viewBox="0 0 14 14"><path d="M7 2 Q 6 7, 7 12 M3 9 L 7 12 L 11 9"/></svg></div>
+            <div class="node gate"><strong>approval × sandbox</strong><div class="desc">on-request × workspace-write</div></div>
+            <div class="arrow"><svg viewBox="0 0 14 14"><path d="M7 2 Q 8 7, 7 12 M3 9 L 7 12 L 11 9"/></svg></div>
+            <div class="node tool"><strong>seatbelt / landlock exec</strong></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section-rule">
+        <svg viewBox="0 0 520 14" preserveAspectRatio="none"><path d="M4 8 Q 60 2, 130 7 T 260 7 T 390 8 T 516 6"/></svg>
+      </div>
+
+      <p class="callout">
+        Warm but disciplined. Sage rules for structure, clay for emphasis, a small amount of marker handwriting earning its keep on captions and one-word flourishes. The sky-tint and drifting cloud SVG say <em>outside</em> without anyone needing to draw a baseball.
+      </p>
+    </div>
+  </section>
+
+  <!-- =========================================================
+       DIRECTION B — SANDLOT SKETCHBOOK
+       ========================================================= -->
+  <section class="direction sandlot" id="sandlot">
+    <svg class="cloud-a" viewBox="0 0 240 100" xmlns="http://www.w3.org/2000/svg">
+      <path d="M30 70 Q 10 70, 12 50 Q 14 30, 40 32 Q 48 14, 80 18 Q 110 6, 130 24 Q 160 16, 170 42 Q 200 38, 200 60 Q 210 78, 184 80 L 50 80 Q 30 82, 30 70 Z"
+        fill="none" stroke="#1b1812" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <svg class="cloud-b" viewBox="0 0 240 100" xmlns="http://www.w3.org/2000/svg">
+      <path d="M30 70 Q 10 70, 12 50 Q 14 30, 40 32 Q 48 14, 80 18 Q 110 6, 130 24 Q 160 16, 170 42 Q 200 38, 200 60 Q 210 78, 184 80 L 50 80 Q 30 82, 30 70 Z"
+        fill="none" stroke="#1b1812" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <svg class="cloud-c" viewBox="0 0 240 100" xmlns="http://www.w3.org/2000/svg">
+      <path d="M30 70 Q 10 70, 12 50 Q 14 30, 40 32 Q 48 14, 80 18 Q 110 6, 130 24 Q 160 16, 170 42 Q 200 38, 200 60 Q 210 78, 184 80 L 50 80 Q 30 82, 30 70 Z"
+        fill="none" stroke="#1b1812" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <svg class="doodle-star" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
+      <path d="M20 4 L 22 16 L 36 18 L 24 26 L 28 38 L 20 30 L 12 38 L 16 26 L 4 18 L 18 16 Z"
+        fill="none" stroke="#c64a2c" stroke-width="1.8" stroke-linejoin="round"/>
+    </svg>
+    <svg class="doodle-loop" viewBox="0 0 80 60" xmlns="http://www.w3.org/2000/svg">
+      <path d="M10 30 Q 20 8, 40 14 Q 64 22, 56 42 Q 46 58, 28 50 Q 14 44, 18 30 Q 22 18, 36 22"
+        fill="none" stroke="#7a9676" stroke-width="2" stroke-linecap="round"/>
+    </svg>
+
+    <p class="direction-name">B · sandlot sketchbook</p>
+    <div class="sample">
+      <div class="hero">
+        <h1>An agent that <span class="accent">stays at the desk</span><br>after you've left for dinner.</h1>
+        <p class="sub">Carlos is a pure-Go TUI agent. He keeps frames separate, writes everything to a durable log, and asks before he reaches for anything sharp. Single binary, under 30 MB, no Python, no Docker.</p>
+        <p class="meta">~ under 30 MB &nbsp; · &nbsp; no python &nbsp; · &nbsp; no docker ~</p>
+        <div class="chips">
+          <span class="chip">multi-provider</span>
+          <span class="chip">durable log</span>
+          <span class="chip clay">approval-gated</span>
+          <span class="chip">skill induction</span>
+        </div>
+      </div>
+
+      <div class="loops">
+        <div class="loop-card claude">
+          <h3>Claude Code</h3>
+          <p class="who">interactive harness</p>
+          <div class="flow">
+            <div class="node"><strong>read user turn</strong><div class="desc">stdin + transcript</div></div>
+            <div class="arrow"><svg viewBox="0 0 14 14"><path d="M7 2 Q 8 7, 7 12 M3 9 L 7 12 L 11 9"/></svg></div>
+            <div class="node model"><strong>ask model</strong><div class="desc">tools inlined</div></div>
+            <div class="arrow"><svg viewBox="0 0 14 14"><path d="M7 2 Q 6 7, 7 12 M3 9 L 7 12 L 11 9"/></svg></div>
+            <div class="node"><strong>permission gate</strong></div>
+            <div class="arrow"><svg viewBox="0 0 14 14"><path d="M7 2 Q 8 7, 7 12 M3 9 L 7 12 L 11 9"/></svg></div>
+            <div class="node"><strong>dispatch tool</strong></div>
+          </div>
+        </div>
+
+        <div class="loop-card carlos">
+          <h3>carlos</h3>
+          <p class="who">event-sourced agent</p>
+          <div class="flow">
+            <div class="node"><strong>append user event</strong><div class="desc">sqlite log + fts</div></div>
+            <div class="arrow"><svg viewBox="0 0 14 14"><path d="M7 2 Q 8 7, 7 12 M3 9 L 7 12 L 11 9"/></svg></div>
+            <div class="node model"><strong>stream model</strong><div class="desc">multi-provider</div></div>
+            <div class="arrow"><svg viewBox="0 0 14 14"><path d="M7 2 Q 6 7, 7 12 M3 9 L 7 12 L 11 9"/></svg></div>
+            <div class="node gate"><strong>approver.Approve</strong></div>
+            <div class="arrow"><svg viewBox="0 0 14 14"><path d="M7 2 Q 8 7, 7 12 M3 9 L 7 12 L 11 9"/></svg></div>
+            <div class="node"><strong>dispatch + log</strong></div>
+          </div>
+        </div>
+
+        <div class="loop-card codex">
+          <h3>Codex</h3>
+          <p class="who">sandbox-first ReAct</p>
+          <div class="flow">
+            <div class="node"><strong>read turn + AGENTS.md</strong></div>
+            <div class="arrow"><svg viewBox="0 0 14 14"><path d="M7 2 Q 8 7, 7 12 M3 9 L 7 12 L 11 9"/></svg></div>
+            <div class="node model"><strong>plan? then act</strong><div class="desc">/plan toggle</div></div>
+            <div class="arrow"><svg viewBox="0 0 14 14"><path d="M7 2 Q 6 7, 7 12 M3 9 L 7 12 L 11 9"/></svg></div>
+            <div class="node gate"><strong>approval × sandbox</strong></div>
+            <div class="arrow"><svg viewBox="0 0 14 14"><path d="M7 2 Q 8 7, 7 12 M3 9 L 7 12 L 11 9"/></svg></div>
+            <div class="node"><strong>seatbelt / landlock exec</strong></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section-rule">
+        <svg viewBox="0 0 520 14" preserveAspectRatio="none"><path d="M4 8 Q 60 2, 130 7 T 260 7 T 390 8 T 516 6"/></svg>
+      </div>
+
+      <p class="callout">
+        Heavier hand. Marker headings, every card rotated a degree or two, doodle peppering. Reads playful at a glance — but the same content needs the body face (Inter) to stay readable, so anywhere you're scanning real copy still feels normal. Risk: marker-everywhere can tip into <em>cute</em> fast on dense pages like the comparison table.
+      </p>
+    </div>
+  </section>
+
+  <!-- =========================================================
+       DIRECTION C — WHITEWASHED LETTERPRESS
+       ========================================================= -->
+  <section class="direction letterpress" id="letterpress">
+    <p class="direction-name">C · whitewashed letterpress</p>
+    <div class="sample">
+      <div class="hero">
+        <h1>An agent that <span class="accent">stays at the desk</span><br>after you've left for dinner.</h1>
+        <p class="sub">Carlos is a pure-Go TUI agent. He keeps frames separate, writes everything to a durable log, and asks before he reaches for anything sharp. Single binary, under 30 MB, no Python, no Docker.</p>
+        <p class="meta">
+          <span>under 30 MB binary</span>
+          <span class="dot"></span>
+          <span>no Python, no Docker</span>
+          <span class="dot"></span>
+          <span>GPL-3.0</span>
+        </p>
+        <div class="chips">
+          <span class="chip">multi-provider</span>
+          <span class="chip">durable log</span>
+          <span class="chip">approval-gated</span>
+          <span class="chip">skill induction</span>
+        </div>
+      </div>
+
+      <div class="loops">
+        <div class="loop-card claude">
+          <h3>Claude Code</h3>
+          <p class="who">interactive harness</p>
+          <div class="flow">
+            <div class="node"><strong>read user turn</strong><div class="desc">stdin + transcript</div></div>
+            <div class="arrow"><svg viewBox="0 0 14 14"><path d="M7 2 Q 8 7, 7 12 M3 9 L 7 12 L 11 9"/></svg></div>
+            <div class="node model"><strong>ask model</strong><div class="desc">tools inlined</div></div>
+            <div class="arrow"><svg viewBox="0 0 14 14"><path d="M7 2 Q 6 7, 7 12 M3 9 L 7 12 L 11 9"/></svg></div>
+            <div class="node"><strong>permission gate</strong></div>
+            <div class="arrow"><svg viewBox="0 0 14 14"><path d="M7 2 Q 8 7, 7 12 M3 9 L 7 12 L 11 9"/></svg></div>
+            <div class="node"><strong>dispatch tool</strong></div>
+          </div>
+        </div>
+
+        <div class="loop-card carlos">
+          <h3>carlos</h3>
+          <p class="who">event-sourced agent</p>
+          <div class="flow">
+            <div class="node"><strong>append user event</strong></div>
+            <div class="arrow"><svg viewBox="0 0 14 14"><path d="M7 2 Q 8 7, 7 12 M3 9 L 7 12 L 11 9"/></svg></div>
+            <div class="node model"><strong>stream model</strong></div>
+            <div class="arrow"><svg viewBox="0 0 14 14"><path d="M7 2 Q 6 7, 7 12 M3 9 L 7 12 L 11 9"/></svg></div>
+            <div class="node gate"><strong>approver.Approve</strong></div>
+            <div class="arrow"><svg viewBox="0 0 14 14"><path d="M7 2 Q 8 7, 7 12 M3 9 L 7 12 L 11 9"/></svg></div>
+            <div class="node"><strong>dispatch + log</strong></div>
+          </div>
+        </div>
+
+        <div class="loop-card codex">
+          <h3>Codex</h3>
+          <p class="who">sandbox-first ReAct</p>
+          <div class="flow">
+            <div class="node"><strong>read turn + AGENTS.md</strong></div>
+            <div class="arrow"><svg viewBox="0 0 14 14"><path d="M7 2 Q 8 7, 7 12 M3 9 L 7 12 L 11 9"/></svg></div>
+            <div class="node model"><strong>plan? then act</strong></div>
+            <div class="arrow"><svg viewBox="0 0 14 14"><path d="M7 2 Q 6 7, 7 12 M3 9 L 7 12 L 11 9"/></svg></div>
+            <div class="node gate"><strong>approval × sandbox</strong></div>
+            <div class="arrow"><svg viewBox="0 0 14 14"><path d="M7 2 Q 8 7, 7 12 M3 9 L 7 12 L 11 9"/></svg></div>
+            <div class="node"><strong>seatbelt / landlock exec</strong></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section-rule">
+        <svg viewBox="0 0 520 14" preserveAspectRatio="none"><path d="M4 8 Q 60 2, 130 7 T 260 7 T 390 8 T 516 6"/></svg>
+      </div>
+
+      <p class="callout">
+        Ink on cotton. Single accent. Reads like a small literary press. The "outside" feeling is mostly absent — it's a quiet, restrained option that probably underdelivers on the Carlos brief but is the safest if the brand needs to grow up later.
+      </p>
+    </div>
+  </section>
+</body>
+</html>

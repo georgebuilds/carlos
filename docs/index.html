@@ -18,22 +18,40 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
     rel="stylesheet"
-    href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&family=Rubik+Spray+Paint&display=swap"
+    href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&family=Rubik+Spray+Paint&display=swap"
   />
   <style>
     :root {
-      --paper: #f1eadc;
-      --paper-hi: #f7f1e3;
-      --paper-lo: #e7decb;
-      --card: #fbf5e6;
-      --ink: #161b25;
-      --ink-soft: #2a2f3a;
+      /* paper layer — slightly warmer cream for the sandlot direction */
+      --paper: #f4ecd8;
+      --paper-hi: #fdf7e6;
+      --paper-lo: #ece4d2;
+      --card: #fdf7e6;
+      --ink: #1b1812;
+      --ink-soft: #3a342a;
       --muted: #6b6357;
       --subtle: #8a8170;
       --brace: #b3a791;
-      --rule: rgba(20, 22, 30, 0.12);
+      --rule: rgba(27, 24, 18, 0.16);
+      --rule-soft: rgba(27, 24, 18, 0.08);
+
+      /* sandlot palette additions */
+      --navy:      #2c4a78;
+      --navy-soft: rgba(44, 74, 120, 0.14);
+      --navy-deep: #1f3658;
+      --sky:       #d8e2ee;
+      --sky-soft:  rgba(216, 226, 238, 0.65);
+      --sage:      #7a9676;
+      --sage-soft: rgba(122, 150, 118, 0.20);
+      --sun:       #e8a635;
+      --sun-soft:  rgba(232, 166, 53, 0.18);
+
+      /* keep clay/accent for backward compat with existing rules */
       --accent: #c64a2c;
-      --accent-soft: rgba(198, 74, 44, 0.12);
+      --accent-soft: rgba(198, 74, 44, 0.14);
+      --clay: #c64a2c;
+      --clay-soft: rgba(198, 74, 44, 0.14);
+
       --ok: #2f7d3a;
       --warn: #b15010;
       --shadow: rgba(20, 22, 30, 0.16);
@@ -61,8 +79,20 @@
         --subtle: #6b6357;
         --brace: #4d4738;
         --rule: rgba(236, 228, 210, 0.12);
+        --rule-soft: rgba(236, 228, 210, 0.06);
+        --navy:      #7aa0d4;
+        --navy-soft: rgba(122, 160, 212, 0.18);
+        --navy-deep: #a8c3e8;
+        --sky:       #1f2a3c;
+        --sky-soft:  rgba(31, 42, 60, 0.5);
+        --sage:      #a3c0a0;
+        --sage-soft: rgba(163, 192, 160, 0.18);
+        --sun:       #f3c886;
+        --sun-soft:  rgba(243, 200, 134, 0.18);
         --accent: #e16a4a;
         --accent-soft: rgba(225, 106, 74, 0.18);
+        --clay: #e16a4a;
+        --clay-soft: rgba(225, 106, 74, 0.18);
         --ok: #5cb86f;
         --warn: #e3a06b;
         --shadow: rgba(0, 0, 0, 0.5);
@@ -80,6 +110,8 @@
 
     body {
       background:
+        radial-gradient(ellipse 60% 40% at 20% 0%, var(--sky-soft), transparent 65%),
+        radial-gradient(ellipse 70% 50% at 80% 20%, var(--sky-soft), transparent 60%),
         radial-gradient(ellipse 90% 60% at 50% 0%, var(--paper-hi), transparent 70%),
         radial-gradient(ellipse 90% 60% at 50% 100%, var(--paper-lo), transparent 70%),
         var(--paper);
@@ -193,11 +225,15 @@
 
     h1, h2, h3 { font-family: 'Instrument Serif', 'Times New Roman', serif; font-weight: 400; }
     h2 {
-      font-size: clamp(26px, 3.4vw, 38px);
-      letter-spacing: -0.012em;
-      margin: 0 0 6px;
-      line-height: 1.1;
+      font-family: 'Caveat', cursive;
+      font-weight: 700;
+      font-size: clamp(34px, 4.2vw, 50px);
+      letter-spacing: 0;
+      line-height: 1;
+      margin: 0 0 8px;
+      color: var(--ink);
     }
+    h2 .accent { color: var(--navy); }
     .section-sub {
       color: var(--muted); font-size: 14.5px;
       margin: 0 0 32px;
@@ -227,14 +263,15 @@
       50%      { transform: translateY(-8px); }
     }
     h1.hero-title {
-      font-family: 'Instrument Serif', 'Times New Roman', serif;
-      font-weight: 400;
-      font-size: clamp(28px, 4.4vw, 56px);
-      line-height: 1.08;
-      letter-spacing: -0.012em;
-      margin: 8px 0 6px;
+      font-family: 'Caveat', cursive;
+      font-weight: 700;
+      font-size: clamp(36px, 5.6vw, 72px);
+      line-height: 1;
+      letter-spacing: 0;
+      margin: 8px 0 10px;
       color: var(--ink);
     }
+    h1.hero-title .variable-slot { color: var(--navy); }
     .variable-slot {
       display: inline-flex; align-items: baseline; gap: 0.16em;
       white-space: nowrap;
@@ -614,13 +651,28 @@
     .loading { color: var(--muted); font-style: italic; }
 
     /* ─── Carlos TUI reproductions ───────────────────────────────────── */
+    /* Break the demos section out of main's 1180px so half-column TUIs
+       have room to display the full status line without wrapping. */
+    @media (min-width: 1280px) {
+      section.demos {
+        width: min(calc(100vw - 32px), 1520px);
+        position: relative;
+        left: 50%;
+        transform: translateX(-50%);
+        padding-left: clamp(20px, 4vw, 44px);
+        padding-right: clamp(20px, 4vw, 44px);
+      }
+    }
+
     .app-grid {
       display: grid;
       grid-template-columns: 1fr;
       gap: 28px;
       margin-top: 24px;
     }
-    @media (min-width: 900px) {
+    /* Stay single-column until each col would have ~560px of headroom —
+       below that the TUI status bars wrap awkwardly. */
+    @media (min-width: 1180px) {
       .app-grid { grid-template-columns: 1fr 1fr; }
       .app-grid .demo-wide { grid-column: 1 / -1; }
     }
@@ -701,22 +753,39 @@
     }
     .cap-icon-lg { vertical-align: -5px; }
 
-    /* Chat status bar (top of TUI) */
+    /* Chat status bar (top of TUI) — single line, truncate, never wrap. */
     .cstat {
       display: flex;
       justify-content: space-between;
       align-items: baseline;
       gap: 14px;
       margin-bottom: 14px;
-      flex-wrap: wrap;
+      flex-wrap: nowrap;
+      min-width: 0;
     }
-    .cstat-l { display: inline-flex; gap: 12px; align-items: baseline; flex-wrap: wrap; }
-    .cstat .ses-id { color: var(--c-blue); font-weight: 700; letter-spacing: 0.02em; }
-    .cstat .ses-running { color: var(--c-text); }
+    .cstat-l {
+      display: inline-flex;
+      gap: 12px;
+      align-items: baseline;
+      flex: 1 1 auto;
+      min-width: 0;
+      overflow: hidden;
+      white-space: nowrap;
+    }
+    .cstat-l > * { white-space: nowrap; }
+    .cstat .ses-id { color: var(--c-blue); font-weight: 700; letter-spacing: 0.02em; flex-shrink: 0; }
+    .cstat .ses-running { color: var(--c-text); flex-shrink: 0; }
     .cstat .ses-running .dot { color: var(--c-green); }
-    .cstat .ses-model { color: var(--c-mute); }
+    .cstat .ses-model {
+      color: var(--c-mute);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      min-width: 0;
+    }
+    .cstat .ses-sep { color: var(--c-mute); flex-shrink: 0; }
+    .cstat .ses-frame { flex-shrink: 0; }
     .cstat .ses-frame .glyph { color: var(--c-orange); }
-    .cstat .ses-tag { color: var(--c-mute); }
+    .cstat .ses-tag { color: var(--c-mute); flex-shrink: 0; }
 
     /* Conversation rows */
     .crow { display: flex; gap: 12px; align-items: flex-start; padding: 4px 0; }
@@ -819,8 +888,8 @@
     .welcome ul li.indent { padding-left: 36px; }
     .welcome ul li.indent::before { left: 22px; }
 
-    /* Research panel */
-    .research .rcmd {
+    /* Shell-style command prompt — used by carlos research and carlos please */
+    .rcmd {
       padding: 2px 0 6px;
       background: transparent;
       border: 0;
@@ -828,10 +897,15 @@
       font-family: 'JetBrains Mono', ui-monospace, monospace;
       color: var(--c-text);
     }
-    .research .rcmd .arrow { color: var(--c-green); font-weight: 700; margin-right: 8px; }
-    .research .rcmd .home { color: var(--c-blue); margin-right: 10px; }
-    .research .rcmd .txt { color: var(--c-text); }
-    .research .meta-line { color: var(--c-mute); padding: 2px 0; }
+    .rcmd .arrow { color: var(--c-green); font-weight: 700; margin-right: 8px; }
+    .rcmd .home  { color: var(--c-blue);  margin-right: 10px; }
+    .rcmd .txt   { color: var(--c-text); }
+    .research .meta-line {
+      color: var(--c-mute); padding: 2px 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
     .research .meta-line .lbl { color: var(--c-text); }
     .research-box {
       border: 1px solid var(--c-blue);
@@ -1065,10 +1139,113 @@
     }
     .switcher-foot .pair { display: inline-flex; gap: 6px; align-items: baseline; }
     .switcher-foot .key { color: var(--c-blue); font-weight: 700; }
+
+    /* ───────── sandlot additions ───────── */
+    .doodle { position: fixed; pointer-events: none; z-index: 1; opacity: 0.45; }
+    .doodle path { fill: none; stroke: var(--navy); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+    .doodle.ink path  { stroke: var(--ink); }
+    .doodle.sage path { stroke: var(--sage); }
+    .doodle-cloud-1 { top: 120px; right: -10px;  width: 220px; }
+    .doodle-cloud-2 { top: 880px; left: -30px;   width: 180px; opacity: 0.38; }
+    .doodle-cloud-3 { top: 2200px; right: -20px; width: 200px; opacity: 0.38; }
+    @media (max-width: 800px) {
+      .doodle-cloud-1, .doodle-cloud-3 { display: none; }
+    }
+
+    /* hero h1 — give the variable phrase a hand-drawn underline */
+    h1.hero-title .variable-mask::after {
+      content: '';
+      position: absolute; left: -2%; right: -2%; bottom: -8px;
+      height: 11px;
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 11' preserveAspectRatio='none'><path d='M2 6 Q 28 1, 60 5 T 120 5 T 178 4 T 198 6' fill='none' stroke='%232c4a78' stroke-width='2.2' stroke-linecap='round'/></svg>");
+      background-repeat: no-repeat; background-size: 100% 100%;
+      pointer-events: none;
+    }
+    h1.hero-title .variable-mask { position: relative; }
+    .brace { color: var(--navy) !important; opacity: 0.55; }
+
+    /* "deeper dives" link cards section */
+    section.deeper {
+      padding: 56px 0;
+    }
+    .deeper-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 18px;
+      margin-top: 28px;
+    }
+    @media (min-width: 820px) {
+      .deeper-grid { grid-template-columns: 1fr 1fr; }
+    }
+    a.deeper-card {
+      display: block;
+      background: var(--card);
+      border-radius: 14px;
+      padding: 26px 28px;
+      text-decoration: none;
+      color: var(--ink);
+      position: relative;
+      box-shadow: 0 1px 0 var(--rule-soft) inset, 0 14px 28px var(--shadow-soft);
+      transition: transform 0.18s ease, box-shadow 0.18s ease;
+    }
+    a.deeper-card::before {
+      content: ''; position: absolute; inset: 0;
+      border-radius: 14px; padding: 1.5px;
+      background: var(--ink);
+      -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+      -webkit-mask-composite: xor; mask-composite: exclude;
+      opacity: 0.25; pointer-events: none;
+    }
+    a.deeper-card.loop  { transform: rotate(-0.3deg); }
+    a.deeper-card.skill { transform: rotate(0.2deg); }
+    a.deeper-card:hover { transform: rotate(0deg) translateY(-3px); box-shadow: 0 1px 0 var(--rule-soft) inset, 0 22px 38px var(--shadow); }
+    a.deeper-card .eyebrow {
+      font-family: 'Caveat', cursive;
+      font-size: 22px;
+      color: var(--clay);
+      transform: rotate(-1deg);
+      display: inline-block;
+      margin-bottom: 2px;
+    }
+    a.deeper-card .ttl {
+      font-family: 'Caveat', cursive;
+      font-weight: 700;
+      font-size: 38px;
+      line-height: 1;
+      color: var(--ink);
+      margin: 4px 0 8px;
+    }
+    a.deeper-card.loop  .ttl span.accent { color: var(--navy); }
+    a.deeper-card.skill .ttl span.accent { color: var(--sage); }
+    a.deeper-card p {
+      font-size: 15px; line-height: 1.55;
+      color: var(--ink-soft); margin: 0 0 14px;
+    }
+    a.deeper-card .go {
+      display: inline-flex; gap: 8px; align-items: center;
+      font-family: 'Inter', sans-serif; font-weight: 600; font-size: 13px;
+      letter-spacing: 0.04em;
+      color: var(--navy);
+    }
+    a.deeper-card .go::after {
+      content: '→'; transition: transform 0.18s ease;
+    }
+    a.deeper-card:hover .go::after { transform: translateX(4px); }
   </style>
 </head>
 <body>
   <a class="skip-link" href="#main" data-i18n="a11y.skip">Skip to content</a>
+
+  <!-- ambient sandlot doodles -->
+  <svg class="doodle doodle-cloud-1" viewBox="0 0 240 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path d="M30 70 Q 10 70, 12 50 Q 14 30, 40 32 Q 48 14, 80 18 Q 110 6, 130 24 Q 160 16, 170 42 Q 200 38, 200 60 Q 210 78, 184 80 L 50 80 Q 30 82, 30 70 Z"/>
+  </svg>
+  <svg class="doodle doodle-cloud-2 sage" viewBox="0 0 240 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path d="M30 70 Q 10 70, 12 50 Q 14 30, 40 32 Q 48 14, 80 18 Q 110 6, 130 24 Q 160 16, 170 42 Q 200 38, 200 60 Q 210 78, 184 80 L 50 80 Q 30 82, 30 70 Z"/>
+  </svg>
+  <svg class="doodle doodle-cloud-3 ink" viewBox="0 0 240 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path d="M30 70 Q 10 70, 12 50 Q 14 30, 40 32 Q 48 14, 80 18 Q 110 6, 130 24 Q 160 16, 170 42 Q 200 38, 200 60 Q 210 78, 184 80 L 50 80 Q 30 82, 30 70 Z"/>
+  </svg>
 
   <header class="top" role="banner">
     <a class="brand" href="./" aria-label="carlos home">carlos</a>
@@ -1084,6 +1261,7 @@
       </div>
       <a href="https://github.com/georgebuilds/carlos" rel="noopener" data-i18n="nav.github">GitHub</a>
       <a href="./agent-loop.html" data-i18n="nav.agentLoop">Agent loop</a>
+      <a href="./skills.html" data-i18n="nav.skills">Skills</a>
     </nav>
   </header>
 
@@ -1514,9 +1692,9 @@
 
                 <div class="please-stats">~ 1.2k tokens · $0.004 · 1.4s · 1 tool call · 1 turn</div>
 
-                <div class="please-end">
-                  <span style="color: var(--c-green); font-weight: 700;">→</span>
-                  <span style="color: var(--c-blue);">~</span>
+                <div class="please-end rcmd">
+                  <span class="arrow">→</span>
+                  <span class="home">~</span>
                   <span class="caret" aria-hidden="true"></span>
                 </div>
               </div>
@@ -1532,7 +1710,7 @@
         <figure
           class="demo"
           role="img"
-          aria-label="The carlos frame switcher overlay: a 2x3 grid of frame tiles - personal (selected, orange), work, ludus, research, writing, and a dashed new-frame placeholder. Keybindings at the bottom."
+          aria-label="The carlos frame switcher overlay: a 2x3 grid of frame tiles - personal (selected, orange), work, ludus, minilab, writing, and a dashed new-frame placeholder. Keybindings at the bottom."
           data-i18n-aria-label="demo.switcher.alt"
         >
           <div class="app-window">
@@ -1564,7 +1742,7 @@
                 </div>
                 <div class="frame-tile teal">
                   <span class="glyph" aria-hidden="true">◈</span>
-                  <span class="name">research</span>
+                  <span class="name">minilab</span>
                 </div>
                 <div class="frame-tile plum">
                   <span class="glyph" aria-hidden="true">✦</span>
@@ -1586,7 +1764,7 @@
           </div>
           <figcaption>
             <strong data-i18n="demo.switcher.t">Frame switcher (Ctrl+F)</strong>
-            <span data-i18n="demo.switcher.d">Personal, work, side projects. Each frame carries its own glyph, accent color, rules, and provider. Add a new one any time — and carlos never writes across the line unless you ask.</span>
+            <span data-i18n="demo.switcher.d">Personal, work, side projects. Each frame carries its own glyph, accent color, rules, and provider. Add a new one any time, and carlos never writes across the line unless you ask.</span>
           </figcaption>
         </figure>
 
@@ -1717,6 +1895,28 @@
       </dl>
     </section>
 
+    <!-- ─── DEEPER DIVES ────────────────────────────────────────── -->
+    <section class="deeper" id="deeper" aria-labelledby="deeper-title">
+      <h2 id="deeper-title"><span data-i18n="deeper.t1">Go a little</span> <span class="accent" data-i18n="deeper.t2">deeper</span><span data-i18n="deeper.t3">.</span></h2>
+      <p class="section-sub" data-i18n="deeper.sub">
+        Two short reads if you want to know what's under the hood before you commit a day to it.
+      </p>
+      <div class="deeper-grid">
+        <a class="deeper-card loop" href="./agent-loop.html">
+          <span class="eyebrow" data-i18n="deeper.loop.eyebrow">~ side-by-side ~</span>
+          <div class="ttl"><span data-i18n="deeper.loop.t1">The agent</span> <span class="accent" data-i18n="deeper.loop.t2">loop</span><span data-i18n="deeper.loop.t3">, compared.</span></div>
+          <p data-i18n="deeper.loop.p">Three columns, side by side: Claude Code, carlos, OpenAI Codex. Hover any step to see the equivalent step light up in the other two. Where the three converge, and where they don't.</p>
+          <span class="go" data-i18n="deeper.loop.go">read the loop comparison</span>
+        </a>
+        <a class="deeper-card skill" href="./skills.html">
+          <span class="eyebrow" data-i18n="deeper.skill.eyebrow">~ a small library you grow ~</span>
+          <div class="ttl"><span data-i18n="deeper.skill.t1">How</span> <span class="accent" data-i18n="deeper.skill.t2">skills</span> <span data-i18n="deeper.skill.t3">work.</span></div>
+          <p data-i18n="deeper.skill.p">Author a SKILL.md by hand, drop it in <code>~/.agents/skills/</code>, and carlos picks it up next session. Or let carlos watch your transcripts and propose new skills. Nothing auto-publishes; the human is the gate.</p>
+          <span class="go" data-i18n="deeper.skill.go">read the skills guide</span>
+        </a>
+      </div>
+    </section>
+
   </main>
 
   <footer class="bottom" role="contentinfo">
@@ -1724,6 +1924,7 @@
     <nav aria-label="Footer">
       <a href="https://github.com/georgebuilds/carlos" rel="noopener" data-i18n="nav.github">GitHub</a>
       <a href="./agent-loop.html" data-i18n="nav.agentLoop">Agent loop</a>
+      <a href="./skills.html" data-i18n="nav.skills">Skills</a>
       <a href="https://github.com/georgebuilds/carlos/blob/main/LICENSE" rel="noopener" data-i18n="footer.license">License</a>
     </nav>
   </footer>
@@ -1738,6 +1939,7 @@
           'a11y.skip':        'Skip to content',
           'nav.github':       'GitHub',
           'nav.agentLoop':    'Agent loop',
+          'nav.skills':       'Skills',
           'nav.langLabel':    'Language',
           'hero.t1':          'The most',
           'hero.t2':          'coding agent.',
@@ -1789,8 +1991,8 @@
           'demo.please.d':    'One-shot tool-use loop, no TUI. Approval gate on the risky calls; pass -y to auto-approve in scripts. Output stays in your scrollback.',
           'demo.please.alt':  'carlos please command output: provider banner, an orange-flagged tool approval for git log, the bash result, carlos’s reply listing five commits, and a token/cost stats footer.',
           'demo.switcher.t':  'Frame switcher (Ctrl+F)',
-          'demo.switcher.d':  'Personal, work, side projects. Each frame carries its own glyph, accent color, rules, and provider. Add a new one any time — and carlos never writes across the line unless you ask.',
-          'demo.switcher.alt':'The carlos frame switcher overlay: a 2x3 grid of frame tiles - personal (selected, orange), work, ludus, research, writing, and a dashed new-frame placeholder. Keybindings at the bottom.',
+          'demo.switcher.d':  'Personal, work, side projects. Each frame carries its own glyph, accent color, rules, and provider. Add a new one any time, and carlos never writes across the line unless you ask.',
+          'demo.switcher.alt':'The carlos frame switcher overlay: a 2x3 grid of frame tiles - personal (selected, orange), work, ludus, minilab, writing, and a dashed new-frame placeholder. Keybindings at the bottom.',
           'demo.onb1.t':      'Onboarding · step 1',
           'demo.onb1.d':      'What carlos calls you in the greeting. The personal frame opens by default; add work or side frames later with /frame new or Ctrl+F.',
           'demo.onb1.alt':    'The carlos onboarding wizard, step 1 of 8: a big Carlos avatar on the left and a name prompt on the right reading What should I call you, with Boss typed.',
@@ -1809,6 +2011,23 @@
           'keys.compact':     'summarize the transcript, keep going',
           'keys.rewind':      'cancel the in-flight tool call',
 
+          'deeper.t1':           'Go a little',
+          'deeper.t2':           'deeper',
+          'deeper.t3':           '.',
+          'deeper.sub':          'Two short reads if you want to know what’s under the hood before you commit a day to it.',
+          'deeper.loop.eyebrow': '~ side-by-side ~',
+          'deeper.loop.t1':      'The agent',
+          'deeper.loop.t2':      'loop',
+          'deeper.loop.t3':      ', compared.',
+          'deeper.loop.p':       'Three columns, side by side: Claude Code, carlos, OpenAI Codex. Hover any step to see the equivalent step light up in the other two. Where the three converge, and where they don’t.',
+          'deeper.loop.go':      'read the loop comparison',
+          'deeper.skill.eyebrow':'~ a small library you grow ~',
+          'deeper.skill.t1':     'How',
+          'deeper.skill.t2':     'skills',
+          'deeper.skill.t3':     'work.',
+          'deeper.skill.p':      'Author a SKILL.md by hand, drop it in ~/.agents/skills/, and carlos picks it up next session. Or let carlos watch your transcripts and propose new skills. Nothing auto-publishes; the human is the gate.',
+          'deeper.skill.go':     'read the skills guide',
+
           'footer.line':      'carlos · pure-Go agent · MMXXVI',
           'footer.license':   'License',
 
@@ -1822,6 +2041,7 @@
           'a11y.skip':        'Saltar al contenido',
           'nav.github':       'GitHub',
           'nav.agentLoop':    'Bucle del agente',
+          'nav.skills':       'Skills',
           'nav.langLabel':    'Idioma',
           'hero.t1':          'El agente de programación más',
           'hero.t2':          '.',
@@ -1873,8 +2093,8 @@
           'demo.please.d':    'Bucle de herramientas de una sola tirada, sin TUI. Pide aprobación en las llamadas arriesgadas; pasa -y para auto-aprobar en scripts. La salida se queda en tu scrollback.',
           'demo.please.alt':  'Salida del comando carlos please: banner del proveedor, una aprobación de herramienta marcada en naranja para git log, el resultado de bash, la respuesta de carlos listando cinco commits y un pie con stats de tokens y coste.',
           'demo.switcher.t':  'Selector de frame (Ctrl+F)',
-          'demo.switcher.d':  'Personal, trabajo, side projects. Cada frame con su glifo, color de acento, reglas y proveedor. Añade uno nuevo cuando quieras — y carlos no escribe del otro lado de la línea sin permiso.',
-          'demo.switcher.alt':'El selector de frames de carlos: una cuadrícula 2x3 de casillas - personal (seleccionada, en naranja), work, ludus, research, writing y una casilla discontinua para crear un frame nuevo. Atajos abajo.',
+          'demo.switcher.d':  'Personal, trabajo, side projects. Cada frame con su glifo, color de acento, reglas y proveedor. Añade uno nuevo cuando quieras, y carlos no escribe del otro lado de la línea sin permiso.',
+          'demo.switcher.alt':'El selector de frames de carlos: una cuadrícula 2x3 de casillas - personal (seleccionada, en naranja), work, ludus, minilab, writing y una casilla discontinua para crear un frame nuevo. Atajos abajo.',
           'demo.onb1.t':      'Onboarding · paso 1',
           'demo.onb1.d':      'Cómo te llama carlos en el saludo. El frame personal se abre por defecto; añade work o side luego con /frame new o Ctrl+F.',
           'demo.onb1.alt':    'El wizard de onboarding de carlos, paso 1 de 8: un avatar grande de Carlos a la izquierda y un prompt de nombre a la derecha que dice What should I call you con Boss escrito.',
@@ -1892,6 +2112,23 @@
           'keys.perms':       'estado de aprobaciones por capas y audit log',
           'keys.compact':     'resumir la transcripción y seguir',
           'keys.rewind':      'cancelar la llamada a herramienta en curso',
+
+          'deeper.t1':           'Mira un poco más',
+          'deeper.t2':           'a fondo',
+          'deeper.t3':           '.',
+          'deeper.sub':          'Dos lecturas cortas para entender lo que hay debajo antes de meterle un día.',
+          'deeper.loop.eyebrow': '~ lado a lado ~',
+          'deeper.loop.t1':      'El bucle del',
+          'deeper.loop.t2':      'agente',
+          'deeper.loop.t3':      ', comparado.',
+          'deeper.loop.p':       'Tres columnas, una al lado de la otra: Claude Code, carlos, OpenAI Codex. Pasa el ratón por cualquier paso y se ilumina el equivalente en las otras dos. En qué coinciden las tres y en qué no.',
+          'deeper.loop.go':      'leer la comparación',
+          'deeper.skill.eyebrow':'~ una pequeña librería que cultivas ~',
+          'deeper.skill.t1':     'Cómo funcionan las',
+          'deeper.skill.t2':     'habilidades',
+          'deeper.skill.t3':     '.',
+          'deeper.skill.p':      'Escribe un SKILL.md a mano, ponlo en ~/.agents/skills/ y carlos lo carga en la próxima sesión. O deja que carlos vea tus transcripciones y proponga habilidades nuevas. Nada se publica solo; el humano es la puerta.',
+          'deeper.skill.go':     'leer la guía de skills',
 
           'footer.line':      'carlos · agente puro en Go · MMXXVI',
           'footer.license':   'Licencia',

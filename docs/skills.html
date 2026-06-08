@@ -1,0 +1,677 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>carlos · skills · author, install, induce</title>
+  <meta name="description" content="How carlos's skills work: SKILL.md packaging, where they live on disk, how to author one, and how carlos proposes new skills from your transcripts." />
+  <link rel="icon" type="image/png" href="./branding/carlos-portrait.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    rel="stylesheet"
+    href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+  />
+  <style>
+    :root {
+      --paper:    #f4ecd8;
+      --paper-hi: #fdf7e6;
+      --paper-lo: #ece4d2;
+      --card:     #fdf7e6;
+      --sky:      #d8e2ee;
+      --sky-soft: rgba(216, 226, 238, 0.65);
+      --navy:      #2c4a78;
+      --navy-soft: rgba(44, 74, 120, 0.14);
+      --navy-deep: #1f3658;
+      --clay:      #c64a2c;
+      --clay-soft: rgba(198, 74, 44, 0.14);
+      --sage:      #7a9676;
+      --sage-soft: rgba(122, 150, 118, 0.20);
+      --sun:       #e8a635;
+      --sun-soft:  rgba(232, 166, 53, 0.18);
+      --ink:      #1b1812;
+      --ink-soft: #3a342a;
+      --muted:    #6b6357;
+      --rule:     rgba(27, 24, 18, 0.18);
+      --rule-soft:rgba(27, 24, 18, 0.10);
+      --shadow:   rgba(20, 22, 30, 0.10);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --paper:#15171c; --paper-hi:#1c1f27; --paper-lo:#0b0d12; --card:#1a1d27;
+        --sky:#1f2a3c; --sky-soft:rgba(31,42,60,0.5);
+        --navy:#7aa0d4; --navy-soft:rgba(122,160,212,0.18); --navy-deep:#a8c3e8;
+        --clay:#e87a55; --clay-soft:rgba(232,122,85,0.18);
+        --sage:#a3c0a0; --sage-soft:rgba(163,192,160,0.18);
+        --sun:#f3c886;  --sun-soft:rgba(243,200,134,0.18);
+        --ink:#ece4d2; --ink-soft:#c9c1ad; --muted:#8a8170;
+        --rule:rgba(236,228,210,0.18); --rule-soft:rgba(236,228,210,0.08);
+        --shadow:rgba(0,0,0,0.5);
+      }
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; min-height: 100%; }
+    body {
+      background:
+        radial-gradient(ellipse 60% 40% at 25% 0%, var(--sky-soft), transparent 65%),
+        radial-gradient(ellipse 70% 50% at 80% 30%, var(--sage-soft), transparent 60%),
+        radial-gradient(ellipse 90% 60% at 50% 100%, var(--paper-lo), transparent 70%),
+        var(--paper);
+      background-attachment: fixed;
+      color: var(--ink);
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      min-height: 100vh; line-height: 1.55;
+    }
+    body::before {
+      content: ''; position: fixed; inset: 0;
+      pointer-events: none; z-index: 1;
+      opacity: 0.5; mix-blend-mode: multiply;
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.06 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+    }
+    @media (prefers-color-scheme: dark) { body::before { mix-blend-mode: screen; opacity: 0.3; } }
+
+    .doodle { position: fixed; pointer-events: none; z-index: 1; opacity: 0.55; }
+    .doodle path { fill: none; stroke: var(--navy); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+    .doodle.sage path { stroke: var(--sage); }
+    .doodle.ink path { stroke: var(--ink); }
+    .doodle-cloud-1 { top: 100px; right: -10px; width: 220px; }
+    .doodle-cloud-2 { top: 620px; left: -30px; width: 180px; opacity: 0.45; }
+    .doodle-cloud-3 { top: 1280px; right: -20px; width: 200px; opacity: 0.42; }
+    .doodle-loop    { top: 460px; right: 10%; width: 70px; opacity: 0.5; }
+    @media (max-width: 800px) {
+      .doodle-cloud-1, .doodle-cloud-3 { display: none; }
+    }
+
+    header, footer {
+      position: relative; z-index: 3;
+      padding: 26px 36px;
+      display: flex; align-items: center; justify-content: space-between;
+      font-size: 11px; letter-spacing: 0.26em;
+      text-transform: uppercase;
+      color: var(--muted); font-weight: 500;
+    }
+    header nav { display: flex; gap: 22px; align-items: center; }
+    header .mark {
+      color: var(--ink); letter-spacing: 0.18em; font-weight: 600;
+      text-decoration: none;
+      display: inline-flex; align-items: center; gap: 10px;
+      transition: color 0.15s;
+    }
+    header .mark:hover { color: var(--navy); }
+    header .mark::before {
+      content: '🧢';
+      font-size: 18px;
+      line-height: 1;
+      letter-spacing: normal;
+      transform: translateY(-1px);
+    }
+    header a {
+      color: var(--muted); text-decoration: none; letter-spacing: 0.24em;
+      padding-bottom: 2px; border-bottom: 1px dotted transparent;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    header a:hover { color: var(--ink); border-bottom-color: var(--navy); }
+
+    main {
+      position: relative; z-index: 2;
+      max-width: 920px;
+      margin: 0 auto;
+      padding: 32px 36px 80px;
+    }
+
+    .hero { margin-bottom: 50px; }
+    .hero .eyebrow {
+      font-family: 'Caveat', cursive; font-weight: 500;
+      font-size: 22px; color: var(--clay);
+      transform: rotate(-1deg); display: inline-block;
+      margin-bottom: 4px;
+    }
+    h1 {
+      font-family: 'Caveat', cursive; font-weight: 700;
+      font-size: clamp(48px, 7vw, 86px);
+      line-height: 0.98; letter-spacing: 0;
+      color: var(--ink); margin: 0 0 18px;
+    }
+    h1 .accent { color: var(--navy); position: relative; }
+    h1 .accent::after {
+      content: '';
+      position: absolute; left: -1%; right: -1%; bottom: -10px;
+      height: 12px;
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 12' preserveAspectRatio='none'><path d='M2 7 Q 28 2, 60 6 T 120 6 T 178 5 T 198 7' fill='none' stroke='%232c4a78' stroke-width='2.4' stroke-linecap='round'/></svg>");
+      background-repeat: no-repeat; background-size: 100% 100%;
+    }
+    .subhead {
+      max-width: 64ch; font-size: 17px; line-height: 1.55;
+      color: var(--ink-soft); margin: 0;
+    }
+
+    h2 {
+      font-family: 'Caveat', cursive; font-weight: 700;
+      font-size: 38px; line-height: 1; letter-spacing: 0;
+      margin: 56px 0 18px; color: var(--ink);
+    }
+    h2 .accent { color: var(--navy); }
+    h2 .num {
+      font-family: 'Caveat', cursive; font-size: 22px;
+      color: var(--clay); margin-right: 14px;
+      vertical-align: 4px;
+    }
+
+    h3 {
+      font-family: 'Inter', sans-serif; font-weight: 600;
+      font-size: 16px; letter-spacing: 0.02em;
+      margin: 28px 0 10px; color: var(--ink);
+    }
+    p { font-size: 16px; line-height: 1.65; color: var(--ink-soft); margin: 0 0 14px; }
+    p code, li code {
+      font-family: 'JetBrains Mono', monospace; font-size: 13px;
+      background: var(--paper-hi); padding: 1px 6px; border-radius: 4px;
+      color: var(--ink); border: 1px solid var(--rule-soft);
+    }
+    ul, ol { padding-left: 22px; margin: 0 0 16px; }
+    ul li, ol li { margin-bottom: 8px; color: var(--ink-soft); }
+
+    /* card */
+    .card {
+      background: var(--card);
+      border-radius: 14px;
+      padding: 22px 24px;
+      box-shadow: 0 1px 0 var(--rule-soft) inset, 0 14px 28px var(--shadow);
+      position: relative;
+      margin: 16px 0 24px;
+      transform: rotate(-0.2deg);
+    }
+    .card::before {
+      content: ''; position: absolute; inset: 0;
+      border-radius: 14px; padding: 1.5px;
+      background: var(--ink);
+      -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+      -webkit-mask-composite: xor; mask-composite: exclude;
+      opacity: 0.28; pointer-events: none;
+    }
+    .card h3 { margin-top: 0; }
+
+    /* code blocks — deep cap-navy ground, warm cream type */
+    .code-block {
+      position: relative;
+      background: #14253f;
+      color: #f3ecda;
+      border-radius: 10px;
+      padding: 18px 20px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      line-height: 1.6;
+      overflow-x: auto;
+      margin: 12px 0 20px;
+      box-shadow: 0 12px 26px var(--shadow);
+      border: 1px solid rgba(243, 236, 218, 0.08);
+    }
+    .code-block .fname {
+      display: block;
+      color: #b8c8e0;
+      font-family: 'Inter', sans-serif;
+      font-size: 11px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      font-weight: 600;
+      margin-bottom: 12px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid rgba(243, 236, 218, 0.10);
+    }
+    .code-block .kw  { color: #dcc5f4; }         /* lavender */
+    .code-block .str { color: #f7d496; }         /* amber */
+    .code-block .com { color: #a8b6c8; font-style: italic; }   /* slate, readable */
+    .code-block .key { color: #9ec0ef; font-weight: 500; }     /* sky */
+    .code-block .val { color: #f3ecda; }                       /* cream */
+    .code-block .h1  { color: #f49274; font-weight: 700; }     /* coral */
+
+    /* file tree / search paths.
+       Category is communicated by colouring the ordinal Caveat number and the
+       right-side note in the kind's tone. No left-edge stripe. */
+    .paths {
+      list-style: none; padding: 0; margin: 12px 0 20px;
+      font-family: 'JetBrains Mono', monospace; font-size: 13px;
+    }
+    .paths li {
+      display: flex; gap: 12px; align-items: baseline;
+      padding: 10px 14px;
+      border: 1px solid var(--rule-soft);
+      border-radius: 8px;
+      background: var(--paper-hi);
+      margin-bottom: 6px;
+    }
+    .paths li .ord {
+      font-family: 'Caveat', cursive;
+      font-weight: 700;
+      font-size: 22px;
+      line-height: 1;
+      min-width: 20px;
+      transform: rotate(-3deg);
+      transform-origin: left center;
+      display: inline-block;
+      color: var(--navy);
+    }
+    .paths li .path { color: var(--ink); }
+    .paths li .note {
+      color: var(--muted);
+      font-family: 'Caveat', cursive;
+      font-size: 17px;
+      letter-spacing: 0;
+      margin-left: auto;
+      transform: rotate(-1deg);
+      display: inline-block;
+    }
+    .paths li.user .ord,  .paths li.user .note  { color: var(--navy); }
+    .paths li.proj .ord,  .paths li.proj .note  { color: #4f7a4d; }
+
+    /* skill chooser (mini tabs) */
+    .tabs {
+      display: flex; gap: 8px; flex-wrap: wrap;
+      margin: 12px 0 0;
+    }
+    .tab {
+      font-family: 'Inter', sans-serif; font-size: 12px;
+      padding: 6px 14px; border-radius: 999px;
+      border: 1.5px solid var(--rule);
+      background: var(--paper-hi);
+      color: var(--ink-soft);
+      cursor: pointer;
+      transition: background 0.12s, border-color 0.12s, color 0.12s, transform 0.12s;
+    }
+    .tab:hover { transform: translateY(-1px); color: var(--ink); border-color: var(--navy); }
+    .tab[aria-selected="true"] {
+      background: var(--navy); color: var(--paper-hi); border-color: var(--navy);
+    }
+    .tab-panel { display: none; }
+    .tab-panel.is-active { display: block; }
+
+    /* induction flow */
+    .induction {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 8px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      margin: 14px 0 24px;
+    }
+    .ind-node {
+      padding: 14px 16px;
+      border-radius: 10px;
+      background: var(--paper-hi);
+      border: 1px solid var(--rule-soft);
+      position: relative;
+    }
+    .ind-node strong {
+      font-family: 'Inter', sans-serif; font-weight: 600; font-size: 12.5px;
+      color: var(--ink);
+    }
+    .ind-node .desc { font-size: 11.5px; color: var(--muted); margin-top: 4px; line-height: 1.5; }
+    /* Category cue is the glyph prefix on the title (no stripe).
+       Plus a small Caveat margin tag in the corner naming the step kind. */
+    .ind-node::after {
+      content: 'step';
+      position: absolute; top: 8px; right: 14px;
+      font-family: 'Caveat', cursive;
+      font-size: 16px;
+      color: var(--navy);
+      opacity: 0.6;
+      transform: rotate(-2deg);
+    }
+    .ind-node.gate::after { content: 'gate'; color: var(--clay); opacity: 0.75; }
+    .ind-node.done::after { content: 'commit'; color: #4f7a4d; opacity: 0.75; }
+    .ind-node.gate strong::before { content: '⌥ '; color: var(--clay); }
+    .ind-node.done strong::before { content: '✓ '; color: #4f7a4d; }
+    .ind-arrow {
+      align-self: center; color: var(--muted);
+      font-family: 'Caveat', cursive; font-size: 16px;
+      padding: 2px 0;
+    }
+    .ind-arrow::before { content: '↓'; }
+
+    /* honest scope */
+    .scope-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 14px;
+      margin: 12px 0 24px;
+    }
+    @media (min-width: 720px) {
+      .scope-grid { grid-template-columns: 1fr 1fr; }
+    }
+    .scope-card {
+      background: var(--paper-hi);
+      border: 1px solid var(--rule-soft);
+      border-radius: 10px;
+      padding: 16px 18px;
+    }
+    .scope-card h3 {
+      margin-top: 0;
+      font-family: 'Caveat', cursive; font-weight: 700; font-size: 28px;
+      line-height: 1; position: relative; display: inline-block;
+      padding-bottom: 6px;
+    }
+    /* hand-drawn underline under the h3 in the card's tone color */
+    .scope-card h3::after {
+      content: '';
+      position: absolute; left: -2%; right: -2%; bottom: -2px;
+      height: 9px;
+      background-repeat: no-repeat; background-size: 100% 100%;
+      pointer-events: none;
+    }
+    .scope-card.now   h3 { color: #3b6f3a; }
+    .scope-card.later h3 { color: var(--clay); }
+    .scope-card.now   h3::after {
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 9' preserveAspectRatio='none'><path d='M2 5 Q 28 1, 60 4 T 120 4 T 178 3 T 198 5' fill='none' stroke='%233b6f3a' stroke-width='2' stroke-linecap='round'/></svg>");
+    }
+    .scope-card.later h3::after {
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 9' preserveAspectRatio='none'><path d='M2 5 Q 28 1, 60 4 T 120 4 T 178 3 T 198 5' fill='none' stroke='%23c64a2c' stroke-width='2' stroke-linecap='round'/></svg>");
+    }
+    .scope-card ul { margin-top: 6px; }
+    .scope-card li { font-size: 14px; }
+
+    /* rule */
+    .rule-sketch {
+      margin: 48px auto 16px; width: 100%; max-width: 480px;
+      display: flex; justify-content: center;
+    }
+    .rule-sketch svg { width: 100%; height: 14px; }
+    .rule-sketch svg path { fill: none; stroke: var(--navy); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; opacity: 0.6; }
+
+    /* footnote */
+    .footnote {
+      margin-top: 56px; padding-top: 22px;
+      border-top: 1px solid var(--rule);
+      color: var(--muted); font-size: 13px;
+    }
+    .footnote code { font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+    .footnote a {
+      color: var(--navy); text-decoration: none;
+      border-bottom: 1px solid var(--navy-soft);
+    }
+    .footnote a:hover { border-bottom-color: var(--navy); }
+
+    @media (max-width: 700px) {
+      h1 { font-size: 44px; }
+      h2 { font-size: 30px; }
+      header, footer { padding: 20px 22px; }
+      main { padding: 20px 22px 60px; }
+      .card { transform: none; }
+    }
+  </style>
+</head>
+<body>
+  <svg class="doodle doodle-cloud-1" viewBox="0 0 240 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path d="M30 70 Q 10 70, 12 50 Q 14 30, 40 32 Q 48 14, 80 18 Q 110 6, 130 24 Q 160 16, 170 42 Q 200 38, 200 60 Q 210 78, 184 80 L 50 80 Q 30 82, 30 70 Z"/>
+  </svg>
+  <svg class="doodle doodle-cloud-2 sage" viewBox="0 0 240 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path d="M30 70 Q 10 70, 12 50 Q 14 30, 40 32 Q 48 14, 80 18 Q 110 6, 130 24 Q 160 16, 170 42 Q 200 38, 200 60 Q 210 78, 184 80 L 50 80 Q 30 82, 30 70 Z"/>
+  </svg>
+  <svg class="doodle doodle-cloud-3 ink" viewBox="0 0 240 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path d="M30 70 Q 10 70, 12 50 Q 14 30, 40 32 Q 48 14, 80 18 Q 110 6, 130 24 Q 160 16, 170 42 Q 200 38, 200 60 Q 210 78, 184 80 L 50 80 Q 30 82, 30 70 Z"/>
+  </svg>
+  <svg class="doodle doodle-loop sage" viewBox="0 0 80 60" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path d="M10 30 Q 20 8, 40 14 Q 64 22, 56 42 Q 46 58, 28 50 Q 14 44, 18 30 Q 22 18, 36 22"/>
+  </svg>
+
+  <header>
+    <a class="mark" href="./" aria-label="carlos home">carlos</a>
+    <nav>
+      <a href="./agent-loop.html">agent loop</a>
+      <a href="./">home</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero">
+      <span class="eyebrow">a small library you grow</span>
+      <h1>Skills, <span class="accent">explained.</span></h1>
+      <p class="subhead">
+        A skill is a piece of folded-up procedural knowledge: a recipe carlos can reach for when a task fits its description. You can write skills by hand. You can drop the ones the open <code>agentskills.io</code> standard already publishes into a folder. And here's the distinguishing part: carlos can watch a transcript, notice that a piece of work probably wants to be reusable, and propose a new skill for you to review before it ever lands on disk. Nothing auto-publishes. The human is always the gate.
+      </p>
+    </section>
+
+    <h2><span class="num">01</span>What a <span class="accent">skill</span> is.</h2>
+    <p>
+      A skill is a directory containing a <code>SKILL.md</code> file with YAML frontmatter and a markdown body. Frontmatter declares the metadata; the body is the prompt content the model loads when the skill is relevant. Optional <code>scripts/</code> and <code>reference/</code> subdirectories can ship alongside for deterministic code or supporting docs.
+    </p>
+
+    <div class="card">
+      <h3>Frontmatter fields</h3>
+      <ul>
+        <li><code>name</code>. Kebab-case identifier; must match the enclosing directory or the bundle file name.</li>
+        <li><code>description</code>. <em>Load-bearing</em>. Used to retrieve the skill on intent match. Phrase it as "<em>Use when …</em>" describing the triggering condition, not the implementation.</li>
+        <li><code>backend</code>, <code>frame_default</code>, <code>frames</code>. Optional, route the skill to a specific provider or frame (per Capability config).</li>
+        <li><code>triggers</code>, <code>tools</code>. Optional, legacy keyword hints and required-tool declarations kept for forward compatibility.</li>
+        <li><code>provenance</code>. One of <code>induced</code> / <code>hand-written</code> / <code>imported</code>. Hand-written is the default for anything you author.</li>
+      </ul>
+      <p style="margin-bottom: 0;">
+        Caps: body up to ~20,000 chars (≈5,000 tokens), 50 files per skill directory. Bigger than that, split it.
+      </p>
+    </div>
+
+    <h3 style="margin-top: 28px;">Example shapes</h3>
+    <p>Three real skills from this codebase, switchable below: a bundled one carlos ships with, a hand-written one a user might add, and an induced proposal as it lands in the approval queue before promotion.</p>
+
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" aria-selected="true"  data-tab="bundled">bundled</button>
+      <button class="tab" role="tab" aria-selected="false" data-tab="handwritten">hand-written</button>
+      <button class="tab" role="tab" aria-selected="false" data-tab="induced">induced (proposal)</button>
+    </div>
+
+    <div class="tab-panel is-active" data-panel="bundled">
+      <div class="code-block">
+        <span class="fname">skills/calendar/apple-calendar.md</span>
+<pre><span class="kw">---</span>
+<span class="key">name</span>: <span class="val">calendar-apple</span>
+<span class="key">description</span>: <span class="val">Drive Calendar.app on macOS via osascript. Reads, creates, deletes events in the user's local Calendar database.</span>
+<span class="key">backend</span>: <span class="val">apple</span>
+<span class="key">frame_default</span>: <span class="val">personal</span>
+<span class="key">triggers</span>: <span class="val">[calendar, apple, ical, schedule, event, meeting]</span>
+<span class="kw">---</span>
+
+<span class="h1"># calendar-apple</span>
+
+You drive Calendar.app on macOS through <span class="str">`osascript`</span>. This skill only works on
+darwin. If the host is Linux, stop and tell the user to switch backends.
+
+Run every AppleScript snippet via the <span class="str">`bash`</span> tool:
+
+  <span class="com">tool: bash</span>
+  <span class="com">args:</span>
+  <span class="com">  command: osascript -e '&lt;applescript here&gt;'</span></pre>
+      </div>
+    </div>
+
+    <div class="tab-panel" data-panel="handwritten">
+      <div class="code-block">
+        <span class="fname">~/.agents/skills/release-bump/SKILL.md</span>
+<pre><span class="kw">---</span>
+<span class="key">name</span>: <span class="val">release-bump</span>
+<span class="key">description</span>: <span class="val">Use when the user asks to cut a new release of this project. Bumps the version in go.mod aux, regenerates the CHANGELOG via git-cliff, drafts release notes, and tags.</span>
+<span class="key">provenance</span>: <span class="val">hand-written</span>
+<span class="kw">---</span>
+
+<span class="h1"># release-bump</span>
+
+Steps, in order. Each is a single tool call. Never bundle.
+
+1. Read <span class="str">VERSION</span>. Parse it. Confirm the bump kind (major/minor/patch)
+   with the user before changing anything.
+2. Run <span class="str">`git-cliff --unreleased`</span> to draft the changelog delta. Show
+   the user; let them edit before commit.
+3. Update <span class="str">VERSION</span> and <span class="str">CHANGELOG.md</span> in a single commit titled
+   <span class="str">`release: vX.Y.Z`</span> (no emoji prefix; releases use plain prefixes).
+4. Tag with <span class="str">`git tag -s vX.Y.Z`</span> and push only when explicitly asked.
+
+Never push to <span class="str">main</span> without the user's explicit OK.</pre>
+      </div>
+    </div>
+
+    <div class="tab-panel" data-panel="induced">
+      <div class="code-block">
+        <span class="fname">approval-queue · skill: gh-pr-from-branch · proposed</span>
+<pre><span class="kw">---</span>
+<span class="key">name</span>: <span class="val">gh-pr-from-branch</span>
+<span class="key">description</span>: <span class="val">Use when the user asks to open a PR for the current branch and the branch has unpushed commits. Pushes with -u, drafts a title and body from the diff, and opens via gh pr create.</span>
+<span class="key">provenance</span>: <span class="val">induced</span>
+<span class="key">inducer_model</span>: <span class="val">anthropic:claude-sonnet-4-7</span>
+<span class="key">induced_from</span>: <span class="val">[agent-7f3e, agent-7f9c]</span>
+<span class="kw">---</span>
+
+<span class="h1"># gh-pr-from-branch</span>
+
+<span class="com"># Confidence: 0.82 from replay-eval against 14 historical transcripts</span>
+<span class="com"># Reuse predicted: 6 invocations / 30d</span>
+
+Verify the branch exists on origin (<span class="str">`git rev-parse --abbrev-ref --symbolic-full-name @{u}`</span>);
+if not, push with <span class="str">-u</span>. Then run <span class="str">`gh pr create`</span> with a title under 70
+chars and a body built from the diff summary…</pre>
+      </div>
+    </div>
+
+    <div class="rule-sketch">
+      <svg viewBox="0 0 480 14" preserveAspectRatio="none"><path d="M4 8 Q 60 2, 130 7 T 260 7 T 380 8 T 476 6"/></svg>
+    </div>
+
+    <h2><span class="num">02</span>Where they <span class="accent">live</span>.</h2>
+    <p>
+      Carlos looks for skills in four locations, in priority order. Later wins on name collision, so a project-local skill overrides a user-level one of the same name. Carlos respects both the <strong>Claude convention</strong> (<code>.claude/skills</code>) and the open <strong>agentskills.io standard</strong> (<code>.agents/skills</code>), so you don't have to choose.
+    </p>
+
+    <ol class="paths">
+      <li class="user"><span class="ord">1</span><span class="path">~/.claude/skills/</span><span class="note">user · Claude convention</span></li>
+      <li class="user"><span class="ord">2</span><span class="path">~/.agents/skills/</span><span class="note">user · open standard</span></li>
+      <li class="proj"><span class="ord">3</span><span class="path">&lt;projectRoot&gt;/.claude/skills/</span><span class="note">project · Claude convention</span></li>
+      <li class="proj"><span class="ord">4</span><span class="path">&lt;projectRoot&gt;/.agents/skills/</span><span class="note">project · open standard</span></li>
+    </ol>
+
+    <p>
+      Two layouts are supported: a <strong>single-skill directory</strong> with one <code>SKILL.md</code> plus optional <code>scripts/</code> and <code>reference/</code> subdirs; and a <strong>bundle directory</strong> with multiple <code>.md</code> files, one per skill, each carrying its own frontmatter. The shipped calendar bundle uses the second shape to namespace six related skills (<code>calendar</code>, <code>calendar-apple</code>, <code>calendar-caldav</code>, <code>calendar-ics-file</code>, <code>calendar-mcp</code>, <code>calendar-cross-frame-view</code>) without spawning six sibling directories.
+    </p>
+
+    <div class="rule-sketch">
+      <svg viewBox="0 0 480 14" preserveAspectRatio="none"><path d="M4 8 Q 60 2, 130 7 T 260 7 T 380 8 T 476 6"/></svg>
+    </div>
+
+    <h2><span class="num">03</span>Authoring a <span class="accent">new skill</span>.</h2>
+    <p>The smallest possible flow:</p>
+    <ol>
+      <li>Pick a name. Make a directory: <code>~/.agents/skills/your-skill-name/</code>.</li>
+      <li>Drop a <code>SKILL.md</code> in it with the frontmatter from §1.</li>
+      <li>Write the body as if you were instructing a careful intern. Be concrete about steps, tool calls, and when to stop and ask.</li>
+      <li>Restart your carlos session, or just open a new chat. Skills are scanned at session start.</li>
+    </ol>
+    <p>
+      That's it. No build step, no install command, no manifest registry. The description is what gets matched against intent, so phrase it as <em>"Use when …"</em>. That wording is load-bearing. If the description is vague, carlos can't reach for it; if it's too narrow, it'll be invisible to adjacent tasks that should have triggered it.
+    </p>
+
+    <div class="card">
+      <h3>Naming and shape rules of thumb</h3>
+      <ul>
+        <li>One skill should do one thing. If a skill needs branching logic for completely different cases, it's probably two skills with a shared entry-point dispatcher.</li>
+        <li>Prefer executable scripts in <code>scripts/</code> over long prose. Deterministic operations belong in code; prose lives in the body to explain <em>when</em> and <em>why</em>.</li>
+        <li>If your skill depends on a tool that may not exist (<code>gh</code>, <code>osascript</code>, <code>jq</code>), check for it explicitly and stop with a clear message instead of failing mid-flight.</li>
+        <li>Skills are cheap. Write one for any procedure you've explained more than twice.</li>
+      </ul>
+    </div>
+
+    <div class="rule-sketch">
+      <svg viewBox="0 0 480 14" preserveAspectRatio="none"><path d="M4 8 Q 60 2, 130 7 T 260 7 T 380 8 T 476 6"/></svg>
+    </div>
+
+    <h2><span class="num">04</span>How carlos <span class="accent">proposes</span> skills.</h2>
+    <p>
+      The distinguishing piece. Carlos watches transcripts and, when it spots a chunk of work that's likely reusable, generates a <code>SKILL.md</code> proposal in the same shape you'd hand-author, then routes it through the same approval queue your plans and diffs go through. Nothing publishes itself. The model proposes; the human disposes.
+    </p>
+
+    <div class="induction">
+      <div class="ind-node">
+        <strong>conversation finishes</strong>
+        <div class="desc">A turn ends; the supervisor reads the transcript and the set of skill descriptions already in the library.</div>
+      </div>
+      <div class="ind-arrow"></div>
+      <div class="ind-node">
+        <strong>inducer.Induce()</strong>
+        <div class="desc">Single LLM pass (mid-tier model, ≈$0.02). Prompt asks for either a SKILL.md draft or a null answer, and constrains the description to start with "Use when …". Output is structured.</div>
+      </div>
+      <div class="ind-arrow"></div>
+      <div class="ind-node">
+        <strong>replay-evaluator</strong>
+        <div class="desc">Optional. Scores the proposal against historical transcripts: would-this-have-helped with-vs-without. Low-confidence candidates are auto-rejected before the queue, logged for telemetry.</div>
+      </div>
+      <div class="ind-arrow"></div>
+      <div class="ind-node gate">
+        <strong>approval queue</strong>
+        <div class="desc">Surviving proposals land alongside plans, diffs, and other artifacts in the manage TUI's approval pane, titled <code>skill: &lt;name&gt;</code>. You accept, reject, or edit before accepting.</div>
+      </div>
+      <div class="ind-arrow"></div>
+      <div class="ind-node done">
+        <strong>PromoteAccepted</strong>
+        <div class="desc">On accept, the SKILL.md is written to <code>.agents/skills/&lt;name&gt;/</code> (or your configured location). On reject, the proposal is discarded but the rejection is logged so the inducer can learn what shape you didn't want.</div>
+      </div>
+    </div>
+
+    <p>
+      The architectural commitment is the human gate. Even with perfect replay scoring, carlos will not auto-publish a skill. The cost of a wrong skill is high (every future session loads it on relevance match), and the cost of pausing for a one-second approval is low. That asymmetry is why the queue exists.
+    </p>
+
+    <div class="rule-sketch">
+      <svg viewBox="0 0 480 14" preserveAspectRatio="none"><path d="M4 8 Q 60 2, 130 7 T 260 7 T 380 8 T 476 6"/></svg>
+    </div>
+
+    <h2><span class="num">05</span>What's in <span class="accent">scope</span>, what isn't.</h2>
+    <p>Honest about where the system is today, since this is a v0 area still moving.</p>
+
+    <div class="scope-grid">
+      <div class="scope-card now">
+        <h3>working today</h3>
+        <ul>
+          <li>Hand-authored skills in all five search paths.</li>
+          <li>Bundled calendar skills shipped in the binary.</li>
+          <li>Induction pass with structured proposal output.</li>
+          <li>Optional replay-evaluator gating before the queue.</li>
+          <li>Approval queue + accept/reject workflow.</li>
+          <li>Curator: skills go <code>active → stale → archived</code> based on use-recency; never hard-deleted.</li>
+        </ul>
+      </div>
+      <div class="scope-card later">
+        <h3>still ahead</h3>
+        <ul>
+          <li>Auto-triggered induction wired to the supervisor (today the caller invokes it explicitly).</li>
+          <li>Real description-embedder (today's retrieval is a deterministic stub for v0; a real embedder comes when the cost is worth it).</li>
+          <li>Skill versioning, dependencies, and sharing/marketplace. Local-only for now.</li>
+          <li>A first-class <code>carlos skill new</code> CLI scaffolder.</li>
+        </ul>
+      </div>
+    </div>
+
+    <p>
+      If you author a skill you think the world should have, the right place to share it today is the open <code>agentskills.io</code> ecosystem. Anything that follows that format works in carlos without modification, and anything you write for carlos works in the other clients that adopt the same standard. Skills are portable on purpose.
+    </p>
+
+    <div class="footnote">
+      Implementation: <code>internal/skills/skill.go</code> (data model), <code>internal/skills/library.go</code> (loader), <code>internal/skills/inducer.go</code> (proposal), <code>internal/skills/skillwire/wire.go</code> (queue + promotion), <code>internal/skills/curator.go</code> (lifecycle). Open standard: <a href="https://agentskills.io">agentskills.io</a>.
+    </div>
+  </main>
+
+  <footer>
+    <span>carlos · skills · 2026</span>
+    <a href="./">← home</a>
+  </footer>
+
+  <script>
+    (function () {
+      const tabs = document.querySelectorAll('.tab');
+      const panels = document.querySelectorAll('.tab-panel');
+      tabs.forEach(t => {
+        t.addEventListener('click', () => {
+          const name = t.dataset.tab;
+          tabs.forEach(x => x.setAttribute('aria-selected', x.dataset.tab === name ? 'true' : 'false'));
+          panels.forEach(p => p.classList.toggle('is-active', p.dataset.panel === name));
+        });
+      });
+    })();
+  </script>
+</body>
+</html>
