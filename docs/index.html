@@ -2,30 +2,51 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>carlos · coming soon</title>
-  <meta name="description" content="carlos. a coding agent. coming soon." />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>carlos · download &amp; get started</title>
+  <meta name="description" content="carlos. A single-binary, pure-Go TUI coding agent. Frames, memory in plain markdown, deep research, sub-agent supervision." />
+  <meta name="theme-color" content="#f1eadc" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#11131a" media="(prefers-color-scheme: dark)" />
   <meta property="og:title" content="carlos" />
-  <meta property="og:description" content="The most committed coding agent. Coming soon." />
+  <meta property="og:description" content="The most committed coding agent. Download &amp; getting started." />
   <meta property="og:image" content="./branding/carlos-portrait.png" />
   <link rel="icon" type="image/png" href="./branding/carlos-portrait.png" />
+  <link rel="alternate" hreflang="en" href="./?lang=en" />
+  <link rel="alternate" hreflang="es" href="./?lang=es" />
+  <link rel="alternate" hreflang="x-default" href="./" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
     rel="stylesheet"
-    href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500&family=Rubik+Spray+Paint&display=swap"
+    href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&family=Rubik+Spray+Paint&display=swap"
   />
   <style>
     :root {
       --paper: #f1eadc;
       --paper-hi: #f7f1e3;
       --paper-lo: #e7decb;
+      --card: #fbf5e6;
       --ink: #161b25;
       --ink-soft: #2a2f3a;
       --muted: #6b6357;
+      --subtle: #8a8170;
       --brace: #b3a791;
+      --rule: rgba(20, 22, 30, 0.12);
       --accent: #c64a2c;
-      --shadow: rgba(20, 22, 30, 0.22);
+      --accent-soft: rgba(198, 74, 44, 0.12);
+      --ok: #2f7d3a;
+      --warn: #b15010;
+      --shadow: rgba(20, 22, 30, 0.16);
+      --shadow-soft: rgba(20, 22, 30, 0.08);
+
+      --frame-rust: #c14a3a;
+      --frame-slate: #6a7a8b;
+      --frame-olive: #8b8f5a;
+      --frame-teal: #4a9090;
+      --frame-plum: #8a5a8b;
+      --frame-cream: #c4a374;
+      --frame-sand: #b89868;
+      --frame-navy: #4a6a9a;
     }
 
     @media (prefers-color-scheme: dark) {
@@ -33,26 +54,28 @@
         --paper: #11131a;
         --paper-hi: #181b24;
         --paper-lo: #0b0d12;
+        --card: #1a1d27;
         --ink: #ece4d2;
         --ink-soft: #c9c1ad;
         --muted: #8a8170;
+        --subtle: #6b6357;
         --brace: #4d4738;
+        --rule: rgba(236, 228, 210, 0.12);
         --accent: #e16a4a;
-        --shadow: rgba(0, 0, 0, 0.7);
+        --accent-soft: rgba(225, 106, 74, 0.18);
+        --ok: #5cb86f;
+        --warn: #e3a06b;
+        --shadow: rgba(0, 0, 0, 0.5);
+        --shadow-soft: rgba(0, 0, 0, 0.3);
       }
     }
 
-    *,
-    *::before,
-    *::after {
-      box-sizing: border-box;
-    }
-
-    html,
-    body {
-      margin: 0;
-      padding: 0;
-      min-height: 100%;
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      *, *::before, *::after { animation: none !important; transition: none !important; }
     }
 
     body {
@@ -65,597 +88,2260 @@
       font-family: 'Inter', system-ui, -apple-system, sans-serif;
       -webkit-font-smoothing: antialiased;
       text-rendering: optimizeLegibility;
+      line-height: 1.55;
       min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      overflow-x: hidden;
     }
 
-    /* paper grain */
+    /* paper grain - keeps the brand texture */
     body::before {
       content: '';
-      position: fixed;
-      inset: 0;
+      position: fixed; inset: 0;
       pointer-events: none;
       z-index: 1;
-      opacity: 0.55;
+      opacity: 0.45;
       mix-blend-mode: multiply;
-      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.05 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.05 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
     }
-
     @media (prefers-color-scheme: dark) {
-      body::before { mix-blend-mode: screen; opacity: 0.35; }
+      body::before { mix-blend-mode: screen; opacity: 0.3; }
     }
 
-    header,
-    footer {
+    /* Accessibility primitives */
+    .sr-only {
+      position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+      overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+    }
+    .skip-link {
+      position: absolute; top: -100px; left: 12px;
+      background: var(--ink); color: var(--paper);
+      padding: 10px 14px; border-radius: 6px;
+      font-weight: 600; text-decoration: none; z-index: 100;
+    }
+    .skip-link:focus {
+      top: 12px;
+      outline: 2px solid var(--accent); outline-offset: 2px;
+    }
+    :focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 3px;
+      border-radius: 4px;
+    }
+
+    /* Header */
+    header.top {
       position: relative;
       z-index: 3;
-      padding: 28px 36px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      font-size: 11px;
-      letter-spacing: 0.28em;
+      padding: 22px clamp(20px, 4vw, 44px);
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .brand {
+      font-family: 'Inter', sans-serif;
+      font-size: 12px; letter-spacing: 0.22em; text-transform: uppercase;
+      color: var(--ink); text-decoration: none; font-weight: 500;
+      display: inline-flex; align-items: center; gap: 8px;
+    }
+    .brand::before {
+      content: '🧢';
+      font-size: 16px;
+      line-height: 1;
+      letter-spacing: normal;
+      transform: translateY(-1px);
+    }
+    header.top nav {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 12px; letter-spacing: 0.18em; text-transform: uppercase;
+    }
+    header.top nav a {
+      color: var(--muted); text-decoration: none;
+      padding: 8px 12px; border-radius: 6px;
+      font-weight: 500;
+      transition: color 0.2s ease, background 0.2s ease;
+    }
+    header.top nav a:hover { color: var(--ink); background: var(--accent-soft); }
+    .lang-switcher {
+      display: inline-flex; gap: 0;
+      border: 1px solid var(--rule); border-radius: 8px;
+      overflow: hidden;
+    }
+    .lang-switcher button {
+      background: transparent; border: 0;
+      color: var(--muted); font: inherit;
+      font-size: 11px; letter-spacing: 0.16em; font-weight: 600;
+      padding: 8px 12px; cursor: pointer;
       text-transform: uppercase;
-      color: var(--muted);
-      font-weight: 500;
+      transition: color 0.2s ease, background 0.2s ease;
+    }
+    .lang-switcher button[aria-pressed="true"] {
+      background: var(--accent); color: var(--paper-hi);
+    }
+    .lang-switcher button:hover:not([aria-pressed="true"]) {
+      color: var(--ink); background: var(--accent-soft);
     }
 
-    header .mark {
-      color: var(--ink);
-      letter-spacing: 0.18em;
-      font-weight: 500;
-    }
-
-    header .mark::before {
-      content: '';
-      display: inline-block;
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: var(--accent);
-      margin-right: 10px;
-      vertical-align: 2px;
-      box-shadow: 0 0 0 3px rgba(198, 74, 44, 0.12);
-    }
-
+    /* Main wrapper */
     main {
-      position: relative;
-      z-index: 2;
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      padding: 32px 24px 24px;
+      position: relative; z-index: 2;
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 8px clamp(20px, 4vw, 44px) 64px;
+    }
+    section { padding: 56px 0; scroll-margin-top: 20px; }
+    section + section { border-top: 1px solid var(--rule); }
+    @media (max-width: 720px) { section { padding: 40px 0; } }
+
+    h1, h2, h3 { font-family: 'Instrument Serif', 'Times New Roman', serif; font-weight: 400; }
+    h2 {
+      font-size: clamp(26px, 3.4vw, 38px);
+      letter-spacing: -0.012em;
+      margin: 0 0 6px;
+      line-height: 1.1;
+    }
+    .section-sub {
+      color: var(--muted); font-size: 14.5px;
+      margin: 0 0 32px;
+      max-width: 60ch;
+    }
+
+    /* Hero */
+    .hero {
+      padding: 56px 0 40px;
       text-align: center;
+      display: flex; flex-direction: column; align-items: center;
     }
-
-    .portrait-wrap {
-      position: relative;
-      margin-bottom: 44px;
-      animation: float 6.4s ease-in-out infinite;
-    }
-
-    .portrait {
-      width: 168px;
-      height: auto;
-      display: block;
-      image-rendering: -webkit-optimize-contrast;
-      filter: drop-shadow(0 22px 28px var(--shadow));
-    }
-
     .portrait-text {
       font-family: 'Rubik Spray Paint', 'Instrument Serif', serif;
-      font-size: clamp(72px, 11vw, 132px);
+      font-size: clamp(64px, 11vw, 124px);
       line-height: 1;
       color: var(--ink);
       letter-spacing: 0.01em;
       display: block;
       filter: drop-shadow(0 18px 22px var(--shadow));
       user-select: none;
+      animation: float 6.4s ease-in-out infinite;
+      margin-bottom: 24px;
     }
-
-    /* soft ground shadow that breathes with the float */
-    .portrait-wrap::after {
-      content: '';
-      position: absolute;
-      left: 50%;
-      bottom: -28px;
-      width: 130px;
-      height: 14px;
-      transform: translateX(-50%);
-      background: radial-gradient(ellipse at center, var(--shadow), transparent 70%);
-      filter: blur(2px);
-      animation: shadowPulse 6.4s ease-in-out infinite;
-    }
-
     @keyframes float {
       0%, 100% { transform: translateY(0); }
-      50%      { transform: translateY(-12px); }
+      50%      { transform: translateY(-8px); }
     }
-    @keyframes shadowPulse {
-      0%, 100% { opacity: 0.9; transform: translateX(-50%) scale(1); }
-      50%      { opacity: 0.55; transform: translateX(-50%) scale(0.78); }
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-      .portrait-wrap,
-      .portrait-wrap::after { animation: none; }
-    }
-
-    h1 {
+    h1.hero-title {
       font-family: 'Instrument Serif', 'Times New Roman', serif;
       font-weight: 400;
-      font-size: clamp(30px, 4.6vw, 62px);
+      font-size: clamp(28px, 4.4vw, 56px);
       line-height: 1.08;
       letter-spacing: -0.012em;
-      margin: 0;
+      margin: 8px 0 6px;
       color: var(--ink);
-      white-space: nowrap;
     }
-
     .variable-slot {
-      display: inline-flex;
-      align-items: baseline;
-      gap: 0.16em;
+      display: inline-flex; align-items: baseline; gap: 0.16em;
       white-space: nowrap;
     }
-
     .brace {
       color: var(--brace);
       font-family: 'Instrument Serif', serif;
-      font-style: normal;
-      font-weight: 400;
-      transform: translateY(-0.02em);
+      font-style: normal; font-weight: 400;
     }
-
     .variable-mask {
-      position: relative;
-      display: inline-block;
-      overflow: hidden;
-      vertical-align: baseline;
-      line-height: 1.06;
+      position: relative; display: inline-block;
+      overflow: hidden; vertical-align: baseline; line-height: 1.06;
     }
-
-    /* invisible word that sizes the mask + sets baseline */
-    .ghost {
-      visibility: hidden;
-      font-style: italic;
-      white-space: nowrap;
-    }
-
+    .ghost { visibility: hidden; font-style: italic; white-space: nowrap; }
     .variable {
-      position: absolute;
-      left: 0;
-      right: 0;
-      top: 0;
-      text-align: center;
-      font-style: italic;
-      white-space: nowrap;
+      position: absolute; left: 0; right: 0; top: 0;
+      text-align: center; font-style: italic; white-space: nowrap;
       color: var(--ink);
     }
-
     .letter {
       display: inline-block;
       transition: filter 0.18s ease, opacity 0.18s ease, color 0.18s ease;
     }
     .letter[data-state='scramble'] {
-      filter: blur(0.5px);
-      opacity: 0.75;
-      color: var(--ink-soft);
+      filter: blur(0.5px); opacity: 0.75; color: var(--ink-soft);
     }
-    .letter[data-state='hidden'] {
-      opacity: 0;
-    }
+    .letter[data-state='hidden'] { opacity: 0; }
 
-    .sr-only {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      padding: 0;
-      margin: -1px;
-      overflow: hidden;
-      clip: rect(0, 0, 0, 0);
-      white-space: nowrap;
-      border: 0;
-    }
-
-    /* gentle underline under the variable that re-strokes on each swap */
-    .underline {
-      display: block;
-      height: 1px;
-      margin: 14px auto 0;
-      width: 88px;
-      background: var(--ink-soft);
-      opacity: 0.18;
-      transform-origin: center;
-    }
-
-    /* ─── features ─── */
-
-    .features {
-      margin-top: 72px;
-      width: 100%;
-      max-width: 720px;
-    }
-
-    .features-label {
-      display: flex;
-      align-items: center;
-      gap: 18px;
-      justify-content: center;
-      margin-bottom: 28px;
-      opacity: 0;
-      animation: rise 0.8s cubic-bezier(0.16, 1, 0.3, 1) 1.0s forwards;
-    }
-    .features-label .rule {
-      height: 1px;
-      width: 56px;
-      background: var(--brace);
-      opacity: 0.55;
-    }
-    .features-label .label-text {
-      font-family: 'Inter', system-ui, sans-serif;
-      font-size: 10px;
-      letter-spacing: 0.36em;
-      text-transform: uppercase;
+    .hero-tagline {
+      font-family: 'Inter', sans-serif;
       color: var(--muted);
-      font-weight: 500;
+      font-size: clamp(15px, 1.7vw, 17px);
+      max-width: 56ch;
+      margin: 14px auto 32px;
+      line-height: 1.55;
     }
 
-    .features-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      column-gap: 56px;
-      row-gap: 18px;
+    /* Download CTA */
+    .download-cta {
+      display: flex; flex-wrap: wrap; justify-content: center;
+      gap: 14px;
+    }
+    .btn {
+      display: inline-flex; align-items: center; gap: 14px;
+      padding: 16px 22px;
+      border-radius: 12px;
+      font: inherit; font-weight: 500;
+      text-decoration: none;
+      cursor: pointer; border: 1px solid transparent;
+      transition: transform 0.15s ease, box-shadow 0.2s ease, background 0.2s ease;
+      line-height: 1.2;
+    }
+    .btn-primary {
+      background: var(--accent);
+      color: var(--paper-hi);
+      box-shadow: 0 14px 28px var(--shadow-soft);
+    }
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 18px 32px var(--shadow);
+    }
+    .btn-primary .btn-prefix {
+      font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase;
+      opacity: 0.92; font-weight: 600;
+    }
+    .btn-primary .btn-target {
+      font-size: 16px; font-weight: 600; letter-spacing: -0.005em;
+    }
+    .btn-primary .btn-version {
+      font-family: 'JetBrains Mono', ui-monospace, monospace;
+      font-size: 11px; opacity: 0.92;
+      padding: 3px 8px; border-radius: 5px;
+      background: rgba(255,255,255,0.18);
+    }
+
+    /* btn-copy: two-row brew install primary CTA */
+    .btn-copy {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 8px;
+      padding: 14px 18px;
+      font-family: inherit;
+      min-width: min(560px, 100%);
       text-align: left;
     }
-
-    .feature {
+    .btn-copy .btn-row {
       display: flex;
-      align-items: baseline;
-      gap: 16px;
-      opacity: 0;
-      transform: translateY(6px);
-      animation: rise 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-    }
-    .feature:nth-child(1) { animation-delay: 1.20s; }
-    .feature:nth-child(2) { animation-delay: 1.32s; }
-    .feature:nth-child(3) { animation-delay: 1.44s; }
-    .feature:nth-child(4) { animation-delay: 1.56s; }
-    .feature:nth-child(5) { animation-delay: 1.68s; }
-    .feature:nth-child(6) { animation-delay: 1.80s; }
-    .feature:nth-child(7) { animation-delay: 1.92s; }
-    .feature:nth-child(8) { animation-delay: 2.04s; }
-
-    .feature .num {
-      font-family: 'Inter', system-ui, sans-serif;
-      font-size: 10px;
-      letter-spacing: 0.12em;
-      color: var(--brace);
-      font-weight: 500;
-      font-variant-numeric: tabular-nums;
-      min-width: 18px;
-      padding-top: 0.18em;
-    }
-
-    .feature .line {
-      margin: 0;
-      font-family: 'Inter', system-ui, sans-serif;
-      font-size: 14.5px;
-      line-height: 1.5;
-      color: var(--ink);
-      letter-spacing: -0.005em;
-    }
-    .feature .line .head {
-      font-weight: 500;
-      color: var(--ink);
-    }
-    .feature .line .tail {
-      color: var(--muted);
-    }
-
-    @keyframes rise {
-      to { opacity: 1; transform: translateY(0); }
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-      .features-label, .feature {
-        opacity: 1;
-        transform: none;
-        animation: none;
-      }
-    }
-
-    .tagline {
-      margin-top: 64px;
-      font-family: 'Inter', system-ui, sans-serif;
-      font-size: 11px;
-      letter-spacing: 0.36em;
-      text-transform: uppercase;
-      color: var(--muted);
-      font-weight: 500;
-      display: inline-flex;
       align-items: center;
       gap: 12px;
     }
-
-    .tagline .dot {
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: var(--accent);
-      animation: pulse 2.4s ease-in-out infinite;
-      box-shadow: 0 0 0 0 rgba(198, 74, 44, 0.5);
+    .btn-copy .btn-row-top {
+      justify-content: space-between;
+    }
+    .btn-copy .btn-row-cmd {
+      background: rgba(0, 0, 0, 0.22);
+      border-radius: 8px;
+      padding: 6px 6px 6px 12px;
+      gap: 10px;
+    }
+    .btn-copy .btn-prompt {
+      font-family: 'JetBrains Mono', ui-monospace, monospace;
+      opacity: 0.7; font-size: 13px; font-weight: 600;
+    }
+    .btn-copy .btn-cmd {
+      font-family: 'JetBrains Mono', ui-monospace, monospace;
+      font-size: 14px; font-weight: 500;
+      flex: 1 1 auto;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      color: var(--paper-hi);
+    }
+    .btn-copy .btn-copy-hint {
+      display: inline-flex; align-items: center; gap: 6px;
+      flex-shrink: 0;
+      font-size: 10.5px; letter-spacing: 0.18em; text-transform: uppercase;
+      font-weight: 700; white-space: nowrap;
+      padding: 6px 10px;
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.15);
+      color: var(--paper-hi);
+      transition: background 0.2s ease, transform 0.15s ease;
+    }
+    .btn-copy .btn-copy-hint svg {
+      width: 12px; height: 12px; display: block;
+    }
+    .btn-copy:hover .btn-copy-hint { background: rgba(255, 255, 255, 0.24); }
+    .btn-copy:active .btn-copy-hint { transform: scale(0.96); }
+    .btn-copy.copied .btn-copy-hint {
+      background: rgba(255, 255, 255, 0.32);
+      color: var(--paper-hi);
+    }
+    .btn-copy.copied { background: var(--ok, #2f7d3a); }
+    .btn-secondary {
+      background: transparent;
+      color: var(--ink);
+      border: 1px solid var(--rule);
+    }
+    .btn-secondary:hover {
+      background: var(--accent-soft);
+      border-color: var(--accent-soft);
+    }
+    .btn-secondary .btn-target {
+      font-size: 15px; font-weight: 500;
     }
 
-    @keyframes pulse {
-      0%, 100% { opacity: 1;   transform: scale(1);   box-shadow: 0 0 0 0 rgba(198, 74, 44, 0.45); }
-      50%      { opacity: 0.45; transform: scale(0.85); box-shadow: 0 0 0 6px rgba(198, 74, 44, 0); }
+    .quick-meta {
+      margin-top: 22px;
+      font-size: 12px; letter-spacing: 0.18em; text-transform: uppercase;
+      color: var(--subtle); font-weight: 500;
+      display: inline-flex; align-items: center; gap: 12px; flex-wrap: wrap;
+      justify-content: center;
+    }
+    .quick-meta .dot {
+      width: 4px; height: 4px; border-radius: 50%; background: var(--brace);
     }
 
-    footer a {
+    /* Install grid */
+    .install-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 18px;
+      margin-top: 24px;
+    }
+    .install-card {
+      background: var(--card);
+      border: 1px solid var(--rule);
+      border-radius: 14px;
+      padding: 22px;
+      box-shadow: 0 10px 22px var(--shadow-soft);
+    }
+    .install-card h3 {
+      font-family: 'Inter', sans-serif;
+      font-size: 12px; letter-spacing: 0.18em; text-transform: uppercase;
+      font-weight: 600;
       color: var(--muted);
-      text-decoration: none;
+      margin: 0 0 14px;
+    }
+    .cmd {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--paper-lo);
+      border: 1px solid var(--rule);
+      border-radius: 10px;
+      padding: 8px 8px 8px 14px;
+      margin: 0;
+      font-family: 'JetBrains Mono', ui-monospace, monospace;
+      font-size: 13px;
+      color: var(--ink);
+      line-height: 1.55;
+      overflow: hidden;
+    }
+    @media (prefers-color-scheme: dark) {
+      .cmd { background: rgba(0,0,0,0.25); }
+    }
+    .cmd code {
+      font-family: inherit;
+      flex: 1 1 auto;
+      min-width: 0;
+      overflow-x: auto;
+      white-space: pre;
+      padding: 4px 0;
+      scrollbar-width: thin;
+    }
+    .cmd code::-webkit-scrollbar { height: 4px; }
+    .cmd code::-webkit-scrollbar-thumb { background: var(--rule); border-radius: 2px; }
+    .cmd .prompt { color: var(--accent); user-select: none; margin-right: 8px; }
+    .copy-btn {
+      flex: 0 0 auto;
+      align-self: stretch;
+      display: inline-flex; align-items: center; gap: 5px;
+      background: var(--card);
+      color: var(--muted);
+      border: 1px solid var(--rule);
+      border-radius: 6px;
+      padding: 0 10px;
+      font: inherit; font-size: 10.5px;
+      font-weight: 700;
+      letter-spacing: 0.16em; text-transform: uppercase;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+    }
+    .copy-btn svg { width: 11px; height: 11px; }
+    .copy-btn:hover { background: var(--accent-soft); color: var(--ink); border-color: var(--accent); }
+    .copy-btn.copied { color: var(--ok); border-color: var(--ok); background: rgba(47,125,58,0.08); }
+
+    .platform-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    @media (max-width: 480px) { .platform-grid { grid-template-columns: 1fr; } }
+    .platform-link {
+      display: flex; flex-direction: column;
+      padding: 12px 14px;
+      background: var(--paper-lo);
+      border: 1px solid var(--rule);
+      border-radius: 8px;
+      text-decoration: none; color: var(--ink);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      transition: background 0.2s ease, border-color 0.2s ease;
+    }
+    @media (prefers-color-scheme: dark) {
+      .platform-link { background: rgba(0,0,0,0.25); }
+    }
+    .platform-link:hover {
+      background: var(--accent-soft);
+      border-color: var(--accent);
+    }
+    .platform-link .os { font-weight: 600; }
+    .platform-link .arch { color: var(--muted); font-size: 11px; margin-top: 2px; }
+
+    .install-foot {
+      margin-top: 18px; font-size: 13px; color: var(--muted);
+    }
+    .install-foot a { color: var(--accent); text-decoration: none; border-bottom: 1px solid var(--accent-soft); }
+    .install-foot a:hover { border-bottom-color: var(--accent); }
+
+    /* Getting started */
+    .steps {
+      list-style: none;
+      counter-reset: step;
+      padding: 0; margin: 24px 0 0;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 18px;
+    }
+    .steps li {
+      background: var(--card);
+      border: 1px solid var(--rule);
+      border-radius: 14px;
+      padding: 24px 22px 22px;
+      box-shadow: 0 10px 22px var(--shadow-soft);
+    }
+    .steps h3 {
+      font-family: 'Inter', sans-serif;
+      font-size: 13.5px; letter-spacing: 0.04em;
+      font-weight: 600; margin: 0 0 10px;
+      color: var(--ink);
+    }
+    .steps p {
+      margin: 0 0 12px;
+      color: var(--ink-soft);
+      font-size: 14.5px;
+    }
+
+    /* Demos */
+    .demos h2 { margin-bottom: 8px; }
+    .demo {
+      margin: 0;
+      background: var(--card);
+      border: 1px solid var(--rule);
+      border-radius: 14px;
+      padding: 14px;
+      box-shadow: 0 12px 26px var(--shadow-soft);
+    }
+    .demo figcaption {
+      margin-top: 14px; padding: 0 6px;
+      display: flex; flex-direction: column; gap: 4px;
+    }
+    .demo figcaption strong {
+      font-family: 'Inter', sans-serif;
+      font-size: 14px; font-weight: 600; color: var(--ink);
+    }
+    .demo figcaption span {
+      color: var(--muted); font-size: 13.5px; line-height: 1.5;
+    }
+
+    /* keys table */
+    .keys-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 12px 28px;
+      margin: 24px 0 0; padding: 0;
+    }
+    .keys-grid div {
+      display: grid;
+      grid-template-columns: max-content 1fr;
+      align-items: baseline;
+      gap: 14px;
+      padding: 10px 0;
+      border-bottom: 1px dashed var(--rule);
+    }
+    .keys-grid dt { margin: 0; }
+    .keys-grid kbd {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      background: var(--paper-lo);
+      border: 1px solid var(--rule);
+      border-radius: 5px;
+      padding: 3px 10px;
+      color: var(--ink);
+      font-weight: 600;
+      text-align: center;
+      white-space: nowrap;
+      display: inline-block;
+    }
+    @media (prefers-color-scheme: dark) {
+      .keys-grid kbd { background: rgba(0,0,0,0.25); }
+    }
+    .keys-grid dd { margin: 0; }
+    .keys-grid span { color: var(--ink-soft); font-size: 14px; }
+
+    /* Footer */
+    footer.bottom {
+      position: relative; z-index: 3;
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 32px clamp(20px, 4vw, 44px);
+      border-top: 1px solid var(--rule);
+      display: flex; align-items: center; justify-content: space-between;
+      font-size: 11px; letter-spacing: 0.24em; text-transform: uppercase;
+      color: var(--muted); font-weight: 500;
+      gap: 16px; flex-wrap: wrap;
+    }
+    footer.bottom a {
+      color: var(--muted); text-decoration: none;
       transition: color 0.2s ease;
     }
-    footer a:hover { color: var(--ink); }
-    footer .right { display: flex; gap: 24px; }
+    footer.bottom a:hover { color: var(--ink); }
+    footer.bottom nav { display: flex; gap: 22px; }
 
-    /* corner crop marks for a printed-poster feel */
-    .corner {
-      position: fixed;
-      width: 22px;
-      height: 22px;
-      z-index: 2;
-      opacity: 0.35;
-      pointer-events: none;
-      color: var(--muted);
+    /* mobile */
+    @media (max-width: 640px) {
+      header.top { padding: 16px 18px; gap: 12px; }
+      header.top nav { gap: 4px; font-size: 11px; }
+      header.top nav a { padding: 6px 8px; }
+      .hero { padding: 32px 0 24px; }
+      .hero-tagline { margin: 14px 12px 24px; }
+      .btn { padding: 14px 18px; }
+      .btn-primary .btn-target { font-size: 14.5px; }
+      .keys-grid kbd { font-size: 11px; }
     }
-    .corner svg { width: 100%; height: 100%; display: block; }
-    .corner.tl { top: 18px; left: 18px; }
-    .corner.tr { top: 18px; right: 18px; transform: scaleX(-1); }
-    .corner.bl { bottom: 18px; left: 18px; transform: scaleY(-1); }
-    .corner.br { bottom: 18px; right: 18px; transform: scale(-1, -1); }
 
-    @media (max-width: 760px) {
-      h1 { white-space: normal; max-width: 16ch; }
-      .portrait { width: 140px; }
-      .portrait-text { font-size: clamp(60px, 18vw, 96px); }
-      .portrait-wrap { margin-bottom: 36px; }
-      .features { margin-top: 52px; }
-      .features-grid { grid-template-columns: 1fr; column-gap: 0; row-gap: 14px; max-width: 360px; margin: 0 auto; }
-      .features-label .rule { width: 36px; }
-      .tagline { margin-top: 44px; }
-      header, footer { padding: 20px 22px; font-size: 10px; letter-spacing: 0.22em; }
-      .corner { width: 16px; height: 16px; }
-      .corner.tl, .corner.tr { top: 12px; }
-      .corner.bl, .corner.br { bottom: 12px; }
-      .corner.tl, .corner.bl { left: 12px; }
-      .corner.tr, .corner.br { right: 12px; }
+    /* Skeleton + loading states for dynamic content */
+    .loading { color: var(--muted); font-style: italic; }
+
+    /* ─── Carlos TUI reproductions ───────────────────────────────────── */
+    .app-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 28px;
+      margin-top: 24px;
     }
+    @media (min-width: 900px) {
+      .app-grid { grid-template-columns: 1fr 1fr; }
+      .app-grid .demo-wide { grid-column: 1 / -1; }
+    }
+
+    .app-window {
+      --c-bg:     #08090f;
+      --c-blue:   #6f81f5;
+      --c-blue-d: #4d5fcf;
+      --c-text:   #e8e3d4;
+      --c-mute:   #7a7669;
+      --c-sub:    #4f4a3c;
+      --c-orange: #d97757;
+      --c-orange-b: #ee9a55;
+      --c-green:  #46c265;
+
+      position: relative;
+      border-radius: 14px;
+      background: var(--c-bg);
+      overflow: hidden;
+      box-shadow:
+        0 22px 44px var(--shadow),
+        inset 0 0 0 1px rgba(255,255,255,0.05);
+    }
+    .app-titlebar {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      align-items: center;
+      padding: 10px 14px;
+    }
+    .app-titlebar .lights { display: inline-flex; gap: 7px; }
+    .app-titlebar .lights span {
+      width: 12px; height: 12px; border-radius: 50%;
+      display: inline-block;
+      box-shadow: inset 0 0 0 0.5px rgba(0,0,0,0.25);
+    }
+    .app-titlebar .l-r { background: #ff5f57; }
+    .app-titlebar .l-y { background: #febc2e; }
+    .app-titlebar .l-g { background: #28c840; }
+    .app-titlebar .app-title {
+      text-align: center;
+      font-family: 'Inter', sans-serif;
+      font-size: 12.5px; font-weight: 500;
+      color: #d2ccba;
+      letter-spacing: 0.01em;
+    }
+    .app-titlebar .ph { /* spacer for right column */ }
+
+    .app-inner {
+      margin: 0 14px 14px;
+      border: 1px solid var(--c-blue);
+      border-radius: 8px;
+      padding: 14px 18px 16px;
+      font-family: 'JetBrains Mono', ui-monospace, monospace;
+      font-size: 12.2px;
+      line-height: 1.55;
+      color: var(--c-text);
+      min-height: 280px;
+      display: flex; flex-direction: column;
+    }
+    /* Plain-shell variant (e.g. zsh running `carlos research`):
+       no carlos-TUI inner border, just the macOS window chrome. */
+    .app-inner.shell {
+      border: 0;
+      border-radius: 0;
+      margin: 0;
+      padding: 18px 22px 22px;
+    }
+    @media (max-width: 720px) {
+      .app-inner { font-size: 11px; padding: 12px 14px; min-height: 240px; }
+      .app-inner.shell { padding: 14px 16px 18px; }
+    }
+
+    /* Inline carlos cap glyph */
+    .cap-icon {
+      display: inline-block;
+      vertical-align: -3px;
+      flex-shrink: 0;
+    }
+    .cap-icon-lg { vertical-align: -5px; }
+
+    /* Chat status bar (top of TUI) */
+    .cstat {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 14px;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+    }
+    .cstat-l { display: inline-flex; gap: 12px; align-items: baseline; flex-wrap: wrap; }
+    .cstat .ses-id { color: var(--c-blue); font-weight: 700; letter-spacing: 0.02em; }
+    .cstat .ses-running { color: var(--c-text); }
+    .cstat .ses-running .dot { color: var(--c-green); }
+    .cstat .ses-model { color: var(--c-mute); }
+    .cstat .ses-frame .glyph { color: var(--c-orange); }
+    .cstat .ses-tag { color: var(--c-mute); }
+
+    /* Conversation rows */
+    .crow { display: flex; gap: 12px; align-items: flex-start; padding: 4px 0; }
+    .crow .gutter {
+      flex: 0 0 auto;
+      display: inline-flex; align-items: center; gap: 4px;
+      line-height: 1.55;
+      white-space: nowrap;
+    }
+    .crow .body { flex: 1 1 auto; min-width: 0; }
+    .crow.user .gutter { color: var(--c-blue); }
+    .crow.user .body { color: #c8d1ff; }
+    .crow.agent .body { color: var(--c-text); }
+    .crow.agent .body p { margin: 0; }
+    .crow.agent .body p + p { margin-top: 8px; }
+    .crow.agent .body code {
+      font-family: inherit;
+      background: rgba(255,255,255,0.04);
+      padding: 1px 4px; border-radius: 3px;
+      color: #d8cfb5;
+    }
+    .crow.agent .body strong { color: var(--c-text); font-weight: 700; }
+    .crow.agent .body ol { margin: 6px 0 0; padding-left: 22px; color: var(--c-text); }
+    .crow.agent .body ol li { padding-left: 3px; }
+
+    /* Tool call card (write/bash/etc) */
+    .tool-card {
+      border: 1px solid var(--c-orange);
+      border-radius: 5px;
+      padding: 6px 12px;
+      margin: 6px 0;
+      display: flex; align-items: center; gap: 12px;
+      background: transparent;
+    }
+    .tool-card .wrench { color: var(--c-orange); font-size: 13px; }
+    .tool-card .name { color: var(--c-orange-b); font-weight: 700; }
+    .tool-card .dot-sep { color: var(--c-mute); margin: 0 -4px; }
+    .tool-card .args {
+      color: var(--c-mute);
+      flex: 1 1 auto; min-width: 0;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      font-family: inherit;
+    }
+    .tool-card .meta { color: var(--c-mute); font-weight: 500; flex: 0 0 auto; }
+
+    /* Chat tail: input box + key hints */
+    .chat-tail { margin-top: auto; padding-top: 14px; }
+    .chat-input-line {
+      border-top: 1px solid rgba(255,255,255,0.06);
+      padding: 10px 0 6px;
+      position: relative;
+    }
+    .chat-input-line .vbar {
+      position: absolute;
+      left: -4px; top: 12px; bottom: 8px; width: 1px;
+      background: rgba(255,255,255,0.18);
+    }
+    .chat-input-line .ph {
+      display: inline; color: var(--c-mute);
+    }
+    .chat-input-line .ph .first {
+      background: rgba(255,255,255,0.22);
+      color: #efeae0;
+      padding: 0 1px;
+      border-radius: 2px;
+    }
+    .chat-keys {
+      display: flex; justify-content: space-between; gap: 14px; flex-wrap: wrap;
+      font-size: 11.5px; color: var(--c-mute);
+      padding-top: 10px;
+    }
+    .chat-keys .grp { display: inline-flex; gap: 18px; align-items: baseline; flex-wrap: wrap; }
+    .chat-keys .pair { display: inline-flex; gap: 6px; align-items: baseline; }
+    .chat-keys .key { color: var(--c-blue); font-weight: 700; }
+
+    /* Welcome / empty chat state */
+    .welcome {
+      flex: 1 1 auto;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      text-align: center;
+      gap: 10px;
+      padding: 28px 12px 22px;
+    }
+    .welcome .greet {
+      color: var(--c-blue); font-weight: 700;
+      display: inline-flex; align-items: center; gap: 12px;
+      font-size: 13.5px;
+    }
+    .welcome .hint { color: var(--c-mute); font-size: 12px; margin-top: 2px; }
+    .welcome ul {
+      list-style: none; margin: 22px 0 0; padding: 0;
+      color: var(--c-mute); font-style: italic; font-size: 12px;
+      text-align: left;
+    }
+    .welcome ul li { padding: 1px 0; position: relative; padding-left: 14px; }
+    .welcome ul li::before {
+      content: '•'; position: absolute; left: 0; color: var(--c-sub);
+    }
+    .welcome ul li.indent { padding-left: 36px; }
+    .welcome ul li.indent::before { left: 22px; }
+
+    /* Research panel */
+    .research .rcmd {
+      padding: 2px 0 6px;
+      background: transparent;
+      border: 0;
+      border-radius: 0;
+      font-family: 'JetBrains Mono', ui-monospace, monospace;
+      color: var(--c-text);
+    }
+    .research .rcmd .arrow { color: var(--c-green); font-weight: 700; margin-right: 8px; }
+    .research .rcmd .home { color: var(--c-blue); margin-right: 10px; }
+    .research .rcmd .txt { color: var(--c-text); }
+    .research .meta-line { color: var(--c-mute); padding: 2px 0; }
+    .research .meta-line .lbl { color: var(--c-text); }
+    .research-box {
+      border: 1px solid var(--c-blue);
+      border-radius: 6px;
+      padding: 12px 16px;
+      margin: 20px 0;
+    }
+    .research-box .header {
+      display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+    }
+    .research-box .header .spinner {
+      color: var(--c-blue);
+      display: inline-block; width: 1em; text-align: center;
+      font-weight: 700;
+    }
+    .research-box .header .spinner.done { color: var(--c-blue); }
+    .research-box .header .title { color: var(--c-blue); font-weight: 700; }
+    .research-box .header .query { color: var(--c-mute); }
+    .research-box .header .elapsed {
+      margin-left: auto; color: var(--c-mute);
+    }
+    .research-box .header .elapsed::before { content: ' · '; color: var(--c-sub); margin-right: 4px; }
+    .research-box .current {
+      color: var(--c-text);
+      padding: 6px 0 0;
+    }
+    .research-box .current.done-line { font-style: italic; color: var(--c-mute); }
+    .research-box .current.done-line .label { color: var(--c-text); font-style: normal; font-weight: 700; }
+    .research-box .current .dot-cur { color: var(--c-blue); }
+    .research-box .current .label { color: var(--c-text); font-weight: 700; }
+    .research-box .current .ms { color: var(--c-mute); margin-left: 8px; }
+    .research-box .phases {
+      display: flex; gap: 18px;
+      padding-top: 10px;
+      color: var(--c-mute);
+      flex-wrap: wrap;
+    }
+    .research-box .ph { display: inline-flex; gap: 6px; align-items: baseline; }
+    .research-box .ph .glyph { width: 1em; display: inline-block; text-align: center; }
+    .research-box .ph.done .glyph { color: var(--c-blue-d); }
+    .research-box .ph.cur  .glyph { color: var(--c-blue); animation: glyphPulse 1.2s ease-in-out infinite; }
+    .research-box .ph.todo .glyph { color: var(--c-sub); }
+    .research-box .ph.done .lbl   { color: var(--c-mute); }
+    .research-box .ph.cur  .lbl   { color: var(--c-text); font-weight: 700; }
+    .research-box .ph.todo .lbl   { color: var(--c-mute); }
+    @keyframes glyphPulse {
+      0%, 100% { opacity: 1; }
+      50%      { opacity: 0.55; }
+    }
+    .research .saved {
+      color: var(--c-text); padding-top: 14px;
+      opacity: 0; visibility: hidden;
+      transition: opacity 0.35s ease;
+    }
+    .research .saved.show { opacity: 1; visibility: visible; }
+    .research .saved .path { color: var(--c-mute); }
+
+    /* Onboarding two-column layout */
+    .onboard {
+      display: grid;
+      grid-template-columns: minmax(150px, 32%) 1fr;
+      gap: 18px;
+      flex: 1 1 auto;
+    }
+    .onboard .left {
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 10px;
+      padding: 14px 6px;
+      border-right: 1px solid var(--c-blue);
+    }
+    .onboard .left .avatar {
+      width: 122px; height: 122px;
+      background-image: url('./branding/carlos-portrait.png');
+      background-size: cover; background-position: center 42%;
+      border-radius: 14px;
+      filter: drop-shadow(0 6px 12px rgba(0,0,0,0.4));
+    }
+    .onboard .left .name { color: var(--c-blue); font-weight: 700; font-size: 13.5px; }
+    .onboard .left .step { color: var(--c-mute); font-size: 11.5px; }
+    .onboard .left .dots { display: inline-flex; gap: 9px; margin-top: 8px; }
+    .onboard .left .dots span {
+      width: 7px; height: 7px; border-radius: 50%; background: var(--c-sub);
+      display: inline-block;
+    }
+    .onboard .left .dots .done { background: var(--c-blue-d); }
+    .onboard .left .dots .active {
+      background: transparent;
+      box-shadow: inset 0 0 0 1.5px var(--c-blue);
+    }
+    .onboard .right {
+      padding: 8px 0 0 6px;
+      display: flex; flex-direction: column; gap: 14px;
+    }
+    .onboard .right .h { color: var(--c-blue); font-weight: 700; font-size: 13px; }
+    .onboard .right .p { color: var(--c-mute); }
+    .onboard .ob-input {
+      font-size: 13px;
+      display: inline-flex; align-items: baseline;
+    }
+    .onboard .ob-input .gt { color: var(--c-text); margin-right: 8px; }
+    .onboard .ob-input .val { color: var(--c-text); font-weight: 600; }
+    .onboard .ob-input .caret {
+      display: inline-block;
+      width: 0.55em; height: 1.15em;
+      background: rgba(255,255,255,0.7);
+      vertical-align: -0.18em;
+      margin-left: 1px;
+      animation: caret-blink 1.05s steps(2) infinite;
+    }
+    @keyframes caret-blink { 50% { opacity: 0; } }
+    .onboard .help { color: var(--c-mute); margin-top: 4px; }
+    .onboard .help .key { color: var(--c-text); font-weight: 700; }
+
+    .ob-options { display: flex; flex-direction: column; gap: 14px; margin-top: 6px; }
+    .ob-option {
+      display: grid; grid-template-columns: max-content 1fr;
+      gap: 14px; align-items: baseline;
+    }
+    .ob-option .marker { color: var(--c-mute); font-weight: 700; }
+    .ob-option.selected .marker { color: var(--c-blue); }
+    .ob-option .label { color: var(--c-text); font-weight: 700; }
+    .ob-option .desc { grid-column: 2 / 3; color: var(--c-mute); font-size: 11.5px; margin-top: -2px; }
+
+    .onboard-foot {
+      padding-top: 14px; color: var(--c-mute); font-size: 11.5px;
+      display: flex; gap: 18px; flex-wrap: wrap; align-items: baseline;
+    }
+    .onboard-foot .pair { display: inline-flex; gap: 6px; align-items: baseline; }
+    .onboard-foot .key { color: var(--c-blue); font-weight: 700; }
+
+    /* carlos please — shell-style, sibling to the research demo */
+    .please .meta-line { color: var(--c-mute); padding: 2px 0; }
+    .please .meta-line .lbl { color: var(--c-text); }
+
+    .please-prompt {
+      margin: 14px 0 6px;
+      padding: 10px 14px;
+      border-left: 2px solid var(--c-orange);
+      background: rgba(217,119,87,0.06);
+      border-radius: 0 6px 6px 0;
+    }
+    .please-prompt .warn { color: var(--c-orange-b); font-weight: 600; }
+    .please-prompt .args {
+      color: var(--c-mute); padding: 4px 0 6px 12px;
+      font-family: inherit;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .please-prompt .approve { color: var(--c-text); }
+    .please-prompt .approve .hint { color: var(--c-mute); margin: 0 6px; }
+    .please-prompt .approve .answer { color: var(--c-green); font-weight: 700; }
+
+    .please-result { color: var(--c-mute); padding: 6px 0 10px; }
+    .please-result .ok { color: var(--c-green); font-weight: 700; margin-right: 6px; }
+
+    .please-reply { display: flex; gap: 12px; align-items: flex-start; padding: 4px 0; }
+    .please-reply .gutter { color: var(--c-blue); flex: 0 0 auto; display: inline-flex; gap: 4px; align-items: center; }
+    .please-reply .body { flex: 1 1 auto; min-width: 0; }
+    .please-reply .body .first { color: var(--c-text); font-weight: 700; }
+    .please-reply ul { list-style: none; margin: 6px 0 0; padding: 0; }
+    .please-reply ul li { padding: 1px 0; color: var(--c-text); padding-left: 14px; position: relative; }
+    .please-reply ul li::before { content: '•'; position: absolute; left: 0; color: var(--c-sub); }
+    .please-reply ul li .hash { color: var(--c-blue); font-weight: 700; margin-right: 6px; }
+    .please-reply ul li .msg { color: var(--c-text); }
+
+    .please-stats { color: var(--c-sub); font-size: 11.5px; padding-top: 14px; }
+    .please-end {
+      padding-top: 8px;
+      display: inline-flex; align-items: baseline; gap: 8px;
+    }
+    .please-end .caret {
+      display: inline-block; width: 0.55em; height: 1em;
+      background: rgba(255,255,255,0.7);
+      vertical-align: -0.12em;
+      animation: caret-blink 1.05s steps(2) infinite;
+    }
+
+    /* Frame switcher — TUI overlay, real grid of tiles */
+    .switcher-head {
+      display: flex; justify-content: space-between; align-items: baseline;
+      gap: 12px; margin-bottom: 14px;
+      color: var(--c-mute);
+    }
+    .switcher-head .title { color: var(--c-blue); font-weight: 700; }
+    .switcher-head .active-frame { color: var(--c-orange); font-weight: 700; }
+    .switcher-head .page { color: var(--c-sub); font-size: 11.5px; }
+
+    .frame-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      flex: 1 1 auto;
+      align-content: center;
+      margin: 6px 0;
+    }
+    @media (max-width: 720px) {
+      .frame-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+    }
+    .frame-tile {
+      border: 1px solid var(--c-sub);
+      border-radius: 8px;
+      padding: 16px 8px 14px;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 10px;
+      min-height: 84px;
+      text-align: center;
+      color: var(--c-mute);
+    }
+    .frame-tile .glyph { font-size: 18px; line-height: 1; font-weight: 700; }
+    .frame-tile .name { font-weight: 700; font-size: 12.5px; }
+    .frame-tile.active {
+      border-color: var(--c-orange);
+      box-shadow: inset 0 0 0 1px var(--c-orange), 0 0 12px rgba(217,119,87,0.18);
+    }
+    .frame-tile.new { border-style: dashed; }
+    .frame-tile.new .name { font-style: italic; font-weight: 500; }
+
+    .frame-tile.rust  .glyph, .frame-tile.rust  .name { color: var(--c-orange); }
+    .frame-tile.slate .glyph, .frame-tile.slate .name { color: #8693a3; }
+    .frame-tile.olive .glyph, .frame-tile.olive .name { color: #adb86e; }
+    .frame-tile.teal  .glyph, .frame-tile.teal  .name { color: #5fb5b5; }
+    .frame-tile.plum  .glyph, .frame-tile.plum  .name { color: #b388c2; }
+
+    .switcher-foot {
+      margin-top: auto;
+      display: flex; gap: 22px; justify-content: center; flex-wrap: wrap;
+      padding-top: 14px;
+      color: var(--c-mute);
+      font-size: 11.5px;
+    }
+    .switcher-foot .pair { display: inline-flex; gap: 6px; align-items: baseline; }
+    .switcher-foot .key { color: var(--c-blue); font-weight: 700; }
   </style>
 </head>
 <body>
-  <div class="corner tl" aria-hidden="true"><svg viewBox="0 0 22 22"><path d="M0 0 H10 M0 0 V10" stroke="currentColor" stroke-width="1" fill="none"/></svg></div>
-  <div class="corner tr" aria-hidden="true"><svg viewBox="0 0 22 22"><path d="M0 0 H10 M0 0 V10" stroke="currentColor" stroke-width="1" fill="none"/></svg></div>
-  <div class="corner bl" aria-hidden="true"><svg viewBox="0 0 22 22"><path d="M0 0 H10 M0 0 V10" stroke="currentColor" stroke-width="1" fill="none"/></svg></div>
-  <div class="corner br" aria-hidden="true"><svg viewBox="0 0 22 22"><path d="M0 0 H10 M0 0 V10" stroke="currentColor" stroke-width="1" fill="none"/></svg></div>
+  <a class="skip-link" href="#main" data-i18n="a11y.skip">Skip to content</a>
 
-  <header>
-    <span class="mark">carlos</span>
-    <span>MMXXVI</span>
+  <header class="top" role="banner">
+    <a class="brand" href="./" aria-label="carlos home">carlos</a>
+    <nav aria-label="Site">
+      <div
+        class="lang-switcher"
+        role="group"
+        aria-label="Language"
+        data-i18n-aria-label="nav.langLabel"
+      >
+        <button type="button" data-lang="en" aria-pressed="true" lang="en" title="English">EN</button>
+        <button type="button" data-lang="es" aria-pressed="false" lang="es" title="Español">ES</button>
+      </div>
+      <a href="https://github.com/georgebuilds/carlos" rel="noopener" data-i18n="nav.github">GitHub</a>
+      <a href="./agent-loop.html" data-i18n="nav.agentLoop">Agent loop</a>
+    </nav>
   </header>
 
-  <main>
-    <div class="portrait-wrap">
+  <main id="main">
+
+    <!-- ─── HERO ────────────────────────────────────────────────── -->
+    <section class="hero" aria-labelledby="hero-title">
       <span class="portrait-text" aria-label="Carlos">Carlos</span>
-    </div>
 
-    <h1>
-      The most
-      <span class="variable-slot">
-        <span class="brace" aria-hidden="true">{</span>
-        <span class="variable-mask" id="mask">
-          <span class="ghost" id="ghost">hard-working</span>
-          <span class="variable" id="variable" aria-hidden="true"></span>
+      <h1 class="hero-title" id="hero-title">
+        <span data-i18n="hero.t1">The most</span>
+        <span class="variable-slot">
+          <span class="brace" aria-hidden="true">{</span>
+          <span class="variable-mask" id="mask">
+            <span class="ghost" id="ghost">hard-working</span>
+            <span class="variable" id="variable" aria-hidden="true"></span>
+          </span>
+          <span class="brace" aria-hidden="true">}</span>
         </span>
-        <span class="brace" aria-hidden="true">}</span>
-      </span>
-      coding agent.
-      <span class="sr-only" id="srVar">committed</span>
-    </h1>
+        <span data-i18n="hero.t2">coding agent.</span>
+        <span class="sr-only" id="srVar">committed</span>
+      </h1>
 
-    <section class="features" aria-label="what's inside v0">
-      <div class="features-label">
-        <span class="rule" aria-hidden="true"></span>
-        <span class="label-text">what's inside</span>
-        <span class="rule" aria-hidden="true"></span>
+      <p class="hero-tagline" data-i18n="hero.tagline">
+        Switch between personal, work, and side-project frames with Ctrl+F. Each frame
+        has its own provider, rules, and plain-markdown memory you can grep from your
+        shell or open in Obsidian. carlos stays inside the frame you're in unless you
+        ask him to cross. One Go binary, no setup ritual.
+      </p>
+
+      <div class="download-cta">
+        <button
+          type="button"
+          id="primary-dl"
+          class="btn btn-primary btn-copy"
+          aria-label="Copy the Homebrew install command to your clipboard"
+          data-i18n-aria-label="hero.brewAria"
+          data-copy="brew install georgebuilds/tap/carlos"
+        >
+          <span class="btn-row btn-row-top">
+            <span class="btn-prefix" data-i18n="hero.installWith">Install with Homebrew</span>
+            <span class="btn-version" id="primary-dl-version" aria-live="polite">latest</span>
+          </span>
+          <span class="btn-row btn-row-cmd">
+            <span class="btn-prompt" aria-hidden="true">$</span>
+            <code class="btn-cmd">brew install georgebuilds/tap/carlos</code>
+            <span class="btn-copy-hint" id="primary-dl-hint">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+                <rect x="4" y="4" width="9" height="10" rx="1.5"/>
+                <path d="M3 11 V3 a1.5 1.5 0 0 1 1.5 -1.5 H10"/>
+              </svg>
+              <span id="primary-dl-hint-label" data-i18n="hero.copyHint">copy</span>
+            </span>
+          </span>
+        </button>
+        <a
+          class="btn btn-secondary"
+          href="#install"
+        >
+          <strong class="btn-target" data-i18n="hero.directDownload">Direct download</strong>
+        </a>
       </div>
 
-      <div class="features-grid">
-        <div class="feature">
-          <span class="num">01</span>
-          <p class="line"><span class="head">A single binary, under 16 MB.</span> <span class="tail">No Python, no Docker, no setup ritual.</span></p>
-        </div>
+      <p class="quick-meta">
+        <span data-i18n="hero.meta.size">~16 MB binary</span>
+        <span class="dot" aria-hidden="true"></span>
+        <span data-i18n="hero.meta.deps">no Python, no Docker</span>
+        <span class="dot" aria-hidden="true"></span>
+        <span data-i18n="hero.meta.license">GPL-3.0</span>
+      </p>
+    </section>
 
-        <div class="feature">
-          <span class="num">02</span>
-          <p class="line"><span class="head">Five providers, one shape.</span> <span class="tail">Anthropic, OpenAI, OpenRouter, Ollama, Gemini.</span></p>
-        </div>
+    <!-- ─── INSTALL ─────────────────────────────────────────────── -->
+    <section id="install" class="install" aria-labelledby="install-title">
+      <h2 id="install-title" data-i18n="install.title">Install</h2>
+      <p class="section-sub" data-i18n="install.sub">
+        Three ways in. Pick one. They all land the same binary under <code>/usr/local/bin/carlos</code> or the path you choose.
+      </p>
 
-        <div class="feature">
-          <span class="num">03</span>
-          <p class="line"><span class="head">A memory that lives in plain markdown.</span> <span class="tail">Read it in Obsidian, grep it in your shell. Specialized tools query it 10x to 100x more token-efficiently than grepping and globbing.</span></p>
-        </div>
+      <div class="install-grid">
+        <article class="install-card">
+          <h3 data-i18n="install.brewLabel">Homebrew (macOS / Linux)</h3>
+          <pre class="cmd"><code><span class="prompt">$</span>brew install georgebuilds/tap/carlos</code><button type="button" class="copy-btn" data-copy="brew install georgebuilds/tap/carlos" aria-label="Copy command"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="4" y="4" width="9" height="10" rx="1.5"/><path d="M3 11 V3 a1.5 1.5 0 0 1 1.5 -1.5 H10"/></svg><span data-i18n="install.copy">Copy</span></button></pre>
+          <p class="install-foot" data-i18n="install.brewHint">
+            The tap pushes a fresh formula on every stable release.
+          </p>
+        </article>
 
-        <div class="feature">
-          <span class="num">04</span>
-          <p class="line"><span class="head">Many frames, one carlos.</span> <span class="tail">Personal, work, side projects. Each has its own glyph, color, rules, and provider. Switch with Ctrl+F. He never writes across the line unless you ask.</span></p>
-        </div>
+        <article class="install-card">
+          <h3 data-i18n="install.tarballLabel">Tarball</h3>
+          <div class="platform-grid">
+            <a class="platform-link" id="dl-darwin-arm64" href="https://github.com/georgebuilds/carlos/releases/latest" rel="noopener">
+              <span class="os">macOS</span>
+              <span class="arch">Apple Silicon · arm64</span>
+            </a>
+            <a class="platform-link" id="dl-darwin-amd64" href="https://github.com/georgebuilds/carlos/releases/latest" rel="noopener">
+              <span class="os">macOS</span>
+              <span class="arch">Intel · x86_64</span>
+            </a>
+            <a class="platform-link" id="dl-linux-arm64" href="https://github.com/georgebuilds/carlos/releases/latest" rel="noopener">
+              <span class="os">Linux</span>
+              <span class="arch">arm64</span>
+            </a>
+            <a class="platform-link" id="dl-linux-amd64" href="https://github.com/georgebuilds/carlos/releases/latest" rel="noopener">
+              <span class="os">Linux</span>
+              <span class="arch">x86_64</span>
+            </a>
+          </div>
+          <p class="install-foot" data-i18n="install.tarballHint">
+            Extract and drop <code>carlos</code> into your <code>$PATH</code>.
+            <a href="https://github.com/georgebuilds/carlos/releases" rel="noopener" data-i18n="install.allPlatforms">All releases &amp; checksums →</a>
+          </p>
+        </article>
 
-        <div class="feature">
-          <span class="num">05</span>
-          <p class="line"><span class="head">Research that goes hard.</span> <span class="tail">Many readers fan out, one synthesis returns, every source on file.</span></p>
-        </div>
-
-        <div class="feature">
-          <span class="num">06</span>
-          <p class="line"><span class="head">Proposes new skills, never publishes them.</span> <span class="tail">Learned from use, kept only if you approve.</span></p>
-        </div>
-
-        <div class="feature">
-          <span class="num">07</span>
-          <p class="line"><span class="head">Plays nice with Claude Code.</span> <span class="tail">Loads its skill library, honors your CLAUDE.md, familiar slash commands. Skills you write in either tool show up in both.</span></p>
-        </div>
-
-        <div class="feature">
-          <span class="num">08</span>
-          <p class="line"><span class="head">MCP draft compliant from day one.</span> <span class="tail">Built against the next Model Context Protocol spec, not the old one. Stateless, streamable HTTP, no legacy session state to drag around.</span></p>
-        </div>
+        <article class="install-card">
+          <h3 data-i18n="install.verify">Verify</h3>
+          <pre class="cmd"><code><span class="prompt">$</span>carlos version</code><button type="button" class="copy-btn" data-copy="carlos version" aria-label="Copy command"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="4" y="4" width="9" height="10" rx="1.5"/><path d="M3 11 V3 a1.5 1.5 0 0 1 1.5 -1.5 H10"/></svg><span data-i18n="install.copy">Copy</span></button></pre>
+          <p class="install-foot" data-i18n="install.verifyHint">
+            Should print a tagged version. If not, your <code>$PATH</code> isn't seeing the binary.
+          </p>
+        </article>
       </div>
     </section>
 
-    <p class="tagline"><span class="dot" aria-hidden="true"></span>coming soon</p>
+    <!-- ─── GETTING STARTED ─────────────────────────────────────── -->
+    <section id="getstart" aria-labelledby="getstart-title">
+      <h2 id="getstart-title" data-i18n="getstart.title">Getting started</h2>
+      <p class="section-sub" data-i18n="getstart.sub">
+        Four steps. The TUI runs onboarding the first time you launch it.
+      </p>
+
+      <ol class="steps">
+        <li>
+          <h3 data-i18n="getstart.step1.t">1 · Run onboarding</h3>
+          <p data-i18n="getstart.step1.d">
+            ~30 seconds. Your name, a provider (Anthropic, OpenAI, OpenRouter, Ollama, or Gemini), a model, the daemon yes/no, an optional Obsidian vault path. Everything lands in <code>~/.carlos/config.yaml</code> at mode 0600.
+          </p>
+          <pre class="cmd"><code><span class="prompt">$</span>carlos</code></pre>
+        </li>
+        <li>
+          <h3 data-i18n="getstart.step2.t">2 · Chat with carlos</h3>
+          <p data-i18n="getstart.step2.d">
+            Type a question. carlos answers, calls tools when needed (prompting on the risky ones), and keeps the transcript in a SQLite event log at <code>~/.carlos/state.db</code>. <kbd>Ctrl+F</kbd> opens the frame switcher; <code>/help</code> lists slash commands.
+          </p>
+        </li>
+        <li>
+          <h3 data-i18n="getstart.step3.t">3 · Or skip the TUI</h3>
+          <p data-i18n="getstart.step3.d">
+            <code>carlos please &lt;prompt&gt;</code> is a one-shot tool-use loop that stays in your scrollback. <code>carlos research &lt;question&gt;</code> runs a six-phase pipeline and saves a cited report under <code>~/.carlos/research/</code>.
+          </p>
+          <pre class="cmd"><code><span class="prompt">$</span>carlos please summarize the last 5 commits</code></pre>
+        </li>
+        <li>
+          <h3 data-i18n="getstart.step4.t">4 · Background work</h3>
+          <p data-i18n="getstart.step4.d">
+            <code>carlos daemon enable</code> installs a per-user launchd / systemd unit. <code>carlos schedule add "every weekday at 9am ..."</code> queues a recurring run. The daemon notifies on completion.
+          </p>
+          <pre class="cmd"><code><span class="prompt">$</span>carlos schedule add "every weekday at 9am summarize my inbox"</code></pre>
+        </li>
+      </ol>
+    </section>
+
+    <!-- ─── DEMOS ────────────────────────────────────────────────── -->
+    <section id="demos" class="demos" aria-labelledby="demos-title">
+      <h2 id="demos-title" data-i18n="demos.title">What you'll see</h2>
+      <p class="section-sub" data-i18n="demos.sub">
+        Five surfaces, faithfully reproduced from the real TUI. The research panel runs live in your browser.
+      </p>
+
+      <!-- Reusable inline carlos cap (small, blue). Hidden, referenced by <use>. -->
+      <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+        <symbol id="carlos-cap" viewBox="0 0 24 16">
+          <path d="M2.5 13.5 Q 2.5 4 12 4 Q 21.5 4 21.5 13.5 L 23.5 14.5 L 0.5 14.5 Z" fill="#6f81f5"/>
+          <circle cx="12" cy="9" r="3.2" fill="#fff"/>
+          <text x="12" y="11" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-weight="700" font-size="5" fill="#4d5fcf">C</text>
+        </symbol>
+      </svg>
+
+      <div class="app-grid">
+
+        <!-- ───── 1 · Chat with a tool call (full width anchor demo) ───── -->
+        <figure
+          class="demo demo-wide"
+          role="img"
+          aria-label="The carlos chat TUI mid-conversation: a user asks carlos to create an index.html file, an orange write tool-call card is visible, and carlos describes what it built."
+          data-i18n-aria-label="demo.chat.alt"
+        >
+          <div class="app-window">
+            <div class="app-titlebar">
+              <span class="lights" aria-hidden="true">
+                <span class="l-r"></span><span class="l-y"></span><span class="l-g"></span>
+              </span>
+              <span class="app-title">carlos</span>
+              <span class="ph" aria-hidden="true"></span>
+            </div>
+            <div class="app-inner">
+              <div class="cstat">
+                <span class="cstat-l">
+                  <span class="ses-id">01KTKMVF</span>
+                  <span class="ses-running">[<span class="dot">●</span> running]</span>
+                  <span class="ses-model">(google/gemini-3.5-flash)</span>
+                  <span class="ses-sep">·</span>
+                  <span class="ses-frame"><span class="glyph">◉</span> personal</span>
+                </span>
+                <span class="ses-tag">carlos chat</span>
+              </div>
+
+              <div class="crow user">
+                <span class="gutter" aria-hidden="true">
+                  <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><circle cx="8" cy="5" r="2.6"/><path d="M3 14 a5 5 0 0 1 10 0"/></svg>:
+                </span>
+                <span class="body">create a file index.html on my desktop with basic info about mac os. make it look good</span>
+              </div>
+
+              <div class="tool-card">
+                <span class="wrench" aria-hidden="true">🔧</span>
+                <span class="name">write</span>
+                <span class="dot-sep">·</span>
+                <span class="args">{"mode":"create","content":"&lt;!DOCTYPE html&gt;\n&lt;html lang=\"en\"&gt;\n&lt;head&gt;\…</span>
+                <span class="meta">1 line</span>
+              </div>
+
+              <div class="crow agent">
+                <span class="gutter" aria-hidden="true">
+                  <svg class="cap-icon" width="20" height="14"><use href="#carlos-cap"/></svg>:
+                </span>
+                <span class="body">
+                  <p>I have created the <code>index.html</code> file on your Desktop.</p>
+                  <p>It features an elegant, responsive design styled after Apple's aesthetic (using modern CSS, system fonts, subtle blurring/backdrop-filters, light/dark mode pairing, and hover effects). It includes sections on:</p>
+                  <ol>
+                    <li><strong>Introduction and Architecture</strong> (Unix, Apple Silicon Integration, Continuity)</li>
+                    <li><strong>Key Interface Elements</strong> (Finder, Spotlight, Stage Manager)</li>
+                    <li><strong>Essential Keyboard Shortcuts</strong> (formatted nicely with simulated keys)</li>
+                    <li><strong>Recent Releases</strong> (macOS Sequoia, Sonoma, and Ventura)</li>
+                  </ol>
+                </span>
+              </div>
+
+              <div class="chat-tail">
+                <div class="chat-input-line">
+                  <span class="vbar" aria-hidden="true"></span>
+                  <span class="ph"><span class="first">t</span>ype a message - enter to send, shift-enter for newline</span>
+                </div>
+                <div class="chat-keys">
+                  <span class="grp">
+                    <span class="pair"><span class="key">enter</span> send</span>
+                    <span class="pair"><span class="key">shift-enter</span> newline</span>
+                    <span class="pair"><span class="key">pgup/pgdn</span> scroll</span>
+                    <span class="pair"><span class="key">ctrl-c</span> quit</span>
+                  </span>
+                  <span class="grp">type <span class="key">/help</span> for commands</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <figcaption>
+            <strong data-i18n="demo.chat.t">The chat TUI</strong>
+            <span data-i18n="demo.chat.d">Status line at the top, conversation in the middle, key hints at the bottom. Tool calls render as orange-bordered cards; carlos's replies are styled markdown.</span>
+          </figcaption>
+        </figure>
+
+        <!-- ───── 2 · Welcome / clean state ───── -->
+        <figure
+          class="demo"
+          role="img"
+          aria-label="The carlos chat TUI on first open, showing the greeting Hey Boss - what are we working on with example prompts below."
+          data-i18n-aria-label="demo.welcome.alt"
+        >
+          <div class="app-window">
+            <div class="app-titlebar">
+              <span class="lights" aria-hidden="true">
+                <span class="l-r"></span><span class="l-y"></span><span class="l-g"></span>
+              </span>
+              <span class="app-title">carlos</span>
+              <span class="ph" aria-hidden="true"></span>
+            </div>
+            <div class="app-inner">
+              <div class="cstat">
+                <span class="cstat-l">
+                  <span class="ses-id">01KTKMC9</span>
+                  <span class="ses-running">[<span class="dot">●</span> running]</span>
+                  <span class="ses-model">(google/gemini-3.5-flash)</span>
+                  <span class="ses-sep">·</span>
+                  <span class="ses-frame"><span class="glyph">◉</span> personal</span>
+                </span>
+                <span class="ses-tag">carlos chat</span>
+              </div>
+
+              <div class="welcome">
+                <div class="greet">
+                  <svg class="cap-icon cap-icon-lg" width="26" height="18"><use href="#carlos-cap"/></svg>
+                  Hey Boss &mdash; what are we working on?
+                </div>
+                <div class="hint">type a message below and hit enter</div>
+                <ul>
+                  <li>what's on my calendar today?</li>
+                  <li>summarize the last 5 commits</li>
+                  <li>find every TODO in this repo</li>
+                  <li class="indent">/help for slash commands</li>
+                </ul>
+              </div>
+
+              <div class="chat-tail">
+                <div class="chat-input-line">
+                  <span class="vbar" aria-hidden="true"></span>
+                  <span class="ph"><span class="first">t</span>ype a message - enter to send, shift-enter for newline</span>
+                </div>
+                <div class="chat-keys">
+                  <span class="grp">
+                    <span class="pair"><span class="key">enter</span> send</span>
+                    <span class="pair"><span class="key">shift-enter</span> newline</span>
+                    <span class="pair"><span class="key">ctrl-c</span> quit</span>
+                  </span>
+                  <span class="grp">type <span class="key">/help</span> for commands</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <figcaption>
+            <strong data-i18n="demo.welcome.t">The empty state</strong>
+            <span data-i18n="demo.welcome.d">First launch in your personal frame. The greeting uses the name you picked in onboarding and seeds three prompts you can try right away.</span>
+          </figcaption>
+        </figure>
+
+        <!-- ───── 3 · Research (live-animated) ───── -->
+        <figure
+          class="demo"
+          role="img"
+          aria-label="A carlos research run in flight: spinner, elapsed counter, current phase, and a row of six phase glyphs that fill in as each step completes."
+          data-i18n-aria-label="demo.research.alt"
+        >
+          <div class="app-window">
+            <div class="app-titlebar">
+              <span class="lights" aria-hidden="true">
+                <span class="l-r"></span><span class="l-y"></span><span class="l-g"></span>
+              </span>
+              <span class="app-title">~ · zsh</span>
+              <span class="ph" aria-hidden="true"></span>
+            </div>
+            <div class="app-inner shell">
+              <div class="research" id="research-demo">
+                <div class="rcmd">
+                  <span class="arrow">→</span>
+                  <span class="home">~</span>
+                  <span class="txt">carlos research "best barber shops in tulsa, ok"</span>
+                </div>
+                <div class="meta-line"><span class="lbl">carlos:</span> running in personal frame</div>
+                <div class="meta-line"><span class="lbl">carlos:</span> provider=openrouter model=google/gemini-3.5-flash search=duckduckgo</div>
+
+                <div class="research-box">
+                  <div class="header">
+                    <span class="spinner" data-spinner="⠋">⠋</span>
+                    <span class="title">researching:</span>
+                    <span class="query">best barber shops in tulsa, ok</span>
+                    <span class="elapsed">0.0s elapsed</span>
+                  </div>
+                  <div class="current">
+                    <span class="dot-cur">●</span> <span class="label">decomp</span> <span class="ms">· 0.1s</span>
+                  </div>
+                  <div class="phases">
+                    <span class="ph todo" data-ph="decomp"><span class="glyph">○</span><span class="lbl">decomp</span></span>
+                    <span class="ph todo" data-ph="search"><span class="glyph">○</span><span class="lbl">search</span></span>
+                    <span class="ph todo" data-ph="fetch"><span class="glyph">○</span><span class="lbl">fetch</span></span>
+                    <span class="ph todo" data-ph="read"><span class="glyph">○</span><span class="lbl">read</span></span>
+                    <span class="ph todo" data-ph="synth"><span class="glyph">○</span><span class="lbl">synth</span></span>
+                    <span class="ph todo" data-ph="verify"><span class="glyph">○</span><span class="lbl">verify</span></span>
+                  </div>
+                </div>
+
+                <div class="saved">saved to <span class="path">~/.carlos/frames/personal/research/best-barber-shops-in-tulsa-ok-1780923605.md</span></div>
+              </div>
+            </div>
+          </div>
+          <figcaption>
+            <strong data-i18n="demo.research.t">carlos research</strong>
+            <span data-i18n="demo.research.d">Decompose → search → fetch → read → synthesize → verify. Live phase glyphs while it works; the final cited report saves under <code>~/.carlos/frames/&lt;frame&gt;/research/</code>.</span>
+          </figcaption>
+        </figure>
+
+        <!-- ───── 4 · carlos please (shell, sibling to research) ───── -->
+        <figure
+          class="demo"
+          role="img"
+          aria-label="carlos please command output: provider banner, an orange-flagged tool approval for git log, the bash result, carlos's reply listing five commits, and a token/cost stats footer."
+          data-i18n-aria-label="demo.please.alt"
+        >
+          <div class="app-window">
+            <div class="app-titlebar">
+              <span class="lights" aria-hidden="true">
+                <span class="l-r"></span><span class="l-y"></span><span class="l-g"></span>
+              </span>
+              <span class="app-title">~ · zsh</span>
+              <span class="ph" aria-hidden="true"></span>
+            </div>
+            <div class="app-inner shell">
+              <div class="please">
+                <div class="rcmd">
+                  <span class="arrow">→</span>
+                  <span class="home">~</span>
+                  <span class="txt">carlos please summarize the last 5 commits</span>
+                </div>
+                <div class="meta-line"><span class="lbl">carlos:</span> running in personal frame</div>
+                <div class="meta-line"><span class="lbl">carlos:</span> provider=anthropic model=claude-opus-4-7</div>
+
+                <div class="please-prompt">
+                  <div class="warn">carlos wants to run tool "bash":</div>
+                  <div class="args">{"cmd":"git log --oneline -5"}</div>
+                  <div class="approve">approve? <span class="hint">[Y/n/a]</span> <span class="answer">y</span></div>
+                </div>
+
+                <div class="please-result"><span class="ok">✓</span> bash · 5 lines · 0.18s</div>
+
+                <div class="please-reply">
+                  <span class="gutter" aria-hidden="true">
+                    <svg class="cap-icon" width="20" height="14"><use href="#carlos-cap"/></svg>:
+                  </span>
+                  <div class="body">
+                    <span class="first">Five commits, all yours:</span>
+                    <ul>
+                      <li><span class="hash">e7359b4</span><span class="msg">docs: replace landing-page portrait</span></li>
+                      <li><span class="hash">64f542e</span><span class="msg">cli: trim carlos research stdout</span></li>
+                      <li><span class="hash">e0aeb43</span><span class="msg">providers: extract HTTP error envelopes</span></li>
+                      <li><span class="hash">0a6a40d</span><span class="msg">fix: drop empty string from section enum</span></li>
+                      <li><span class="hash">eddb0a2</span><span class="msg">tests: providers + sandbox + workspace lift</span></li>
+                    </ul>
+                  </div>
+                </div>
+
+                <div class="please-stats">~ 1.2k tokens · $0.004 · 1.4s · 1 tool call · 1 turn</div>
+
+                <div class="please-end">
+                  <span style="color: var(--c-green); font-weight: 700;">→</span>
+                  <span style="color: var(--c-blue);">~</span>
+                  <span class="caret" aria-hidden="true"></span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <figcaption>
+            <strong data-i18n="demo.please.t">carlos please</strong>
+            <span data-i18n="demo.please.d">One-shot tool-use loop, no TUI. Approval gate on the risky calls; pass <code>-y</code> to auto-approve in scripts. Output stays in your scrollback.</span>
+          </figcaption>
+        </figure>
+
+        <!-- ───── 5 · Frame switcher (TUI) ───── -->
+        <figure
+          class="demo"
+          role="img"
+          aria-label="The carlos frame switcher overlay: a 2x3 grid of frame tiles - personal (selected, orange), work, ludus, research, writing, and a dashed new-frame placeholder. Keybindings at the bottom."
+          data-i18n-aria-label="demo.switcher.alt"
+        >
+          <div class="app-window">
+            <div class="app-titlebar">
+              <span class="lights" aria-hidden="true">
+                <span class="l-r"></span><span class="l-y"></span><span class="l-g"></span>
+              </span>
+              <span class="app-title">carlos · Ctrl+F</span>
+              <span class="ph" aria-hidden="true"></span>
+            </div>
+            <div class="app-inner">
+              <div class="switcher-head">
+                <span><span class="title">frames</span> · active: <span class="active-frame">personal</span></span>
+                <span class="page">page 1/1</span>
+              </div>
+
+              <div class="frame-grid">
+                <div class="frame-tile active rust">
+                  <span class="glyph" aria-hidden="true">◉</span>
+                  <span class="name">personal</span>
+                </div>
+                <div class="frame-tile slate">
+                  <span class="glyph" aria-hidden="true">▣</span>
+                  <span class="name">work</span>
+                </div>
+                <div class="frame-tile olive">
+                  <span class="glyph" aria-hidden="true">▲</span>
+                  <span class="name">ludus</span>
+                </div>
+                <div class="frame-tile teal">
+                  <span class="glyph" aria-hidden="true">◈</span>
+                  <span class="name">research</span>
+                </div>
+                <div class="frame-tile plum">
+                  <span class="glyph" aria-hidden="true">✦</span>
+                  <span class="name">writing</span>
+                </div>
+                <div class="frame-tile new">
+                  <span class="glyph" aria-hidden="true">+</span>
+                  <span class="name">new frame</span>
+                </div>
+              </div>
+
+              <div class="switcher-foot">
+                <span class="pair"><span class="key">1-6</span> select</span>
+                <span class="pair"><span class="key">↑↓←→</span> move</span>
+                <span class="pair"><span class="key">↵</span> switch</span>
+                <span class="pair"><span class="key">esc</span> cancel</span>
+              </div>
+            </div>
+          </div>
+          <figcaption>
+            <strong data-i18n="demo.switcher.t">Frame switcher (Ctrl+F)</strong>
+            <span data-i18n="demo.switcher.d">Personal, work, side projects. Each frame carries its own glyph, accent color, rules, and provider. Add a new one any time — and carlos never writes across the line unless you ask.</span>
+          </figcaption>
+        </figure>
+
+        <!-- ───── 6 · Onboarding, step 1: pick a name ───── -->
+        <figure
+          class="demo"
+          role="img"
+          aria-label="The carlos onboarding wizard, step 1 of 8: a big Carlos avatar on the left and a name prompt on the right reading 'What should I call you?' with 'Boss' typed."
+          data-i18n-aria-label="demo.onb1.alt"
+        >
+          <div class="app-window">
+            <div class="app-titlebar">
+              <span class="lights" aria-hidden="true">
+                <span class="l-r"></span><span class="l-y"></span><span class="l-g"></span>
+              </span>
+              <span class="app-title">carlos</span>
+              <span class="ph" aria-hidden="true"></span>
+            </div>
+            <div class="app-inner">
+              <div class="onboard">
+                <div class="left">
+                  <div class="avatar" role="img" aria-label="Carlos portrait"></div>
+                  <div class="name">carlos</div>
+                  <div class="step">step 1 of 8</div>
+                  <div class="dots" aria-hidden="true">
+                    <span class="active"></span><span></span><span></span><span></span>
+                    <span></span><span></span><span></span><span></span>
+                  </div>
+                </div>
+                <div class="right">
+                  <div class="h">What should I call you?</div>
+                  <div class="p">setting up your personal frame, the one carlos opens by default. add work, side, or research frames later with /frame new or Ctrl+F.</div>
+                  <div class="ob-input">
+                    <span class="gt">&gt;</span>
+                    <span class="val">Boss</span>
+                    <span class="caret" aria-hidden="true"></span>
+                  </div>
+                  <div class="help">press enter to continue</div>
+                </div>
+              </div>
+              <div class="onboard-foot">
+                <span class="pair"><span class="key">enter</span> continue</span>
+                <span class="pair"><span class="key">ctrl-c</span> cancel</span>
+              </div>
+            </div>
+          </div>
+          <figcaption>
+            <strong data-i18n="demo.onb1.t">Onboarding · step 1</strong>
+            <span data-i18n="demo.onb1.d">What carlos calls you in the greeting. The personal frame opens by default; add work or side frames later with <code>/frame new</code> or <kbd>Ctrl+F</kbd>.</span>
+          </figcaption>
+        </figure>
+
+        <!-- ───── 5 · Onboarding, step 4: skills convention ───── -->
+        <figure
+          class="demo"
+          role="img"
+          aria-label="The carlos onboarding wizard, step 4 of 8: a Skills convention picker with two options - .agents/skills/ (selected) and .claude/skills/."
+          data-i18n-aria-label="demo.onb4.alt"
+        >
+          <div class="app-window">
+            <div class="app-titlebar">
+              <span class="lights" aria-hidden="true">
+                <span class="l-r"></span><span class="l-y"></span><span class="l-g"></span>
+              </span>
+              <span class="app-title">carlos</span>
+              <span class="ph" aria-hidden="true"></span>
+            </div>
+            <div class="app-inner">
+              <div class="onboard">
+                <div class="left">
+                  <div class="avatar" role="img" aria-label="Carlos portrait"></div>
+                  <div class="name">carlos</div>
+                  <div class="step">step 4 of 8</div>
+                  <div class="dots" aria-hidden="true">
+                    <span class="done"></span><span class="done"></span><span class="done"></span><span class="active"></span>
+                    <span></span><span></span><span></span><span></span>
+                  </div>
+                </div>
+                <div class="right">
+                  <div class="h">Skills convention</div>
+                  <div class="p">Carlos loads skills from BOTH .claude/skills/ and .agents/skills/. Pick the convention for skills carlos WRITES (induced + /skills new).</div>
+                  <div class="ob-options">
+                    <div class="ob-option selected">
+                      <span class="marker">(●)</span>
+                      <span class="label">.agents/skills/</span>
+                      <span class="desc">open agentskills.io standard (default; portable across tools)</span>
+                    </div>
+                    <div class="ob-option">
+                      <span class="marker">( )</span>
+                      <span class="label">.claude/skills/</span>
+                      <span class="desc">Claude Code convention</span>
+                    </div>
+                  </div>
+                  <div class="help">↑/↓ or 1/2 to pick · enter to continue</div>
+                </div>
+              </div>
+              <div class="onboard-foot">
+                <span class="pair"><span class="key">enter</span> continue</span>
+                <span class="pair"><span class="key">shift-tab</span> back</span>
+                <span class="pair"><span class="key">ctrl-c</span> cancel</span>
+              </div>
+            </div>
+          </div>
+          <figcaption>
+            <strong data-i18n="demo.onb4.t">Onboarding · step 4</strong>
+            <span data-i18n="demo.onb4.d">Carlos always <em>reads</em> from both <code>.claude/skills/</code> and <code>.agents/skills/</code>. This step picks where induced skills get <em>written</em>.</span>
+          </figcaption>
+        </figure>
+
+      </div>
+    </section>
+
+    <!-- ─── KEYS ────────────────────────────────────────────────── -->
+    <section id="keys" aria-labelledby="keys-title">
+      <h2 id="keys-title" data-i18n="keys.title">Keys worth knowing</h2>
+      <p class="section-sub" data-i18n="keys.sub">
+        Everything else is in <code>/help</code> inside the TUI. These are the ones you'll use weekly.
+      </p>
+      <dl class="keys-grid">
+        <div><dt><kbd>Ctrl+F</kbd></dt> <dd><span data-i18n="keys.ctrlF">open the frame switcher</span></dd></div>
+        <div><dt><kbd>/help</kbd></dt> <dd><span data-i18n="keys.slashHelp">full slash-command list</span></dd></div>
+        <div><dt><kbd>!&lt;cmd&gt;</kbd></dt> <dd><span data-i18n="keys.shell">run a shell command in your context</span></dd></div>
+        <div><dt><kbd>/agents</kbd></dt> <dd><span data-i18n="keys.agents">open the sub-agent manage view</span></dd></div>
+        <div><dt><kbd>/whoami</kbd></dt> <dd><span data-i18n="keys.whoami">current frame, mode, provider, model</span></dd></div>
+        <div><dt><kbd>/permissions</kbd></dt> <dd><span data-i18n="keys.perms">layered approval state &amp; audit log</span></dd></div>
+        <div><dt><kbd>/compact</kbd></dt> <dd><span data-i18n="keys.compact">summarize the transcript, keep going</span></dd></div>
+        <div><dt><kbd>Esc&nbsp;Esc</kbd></dt> <dd><span data-i18n="keys.rewind">cancel the in-flight tool call</span></dd></div>
+      </dl>
+    </section>
+
   </main>
 
-  <footer>
-    <span></span>
-    <span class="right">
-      <a href="https://github.com/georgebuilds/carlos" target="_blank" rel="noopener">github</a>
-    </span>
+  <footer class="bottom" role="contentinfo">
+    <span data-i18n="footer.line">carlos · pure-Go agent · MMXXVI</span>
+    <nav aria-label="Footer">
+      <a href="https://github.com/georgebuilds/carlos" rel="noopener" data-i18n="nav.github">GitHub</a>
+      <a href="./agent-loop.html" data-i18n="nav.agentLoop">Agent loop</a>
+      <a href="https://github.com/georgebuilds/carlos/blob/main/LICENSE" rel="noopener" data-i18n="footer.license">License</a>
+    </nav>
   </footer>
 
   <script>
     (function () {
-      const words = [
-        'committed',
-        'hard-working',
-        'indomitable',
-        'tenacious',
-        'ride-or-die',
-        'resourceful',
-      ];
+      'use strict';
 
-      const SCRAMBLE_POOL = 'abcdefghijklmnopqrstuvwxyz-';
-      const mask = document.getElementById('mask');
-      const ghost = document.getElementById('ghost');
-      const slot = document.getElementById('variable');
-      const sr = document.getElementById('srVar');
+      // ─── i18n ────────────────────────────────────────────────────────
+      const STRINGS = {
+        en: {
+          'a11y.skip':        'Skip to content',
+          'nav.github':       'GitHub',
+          'nav.agentLoop':    'Agent loop',
+          'nav.langLabel':    'Language',
+          'hero.t1':          'The most',
+          'hero.t2':          'coding agent.',
+          'hero.tagline':     'Switch between personal, work, and side-project frames with Ctrl+F. Each frame has its own provider, rules, and plain-markdown memory you can grep from your shell or open in Obsidian. carlos stays inside the frame you’re in unless you ask him to cross. One Go binary, no setup ritual.',
+          'hero.installWith': 'Install with Homebrew',
+          'hero.copyHint':    'copy',
+          'hero.copied':      'copied',
+          'hero.brewAria':    'Copy the Homebrew install command to your clipboard',
+          'hero.directDownload': 'Direct download',
+          'hero.meta.size':   '~16 MB binary',
+          'hero.meta.deps':   'no Python, no Docker',
+          'hero.meta.license':'GPL-3.0',
 
-      // Lock the slot width to the widest target word so the headline never reflows.
-      const probe = document.createElement('span');
-      probe.style.cssText =
-        'visibility:hidden;position:absolute;white-space:nowrap;font-style:italic;';
-      mask.appendChild(probe);
-      let widest = words[0];
-      let maxW = 0;
-      for (const w of words) {
-        probe.textContent = w;
-        const r = probe.getBoundingClientRect().width;
-        if (r > maxW) { maxW = r; widest = w; }
+          'install.title':       'Install',
+          'install.sub':         'Three ways in. Pick one. They all land the same binary in your $PATH.',
+          'install.brewLabel':   'Homebrew (macOS / Linux)',
+          'install.brewHint':    'The tap pushes a fresh formula on every stable release.',
+          'install.tarballLabel':'Tarball',
+          'install.tarballHint': 'Extract and drop carlos into your $PATH.',
+          'install.allPlatforms':'All releases & checksums →',
+          'install.verify':      'Verify',
+          'install.verifyHint':  'Should print a tagged version. If not, your $PATH isn’t seeing the binary.',
+          'install.copy':        'Copy',
+          'install.copied':      'Copied',
+
+          'getstart.title':   'Getting started',
+          'getstart.sub':     'Four steps. The TUI runs onboarding the first time you launch it.',
+          'getstart.step1.t': '1 · Run onboarding',
+          'getstart.step1.d': '~30 seconds. Your name, a provider (Anthropic, OpenAI, OpenRouter, Ollama, or Gemini), a model, the daemon yes/no, an optional Obsidian vault path. Everything lands in ~/.carlos/config.yaml at mode 0600.',
+          'getstart.step2.t': '2 · Chat with carlos',
+          'getstart.step2.d': 'Type a question. carlos answers, calls tools when needed (prompting on the risky ones), and keeps the transcript in a SQLite event log at ~/.carlos/state.db. Ctrl+F opens the frame switcher; /help lists slash commands.',
+          'getstart.step3.t': '3 · Or skip the TUI',
+          'getstart.step3.d': 'carlos please <prompt> is a one-shot tool-use loop that stays in your scrollback. carlos research <question> runs a six-phase pipeline and saves a cited report under ~/.carlos/research/.',
+          'getstart.step4.t': '4 · Background work',
+          'getstart.step4.d': 'carlos daemon enable installs a per-user launchd / systemd unit. carlos schedule add "every weekday at 9am ..." queues a recurring run. The daemon notifies on completion.',
+
+          'demos.title':      'What you’ll see',
+          'demos.sub':        'Five surfaces, faithfully reproduced from the real TUI. The research panel runs live in your browser.',
+          'demo.chat.t':      'The chat TUI',
+          'demo.chat.d':      'Status line at the top, conversation in the middle, key hints at the bottom. Tool calls render as orange-bordered cards; carlos’s replies are styled markdown.',
+          'demo.chat.alt':    'The carlos chat TUI mid-conversation: a user asks carlos to create an index.html file, an orange write tool-call card is visible, and carlos describes what it built.',
+          'demo.welcome.t':   'The empty state',
+          'demo.welcome.d':   'First launch in your personal frame. The greeting uses the name you picked in onboarding and seeds three prompts you can try right away.',
+          'demo.welcome.alt': 'The carlos chat TUI on first open, showing the greeting Hey Boss - what are we working on with example prompts below.',
+          'demo.research.t':  'carlos research',
+          'demo.research.d':  'Decompose → search → fetch → read → synthesize → verify. Live phase glyphs while it works; the final cited report saves under ~/.carlos/frames/<frame>/research/.',
+          'demo.research.alt':'A carlos research run in flight: spinner, elapsed counter, current phase, and a row of six phase glyphs that fill in as each step completes.',
+          'demo.please.t':    'carlos please',
+          'demo.please.d':    'One-shot tool-use loop, no TUI. Approval gate on the risky calls; pass -y to auto-approve in scripts. Output stays in your scrollback.',
+          'demo.please.alt':  'carlos please command output: provider banner, an orange-flagged tool approval for git log, the bash result, carlos’s reply listing five commits, and a token/cost stats footer.',
+          'demo.switcher.t':  'Frame switcher (Ctrl+F)',
+          'demo.switcher.d':  'Personal, work, side projects. Each frame carries its own glyph, accent color, rules, and provider. Add a new one any time — and carlos never writes across the line unless you ask.',
+          'demo.switcher.alt':'The carlos frame switcher overlay: a 2x3 grid of frame tiles - personal (selected, orange), work, ludus, research, writing, and a dashed new-frame placeholder. Keybindings at the bottom.',
+          'demo.onb1.t':      'Onboarding · step 1',
+          'demo.onb1.d':      'What carlos calls you in the greeting. The personal frame opens by default; add work or side frames later with /frame new or Ctrl+F.',
+          'demo.onb1.alt':    'The carlos onboarding wizard, step 1 of 8: a big Carlos avatar on the left and a name prompt on the right reading What should I call you, with Boss typed.',
+          'demo.onb4.t':      'Onboarding · step 4',
+          'demo.onb4.d':      'Carlos always reads from both .claude/skills/ and .agents/skills/. This step picks where induced skills get written.',
+          'demo.onb4.alt':    'The carlos onboarding wizard, step 4 of 8: a Skills convention picker with two options - .agents/skills/ (selected) and .claude/skills/.',
+
+          'keys.title':       'Keys worth knowing',
+          'keys.sub':         'Everything else is in /help inside the TUI. These are the ones you’ll use weekly.',
+          'keys.ctrlF':       'open the frame switcher',
+          'keys.slashHelp':   'full slash-command list',
+          'keys.shell':       'run a shell command in your context',
+          'keys.agents':      'open the sub-agent manage view',
+          'keys.whoami':      'current frame, mode, provider, model',
+          'keys.perms':       'layered approval state & audit log',
+          'keys.compact':     'summarize the transcript, keep going',
+          'keys.rewind':      'cancel the in-flight tool call',
+
+          'footer.line':      'carlos · pure-Go agent · MMXXVI',
+          'footer.license':   'License',
+
+          'os.darwin.arm64':  'macOS · Apple Silicon',
+          'os.darwin.amd64':  'macOS · Intel',
+          'os.linux.arm64':   'Linux · arm64',
+          'os.linux.amd64':   'Linux · x86_64',
+          'os.unknown':       'all platforms',
+        },
+        es: {
+          'a11y.skip':        'Saltar al contenido',
+          'nav.github':       'GitHub',
+          'nav.agentLoop':    'Bucle del agente',
+          'nav.langLabel':    'Idioma',
+          'hero.t1':          'El agente de programación más',
+          'hero.t2':          '.',
+          'hero.tagline':     'Cambia entre frames personales, de trabajo y de side projects con Ctrl+F. Cada frame tiene su propio proveedor, sus reglas y una memoria en Markdown plano que puedes grepear desde tu shell o abrir en Obsidian. carlos se queda dentro del frame en el que estás a no ser que le pidas cruzar. Un solo binario en Go, sin rituales de instalación.',
+          'hero.installWith': 'Instalar con Homebrew',
+          'hero.copyHint':    'copiar',
+          'hero.copied':      'copiado',
+          'hero.brewAria':    'Copiar el comando de instalación de Homebrew al portapapeles',
+          'hero.directDownload': 'Descarga directa',
+          'hero.meta.size':   '~16 MB de binario',
+          'hero.meta.deps':   'sin Python, sin Docker',
+          'hero.meta.license':'GPL-3.0',
+
+          'install.title':       'Instalar',
+          'install.sub':         'Tres caminos. Elige uno. Los tres dejan el mismo binario en tu $PATH.',
+          'install.brewLabel':   'Homebrew (macOS / Linux)',
+          'install.brewHint':    'El tap publica una fórmula nueva en cada release estable.',
+          'install.tarballLabel':'Tarball',
+          'install.tarballHint': 'Extrae y pon carlos en tu $PATH.',
+          'install.allPlatforms':'Todas las releases y checksums →',
+          'install.verify':      'Verificar',
+          'install.verifyHint':  'Debería imprimir una versión. Si no, tu $PATH no está viendo el binario.',
+          'install.copy':        'Copiar',
+          'install.copied':      'Copiado',
+
+          'getstart.title':   'Cómo empezar',
+          'getstart.sub':     'Cuatro pasos. La TUI hace la configuración inicial la primera vez que la abres.',
+          'getstart.step1.t': '1 · Configuración inicial',
+          'getstart.step1.d': 'Unos 30 segundos. Tu nombre, un proveedor (Anthropic, OpenAI, OpenRouter, Ollama o Gemini), un modelo, daemon sí/no y la ruta opcional al vault de Obsidian. Todo queda en ~/.carlos/config.yaml en modo 0600.',
+          'getstart.step2.t': '2 · Chatea con carlos',
+          'getstart.step2.d': 'Escribe una pregunta. carlos responde, llama a herramientas cuando hace falta (pidiendo aprobación en las arriesgadas) y guarda la transcripción en un event log SQLite en ~/.carlos/state.db. Ctrl+F abre el selector de frames; /help lista los slash commands.',
+          'getstart.step3.t': '3 · O sáltate la TUI',
+          'getstart.step3.d': 'carlos please <prompt> es un bucle de herramientas de una tirada que se queda en tu scrollback. carlos research <pregunta> ejecuta un pipeline de seis fases y guarda un informe con citas en ~/.carlos/research/.',
+          'getstart.step4.t': '4 · Trabajo en segundo plano',
+          'getstart.step4.d': 'carlos daemon enable instala un servicio launchd / systemd por usuario. carlos schedule add "cada día laborable a las 9am ..." añade una entrada recurrente. El daemon avisa cuando termina.',
+
+          'demos.title':      'Lo que vas a ver',
+          'demos.sub':        'Cinco superficies, reproducidas fielmente desde la TUI real. El panel de research corre en vivo en tu navegador.',
+          'demo.chat.t':      'La TUI de chat',
+          'demo.chat.d':      'Status arriba, conversación en medio, atajos abajo. Las llamadas a herramientas son tarjetas con borde naranja; las respuestas de carlos van como markdown con estilo.',
+          'demo.chat.alt':    'La TUI de chat de carlos a mitad de una conversación: un usuario le pide a carlos crear un index.html, hay una tarjeta naranja para la herramienta write y carlos describe lo que hizo.',
+          'demo.welcome.t':   'Pantalla en blanco',
+          'demo.welcome.d':   'Primera apertura en tu frame personal. El saludo usa el nombre que elegiste y propone tres prompts para empezar.',
+          'demo.welcome.alt': 'La TUI de chat de carlos recién abierta, mostrando el saludo Hey Boss - what are we working on con prompts de ejemplo debajo.',
+          'demo.research.t':  'carlos research',
+          'demo.research.d':  'Descomponer → buscar → fetch → leer → sintetizar → verificar. Glifos de fase en vivo; el informe final con citas se guarda en ~/.carlos/frames/<frame>/research/.',
+          'demo.research.alt':'Una ejecución de carlos research en vuelo: spinner, contador de tiempo, fase actual y una fila de seis glifos de fase que se rellenan según avanza.',
+          'demo.please.t':    'carlos please',
+          'demo.please.d':    'Bucle de herramientas de una sola tirada, sin TUI. Pide aprobación en las llamadas arriesgadas; pasa -y para auto-aprobar en scripts. La salida se queda en tu scrollback.',
+          'demo.please.alt':  'Salida del comando carlos please: banner del proveedor, una aprobación de herramienta marcada en naranja para git log, el resultado de bash, la respuesta de carlos listando cinco commits y un pie con stats de tokens y coste.',
+          'demo.switcher.t':  'Selector de frame (Ctrl+F)',
+          'demo.switcher.d':  'Personal, trabajo, side projects. Cada frame con su glifo, color de acento, reglas y proveedor. Añade uno nuevo cuando quieras — y carlos no escribe del otro lado de la línea sin permiso.',
+          'demo.switcher.alt':'El selector de frames de carlos: una cuadrícula 2x3 de casillas - personal (seleccionada, en naranja), work, ludus, research, writing y una casilla discontinua para crear un frame nuevo. Atajos abajo.',
+          'demo.onb1.t':      'Onboarding · paso 1',
+          'demo.onb1.d':      'Cómo te llama carlos en el saludo. El frame personal se abre por defecto; añade work o side luego con /frame new o Ctrl+F.',
+          'demo.onb1.alt':    'El wizard de onboarding de carlos, paso 1 de 8: un avatar grande de Carlos a la izquierda y un prompt de nombre a la derecha que dice What should I call you con Boss escrito.',
+          'demo.onb4.t':      'Onboarding · paso 4',
+          'demo.onb4.d':      'Carlos siempre lee de .claude/skills/ y .agents/skills/. Este paso elige dónde se escriben las skills inducidas.',
+          'demo.onb4.alt':    'El wizard de onboarding de carlos, paso 4 de 8: selector de Skills convention con dos opciones - .agents/skills/ (seleccionada) y .claude/skills/.',
+
+          'keys.title':       'Atajos que vale la pena saber',
+          'keys.sub':         'Lo demás está en /help dentro de la TUI. Estos son los que usarás cada semana.',
+          'keys.ctrlF':       'abrir el selector de frames',
+          'keys.slashHelp':   'lista completa de slash commands',
+          'keys.shell':       'ejecutar un comando shell en este contexto',
+          'keys.agents':      'abrir la vista de sub-agentes',
+          'keys.whoami':      'frame, modo, proveedor y modelo actuales',
+          'keys.perms':       'estado de aprobaciones por capas y audit log',
+          'keys.compact':     'resumir la transcripción y seguir',
+          'keys.rewind':      'cancelar la llamada a herramienta en curso',
+
+          'footer.line':      'carlos · agente puro en Go · MMXXVI',
+          'footer.license':   'Licencia',
+
+          'os.darwin.arm64':  'macOS · Apple Silicon',
+          'os.darwin.amd64':  'macOS · Intel',
+          'os.linux.arm64':   'Linux · arm64',
+          'os.linux.amd64':   'Linux · x86_64',
+          'os.unknown':       'todas las plataformas',
+        },
+      };
+
+      const SUPPORTED = ['en', 'es'];
+
+      function detectLang() {
+        const url = new URL(window.location.href);
+        const fromQuery = url.searchParams.get('lang');
+        if (fromQuery && SUPPORTED.includes(fromQuery)) return fromQuery;
+        const stored = localStorage.getItem('carlos.lang');
+        if (stored && SUPPORTED.includes(stored)) return stored;
+        const nav = (navigator.language || 'en').slice(0, 2).toLowerCase();
+        return SUPPORTED.includes(nav) ? nav : 'en';
       }
-      mask.removeChild(probe);
-      ghost.textContent = widest;
 
-      function renderWord(word) {
-        slot.innerHTML = '';
-        for (const ch of word) {
-          const s = document.createElement('span');
-          s.className = 'letter';
-          s.textContent = ch;
-          slot.appendChild(s);
+      function applyLang(lang) {
+        const dict = STRINGS[lang] || STRINGS.en;
+        document.documentElement.lang = lang;
+        document.querySelectorAll('[data-i18n]').forEach(el => {
+          const key = el.getAttribute('data-i18n');
+          if (dict[key] != null) el.textContent = dict[key];
+        });
+        document.querySelectorAll('[data-i18n-aria-label]').forEach(el => {
+          const key = el.getAttribute('data-i18n-aria-label');
+          if (dict[key] != null) el.setAttribute('aria-label', dict[key]);
+        });
+        document.querySelectorAll('.lang-switcher button').forEach(btn => {
+          const pressed = btn.getAttribute('data-lang') === lang;
+          btn.setAttribute('aria-pressed', pressed ? 'true' : 'false');
+        });
+        // Refresh dynamic UI bits that depend on translation
+        renderPlatformLabels(lang);
+        if (window._carlosPlatform) {
+          updatePrimaryDownload(window._carlosPlatform, window._carlosVersion);
         }
       }
 
-      renderWord(words[0]);
-      sr.textContent = words[0];
+      function setLang(lang) {
+        if (!SUPPORTED.includes(lang)) return;
+        localStorage.setItem('carlos.lang', lang);
+        applyLang(lang);
+      }
 
-      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+      document.querySelectorAll('.lang-switcher button').forEach(btn => {
+        btn.addEventListener('click', () => setLang(btn.getAttribute('data-lang')));
+      });
 
-      const SCRAMBLE_MS = 220; // duration each letter scrambles before locking
-      const STAGGER_MS = 42;   // delay between successive letters locking (wave L→R)
-      const FLIP_MS = 55;      // how often a scrambling letter picks a new random char
+      const initialLang = detectLang();
 
-      let rafId = 0;
-      let cooling = false;
+      // ─── Platform detection ─────────────────────────────────────────
+      // Best-effort. Falls back to "all platforms" if unsure.
+      function detectPlatform() {
+        const ua = (navigator.userAgent || '').toLowerCase();
+        const platform = ((navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || '').toLowerCase();
+        const isMac = ua.includes('mac') || platform.includes('mac') || platform.includes('darwin');
+        const isLinux = ua.includes('linux') && !ua.includes('android');
+        let arch = 'amd64';
+        // userAgentData.getHighEntropyValues is the only reliable arch source.
+        // For the first paint we guess from coarse signals; CPU is updated async if we can get it.
+        if (isMac) {
+          // Apple Silicon is the default for Macs from 2020+; default to arm64.
+          arch = 'arm64';
+        }
+        if (ua.includes('aarch64') || ua.includes('arm64') || ua.includes('armv8')) arch = 'arm64';
+        if (ua.includes('x86_64') || ua.includes('x64') || ua.includes('amd64') || ua.includes('wow64')) arch = 'amd64';
 
-      function shuffleTo(target) {
-        cancelAnimationFrame(rafId);
-        const current = Array.from(slot.children);
-        const targetLen = target.length;
-        const maxLen = Math.max(current.length, targetLen);
+        let os = null;
+        if (isMac) os = 'darwin';
+        else if (isLinux) os = 'linux';
 
-        // Ensure we have enough slots; new ones start hidden and fade in during scramble.
-        for (let i = current.length; i < maxLen; i++) {
-          const s = document.createElement('span');
-          s.className = 'letter';
-          s.dataset.state = 'hidden';
-          s.textContent = SCRAMBLE_POOL[Math.floor(Math.random() * SCRAMBLE_POOL.length)];
-          slot.appendChild(s);
+        if (!os) return { os: null, arch: null };
+        return { os, arch };
+      }
+
+      function platformLabel(os, arch, lang) {
+        const dict = STRINGS[lang] || STRINGS.en;
+        if (!os) return dict['os.unknown'];
+        return dict[`os.${os}.${arch}`] || dict['os.unknown'];
+      }
+
+      function tarballName(version, os, arch) {
+        // goreleaser pattern: carlos_VERSION_OS_ARCH.tar.gz
+        // where ARCH is x86_64 for amd64 (per the goreleaser template).
+        const archStr = arch === 'amd64' ? 'x86_64' : arch;
+        return `carlos_${version}_${os}_${archStr}.tar.gz`;
+      }
+
+      function tarballURL(version, os, arch) {
+        return `https://github.com/georgebuilds/carlos/releases/download/v${version}/${tarballName(version, os, arch)}`;
+      }
+
+      function renderPlatformLabels(lang) {
+        // Update the four tarball cards' "Apple Silicon" / "arm64" / etc. labels
+        // are static text in the markup. Nothing to do here for now; placeholder
+        // for future per-platform copy.
+        void lang;
+      }
+
+      // Primary CTA is now a brew copy button. Only the version chip is
+      // platform-aware; the rest of the label is universal because
+      // Homebrew works on macOS and Linux (and the secondary "Direct
+      // download" jumps to the install section for everyone else).
+      function updatePrimaryDownload(_p, version) {
+        const versionEl = document.getElementById('primary-dl-version');
+        if (versionEl) versionEl.textContent = version ? `v${version}` : 'latest';
+      }
+
+      function wireTarballLinks(version) {
+        const map = [
+          ['dl-darwin-arm64', 'darwin', 'arm64'],
+          ['dl-darwin-amd64', 'darwin', 'amd64'],
+          ['dl-linux-arm64',  'linux',  'arm64'],
+          ['dl-linux-amd64',  'linux',  'amd64'],
+        ];
+        for (const [id, os, arch] of map) {
+          const el = document.getElementById(id);
+          if (el) el.setAttribute('href', tarballURL(version, os, arch));
+        }
+      }
+
+      // Async: fetch latest release tag from GitHub. Falls back silently
+      // on rate-limit / offline.
+      async function fetchLatestVersion() {
+        try {
+          const r = await fetch('https://api.github.com/repos/georgebuilds/carlos/releases/latest', {
+            headers: { 'Accept': 'application/vnd.github+json' }
+          });
+          if (!r.ok) return null;
+          const j = await r.json();
+          if (!j || !j.tag_name) return null;
+          return j.tag_name.replace(/^v/, '');
+        } catch (_) {
+          return null;
+        }
+      }
+
+      // ─── Copy buttons ───────────────────────────────────────────────
+      document.querySelectorAll('.copy-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const text = btn.getAttribute('data-copy') || '';
+          const label = btn.querySelector('[data-i18n="install.copy"]') || btn;
+          try {
+            await navigator.clipboard.writeText(text);
+            const lang = document.documentElement.lang || 'en';
+            const dict = STRINGS[lang] || STRINGS.en;
+            const orig = dict['install.copy'];
+            label.textContent = dict['install.copied'];
+            btn.classList.add('copied');
+            setTimeout(() => {
+              label.textContent = orig;
+              btn.classList.remove('copied');
+            }, 1500);
+          } catch (_) {
+            // best-effort; let the user select manually
+          }
+        });
+      });
+
+      // Primary brew-install CTA: same copy-on-click affordance but with
+      // the larger 2-row layout's hint label as the feedback target.
+      const primaryBtn = document.getElementById('primary-dl');
+      if (primaryBtn) {
+        primaryBtn.addEventListener('click', async () => {
+          const text = primaryBtn.getAttribute('data-copy') || '';
+          const label = document.getElementById('primary-dl-hint-label');
+          const lang = document.documentElement.lang || 'en';
+          const dict = STRINGS[lang] || STRINGS.en;
+          try {
+            await navigator.clipboard.writeText(text);
+            if (label) label.textContent = dict['hero.copied'] || 'copied';
+            primaryBtn.classList.add('copied');
+            setTimeout(() => {
+              if (label) label.textContent = dict['hero.copyHint'] || 'copy';
+              primaryBtn.classList.remove('copied');
+            }, 1800);
+          } catch (_) {
+            // Clipboard API can fail on insecure origins / older browsers.
+            // The command stays selectable in the button body.
+            if (label) label.textContent = 'select';
+            setTimeout(() => {
+              if (label) label.textContent = dict['hero.copyHint'] || 'copy';
+            }, 2200);
+          }
+        });
+      }
+
+      // ─── Headline word cycler (preserved from the prior page) ───────
+      function startHeadlineCycler() {
+        const words = ['committed', 'hard-working', 'indomitable', 'tenacious', 'ride-or-die', 'resourceful'];
+        const wordsES = ['comprometido', 'trabajador', 'indomable', 'tenaz', 'leal', 'resolutivo'];
+
+        const SCRAMBLE_POOL = 'abcdefghijklmnopqrstuvwxyzñáéíóú-';
+        const mask = document.getElementById('mask');
+        const ghost = document.getElementById('ghost');
+        const slot = document.getElementById('variable');
+        const sr = document.getElementById('srVar');
+        if (!mask || !ghost || !slot) return;
+
+        function activeWords() {
+          return (document.documentElement.lang || 'en') === 'es' ? wordsES : words;
         }
 
-        const letters = Array.from(slot.children);
-        const start = performance.now();
-        let lastFlip = 0;
+        function recomputeGhost() {
+          const probe = document.createElement('span');
+          probe.style.cssText =
+            'visibility:hidden;position:absolute;white-space:nowrap;font-style:italic;';
+          mask.appendChild(probe);
+          let widest = activeWords()[0];
+          let maxW = 0;
+          for (const w of activeWords()) {
+            probe.textContent = w;
+            const r = probe.getBoundingClientRect().width;
+            if (r > maxW) { maxW = r; widest = w; }
+          }
+          mask.removeChild(probe);
+          ghost.textContent = widest;
+        }
+        recomputeGhost();
 
-        function frame(now) {
-          const elapsed = now - start;
-          const flip = now - lastFlip >= FLIP_MS;
-          if (flip) lastFlip = now;
+        function renderWord(word) {
+          slot.innerHTML = '';
+          for (const ch of word) {
+            const s = document.createElement('span');
+            s.className = 'letter';
+            s.textContent = ch;
+            slot.appendChild(s);
+          }
+        }
 
-          let allDone = true;
-          for (let i = 0; i < letters.length; i++) {
-            const el = letters[i];
-            const lockAt = SCRAMBLE_MS + i * STAGGER_MS;
+        renderWord(activeWords()[0]);
+        if (sr) sr.textContent = activeWords()[0];
 
-            if (elapsed < lockAt) {
-              // still scrambling
-              if (flip) {
-                el.textContent =
-                  SCRAMBLE_POOL[Math.floor(Math.random() * SCRAMBLE_POOL.length)];
-              }
-              el.dataset.state = 'scramble';
-              allDone = false;
-            } else {
-              // locked
-              if (i < targetLen) {
-                if (el.textContent !== target[i]) el.textContent = target[i];
-                el.dataset.state = 'locked';
+        const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (reduce) return;
+
+        const SCRAMBLE_MS = 220, STAGGER_MS = 42, FLIP_MS = 55;
+        let rafId = 0;
+
+        function shuffleTo(target) {
+          cancelAnimationFrame(rafId);
+          const current = Array.from(slot.children);
+          const targetLen = target.length;
+          const maxLen = Math.max(current.length, targetLen);
+          for (let i = current.length; i < maxLen; i++) {
+            const s = document.createElement('span');
+            s.className = 'letter';
+            s.dataset.state = 'hidden';
+            s.textContent = SCRAMBLE_POOL[Math.floor(Math.random() * SCRAMBLE_POOL.length)];
+            slot.appendChild(s);
+          }
+          const letters = Array.from(slot.children);
+          const start = performance.now();
+          let lastFlip = 0;
+          function frame(now) {
+            const elapsed = now - start;
+            const flip = now - lastFlip >= FLIP_MS;
+            if (flip) lastFlip = now;
+            let allDone = true;
+            for (let i = 0; i < letters.length; i++) {
+              const el = letters[i];
+              const lockAt = SCRAMBLE_MS + i * STAGGER_MS;
+              if (elapsed < lockAt) {
+                if (flip) {
+                  el.textContent = SCRAMBLE_POOL[Math.floor(Math.random() * SCRAMBLE_POOL.length)];
+                }
+                el.dataset.state = 'scramble';
+                allDone = false;
               } else {
-                el.dataset.state = 'hidden';
+                if (i < targetLen) {
+                  if (el.textContent !== target[i]) el.textContent = target[i];
+                  el.dataset.state = 'locked';
+                } else {
+                  el.dataset.state = 'hidden';
+                }
               }
             }
+            if (!allDone) {
+              rafId = requestAnimationFrame(frame);
+            } else {
+              while (slot.children.length > targetLen) slot.lastChild.remove();
+              for (const el of slot.children) delete el.dataset.state;
+            }
           }
-
-          if (!allDone) {
-            rafId = requestAnimationFrame(frame);
-          } else {
-            // Drop trailing slots beyond the new word.
-            while (slot.children.length > targetLen) slot.lastChild.remove();
-            // Clear data-state on locked letters so they sit at default style.
-            for (const el of slot.children) delete el.dataset.state;
-          }
+          rafId = requestAnimationFrame(frame);
         }
 
-        rafId = requestAnimationFrame(frame);
+        let idx = 0;
+        function tick() {
+          const list = activeWords();
+          idx = (idx + 1) % list.length;
+          const next = list[idx];
+          if (sr) sr.textContent = next;
+          shuffleTo(next);
+        }
+        // Recompute ghost / reset cycle on lang change.
+        window.addEventListener('carlos:lang', () => {
+          recomputeGhost();
+          renderWord(activeWords()[0]);
+          if (sr) sr.textContent = activeWords()[0];
+          idx = 0;
+        });
+
+        setTimeout(() => {
+          tick();
+          setInterval(tick, 2600);
+        }, 1900);
       }
 
-      let idx = 0;
-      function tick() {
-        idx = (idx + 1) % words.length;
-        const next = words[idx];
-        sr.textContent = next;
-        shuffleTo(next);
+      // ─── Research panel animation ──────────────────────────────────
+      function startResearchAnim() {
+        const root = document.getElementById('research-demo');
+        if (!root) return;
+
+        const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+        const PHASES = ['decomp', 'search', 'fetch', 'read', 'synth', 'verify'];
+        // Phase durations (seconds) — feel of a real run, compressed for demo.
+        const DURATIONS = [2.4, 3.1, 1.4, 2.1, 3.6, 1.7];
+        const HOLD_DONE = 3.5;    // seconds to dwell on the done state
+        const SPINNER  = ['⠋','⠙','⠹','⠸','⠼','⠴','⠦','⠧','⠇','⠏'];
+
+        const headerTitle = root.querySelector('.research-box .header .title');
+        const headerQuery = root.querySelector('.research-box .header .query');
+        const spinnerEl   = root.querySelector('.research-box .header .spinner');
+        const elapsedEl   = root.querySelector('.research-box .header .elapsed');
+        const currentEl   = root.querySelector('.research-box .current');
+        const savedEl     = root.querySelector('.saved');
+        const phaseEls    = {};
+        PHASES.forEach(p => {
+          phaseEls[p] = root.querySelector(`.research-box .ph[data-ph="${p}"]`);
+        });
+
+        function fmtElapsed(s) {
+          if (s < 60) return `${s.toFixed(1)}s elapsed`;
+          const m = Math.floor(s / 60);
+          const sec = Math.floor(s % 60);
+          return `${m}m${sec}s elapsed`;
+        }
+
+        function setPhase(p, state) {
+          const el = phaseEls[p];
+          if (!el) return;
+          el.classList.remove('done', 'cur', 'todo');
+          el.classList.add(state);
+          const g = el.querySelector('.glyph');
+          if (state === 'done') g.textContent = '✓';
+          else if (state === 'cur') g.textContent = '◐';
+          else g.textContent = '○';
+        }
+
+        if (reduce) {
+          // Static "done" tableau.
+          headerTitle.textContent = 'researching:';
+          spinnerEl.textContent = '✓';
+          elapsedEl.textContent = '1m6s elapsed';
+          currentEl.classList.add('done-line');
+          currentEl.innerHTML = '<span class="label">done</span> · rendering report…';
+          PHASES.forEach(p => setPhase(p, 'done'));
+          if (savedEl) savedEl.classList.add('show');
+          return;
+        }
+
+        let elapsed = 0;     // seconds, total
+        let phaseIdx = 0;    // which phase is current
+        let inPhase = 0;     // seconds into current phase
+        let doneHold = 0;    // seconds dwelling on done state
+        let spinFrame = 0;
+
+        function render() {
+          spinFrame = (spinFrame + 1) % SPINNER.length;
+
+          if (phaseIdx >= PHASES.length) {
+            // done state
+            spinnerEl.textContent = '✓';
+            currentEl.classList.add('done-line');
+            currentEl.innerHTML = '<span class="label">done</span> · rendering report…';
+            PHASES.forEach(p => setPhase(p, 'done'));
+            if (savedEl) savedEl.classList.add('show');
+          } else {
+            spinnerEl.textContent = SPINNER[spinFrame];
+            currentEl.classList.remove('done-line');
+            if (savedEl) savedEl.classList.remove('show');
+            const p = PHASES[phaseIdx];
+            currentEl.innerHTML =
+              `<span class="dot-cur">●</span> <span class="label">${p}</span> <span class="ms">· ${inPhase.toFixed(1)}s</span>`;
+            PHASES.forEach((q, i) => {
+              if (i < phaseIdx)       setPhase(q, 'done');
+              else if (i === phaseIdx) setPhase(q, 'cur');
+              else                    setPhase(q, 'todo');
+            });
+          }
+          elapsedEl.textContent = fmtElapsed(elapsed);
+        }
+
+        render();
+        const TICK = 0.1; // seconds per tick
+        setInterval(() => {
+          if (phaseIdx >= PHASES.length) {
+            doneHold += TICK;
+            elapsed += TICK;
+            if (doneHold >= HOLD_DONE) {
+              // restart cycle
+              elapsed = 0; phaseIdx = 0; inPhase = 0; doneHold = 0;
+              currentEl.classList.remove('done-line');
+            }
+          } else {
+            elapsed += TICK;
+            inPhase += TICK;
+            if (inPhase >= DURATIONS[phaseIdx]) {
+              inPhase = 0;
+              phaseIdx += 1;
+            }
+          }
+          render();
+        }, TICK * 1000);
       }
 
-      // Settle the opening word before the first shuffle.
-      setTimeout(() => {
-        tick();
-        setInterval(tick, 2600);
-      }, 1900);
+      // ─── Boot ───────────────────────────────────────────────────────
+      applyLang(initialLang);
+      startResearchAnim();
+
+      const detected = detectPlatform();
+      window._carlosPlatform = detected;
+      updatePrimaryDownload(detected, null);
+
+      // Fire the GH API call in the background; update once it lands.
+      fetchLatestVersion().then(v => {
+        if (!v) return;
+        window._carlosVersion = v;
+        updatePrimaryDownload(detected, v);
+        wireTarballLinks(v);
+      });
+
+      // Re-fire the lang event whenever buttons toggle, so the cycler resets.
+      document.querySelectorAll('.lang-switcher button').forEach(btn => {
+        btn.addEventListener('click', () => {
+          window.dispatchEvent(new CustomEvent('carlos:lang'));
+        });
+      });
+
+      startHeadlineCycler();
     })();
   </script>
 </body>
