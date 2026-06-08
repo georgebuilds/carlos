@@ -137,8 +137,9 @@
       text-decoration: none;
       display: inline-flex; align-items: center; gap: 10px;
       transition: color 0.15s;
+      border: 0; padding-bottom: 0;
     }
-    header .mark:hover { color: var(--navy); }
+    header .mark:hover { color: var(--navy); border: 0; }
     header .mark::before {
       content: '🧢';
       font-size: 18px;
@@ -288,7 +289,7 @@
     .diagram-card {
       background: var(--card);
       border-radius: 14px;
-      padding: 22px 22px 18px;
+      padding: 0 0 18px;
       box-shadow:
         0 1px 0 var(--rule-soft) inset,
         0 14px 28px var(--shadow);
@@ -316,6 +317,24 @@
       pointer-events: none;
     }
 
+    /* Sticky column head.
+       Each card's heading block sticks to viewport top while the card is
+       in-view; releases naturally when the card's bottom scrolls past.
+       Because all three cards stretch to equal grid-row height, the three
+       heads stick and release together as a single visual band. */
+    .diagram-card .card-head {
+      position: sticky;
+      top: 0;
+      z-index: 4;
+      background: var(--card);
+      padding: 18px 22px 12px;
+      border-radius: 14px 14px 0 0;
+      border-bottom: 1px solid var(--rule-soft);
+      box-shadow: 0 6px 10px -10px rgba(20, 22, 30, 0.28);
+    }
+    .diagram-card .card-body {
+      padding: 14px 22px 0;
+    }
     .diagram-card h2 {
       font-family: 'Caveat', cursive;
       font-weight: 700;
@@ -329,7 +348,7 @@
       text-transform: uppercase;
       letter-spacing: 0.22em;
       color: var(--muted);
-      margin-bottom: 18px;
+      margin-bottom: 0;
     }
     .diagram-card.claude h2 { color: var(--claude); }
     .diagram-card.carlos h2 { color: var(--carlos); }
@@ -637,8 +656,11 @@
 
       <!-- ─── CLAUDE CODE ─── -->
       <div class="diagram-card claude">
-        <h2>Claude Code</h2>
-        <div class="who">interactive harness</div>
+        <header class="card-head">
+          <h2>Claude Code</h2>
+          <div class="who">interactive harness</div>
+        </header>
+        <div class="card-body">
         <div class="flow">
           <div class="node" data-phase="input"><strong>USER PROMPT</strong><div class="desc">terminal input, file refs via @, piped data</div></div>
           <div class="arrow"><svg viewBox="0 0 14 14"><path d="M7 2 Q 8 7, 7 12 M3 9 L 7 12 L 11 9"/></svg></div>
@@ -675,14 +697,18 @@
           <div class="arrow"><svg viewBox="0 0 14 14"><path d="M7 2 Q 8 7, 7 12 M3 9 L 7 12 L 11 9"/></svg></div>
           <div class="node" data-phase="compact"><strong>context fills</strong><div class="desc">auto-compaction · summarize history · keep recent code + decisions</div></div>
         </div>
+        </div><!-- /.card-body -->
       </div>
 
       <!-- ─── CARLOS ─── -->
       <div class="diagram-card carlos">
-        <h2>carlos</h2>
-        <div class="who">event-sourced agent</div>
+        <header class="card-head">
+          <h2>carlos</h2>
+          <div class="who">event-sourced agent</div>
+        </header>
+        <div class="card-body">
         <div class="flow">
-          <div class="node" data-phase="input"><strong>USER PROMPT</strong><div class="desc">chat TUI, /research, /please headless, scheduled cron</div></div>
+          <div class="node" data-phase="input"><strong>USER PROMPT</strong><div class="desc">chat TUI, /research, carlos please headless, scheduled cron</div></div>
           <div class="arrow"><svg viewBox="0 0 14 14"><path d="M7 2 Q 8 7, 7 12 M3 9 L 7 12 L 11 9"/></svg></div>
 
           <div class="node" data-phase="context"><strong>load context</strong><div class="desc">AGENTS.md + CLAUDE.md walk + .claude/skills + .agents/skills</div></div>
@@ -699,7 +725,7 @@
               <div class="node" data-phase="plan"><strong>budget gate</strong><div class="desc">tokens / cents / wall-clock · ErrBudgetExceeded → clean halt</div></div>
               <div class="arrow"><svg viewBox="0 0 14 14"><path d="M7 2 Q 8 7, 7 12 M3 9 L 7 12 L 11 9"/></svg></div>
 
-              <div class="node" data-phase="model"><strong>provider.Stream</strong><div class="desc">canonical event shape across anthropic / openai / openrouter / ollama / cpu</div></div>
+              <div class="node" data-phase="model"><strong>provider.Stream</strong><div class="desc">canonical event shape across anthropic / openai / openrouter / gemini / ollama</div></div>
               <div class="arrow"><svg viewBox="0 0 14 14"><path d="M7 2 Q 6 7, 7 12 M3 9 L 7 12 L 11 9"/></svg></div>
 
               <div class="branch">
@@ -723,12 +749,16 @@
           <div class="arrow"><svg viewBox="0 0 14 14"><path d="M7 2 Q 8 7, 7 12 M3 9 L 7 12 L 11 9"/></svg></div>
           <div class="node" data-phase="compact"><strong>/compact (manual)</strong><div class="desc">summarizer rebuilds history · EvtSessionReset + synthetic recap</div></div>
         </div>
+        </div><!-- /.card-body -->
       </div>
 
       <!-- ─── CODEX ─── -->
       <div class="diagram-card codex">
-        <h2>Codex</h2>
-        <div class="who">sandbox-first ReAct</div>
+        <header class="card-head">
+          <h2>Codex</h2>
+          <div class="who">sandbox-first ReAct</div>
+        </header>
+        <div class="card-body">
         <div class="flow">
           <div class="node" data-phase="input"><strong>USER PROMPT</strong><div class="desc">codex TUI, codex exec for CI, ChatGPT handoff</div></div>
           <div class="arrow"><svg viewBox="0 0 14 14"><path d="M7 2 Q 8 7, 7 12 M3 9 L 7 12 L 11 9"/></svg></div>
@@ -768,6 +798,7 @@
           <div class="arrow"><svg viewBox="0 0 14 14"><path d="M7 2 Q 8 7, 7 12 M3 9 L 7 12 L 11 9"/></svg></div>
           <div class="node" data-phase="compact"><strong>/compact (manual)</strong><div class="desc">summarize the visible conversation to free tokens</div></div>
         </div>
+        </div><!-- /.card-body -->
       </div>
 
     </section>
@@ -858,7 +889,7 @@
           <tr>
             <td class="row-label">sub-agents</td>
             <td class="claude-col"><code>Task</code> tool spawns a subagent with its own context + restricted tools; returns a summary; configured via <code>.claude/agents/</code> markdown</td>
-            <td class="carlos-col"><code>Supervisor.Spawn → SubAgent</code> with 10-state lifecycle; restart breaker (3-in-60s); per-agent heartbeat ticker; manage TUI roster surfaces every live sub-agent</td>
+            <td class="carlos-col"><code>Supervisor.Spawn → SubAgent</code> with 11-state lifecycle; restart breaker (3-in-60s); per-agent heartbeat ticker; manage TUI roster surfaces every live sub-agent</td>
             <td class="codex-col">subagent support framed as parallelization; spawn-and-summarize pattern; less elaborate lifecycle than carlos</td>
           </tr>
           <tr>
@@ -894,7 +925,7 @@
           <tr>
             <td class="row-label">extensibility</td>
             <td class="claude-col">PreToolUse / PostToolUse / Stop hooks; MCP server protocol for arbitrary external tools; plugin marketplace</td>
-            <td class="carlos-col">in-process via <code>tools.Registry</code>, <code>Approver</code>, <code>memory.Summarizer</code>, verifier <code>Dispatcher</code>; MCP client in the post-v1 backlog</td>
+            <td class="carlos-col">in-process via <code>tools.Registry</code>, <code>Approver</code>, <code>memory.Summarizer</code>, verifier <code>Dispatcher</code>; MCP client (stdio servers, per-frame gating) ships built-in via <code>internal/mcp</code></td>
             <td class="codex-col">MCP for third-party tools; Skills bundle scripts + prompts + MCP deps as a unit. No shell-hook system in the Claude Code sense</td>
           </tr>
         </tbody>

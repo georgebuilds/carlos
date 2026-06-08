@@ -173,7 +173,10 @@
       font-size: 12px; letter-spacing: 0.22em; text-transform: uppercase;
       color: var(--ink); text-decoration: none; font-weight: 500;
       display: inline-flex; align-items: center; gap: 8px;
+      border: 0; padding-bottom: 0;
+      transition: color 0.15s;
     }
+    .brand:hover { color: var(--navy); text-decoration: none; border: 0; }
     .brand::before {
       content: '🧢';
       font-size: 16px;
