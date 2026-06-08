@@ -87,7 +87,8 @@ func Stream(ctx context.Context, cfg Config, req providers.Request) (<-chan prov
 		// Drain + close before returning so the connection can be reused.
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		resp.Body.Close()
-		return nil, fmt.Errorf("%s: HTTP %d: %s", cfg.Name, resp.StatusCode, strings.TrimSpace(string(b)))
+		msg := extractErrorMessage(b)
+		return nil, fmt.Errorf("%s: HTTP %d: %s", cfg.Name, resp.StatusCode, msg)
 	}
 
 	out := make(chan providers.Event, 16)
