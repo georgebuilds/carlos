@@ -58,15 +58,17 @@ After onboarding you're in the chat TUI. Type a question. carlos answers, calls 
 ### CLI verbs adjacent to the chat
 
 ```
-carlos please <prompt>           # one-shot, no TUI
-carlos research <question>       # multi-phase deep research
+carlos please "<prompt>"         # one-shot, no TUI
+carlos research "<question>"     # multi-phase deep research
 carlos memory search <query>     # FTS5 over conversation summaries
 carlos schedule list|add|rm      # cron + natural language
 carlos gateway test <channel>    # verify ntfy / Telegram wiring
 carlos daemon enable|disable     # background service
 ```
 
-All accept `-f <frame>` (or `--frame`) to scope to a specific frame.
+All accept `-f <frame>` (or `--frame`) to scope to a specific frame. `carlos please` takes a single positional prompt; multi-word prompts must be quoted (a single hyphenated token like `say-hello` works without quotes).
+
+`carlos please` shows a live 3-row bordered status panel while it runs (current tool, streaming-text preview, tool counter + provider/model); the assistant's final reply prints below the panel on completion.
 
 `carlos research` shows a live phase tracker (decompose, search, fetch, read, synthesize, verify) and writes a cited report under `~/.carlos/frames/<frame>/research/`:
 

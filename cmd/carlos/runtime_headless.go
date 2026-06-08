@@ -18,6 +18,9 @@ import (
 	"syscall"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
+	xterm "github.com/charmbracelet/x/term"
+
 	"github.com/georgebuilds/carlos/internal/agent"
 	"github.com/georgebuilds/carlos/internal/config"
 	"github.com/georgebuilds/carlos/internal/frame"
@@ -252,11 +255,17 @@ func runHeadless(prompt string, opts pleaseOptions) error {
 	}
 	approver = layered
 
-	// Surface which provider/model we're using on stderr so scripts and
-	// users both see it.
+	// Surface which provider/model we're using on stderr so scripts
+	// and users both see it. Skipped when the live status panel is
+	// going to render (TTY mode): the panel's footer row carries the
+	// same provider/model label, and a duplicate line above the
+	// rounded box reads as visual noise.
 	caps := d.provider.Capabilities()
-	fmt.Fprintf(os.Stderr, "carlos: provider=%s model=%s (parallel-tool=%t, caching=%t, vision=%t)\n",
-		d.name, d.model, caps.ParallelToolUse, caps.PromptCaching, caps.Vision)
+	pleasePanelOn := stdoutIsTTY()
+	if !pleasePanelOn {
+		fmt.Fprintf(os.Stderr, "carlos: provider=%s model=%s (parallel-tool=%t, caching=%t, vision=%t)\n",
+			d.name, d.model, caps.ParallelToolUse, caps.PromptCaching, caps.Vision)
+	}
 	if wt != nil {
 		fmt.Fprintf(os.Stderr, "carlos: worktree=%s branch=%s\n", wt.Root, wt.Branch)
 	}
@@ -302,16 +311,27 @@ func runHeadless(prompt string, opts pleaseOptions) error {
 	initial := []providers.Message{
 		{Role: "user", Content: []providers.Block{{Kind: "text", Text: prompt}}},
 	}
-	_, err = agent.Run(ctx, d.provider, parentReg, agent.LoopOptions{
-		Model:    d.model,
-		System:   system,
-		Tools:    toolSpecs,
-		Approver: approver,
-		TextSink: os.Stdout,
-	}, initial)
-	// Newline keeps the terminal prompt clean regardless of how the loop
-	// finished - the model's last text may not end with one.
-	fmt.Println()
+
+	if pleasePanelOn {
+		err = runPleaseWithPanel(ctx, prompt, d, parentReg, agent.LoopOptions{
+			Model:    d.model,
+			System:   system,
+			Tools:    toolSpecs,
+			Approver: approver,
+		}, initial)
+	} else {
+		_, err = agent.Run(ctx, d.provider, parentReg, agent.LoopOptions{
+			Model:    d.model,
+			System:   system,
+			Tools:    toolSpecs,
+			Approver: approver,
+			TextSink: os.Stdout,
+		}, initial)
+		// Newline keeps the terminal prompt clean regardless of how
+		// the loop finished — the model's last text may not end
+		// with one.
+		fmt.Println()
+	}
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
 			return nil
@@ -319,6 +339,88 @@ func runHeadless(prompt string, opts pleaseOptions) error {
 		return err
 	}
 	return nil
+}
+
+// runPleaseWithPanel runs the agent loop with the live bubbletea
+// status panel. The panel renders a 3-row rounded box showing the
+// current tool, streaming-text preview, and a running counter; on
+// completion the panel quits in place and the buffered assistant
+// text prints below.
+//
+// Hooks are wired so the panel sees:
+//   - OnToolCall    → pleaseToolStartMsg
+//   - OnToolResult  → pleaseToolDoneMsg (with isError flag flagged)
+//   - TextSink Write → pleaseTextDeltaMsg (for the writing-line preview)
+//
+// Errors from agent.Run flow back through the driver; ctrl-c is
+// surfaced as context.Canceled and treated as a clean exit by the
+// caller.
+func runPleaseWithPanel(
+	ctx context.Context,
+	prompt string,
+	d *dispatch,
+	reg *tools.Registry,
+	opts agent.LoopOptions,
+	initial []providers.Message,
+) error {
+	sink := &pleaseTextSink{}
+
+	err := runPleaseDriver(ctx, prompt, d.name, d.model, func(prog *tea.Program) error {
+		sink.prog = prog
+		opts.TextSink = sink
+		opts.OnToolCall = func(use providers.Block) {
+			input := string(use.ToolInput)
+			prog.Send(pleaseToolStartMsg{
+				name:      use.ToolName,
+				inputJSON: input,
+				t:         time.Now(),
+			})
+		}
+		opts.OnToolResult = func(use providers.Block, result providers.Block) {
+			errMsg := ""
+			body := string(result.ToolResult)
+			if strings.HasPrefix(body, "(rejected by user)") || strings.HasPrefix(body, "tool error:") {
+				errMsg = firstLine(body)
+			}
+			prog.Send(pleaseToolDoneMsg{
+				name:    use.ToolName,
+				elapsed: 0, // panel computes its own elapsed from toolStarted
+				errMsg:  errMsg,
+			})
+		}
+		_, runErr := agent.Run(ctx, d.provider, reg, opts, initial)
+		return runErr
+	})
+
+	// Panel has exited; flush the buffered assistant text to stdout
+	// so the user sees the actual reply. A trailing newline keeps
+	// the shell prompt clean.
+	text := sink.String()
+	if text != "" {
+		fmt.Print(text)
+		if !strings.HasSuffix(text, "\n") {
+			fmt.Println()
+		}
+	}
+	return err
+}
+
+// firstLine returns s up to the first newline; used to clip a
+// multi-line tool error to a sensible one-line summary for the
+// status panel.
+func firstLine(s string) string {
+	if i := strings.IndexByte(s, '\n'); i >= 0 {
+		return s[:i]
+	}
+	return s
+}
+
+// stdoutIsTTY reports whether stdout is attached to a terminal. Used
+// to gate the live-panel branch in carlos please: piped or
+// redirected stdout falls back to the plain streaming-to-stdout
+// path that scripts already depend on.
+func stdoutIsTTY() bool {
+	return xterm.IsTerminal(os.Stdout.Fd())
 }
 
 // runResearchInternal is the Phase 11 slice 11c smoke harness for the

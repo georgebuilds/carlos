@@ -234,7 +234,7 @@ func TestResolveSessionFromFlag_UnknownMode(t *testing.T) {
 
 func TestParsePleaseArgs_All(t *testing.T) {
 	opts, prompt, err := parsePleaseArgs([]string{
-		"-y", "-p", "openai", "-m", "gpt-4o", "-w", "hello", "world",
+		"-y", "-p", "openai", "-m", "gpt-4o", "-w", "hello world",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -258,7 +258,7 @@ func TestParsePleaseArgs_All(t *testing.T) {
 
 func TestParsePleaseArgs_LongFlags(t *testing.T) {
 	opts, prompt, err := parsePleaseArgs([]string{
-		"--yes", "--provider", "anthropic", "--model", "claude-sonnet-4-6", "--worktree", "do", "stuff",
+		"--yes", "--provider", "anthropic", "--model", "claude-sonnet-4-6", "--worktree", "do stuff",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -268,6 +268,34 @@ func TestParsePleaseArgs_LongFlags(t *testing.T) {
 	}
 	if prompt != "do stuff" {
 		t.Errorf("prompt = %q", prompt)
+	}
+}
+
+// TestParsePleaseArgs_RejectsMultiTokenPrompt pins the post-v0.7.0
+// contract: unquoted multi-word prompts are an error with a "quote
+// it" hint. The old behavior silently joined tokens with spaces,
+// which read weirdly in combination with -y and made shell-history
+// re-use brittle.
+func TestParsePleaseArgs_RejectsMultiTokenPrompt(t *testing.T) {
+	_, _, err := parsePleaseArgs([]string{"hello", "world"})
+	if err == nil {
+		t.Fatal("expected error for multi-token prompt")
+	}
+	if !strings.Contains(err.Error(), "single prompt") {
+		t.Errorf("error message missing hint: %v", err)
+	}
+}
+
+// TestParsePleaseArgs_SingleTokenPromptAccepted confirms hyphenated
+// single tokens still work — the user mentioned `carlos please
+// say-hello` as the canonical short form.
+func TestParsePleaseArgs_SingleTokenPromptAccepted(t *testing.T) {
+	_, prompt, err := parsePleaseArgs([]string{"say-hello"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prompt != "say-hello" {
+		t.Errorf("prompt = %q want say-hello", prompt)
 	}
 }
 

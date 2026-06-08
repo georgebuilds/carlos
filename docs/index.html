@@ -1413,9 +1413,9 @@
         <li>
           <h3 data-i18n="getstart.step3.t">3 · Or skip the TUI</h3>
           <p data-i18n="getstart.step3.d">
-            <code>carlos please &lt;prompt&gt;</code> is a one-shot tool-use loop that stays in your scrollback. <code>carlos research &lt;question&gt;</code> runs a six-phase pipeline and saves a cited report under <code>~/.carlos/research/</code>.
+            <code>carlos please &quot;&lt;prompt&gt;&quot;</code> is a one-shot tool-use loop that stays in your scrollback (with a live 3-row status panel while it runs). <code>carlos research &quot;&lt;question&gt;&quot;</code> runs a six-phase pipeline and saves a cited report under <code>~/.carlos/research/</code>.
           </p>
-          <pre class="cmd"><code><span class="prompt">$</span>carlos please summarize the last 5 commits</code></pre>
+          <pre class="cmd"><code><span class="prompt">$</span>carlos please "summarize the last 5 commits"</code></pre>
         </li>
         <li>
           <h3 data-i18n="getstart.step4.t">4 · Background work</h3>
@@ -1664,7 +1664,7 @@
                 <div class="rcmd">
                   <span class="arrow">→</span>
                   <span class="home">~</span>
-                  <span class="txt">carlos please summarize the last 5 commits</span>
+                  <span class="txt">carlos please &quot;summarize the last 5 commits&quot;</span>
                 </div>
                 <div class="meta-line"><span class="lbl">carlos:</span> running in personal frame</div>
                 <div class="meta-line"><span class="lbl">carlos:</span> provider=anthropic model=claude-opus-4-7</div>
@@ -1975,7 +1975,7 @@
           'getstart.step2.t': '2 · Chat with carlos',
           'getstart.step2.d': 'Type a question. carlos answers, calls tools when needed (prompting on the risky ones), and keeps the transcript in a SQLite event log at ~/.carlos/state.db. Ctrl+F opens the frame switcher; /help lists slash commands.',
           'getstart.step3.t': '3 · Or skip the TUI',
-          'getstart.step3.d': 'carlos please <prompt> is a one-shot tool-use loop that stays in your scrollback. carlos research <question> runs a six-phase pipeline and saves a cited report under ~/.carlos/research/.',
+          'getstart.step3.d': 'carlos please "<prompt>" is a one-shot tool-use loop that stays in your scrollback (with a live 3-row status panel while it runs). carlos research "<question>" runs a six-phase pipeline and saves a cited report under ~/.carlos/research/.',
           'getstart.step4.t': '4 · Background work',
           'getstart.step4.d': 'carlos daemon enable installs a per-user launchd / systemd unit. carlos schedule add "every weekday at 9am ..." queues a recurring run. The daemon notifies on completion.',
 
@@ -2077,7 +2077,7 @@
           'getstart.step2.t': '2 · Chatea con carlos',
           'getstart.step2.d': 'Escribe una pregunta. carlos responde, llama a herramientas cuando hace falta (pidiendo aprobación en las arriesgadas) y guarda la transcripción en un event log SQLite en ~/.carlos/state.db. Ctrl+F abre el selector de frames; /help lista los slash commands.',
           'getstart.step3.t': '3 · O sáltate la TUI',
-          'getstart.step3.d': 'carlos please <prompt> es un bucle de herramientas de una tirada que se queda en tu scrollback. carlos research <pregunta> ejecuta un pipeline de seis fases y guarda un informe con citas en ~/.carlos/research/.',
+          'getstart.step3.d': 'carlos please "<prompt>" es un bucle de herramientas de una tirada que se queda en tu scrollback (con un panel de estado en vivo de 3 filas durante la ejecución). carlos research "<pregunta>" ejecuta un pipeline de seis fases y guarda un informe con citas en ~/.carlos/research/.',
           'getstart.step4.t': '4 · Trabajo en segundo plano',
           'getstart.step4.d': 'carlos daemon enable instala un servicio launchd / systemd por usuario. carlos schedule add "cada día laborable a las 9am ..." añade una entrada recurrente. El daemon avisa cuando termina.',
 

@@ -64,7 +64,7 @@ func TestParseLeadingFrameFlag_missingValue(t *testing.T) {
 }
 
 func TestParsePleaseArgs_frameFlag(t *testing.T) {
-	opts, prompt, err := parsePleaseArgs([]string{"-f", "work", "draft", "the", "PR"})
+	opts, prompt, err := parsePleaseArgs([]string{"-f", "work", "draft the PR"})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -172,19 +172,19 @@ func main() {
 			}
 			return
 		case "please":
-			// carlos please [-y|--yes] [-p|--provider <name>] [-m|--model <id>] <prompt words...>
+			// carlos please [-y|--yes] [-p|--provider <name>] [-m|--model <id>] <prompt>
 			//
 			// Flag parsing is intentionally hand-rolled (no flag package)
-			// so the prompt can contain arbitrary words without quoting
-			// rules - we strip recognized leading flags and treat the
-			// remainder as the prompt.
+			// so it stays bounded to the recognized flags above. The
+			// prompt is exactly ONE positional argument after the
+			// flags; multi-word prompts must be quoted by the shell.
 			pleaseOpts, prompt, perr := parsePleaseArgs(args[1:])
 			if perr != nil {
 				fmt.Fprintln(os.Stderr, "carlos:", perr)
 				os.Exit(2)
 			}
 			if strings.TrimSpace(prompt) == "" {
-				fmt.Fprintln(os.Stderr, `carlos: "please" needs something to do - e.g. carlos please summarize ~/notes/today.md`)
+				fmt.Fprintln(os.Stderr, `carlos: "please" needs something to do - e.g. carlos please "summarize ~/notes/today.md"`)
 				os.Exit(2)
 			}
 			if err := runHeadless(prompt, pleaseOpts); err != nil {
@@ -515,10 +515,18 @@ func parseLeadingFrameFlag(args []string) (string, []string, error) {
 	return "", args, nil
 }
 
-// parsePleaseArgs strips recognized leading flags from args and returns
-// the options plus the remaining joined prompt. Unknown leading tokens
-// stop the scan - anything after is treated as part of the prompt
-// (preserving the "no quoting rules" property of `carlos please`).
+// parsePleaseArgs strips recognized leading flags from args and
+// returns the options plus the prompt. The prompt is a SINGLE
+// positional argument; multi-word prompts must be quoted by the
+// shell.
+//
+// Rationale: previously the parser joined all trailing tokens with
+// spaces, which is convenient for one-shot trivia but interacts
+// poorly with -y/--yes (and with anything else that looks flag-ish
+// in the middle of a prompt). The single-positional rule keeps the
+// CLI consistent with every other carlos verb (`carlos research
+// "..."`, `carlos memory search "..."`) and makes a forgotten quote
+// loudly fail at the boundary instead of silently joining tokens.
 func parsePleaseArgs(args []string) (pleaseOptions, string, error) {
 	var opts pleaseOptions
 	for len(args) > 0 {
@@ -548,7 +556,17 @@ func parsePleaseArgs(args []string) (pleaseOptions, string, error) {
 			opts.frame = args[1]
 			args = args[2:]
 		default:
-			return opts, strings.Join(args, " "), nil
+			// Flags are done; the prompt is whatever's left. One
+			// token = prompt. Two or more tokens = the user forgot
+			// to quote a multi-word prompt; refuse with a clear hint
+			// rather than concatenating in a way they didn't ask for.
+			if len(args) > 1 {
+				return opts, "", fmt.Errorf(
+					"`carlos please` takes a single prompt; quote it: carlos please %q",
+					strings.Join(args, " "),
+				)
+			}
+			return opts, args[0], nil
 		}
 	}
 	return opts, "", nil
@@ -975,7 +993,7 @@ Usage:
   carlos help                              this message
 
 Examples:
-  carlos please list the 5 largest files in my home dir
+  carlos please "list the 5 largest files in my home dir"
   carlos please -y "run the test suite and tell me which tests are slow"
   carlos please --provider openai --model gpt-4o "explain this diff"
   carlos approvals list
