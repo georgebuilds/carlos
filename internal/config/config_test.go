@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/georgebuilds/carlos/internal/frame"
+	"github.com/georgebuilds/carlos/internal/mcp"
 )
 
 // TestSaveLoadRoundtrip is the happy-path: write a config, read it back,
@@ -462,6 +463,76 @@ func TestLoad_PreservesExistingFramesBlock(t *testing.T) {
 	}
 	if got.Frames.Default != "work" || got.Frames.Active != "work" {
 		t.Errorf("Default/Active not roundtripped: %+v", got.Frames)
+	}
+}
+
+// TestMCPRoundtrip pins the MCP top-level field's YAML round-trip:
+// servers, args, env, and per-frame gating survive a Save+Load cycle,
+// and a zero-value MCP block stays omitted so older configs without the
+// field round-trip cleanly through a write.
+func TestMCPRoundtrip(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	want := &Config{
+		UserName: "Boss",
+		MCP: mcp.Config{
+			Servers: []mcp.ServerConfig{
+				{
+					Name:    "github",
+					Command: "npx",
+					Args:    []string{"-y", "@modelcontextprotocol/server-github"},
+					Env:     map[string]string{"GITHUB_TOKEN": "${GH_TOKEN}"},
+					Frames:  []string{"work"},
+				},
+				{
+					Name:    "filesystem",
+					Command: "/usr/local/bin/mcp-fs",
+				},
+			},
+		},
+	}
+	if err := Save(path, want); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.MCP.Servers) != 2 {
+		t.Fatalf("Servers count: want 2 got %d", len(got.MCP.Servers))
+	}
+	gh := got.MCP.Servers[0]
+	if gh.Name != "github" || gh.Command != "npx" {
+		t.Errorf("github server fields: %+v", gh)
+	}
+	if len(gh.Args) != 2 || gh.Args[0] != "-y" {
+		t.Errorf("github args: %+v", gh.Args)
+	}
+	if gh.Env["GITHUB_TOKEN"] != "${GH_TOKEN}" {
+		t.Errorf("github env: %+v", gh.Env)
+	}
+	if len(gh.Frames) != 1 || gh.Frames[0] != "work" {
+		t.Errorf("github frames: %+v", gh.Frames)
+	}
+	b, _ := os.ReadFile(path)
+	for _, key := range []string{"mcp:", "servers:", "command:"} {
+		if !strings.Contains(string(b), key) {
+			t.Errorf("yaml missing key %q\n%s", key, string(b))
+		}
+	}
+}
+
+// TestMCPOmittedWhenEmpty mirrors the other "omitted when empty" tests:
+// a zero MCP value must not emit a stray "mcp: {}" line.
+func TestMCPOmittedWhenEmpty(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	if err := Save(path, &Config{UserName: "Boss"}); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(path)
+	if strings.Contains(string(b), "mcp:") {
+		t.Errorf("empty MCP should be omitted; got:\n%s", string(b))
 	}
 }
 

@@ -162,6 +162,14 @@ func runHeadless(prompt string, opts pleaseOptions) error {
 	// itself is added to the PARENT'S registry only (below), NOT the
 	// base - children at depth 1 (the v0 cap) can't further spawn.
 	baseReg := tools.NewDefaultRegistryWithIdentity(baseDir, cfg.Vault, cfg.Frames, cfg.Frames.Active, tools.ProviderSummariesFromConfig(cfg.Providers), cfg.UserName)
+	// MCP v1: same registration as the TUI path. Children inherit
+	// these tools because we register into baseReg before the
+	// parentReg copy below is built.
+	_, mcpClose, mcpCount := wireMCP(ctx, os.Stderr, cfg.MCP, cfg.Frames.Active, baseReg)
+	defer mcpClose()
+	if mcpCount > 0 {
+		fmt.Fprintf(os.Stderr, "carlos: mcp: registered %d tool(s) from %d server(s)\n", mcpCount, len(cfg.MCP.Servers))
+	}
 
 	// Supervisor takes the resolved provider + base registry. Its
 	// goroutine sweep + per-agent heartbeats run for the lifetime of

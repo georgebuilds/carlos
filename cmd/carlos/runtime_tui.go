@@ -156,6 +156,16 @@ func runDefault(cfg *config.Config, sessionID string) error {
 	// vault_subtree and fan out across every configured frame on
 	// cross-frame queries.
 	baseReg := tools.NewDefaultRegistryWithIdentity("", cfg.Vault, cfg.Frames, cfg.Frames.Active, tools.ProviderSummariesFromConfig(cfg.Providers), cfg.UserName)
+	// MCP v1: connect every configured MCP server enabled for the
+	// active frame and register each discovered tool under the
+	// "<server>__<tool>" namespace. Failures don't block boot - the
+	// user sees the warning on stderr and the rest of the catalog
+	// keeps wiring up. Sessions are closed on session end via defer.
+	_, mcpClose, mcpCount := wireMCP(ctx, os.Stderr, cfg.MCP, cfg.Frames.Active, baseReg)
+	defer mcpClose()
+	if mcpCount > 0 {
+		fmt.Fprintf(os.Stderr, "carlos: mcp: registered %d tool(s) from %d server(s)\n", mcpCount, len(cfg.MCP.Servers))
+	}
 	sup := agent.NewSupervisor(log, d.provider, baseReg)
 	sup.Run(ctx)
 	defer sup.Shutdown()

@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 
 	"github.com/georgebuilds/carlos/internal/frame"
+	"github.com/georgebuilds/carlos/internal/mcp"
 	"github.com/georgebuilds/carlos/internal/miniyaml"
 	"github.com/georgebuilds/carlos/internal/schedule"
 )
@@ -62,6 +63,13 @@ type Config struct {
 	// when non-empty so older configs round-trip without a stray empty
 	// `frames: {}` line.
 	Frames frame.Config `json:"frames,omitempty"`
+	// MCP is the user's set of Model Context Protocol servers. Each
+	// entry spawns a subprocess at boot and contributes its tool
+	// catalog under the "<server>__<tool>" namespace. Per-server Frames
+	// gates a server to a subset of frames (empty == all frames). The
+	// block is emitted only when non-empty so older configs round-trip
+	// without a stray `mcp: {}` line.
+	MCP mcp.Config `json:"mcp,omitempty"`
 }
 
 // GatewayConfig is the on-disk shape of the gateway: block. Adapters
