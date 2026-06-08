@@ -77,8 +77,11 @@ release:
   github:
     owner: georgebuilds
     name: carlos
-  # Draft so I can hand-edit the release notes before publishing.
-  draft: true
+  # Auto-publish so the GitHub Release lands public + the brew tap PR
+  # opens the moment the workflow finishes. The auto-generated changelog
+  # is fine for the patch cadence we ship at; tagged releases that need
+  # hand-written notes can be edited in place after publish.
+  draft: false
   # Mark as prerelease until carlos hits v1.
   prerelease: auto
   name_template: "carlos {{ .Tag }}"
