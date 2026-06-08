@@ -22,12 +22,11 @@ type nameResult struct{ name string }
 
 func newNameModel(initial string) nameModel {
 	ti := textinput.New()
-	envDefault := config.DefaultUserNameForEnv()
-	ti.Placeholder = envDefault
+	ti.Placeholder = config.DefaultUserName
 	// Prefer the caller-supplied initial; otherwise prefill with the
-	// env-resolved default so "enter on empty" accepts $USER (or Boss).
-	if strings.TrimSpace(initial) == "" || initial == config.DefaultUserName {
-		ti.SetValue(envDefault)
+	// brand default "Boss" so "enter on empty" accepts it.
+	if strings.TrimSpace(initial) == "" {
+		ti.SetValue(config.DefaultUserName)
 	} else {
 		ti.SetValue(initial)
 	}
@@ -46,7 +45,7 @@ func (m nameModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter":
 			name := strings.TrimSpace(m.input.Value())
 			if name == "" {
-				name = config.DefaultUserNameForEnv()
+				name = config.DefaultUserName
 			}
 			return m, nextScreen(nameResult{name: name})
 		}

@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/georgebuilds/carlos/internal/config"
+	"github.com/georgebuilds/carlos/internal/frame"
 	"github.com/georgebuilds/carlos/internal/theme"
 )
 
@@ -245,7 +246,7 @@ func NewWithOptions(opts Options) *Flow {
 	cfg := opts.ExistingConfig
 	if cfg == nil {
 		cfg = &config.Config{
-			UserName:  config.DefaultUserNameForEnv(),
+			UserName:  config.DefaultUserName,
 			Providers: map[string]config.ProviderConfig{},
 		}
 	}
@@ -253,7 +254,7 @@ func NewWithOptions(opts Options) *Flow {
 		cfg.Providers = map[string]config.ProviderConfig{}
 	}
 	if strings.TrimSpace(cfg.UserName) == "" {
-		cfg.UserName = config.DefaultUserNameForEnv()
+		cfg.UserName = config.DefaultUserName
 	}
 	starting := opts.StartingScreen
 	if starting < ScreenName || starting > ScreenDone {
@@ -329,7 +330,31 @@ func (f *Flow) Run() (*config.Config, error) {
 	if ff.aborted {
 		return nil, ErrAborted
 	}
+	// Seed a default "personal" frame so the post-onboarding chat lands
+	// in a wired frame instead of legacy single-shelf mode. screen_name's
+	// intro already tells the user "this is your personal frame, the one
+	// carlos opens by default" - this is where the data side meets that
+	// promise. Idempotent: the partial-re-onboard (--only) paths pass an
+	// existing config whose Frames.List is already populated, in which
+	// case MigrateFromLegacy is a no-op.
+	ensurePersonalFrame(ff.cfg)
 	return ff.cfg, nil
+}
+
+// ensurePersonalFrame populates cfg.Frames with a synthetic "personal"
+// frame derived from cfg.DefaultProvider + that provider's chosen model.
+// No-op when cfg already has at least one frame.
+func ensurePersonalFrame(cfg *config.Config) {
+	if cfg == nil || len(cfg.Frames.List) > 0 {
+		return
+	}
+	model := ""
+	if cfg.DefaultProvider != "" {
+		if pc, ok := cfg.Providers[cfg.DefaultProvider]; ok {
+			model = pc.DefaultModel
+		}
+	}
+	cfg.Frames = frame.MigrateFromLegacy(cfg.Frames, cfg.DefaultProvider, model)
 }
 
 // --- tea.Model -------------------------------------------------------------

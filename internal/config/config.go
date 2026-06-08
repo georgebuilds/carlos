@@ -11,7 +11,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/georgebuilds/carlos/internal/frame"
 	"github.com/georgebuilds/carlos/internal/miniyaml"
@@ -223,19 +222,13 @@ const (
 // standard wins by default (user can flip).
 const DefaultSkillsConvention = SkillsConventionAgents
 
-// DefaultUserName is the prefilled value for the name screen.
+// DefaultUserName is the prefilled value for the name screen. The
+// onboarding flow always shows "Boss" as the default - $USER is
+// deliberately not consulted: the brand voice expects carlos to address
+// the operator as "Boss" out of the box, and a unix-login string ("root",
+// "ubuntu", "ec2-user", "dev") rarely matches the address-form the user
+// wants the agent to use.
 const DefaultUserName = "Boss"
-
-// DefaultUserNameForEnv returns $USER when it's set and not "root";
-// otherwise falls back to DefaultUserName. Used by the onboarding name
-// screen so the prefill matches whoever's actually at the terminal.
-func DefaultUserNameForEnv() string {
-	u := strings.TrimSpace(os.Getenv("USER"))
-	if u == "" || u == "root" {
-		return DefaultUserName
-	}
-	return u
-}
 
 // DefaultPath returns ~/.carlos/config.yaml using the OS user's home dir.
 // Falls back to ".carlos/config.yaml" (relative) if the home dir cannot be
