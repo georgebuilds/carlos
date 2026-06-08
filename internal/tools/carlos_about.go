@@ -72,8 +72,8 @@ func (*CarlosAboutTool) Schema() []byte {
 		"properties": {
 			"section": {
 				"type": "string",
-				"enum": ["", "frames", "active", "capabilities", "providers", "vault", "user"],
-				"description": "Optional section filter. Empty returns the full introspection envelope."
+				"enum": ["frames", "active", "capabilities", "providers", "vault", "user"],
+				"description": "Optional section filter. Omit the field to get the full introspection envelope."
 			}
 		}
 	}`)
