@@ -94,8 +94,7 @@ func (*HTTPRequestTool) Schema() []byte {
 			},
 			"headers": {
 				"type": "object",
-				"description": "Request headers as a name→value map. Use this for Authorization, Content-Type, Accept, X-Api-Key, etc.",
-				"additionalProperties": {"type": "string"}
+				"description": "Request headers as a name→value map of strings. Use this for Authorization, Content-Type, Accept, X-Api-Key, etc."
 			},
 			"body": {
 				"type": "string",
