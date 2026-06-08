@@ -13,7 +13,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
     rel="stylesheet"
-    href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500&display=swap"
+    href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500&family=Rubik+Spray+Paint&display=swap"
   />
   <style>
     :root {
@@ -144,6 +144,17 @@
       display: block;
       image-rendering: -webkit-optimize-contrast;
       filter: drop-shadow(0 22px 28px var(--shadow));
+    }
+
+    .portrait-text {
+      font-family: 'Rubik Spray Paint', 'Instrument Serif', serif;
+      font-size: clamp(72px, 11vw, 132px);
+      line-height: 1;
+      color: var(--ink);
+      letter-spacing: 0.01em;
+      display: block;
+      filter: drop-shadow(0 18px 22px var(--shadow));
+      user-select: none;
     }
 
     /* soft ground shadow that breathes with the float */
@@ -412,6 +423,7 @@
     @media (max-width: 760px) {
       h1 { white-space: normal; max-width: 16ch; }
       .portrait { width: 140px; }
+      .portrait-text { font-size: clamp(60px, 18vw, 96px); }
       .portrait-wrap { margin-bottom: 36px; }
       .features { margin-top: 52px; }
       .features-grid { grid-template-columns: 1fr; column-gap: 0; row-gap: 14px; max-width: 360px; margin: 0 auto; }
@@ -439,7 +451,7 @@
 
   <main>
     <div class="portrait-wrap">
-      <img class="portrait" src="./branding/carlos-portrait.png" alt="carlos" />
+      <span class="portrait-text" aria-label="Carlos">Carlos</span>
     </div>
 
     <h1>
