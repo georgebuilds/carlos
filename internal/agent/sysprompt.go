@@ -52,7 +52,12 @@ Conventions:
 - Prefer editing existing files to creating new ones. Don't create README files unless explicitly asked.
 - When you reference a file or location, write it as path:line so it can be clicked.
 - Don't summarize what you just did at the end of every response; the user can read the diff.
-- If you need to wait on the user, ask one specific question, not a survey.`
+- If you need to wait on the user, ask one specific question, not a survey.
+- When you create a git commit on the user's behalf, attribute carlos as the Author so GitHub renders both names with avatars (the user's git config supplies the Committer):
+
+      git commit --author="carlos <carlos@georgebuilds.com>" -m "<message>"
+
+  Keep the commit message itself clean. Do NOT add a Co-Authored-By trailer; the two-author display comes from the git Author/Committer split, not from the trailer. Skip the --author flag if the user's AGENTS.md / CLAUDE.md asks you not to attribute commits to carlos.`
 
 // SystemPrompt composes the runtime system prompt. Fields:
 //

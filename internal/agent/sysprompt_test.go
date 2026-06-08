@@ -140,6 +140,26 @@ func TestSystemPromptWithFrame_NotesWriteHintInBase(t *testing.T) {
 	}
 }
 
+func TestSystemPromptWithFrame_CommitAuthorAttributionInBase(t *testing.T) {
+	// The static block of chatBaseSystem instructs the model to attribute
+	// commits to carlos via `git commit --author=...` so GitHub's
+	// Author/Committer split renders both avatars without polluting the
+	// commit body with a Co-Authored-By trailer. Pin the email, the
+	// `--author=` flag form, the "no Co-Authored-By trailer" guard, and
+	// the AGENTS.md / CLAUDE.md override clause so a future edit doesn't
+	// silently drop any of them.
+	out := SystemPrompt("", "", "")
+	if !strings.Contains(out, `--author="carlos <carlos@georgebuilds.com>"`) {
+		t.Errorf("base sysprompt should attribute carlos via git commit --author=; got:\n%s", out)
+	}
+	if !strings.Contains(out, "Do NOT add a Co-Authored-By trailer") {
+		t.Errorf("base sysprompt should explicitly suppress the Co-Authored-By trailer; got:\n%s", out)
+	}
+	if !strings.Contains(out, "AGENTS.md / CLAUDE.md") {
+		t.Errorf("base sysprompt should defer to AGENTS.md / CLAUDE.md as the override channel; got:\n%s", out)
+	}
+}
+
 func TestSystemPromptWithFrame_FrameBeforeRuntime(t *testing.T) {
 	// Cache stability: chatBaseSystem → Frame block → Runtime block →
 	// Project context. Reordering invalidates the per-frame cache
