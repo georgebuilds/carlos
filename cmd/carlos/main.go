@@ -50,6 +50,7 @@ import (
 
 	"github.com/georgebuilds/carlos/internal/agent"
 	"github.com/georgebuilds/carlos/internal/config"
+	"github.com/georgebuilds/carlos/internal/farewell"
 	"github.com/georgebuilds/carlos/internal/frame"
 	"github.com/georgebuilds/carlos/internal/memory"
 	"github.com/georgebuilds/carlos/internal/providers"
@@ -823,6 +824,62 @@ func migrateFrameLayout(home string) {
 	}
 	for _, e := range report.Errors {
 		fmt.Fprintf(os.Stderr, "carlos: %v\n", e)
+	}
+}
+
+// queueFrameMigration runs the same Phase F-17 migration but pushes
+// its summary into a farewell.Panel for the end-of-session bordered
+// box instead of emitting bare stderr lines at startup. Errors still
+// go to stderr immediately because they want visibility BEFORE the
+// TUI runs, not after.
+func queueFrameMigration(home string, panel *farewell.Panel) {
+	if home == "" {
+		return
+	}
+	report, err := frame.Migrate(home, frame.DefaultPersonalName)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "carlos: frame migration error: %v\n", err)
+		return
+	}
+	if report.HasMovement() && panel != nil {
+		panel.Add("📦", farewellMigrationSummary(report.ResearchMoved, report.JobsMoved, report.WorktreesMoved))
+	}
+	for _, e := range report.Errors {
+		fmt.Fprintf(os.Stderr, "carlos: %v\n", e)
+	}
+}
+
+// farewellMigrationSummary writes the human-readable per-frame
+// migration line. Pulled out so it can be unit-tested without standing
+// up a real migration on disk.
+func farewellMigrationSummary(research, jobs, worktrees int) string {
+	parts := make([]string, 0, 3)
+	if research > 0 {
+		parts = append(parts, fmt.Sprintf("%d research note%s", research, pluralS(research)))
+	}
+	if jobs > 0 {
+		parts = append(parts, fmt.Sprintf("%d shell job%s", jobs, pluralS(jobs)))
+	}
+	if worktrees > 0 {
+		parts = append(parts, fmt.Sprintf("%d worktree%s", worktrees, pluralS(worktrees)))
+	}
+	if len(parts) == 0 {
+		return "migrated to per-frame layout"
+	}
+	return "migrated " + joinAnd(parts) + " to per-frame layout"
+}
+
+// joinAnd reads a list as English: "a", "a and b", "a, b, and c".
+func joinAnd(parts []string) string {
+	switch len(parts) {
+	case 0:
+		return ""
+	case 1:
+		return parts[0]
+	case 2:
+		return parts[0] + " and " + parts[1]
+	default:
+		return strings.Join(parts[:len(parts)-1], ", ") + ", and " + parts[len(parts)-1]
 	}
 }
 

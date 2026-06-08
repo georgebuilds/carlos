@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/georgebuilds/carlos/internal/config"
+	"github.com/georgebuilds/carlos/internal/farewell"
 	"github.com/georgebuilds/carlos/internal/daemon"
 	"github.com/georgebuilds/carlos/internal/frame"
 	"github.com/georgebuilds/carlos/internal/providers"
@@ -176,6 +177,23 @@ func warnGatewayOrphaned(cfg *config.Config) {
 	fmt.Fprintln(os.Stderr,
 		"carlos: gateway is configured but the daemon isn't running - push/HITL routing is off. "+
 			"Start it with `carlos daemon enable` (installs auto-start) or `carlos daemon run` (foreground).")
+}
+
+// queueGatewayOrphaned is the farewell-panel-aware variant. Used by
+// the TUI + headless entry points that route end-of-session notes
+// through a single bordered box instead of bare stderr lines. Same
+// probe as warnGatewayOrphaned (UDS dial); silent on success.
+func queueGatewayOrphaned(cfg *config.Config, panel *farewell.Panel) {
+	if cfg == nil || !cfg.Gateway.Enabled || panel == nil {
+		return
+	}
+	conn, err := daemon.Dial("")
+	if err == nil {
+		_ = conn.Close()
+		return
+	}
+	panel.AddWithDetail("🛰️", "daemon offline — push/HITL routing is off",
+		"`carlos daemon enable` to auto-start it (or `carlos daemon run` foreground)")
 }
 
 // runDaemonStatus dials the running daemon's UDS and prints a human-

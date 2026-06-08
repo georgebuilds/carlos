@@ -17,6 +17,7 @@ import (
 
 	"github.com/georgebuilds/carlos/internal/agent"
 	"github.com/georgebuilds/carlos/internal/config"
+	"github.com/georgebuilds/carlos/internal/farewell"
 	"github.com/georgebuilds/carlos/internal/frame"
 	"github.com/georgebuilds/carlos/internal/memory"
 	"github.com/georgebuilds/carlos/internal/projectctx"
@@ -112,9 +113,25 @@ func runOnboard(force bool, only string) error {
 func runDefault(cfg *config.Config, sessionID string) error {
 	// Phase 9 slice 9a: load the user's theme before anything renders.
 	applyTheme(cfg)
-	warnGatewayOrphaned(cfg)
+	// Farewell panel collects end-of-session notes (daemon-orphan,
+	// frame migration, brew update available) and renders one
+	// bordered box on stderr after the TUI tears down. Pre-TUI bare
+	// stderr lines would otherwise be hidden under the alt-screen
+	// and only surface as visual noise next to the post-exit shell
+	// prompt; routing them through the panel turns them into a
+	// clean sign-off instead.
+	panel := farewell.New()
+	defer printFarewell(panel, cfg.UserName)
+	queueGatewayOrphaned(cfg, panel)
 	home, _ := os.UserHomeDir()
-	migrateFrameLayout(home)
+	queueFrameMigration(home, panel)
+	// Background-probe Homebrew for an outdated carlos formula. We
+	// kick off the goroutine here so the result is ready by the time
+	// the TUI exits (typical session is minutes; the probe takes
+	// hundreds of ms). printFarewell waits with a short ceiling
+	// before rendering so a slow brew never blocks shutdown.
+	brewDone := startBrewProbe(panel)
+	defer waitBrewProbe(brewDone)
 	dbPath := filepath.Join(home, ".carlos", "state.db")
 	log, err := agent.OpenStateDB(dbPath)
 	if err != nil {
