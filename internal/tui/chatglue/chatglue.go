@@ -78,6 +78,14 @@ type Loop struct {
 
 	stopOnce sync.Once
 	cancel   context.CancelFunc
+
+	// ctx is the per-handler context handleUserMessage stashes before
+	// calling agent.Run, so the OnToolCall / OnToolResult hooks can
+	// reach a live ctx for their EventLog.Append calls. The loop is
+	// single-threaded (one user message at a time) so a single field
+	// is safe; if we ever parallelize, this becomes per-handler
+	// state passed through closure capture instead.
+	ctx context.Context
 }
 
 // NewLoop wires a Loop. agentID is the chat's parent agent id (the
@@ -152,6 +160,11 @@ func (l *Loop) Stop() {
 // (prefixed "carlos:") so the user sees the failure in-line rather
 // than via a stderr leak.
 func (l *Loop) handleUserMessage(ctx context.Context, _ agent.Event) {
+	// Stash for the OnToolCall / OnToolResult hooks - they run inside
+	// agent.Run's loop and need a live ctx for their EventLog writes.
+	l.ctx = ctx
+	defer func() { l.ctx = nil }()
+
 	history, err := l.buildHistory(ctx)
 	if err != nil {
 		l.surfaceError(ctx, fmt.Errorf("load history: %w", err))
@@ -167,6 +180,13 @@ func (l *Loop) handleUserMessage(ctx context.Context, _ agent.Event) {
 		Budget:        l.cfg.Budget,
 		MaxIterations: l.cfg.MaxIterations,
 		Tools:         buildToolSpecs(l.cfg.Tools),
+		// Stream tool events live: the loop pops the hook the moment a
+		// tool_use lands and again when its result comes back. The chat
+		// surface renders a "running…" card immediately, then folds in
+		// the result on finish — instead of seeing every tool of the
+		// turn arrive in a single post-Run batch.
+		OnToolCall:   l.persistToolCall,
+		OnToolResult: l.persistToolResult,
 	}
 
 	msgs, err := agent.Run(ctx, l.cfg.Provider, l.cfg.Tools, opts, history)
@@ -189,12 +209,6 @@ func (l *Loop) handleUserMessage(ctx context.Context, _ agent.Event) {
 		newMsgs = msgs[len(history):]
 	}
 
-	// Persist tool_call + tool_result events BEFORE the assistant
-	// turn so the rendered transcript order matches the model's
-	// actual reasoning sequence: model asks → tool runs → model
-	// summarizes. Persisting after the assistant text would order
-	// them as: summary → tool, which reads backwards.
-	l.persistToolEvents(ctx, newMsgs)
 	full := finalAssistantText(newMsgs)
 	if full == "" && hadToolUse(newMsgs) {
 		// Some models (notably Gemini's tool-use flow) end a turn
@@ -232,62 +246,55 @@ func hadToolUse(msgs []providers.Message) bool {
 // preview the chat transcript can render without bloating the log.
 const ToolResultPreviewCap = 2048
 
-// persistToolEvents walks msgs and appends one EvtToolCall +
-// EvtToolResult event per tool_use/tool_result block pair. Best-
-// effort: a marshal/append failure on one tool doesn't abort the
-// rest. Order preserved across iterations so the transcript reads as
-// the model's actual sequence.
-func (l *Loop) persistToolEvents(ctx context.Context, msgs []providers.Message) {
-	for _, msg := range msgs {
-		for _, b := range msg.Content {
-			switch b.Kind {
-			case "tool_use":
-				payload, err := json.Marshal(agent.ToolCall{Name: b.ToolName, Input: b.ToolInput})
-				if err != nil {
-					continue
-				}
-				_, _ = l.log.Append(ctx, agent.Event{
-					AgentID: l.agentID, TS: time.Now().UTC(),
-					Type: agent.EvtToolCall, Payload: payload,
-				})
-			case "tool_result":
-				out := b.ToolResult
-				if len(out) > ToolResultPreviewCap {
-					out = out[:ToolResultPreviewCap]
-				}
-				// Map back to a tool name: tool_result blocks don't
-				// carry one, but the preceding tool_use does. Walk
-				// msgs again to find the matching ToolUseID - short
-				// O(N) is fine, N is tools-per-turn (usually <10).
-				name := lookupToolName(msgs, b.ToolUseID)
-				isErr := isErrorResult(b.ToolResult)
-				payload, err := json.Marshal(agent.ToolResult{
-					Name: name, Output: out, IsError: isErr,
-				})
-				if err != nil {
-					continue
-				}
-				_, _ = l.log.Append(ctx, agent.Event{
-					AgentID: l.agentID, TS: time.Now().UTC(),
-					Type: agent.EvtToolResult, Payload: payload,
-				})
-			}
-		}
-	}
+// persistToolCall is wired as agent.LoopOptions.OnToolCall so each
+// tool_use lands in the event log the instant the loop observes it,
+// BEFORE the tool runs. The chat surface renders a "🔧 <tool> ·
+// running…" card on the next subscription pump, instead of waiting
+// for the whole turn to wrap.
+//
+// Best-effort: a marshal/append failure is swallowed - the bigger
+// loop carries on, and the next OnToolResult still has the chance to
+// land a result card (a fall-through to "standalone card without a
+// matching call" branch in the chat). Spawning ctx is the per-handler
+// context the surrounding handleUserMessage was given; the hook
+// closes over it via the receiver instead of taking a ctx parameter
+// so the LoopOptions signature stays simple.
+func (l *Loop) persistToolCall(use providers.Block) {
+	// Marshal of {string, []byte} can't fail per encoding/json's
+	// type contract, so we treat the result as definitely-non-nil
+	// and drop the defensive error check. SQLite-side payload-not-
+	// null is satisfied unconditionally.
+	payload, _ := json.Marshal(agent.ToolCall{Name: use.ToolName, Input: use.ToolInput})
+	_, _ = l.log.Append(l.ctx, agent.Event{
+		AgentID: l.agentID,
+		TS:      time.Now().UTC(),
+		Type:    agent.EvtToolCall,
+		Payload: payload,
+	})
 }
 
-// lookupToolName scans msgs for the tool_use block whose ToolUseID
-// matches id and returns its ToolName. Returns "" if not found
-// (defensive - shouldn't happen on well-formed Anthropic protocol).
-func lookupToolName(msgs []providers.Message, id string) string {
-	for _, msg := range msgs {
-		for _, b := range msg.Content {
-			if b.Kind == "tool_use" && b.ToolUseID == id {
-				return b.ToolName
-			}
-		}
+// persistToolResult is OnToolResult's wire-up: paired with
+// persistToolCall above, it lands the result the moment the tool
+// finishes. The chat folds the result into the call card on receipt,
+// flipping the status suffix from "running…" to "<N> lines" / "error".
+func (l *Loop) persistToolResult(use providers.Block, result providers.Block) {
+	out := result.ToolResult
+	if len(out) > ToolResultPreviewCap {
+		out = out[:ToolResultPreviewCap]
 	}
-	return ""
+	// Same {string, []byte, bool} marshal-can't-fail invariant as in
+	// persistToolCall; the defensive error check would be dead code.
+	payload, _ := json.Marshal(agent.ToolResult{
+		Name:    use.ToolName, // result blocks carry no name; pair from the use.
+		Output:  out,
+		IsError: isErrorResult(result.ToolResult),
+	})
+	_, _ = l.log.Append(l.ctx, agent.Event{
+		AgentID: l.agentID,
+		TS:      time.Now().UTC(),
+		Type:    agent.EvtToolResult,
+		Payload: payload,
+	})
 }
 
 // isErrorResult heuristic: the loop wraps rejected + errored tools

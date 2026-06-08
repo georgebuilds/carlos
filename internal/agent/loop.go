@@ -66,6 +66,20 @@ type LoopOptions struct {
 	// body length - see budget.EstimateCallCost / Tokens; future:
 	// adapters that wire real usage will report through this same Add).
 	BudgetTracker *Tracker
+
+	// OnToolCall is called inline the moment a tool_use block is
+	// observed in the assistant turn, BEFORE the tool runs. Wired
+	// by chatglue to persist EvtToolCall into the event log so the
+	// chat surface renders the "running…" card live instead of
+	// waiting for the whole turn to wrap up. nil = skip the hook.
+	OnToolCall func(use providers.Block)
+
+	// OnToolResult is called inline the moment a tool finishes, with
+	// the result block (success or error) ready for persistence. The
+	// pair OnToolCall/OnToolResult lets the chat fold the result back
+	// into the card it just rendered, mirroring how a streaming
+	// transcript reads. nil = skip the hook.
+	OnToolResult func(use providers.Block, result providers.Block)
 }
 
 // ErrMaxIterations is returned when the loop runs past MaxIterations
@@ -158,13 +172,23 @@ func Run(ctx context.Context, p providers.Provider, reg *tools.Registry, opts Lo
 
 		// Execute each tool_use block in this turn. Anthropic supports
 		// parallel tool_use; the protocol expects ALL tool_result blocks
-		// to come back in the same subsequent user message.
+		// to come back in the same subsequent user message. We invoke
+		// the optional OnToolCall / OnToolResult hooks inline so any
+		// listener (chatglue today) sees a tool's start + finish as it
+		// happens, not as a post-turn batch. Hook errors are the
+		// listener's problem; the loop doesn't observe them.
 		results := make([]providers.Block, 0)
 		for _, b := range assistant.Content {
 			if b.Kind != "tool_use" {
 				continue
 			}
+			if opts.OnToolCall != nil {
+				opts.OnToolCall(b)
+			}
 			res := executeOneTool(ctx, reg, opts.Approver, b)
+			if opts.OnToolResult != nil {
+				opts.OnToolResult(b, res)
+			}
 			results = append(results, res)
 		}
 		if len(results) == 0 {
