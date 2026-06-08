@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/georgebuilds/carlos/internal/agent"
@@ -349,6 +350,29 @@ type Model struct {
 	// latest 250ms snapshot.
 	childrenView ChildrenView
 	childrenSnap []ChildSnapshot
+
+	// slashSuggest is the live autocomplete state for the composer
+	// when the value starts with "/". Refreshed on every keystroke
+	// in Update; consumed by renderInput (inline ghost text on the
+	// input row) and renderInner (thin hint band above the
+	// separator). Zero value = closed; refresh derives "open" from
+	// the textarea value so we never go out of sync.
+	slashSuggest slashSuggest
+
+	// thinkingTick advances on every textTickMsg so the "carlos is
+	// thinking" activity indicator at the bottom of the transcript
+	// animates. We don't reset it on state transitions — modular
+	// arithmetic on the frame index keeps the animation phase stable
+	// across the start/stop of waits, which avoids a visible "jump"
+	// when the indicator reappears mid-conversation.
+	thinkingTick int
+
+	// Markdown renderer for assistant messages. Lazily built on the
+	// first render that needs it and rebuilt when the viewport width
+	// changes. nil means "fall back to plain rendering"; see
+	// internal/tui/chat/markdown.go for the rationale.
+	markdown       *glamour.TermRenderer
+	markdownWidth  int
 }
 
 // FrameUI is the Phase F display + switch contract the chat Model
@@ -811,6 +835,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 		}
+		// Slash-mode autocomplete intercepts Tab / ↑↓ / Esc before the
+		// textarea sees them. Placed after the shell-history branches so
+		// "!" mode keeps owning ↑↓; placed before the textarea route so
+		// Tab actually completes instead of inserting whitespace.
+		if cmd, handled := m.handleSlashSuggestKey(msg.String()); handled {
+			return m, cmd
+		}
 		// Default route: textarea owns the keystroke when input is enabled.
 		// In read-only mode we send arrow keys/etc to the viewport so the
 		// user can still scroll.
@@ -826,6 +857,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		var cmd tea.Cmd
 		m.ta, cmd = m.ta.Update(msg)
+		// Refresh the slash-mode suggest state after every textarea
+		// edit so the ghost text + hint band track what the user just
+		// typed. refresh is a no-op when the input doesn't start with
+		// "/", so the cost on the non-slash path is a single prefix
+		// check.
+		m.slashSuggest.refresh(m.ta.Value())
 		return m, cmd
 
 	case backfillMsg:
@@ -863,6 +900,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// fresh spawn surfaces the inline panel without a dedicated
 		// supervisor event. The faster 250ms tick takes over once at
 		// least one child is live and stops on the next empty snapshot.
+		m.thinkingTick++
 		if m.childrenView != nil && len(m.childrenSnap) == 0 {
 			snap := m.childrenView.Snapshot()
 			if len(snap) > 0 {
@@ -1193,10 +1231,29 @@ func (m *Model) submit() tea.Cmd {
 	// Phase U: "!cmd" submissions short-circuit to the user-shell
 	// path before slash or model routing.
 	if isShellSubmission(raw) {
+		m.slashSuggest.reset()
 		m.ta.Reset()
 		return m.submitUserShellCmd(extractShellCommand(raw), usershell.Foreground)
 	}
 
+	// Complete-then-submit: when slash mode is active and the user
+	// typed a prefix that the selected suggestion fully matches
+	// (e.g. "/fr" with /frame highlighted), expand to the full verb
+	// before parsing. The user picked this Enter behavior in the
+	// initial design pass - mirrors fish, where pressing Enter on a
+	// ghost text first accepts the suggestion. We only rewrite when
+	// the typed value is strictly a prefix of the verb; anything
+	// past the verb (args) the user owns.
+	if m.slashSuggest.open {
+		if spec, ok := m.slashSuggest.selected(); ok {
+			verb := "/" + spec.Name
+			if strings.HasPrefix(verb, raw) && raw != verb {
+				raw = verb
+			}
+		}
+	}
+
+	m.slashSuggest.reset()
 	m.ta.Reset()
 
 	cmd, err := slash.Parse(raw)

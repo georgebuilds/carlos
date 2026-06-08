@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/georgebuilds/carlos/internal/agent"
@@ -231,8 +232,20 @@ func childrenPanelSeparator(h int) string {
 
 // renderInput frames the textarea with a thin separator above so the
 // input row reads as visually distinct from the transcript above it.
+//
+// Slash-mode autocomplete adds two optional bands stacked above the
+// separator: the multi-row "hint" panel (alternates + description +
+// keybinds), and replaces the textarea row itself with a custom
+// inline-ghost renderer so the suggested completion paints in dim
+// alongside the user's cursor. Outside slash mode renderInput stays
+// at its slice-1e shape - separator + ta.View().
 func (m *Model) renderInput(w int) string {
 	sep := lipgloss.NewStyle().Foreground(colorMuted).Render(strings.Repeat("─", w))
+	if m.slashSuggest.open {
+		hint := renderSlashHint(m.slashSuggest, w)
+		inputRow := renderSlashInputRow(m, w)
+		return strings.Join([]string{hint, sep, inputRow}, "\n")
+	}
 	return sep + "\n" + m.ta.View()
 }
 
@@ -796,12 +809,36 @@ func (m *Model) rerenderViewport() {
 		// inviting and the user knows what to do.
 		content = renderEmptyState(m.userName, m.vp.Width, m.vp.Height, m.readOnly)
 	} else {
-		content = composeTranscript(m.transcript, m.source.Get(m.agentID), m.vp.Width)
+		var thinking string
+		if m.isThinking() {
+			thinking = renderThinkingRow(m.thinkingTick, m.thinkingElapsed(), m.vp.Width)
+		}
+		md := m.ensureMarkdown(m.vp.Width)
+		content = composeTranscript(m.transcript, m.source.Get(m.agentID), thinking, md, m.vp.Width)
 	}
 	m.vp.SetContent(content)
 	if wasAtBottom {
 		m.vp.GotoBottom()
 	}
+}
+
+// ensureMarkdown returns the glamour renderer sized for width,
+// rebuilding it whenever the viewport width changes. Returns nil on
+// any setup error so the assistant-message renderer falls back to the
+// plain avatar block — markdown is a nicety, not a hard requirement.
+func (m *Model) ensureMarkdown(width int) *glamour.TermRenderer {
+	if m.markdown != nil && m.markdownWidth == width {
+		return m.markdown
+	}
+	r, err := newMarkdownRenderer(width)
+	if err != nil {
+		m.markdown = nil
+		m.markdownWidth = width
+		return nil
+	}
+	m.markdown = r
+	m.markdownWidth = width
+	return r
 }
 
 // renderEmptyState is the welcome panel shown when the transcript is
@@ -854,21 +891,33 @@ func renderEmptyState(userName string, width, height int, readOnly bool) string 
 }
 
 // composeTranscript renders the transcript entries followed by the
-// live assistant text (if any). Width is honored via lipgloss styles
-// that wrap at the viewport width.
-func composeTranscript(entries []transcriptEntry, liveText string, width int) string {
+// live assistant text (if any) and, if non-empty, an activity
+// indicator row signalling "carlos is thinking between turns". Width
+// is honored via lipgloss styles that wrap at the viewport width.
+//
+// The thinking row is mutually exclusive with liveText in practice
+// (isThinking returns false when source.Get returns text) but we
+// don't enforce that here — the caller already decides. composeTranscript
+// just renders what it's asked to.
+func composeTranscript(entries []transcriptEntry, liveText, thinkingRow string, md *glamour.TermRenderer, width int) string {
 	var sb strings.Builder
 	for i, e := range entries {
 		if i > 0 {
 			sb.WriteString("\n")
 		}
-		sb.WriteString(renderEntry(e, width))
+		sb.WriteString(renderEntry(e, md, width))
 	}
 	if liveText != "" {
 		if len(entries) > 0 {
 			sb.WriteString("\n")
 		}
 		sb.WriteString(renderAssistantLive(liveText, width))
+	}
+	if thinkingRow != "" {
+		if len(entries) > 0 || liveText != "" {
+			sb.WriteString("\n")
+		}
+		sb.WriteString(thinkingRow)
 	}
 	return sb.String()
 }
@@ -881,14 +930,14 @@ func composeTranscript(entries []transcriptEntry, liveText string, width int) st
 //
 // The "avatar : text" format reads the transcript like a chat log
 // rather than a debug trace.
-func renderEntry(e transcriptEntry, width int) string {
+func renderEntry(e transcriptEntry, md *glamour.TermRenderer, width int) string {
 	body := lipgloss.NewStyle().Width(width).MaxWidth(width)
 	colon := lipgloss.NewStyle().Foreground(colorMuted).Render(":")
 	switch e.kind {
 	case entryUserMessage:
 		return renderAvatarBlock("👤", colon, e.text, colorUser, width)
 	case entryAssistantMessage:
-		return renderAvatarBlock("🧢", colon, e.text, colorAgent, width)
+		return renderAssistantMarkdown(e.text, width, md)
 	case entryUserShell:
 		// Phase U S5 block: $-prompt, output body, status badge.
 		// Renderer is in internal/tui/chat/usershell_render.go.

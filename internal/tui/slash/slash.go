@@ -115,6 +115,12 @@ var Builtins = []Spec{
 	// Identity surface: print frame, mode, provider, model. Useful
 	// after a /frame switch to confirm the live swap.
 	{Name: "whoami", Description: "show the active frame, mode, provider, and model"},
+
+	// MCP v1 - list configured MCP servers and the tools they
+	// contributed at boot. Handler ships in a follow-on slice (see
+	// chat.dispatchSlash); for now the verb appears in the palette so
+	// users can discover it.
+	{Name: "mcp", Description: "list configured MCP servers and their tools"},
 }
 
 // Lookup returns the Spec for name (case-insensitive), or (Spec{}, false).
@@ -126,4 +132,103 @@ func Lookup(name string) (Spec, bool) {
 		}
 	}
 	return Spec{}, false
+}
+
+// Filter is the autocomplete brain for the TUI's "slash mode": given the
+// raw textarea value, return the matching specs, the verb fragment under
+// the cursor, and a flag telling the caller whether the user has typed
+// past the verb into args-entry territory.
+//
+// Three regimes:
+//
+//   - Just "/" (or "/" + whitespace): full Builtins list. The popup
+//     reads as a discoverable command palette.
+//   - "/<prefix>": case-insensitive prefix match on Spec.Name. Ordered
+//     by Builtins (which is the curated reading order in the help
+//     panel, so the popup matches what users already know).
+//   - "/<verb> ...": treat the verb as locked in. Returns the exact-
+//     match Spec (one entry) and inArgs=true so the caller pivots from
+//     "narrow down" mode into "show me how to fill this in" mode.
+//
+// Non-slash input returns an empty matches slice and inArgs=false. The
+// caller uses len(matches)==0 + verb!="" to detect "user typed a verb
+// that doesn't exist" and surface a hint.
+func Filter(line string) (matches []Spec, verb string, inArgs bool) {
+	line = strings.TrimLeft(line, " \t")
+	if !strings.HasPrefix(line, "/") {
+		return nil, "", false
+	}
+	body := strings.TrimPrefix(line, "/")
+	rawVerb, _, hasSpace := strings.Cut(body, " ")
+	verb = strings.ToLower(strings.TrimSpace(rawVerb))
+	if hasSpace {
+		// Locked into one verb; the popup should pivot to args hint.
+		// Empty matches signals "verb is unknown" - the renderer can
+		// still show a 'unknown command' line.
+		for _, s := range Builtins {
+			if s.Name == verb {
+				return []Spec{s}, verb, true
+			}
+		}
+		return nil, verb, true
+	}
+	if verb == "" {
+		out := make([]Spec, len(Builtins))
+		copy(out, Builtins)
+		return out, "", false
+	}
+	for _, s := range Builtins {
+		if strings.HasPrefix(s.Name, verb) {
+			matches = append(matches, s)
+		}
+	}
+	return matches, verb, false
+}
+
+// Ghost returns the ghost-text completion to render after the user's
+// cursor in slash mode, given the current textarea value and the
+// currently-selected suggestion. Two regimes mirror [Filter]:
+//
+//   - Verb-completion mode: the user is mid-typing a verb. Returns the
+//     remaining characters of spec.Name. Empty if the verb is already
+//     complete (covers /clear, /help, etc. where there's no more to
+//     suggest until a space lands).
+//   - Args-hint mode: the user has typed "/<verb> " (or further).
+//     Returns spec.ArgsHint, optionally prefixed with a space so the
+//     ghost reads as a continuation. Empty when the spec takes no args.
+//
+// Returns "" whenever no useful suggestion exists; the caller skips
+// rendering in that case.
+func Ghost(line string, spec Spec) string {
+	if spec.Name == "" {
+		return ""
+	}
+	trimmed := strings.TrimLeft(line, " \t")
+	if !strings.HasPrefix(trimmed, "/") {
+		return ""
+	}
+	body := strings.TrimPrefix(trimmed, "/")
+	rawVerb, after, hasSpace := strings.Cut(body, " ")
+	verb := strings.ToLower(rawVerb)
+	if !hasSpace {
+		// Verb-completion: dim out the remainder of the name.
+		if !strings.HasPrefix(spec.Name, verb) {
+			return ""
+		}
+		remainder := spec.Name[len(verb):]
+		// When the verb is fully typed but no space yet, hint the
+		// args inline so the user sees what comes next without
+		// pressing space first.
+		if remainder == "" && spec.ArgsHint != "" {
+			return " " + spec.ArgsHint
+		}
+		return remainder
+	}
+	// Args-hint mode: the spec is locked in. Only render the hint if
+	// the user hasn't already started typing args (we don't want to
+	// overlay over their text).
+	if strings.TrimSpace(after) != "" {
+		return ""
+	}
+	return spec.ArgsHint
 }

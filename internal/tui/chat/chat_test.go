@@ -537,7 +537,7 @@ func TestComposeTranscript_StableOutput(t *testing.T) {
 			hasResult:  true,
 		},
 	}
-	got := composeTranscript(entries, "live agent text", 80)
+	got := composeTranscript(entries, "live agent text", "", nil, 80)
 
 	// "bash" + the input preview + the line-count status all live in
 	// the bordered card; "alpha" is the user line; "live agent text"
