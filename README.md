@@ -53,6 +53,7 @@ After onboarding you're in the chat TUI. Type a question. carlos answers, calls 
 | `/agents` | open the sub-agent manage view |
 | `/whoami` | current frame, mode, provider, model |
 | `/permissions` | layered approval state + audit log |
+| `/mcp` | list configured MCP servers and their tools |
 
 ### CLI verbs adjacent to the chat
 
@@ -102,7 +103,7 @@ GOOS=darwin GOARCH=amd64  go build ./cmd/carlos
 
 ### Test discipline
 
-- `go test ./...` is the floor. Current count is ~2250 tests across 39 packages.
+- `go test ./...` is the floor. Current count is ~3390 tests across 41 packages.
 - `go vet ./...` must be clean.
 - New code aims for 80%+ coverage on touched packages.
 - The sub-agent + daemon + event log paths have integration tests; if you touch any of them, run `go test -race ./internal/agent/... ./internal/daemon/...` at least once before pushing.
@@ -115,8 +116,10 @@ internal/
   agent/            tool-use loop, event log, supervision, layered approval
   config/           ~/.carlos/config.yaml schema + onboarding state
   daemon/           background scheduler (UDS + launchd / systemd)
+  farewell/         bordered exit-panel + brew-update probe
   frame/            per-session frames (personal + N user-defined)
   gateway/          chat-surface adapters (ntfy, Telegram, Signal stub)
+  mcp/              Model Context Protocol client + tool adapter
   memory/           SQLite FTS5 + summarizer
   miniyaml/         hand-rolled YAML for frontmatter
   notes/            Obsidian vault index + cache (Goldmark + miniyaml)
@@ -141,6 +144,7 @@ docs/               GitHub Pages site + llms.txt
 |---|---|
 | Add a tool | `internal/tools/`, register in `tools.go` |
 | Add a slash command | `internal/tui/slash/slash.go` Builtins + handler in `internal/tui/chat/` |
+| Wire an MCP server | `mcp_servers:` block in `~/.carlos/config.yaml`; client + adapter live in `internal/mcp/` |
 | Add a provider | `internal/providers/<name>/`, satisfy the `Provider` interface |
 | Add a frame field | `internal/frame/frame.go`, then sysprompt + render helpers |
 | Change permission rules | `internal/agent/policy.go` (`LayeredApprover`) |

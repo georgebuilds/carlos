@@ -8,7 +8,7 @@ Two distinguishing bets. First, skill induction: carlos watches transcripts and 
 
 ## Frames + modes
 
-Sessions run inside a frame (personal + N user-defined: work, research, side projects, etc.). Each frame carries its own glyph, accent from an 8-name palette, provider + model + `provider_override` (per-frame billing keys + base URLs that shadow the shared pantry), vault subtree, `system_prompt_append`, cwd_hints (auto-pick at fresh launch), capabilities, and orchestrator `mode` (solo / tight / orchestrator). Per-frame on-disk layout under `~/.carlos/frames/<name>/{research,usershell,worktrees,digest}/`. Cross-frame READ is free; cross-frame WRITE prompts with a distinct audit reason. Ctrl+F opens the full-screen 3×2 takeover switcher; `/frame switch <name>` swaps the live provider/model without losing the transcript and refreshes the in-process FrameUI (mode, capabilities, glyph, accent). `/mode <name>` flips the orchestrator mode, which gates the supervisor's spawn cap (solo=0, tight=1, orchestrator=5). When the user submits a non-trivial prompt in orchestrator mode, a five-checkbox heuristic overlay nudges them to delegate or stay solo. When sub-agents are live and the chat width is >= 120 cols, the transcript splits horizontally with a right-side roster. `/whoami` echoes the current frame + mode + provider + model.
+Sessions run inside a frame (personal + N user-defined: work, research, side projects, etc.). Each frame carries its own glyph, accent from an 8-name palette, provider + model + `provider_override` (per-frame billing keys + base URLs that shadow the shared pantry), vault subtree, `system_prompt_append`, cwd_hints (auto-pick at fresh launch), capabilities, MCP-server gating (top-level `mcp_servers:` list, each entry's optional `frames:` field restricts to a subset), and orchestrator `mode` (solo / tight / orchestrator). Per-frame on-disk layout under `~/.carlos/frames/<name>/{research,usershell,worktrees,digest}/`. Cross-frame READ is free; cross-frame WRITE prompts with a distinct audit reason. Ctrl+F opens the full-screen 3×2 takeover switcher; `/frame switch <name>` swaps the live provider/model without losing the transcript and refreshes the in-process FrameUI (mode, capabilities, glyph, accent). `/mode <name>` flips the orchestrator mode, which gates the supervisor's spawn cap (solo=0, tight=1, orchestrator=5). When the user submits a non-trivial prompt in orchestrator mode, a five-checkbox heuristic overlay nudges them to delegate or stay solo. When sub-agents are live and the chat width is >= 120 cols, the transcript splits horizontally with a right-side roster. `/whoami` echoes the current frame + mode + provider + model.
 
 ## Canonical references
 
@@ -16,11 +16,11 @@ Sessions run inside a frame (personal + N user-defined: work, research, side pro
 - [Releases](https://github.com/georgebuilds/carlos/releases): version history and signed tarballs
 - [Issues](https://github.com/georgebuilds/carlos/issues): open work and discussion
 
-## Tool surface (28 registered by default)
+## Tool surface (31 registered by default)
 
-- Filesystem read: `read`, `grep`, `glob`, `ls`. Sandboxed by `BaseDir` when running inside a worktree.
+- Filesystem read: `read`, `grep`, `glob`. Sandboxed by `BaseDir` when running inside a worktree.
 - Filesystem mutate: `write`, `edit`. Always prompt unless the session cached "Always".
-- Shell: `bash`. Non-PTY by default; `bash_pty` available as a separate registration.
+- Shell: `bash`. Non-PTY by default.
 - Git read-only: `git_status`, `git_diff`, `git_log`, `git_blame`, `git_show`.
 - Web: `web_fetch` (HTML to text, configurable UA and robots policy), `web_search` (Brave, SearXNG, or DuckDuckGo HTML fallback), `http_request` (method-parametric for REST, GraphQL, webhooks), `code_search` (concurrent fan-out to Codewiki + Context7 + DeepWiki; defaults to carlos's own repo for self-reference).
 - Introspection: `carlos_about` returns carlos's own state: vault path, active frame, all configured frames, capabilities, providers, user name. Auto-approved; never leaks API keys.
@@ -43,13 +43,14 @@ Identity hardening: provider clients run every EventError through `providers.Scr
 
 ## Slash commands
 
-Owned by `internal/tui/slash`. Mirrored from Claude Code: `/clear`, `/help`, `/exit` (alias `/quit`, `/q`), `/compact`, `/model`, `/review`. Carlos-specific: `/insights`, `/skills`, `/memory`, `/schedule`, `/daemon`, `/agents`, `/research`, `/resume`, `/shell`, `/jobs`, `/fg`, `/bg`, `/trust`, `/untrust`, `/trusts`, `/permissions`, `/frame`, `/mode`, `/capabilities`, `/whoami`. CLI verbs adjacent: `carlos gateway test <channel>`, `carlos gateway add`, `carlos onboard --only <screen>`, `carlos memory search -f <frame> <query>`.
+Owned by `internal/tui/slash`. Typing `/` opens an inline autocomplete: ghost text on the input row for the best match plus a hint band with chip palette, description, and keybinds. Mirrored from Claude Code: `/clear`, `/help`, `/exit` (alias `/quit`, `/q`), `/compact`, `/model`, `/review`. Carlos-specific: `/insights`, `/skills`, `/memory`, `/schedule`, `/daemon`, `/agents`, `/research`, `/resume`, `/shell`, `/jobs`, `/fg`, `/bg`, `/trust`, `/untrust`, `/trusts`, `/permissions`, `/frame`, `/mode`, `/capabilities`, `/whoami`, `/mcp`. CLI verbs adjacent: `carlos gateway test <channel>`, `carlos gateway add`, `carlos onboard --only <screen>`, `carlos memory search -f <frame> <query>`.
 
 ## Subsystems
 
 - [internal/agent](https://github.com/georgebuilds/carlos/tree/main/internal/agent): tool-use loop, event log, supervision, layered approval policy (cross-frame detector + mode-aware spawn cap)
 - [internal/frame](https://github.com/georgebuilds/carlos/tree/main/internal/frame): Frame + Config + Policy, accent palette, paths, migration, modes, render helpers
 - [internal/tools](https://github.com/georgebuilds/carlos/tree/main/internal/tools): every registered tool (`NewDefaultRegistryWithBaseDirAndFrames` is the canonical constructor)
+- [internal/mcp](https://github.com/georgebuilds/carlos/tree/main/internal/mcp): Model Context Protocol client; stdio servers register their tools under `<server>__<tool>` and inherit the standard approval path
 - [internal/providers](https://github.com/georgebuilds/carlos/tree/main/internal/providers): anthropic, openai, openrouter, ollama, gemini, oacompat
 - [internal/notes](https://github.com/georgebuilds/carlos/tree/main/internal/notes): Obsidian vault index and cache (Goldmark plus miniyaml)
 - [internal/workspace](https://github.com/georgebuilds/carlos/tree/main/internal/workspace): trusted-workspaces store and read-only bash classifier
@@ -60,11 +61,12 @@ Owned by `internal/tui/slash`. Mirrored from Claude Code: `/clear`, `/help`, `/e
 - [internal/daemon](https://github.com/georgebuilds/carlos/tree/main/internal/daemon): background scheduler under launchd or systemd (per-fire frame plumbing)
 - [internal/schedule](https://github.com/georgebuilds/carlos/tree/main/internal/schedule): cron plus natural language grammar (Schedule.Frame field)
 - [internal/memory](https://github.com/georgebuilds/carlos/tree/main/internal/memory): SQLite FTS5 over summaries (per-frame search + recent helpers)
-- [internal/tui](https://github.com/georgebuilds/carlos/tree/main/internal/tui): bubbletea chat, manage, onboarding, slash registry, frame switcher, new-frame wizard, /permissions, /capabilities
+- [internal/farewell](https://github.com/georgebuilds/carlos/tree/main/internal/farewell): bordered TUI-exit panel that surfaces daemon-orphan, brew-update, and frame-migration notes in one rounded box
+- [internal/tui](https://github.com/georgebuilds/carlos/tree/main/internal/tui): bubbletea chat, manage, onboarding, slash registry, frame switcher, new-frame wizard, /permissions, /capabilities; chat renders assistant turns as markdown via glamour, streams tool calls as they happen, and shows a live "thinking" activity row before the first model token
 
 ## Provider capability map
 
-The `Capabilities()` accessor exposes per-provider feature flags: `ParallelToolUse`, `PromptCaching`, `Vision`, `StructuredOutput`. Anthropic is first-class. OpenAI and OpenRouter ride the `oacompat` Chat Completions wire shape. Gemini has a native provider plus `oacompat` for OpenAI-compatible Gemini endpoints. Ollama uses `/api/chat` with a leading system message.
+The `Capabilities()` accessor exposes per-provider feature flags: `ParallelToolUse`, `PromptCaching`, `Vision`, `StructuredOut`. Anthropic is first-class. OpenAI and OpenRouter ride the `oacompat` Chat Completions wire shape. Gemini has a native provider plus `oacompat` for OpenAI-compatible Gemini endpoints. Ollama uses `/api/chat` with a leading system message.
 
 ## Filesystem layout (`~/.carlos/`)
 
