@@ -605,6 +605,27 @@ func renderToolCard(e transcriptEntry, width int) string {
 	return renderToolCardGroup([]transcriptEntry{e}, width)
 }
 
+// toolCardGroupBorderColor returns the outer border color for a
+// tool-card group. The rule is "all-or-nothing": the border flips to
+// colorWarn only when EVERY entry errored. A mixed group (one or
+// more successes alongside one or more errors) keeps the neutral
+// colorTool border because the per-row glyph (🔧 vs ✗) already
+// identifies the failed call — painting the whole box red misreads
+// as "the whole run failed", both to the user and to the model when
+// it reads its own transcript back. An empty group is treated as
+// neutral, matching the early-return in renderToolCardGroup.
+func toolCardGroupBorderColor(es []transcriptEntry) lipgloss.Color {
+	if len(es) == 0 {
+		return colorTool
+	}
+	for _, e := range es {
+		if !e.isError {
+			return colorTool
+		}
+	}
+	return colorWarn
+}
+
 // renderToolCardGroup renders one or more tool-call entries inside a
 // single rounded-border box, separating consecutive rows with a thin
 // horizontal rule (similar to a Bootstrap list-group). A single-entry
@@ -612,27 +633,18 @@ func renderToolCard(e transcriptEntry, width int) string {
 // output — the border style, color, glyph, and content composition
 // are unchanged.
 //
-// Border + separator color rule: if EVERY entry in the group succeeded,
-// the border uses colorTool and the separators read as muted dividers.
-// If ANY entry in the group errored, the outer border flips to
-// colorWarn so the group reads as "something failed in this run";
-// individual entries still carry their own glyph (🔧 vs ✗) so the
-// user can identify which row was the failure.
+// Border color rule: the outer border flips to colorWarn ONLY when
+// EVERY entry in the group errored. A mixed group (any successes mixed
+// with any errors) keeps the neutral colorTool border, because the
+// per-row glyph (🔧 vs ✗) already identifies which row failed and a
+// red box around two successes + one failure misreads as "this whole
+// run was a failure" — both to the user and to the model when it
+// reads its own transcript back.
 func renderToolCardGroup(es []transcriptEntry, width int) string {
 	if len(es) == 0 {
 		return ""
 	}
-	groupHasError := false
-	for _, e := range es {
-		if e.isError {
-			groupHasError = true
-			break
-		}
-	}
-	borderColor := colorTool
-	if groupHasError {
-		borderColor = colorWarn
-	}
+	borderColor := toolCardGroupBorderColor(es)
 
 	const sideMargin = 4
 	totalW := width - sideMargin*2

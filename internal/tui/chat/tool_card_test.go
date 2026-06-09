@@ -46,23 +46,90 @@ func TestRenderToolCardGroup_SingleEntryMatchesLegacyCard(t *testing.T) {
 	}
 }
 
-// TestRenderToolCardGroup_MixedErrorPaintsOuterWarn covers the rule
-// that if ANY entry in a group errored, the outer border flips to
-// the warn color so the group reads as "something failed in here";
-// individual rows still carry their own glyph (🔧 vs ✗) so the
-// failed row is identifiable.
-func TestRenderToolCardGroup_MixedErrorPaintsOuterWarn(t *testing.T) {
-	es := []transcriptEntry{
+// TestToolCardGroupBorderColor_MixedKeepsNeutral is the regression
+// test for the "any error paints whole box red" bug. A group with at
+// least one success + at least one error must KEEP the neutral
+// colorTool border — the per-row ✗ glyph already identifies the
+// failed call. Painting the whole box red misreads as "this whole run
+// failed" and, in practice, caused the model to confabulate that none
+// of its tool calls had succeeded when reading its own transcript.
+func TestToolCardGroupBorderColor_MixedKeepsNeutral(t *testing.T) {
+	mixed := []transcriptEntry{
 		{kind: entryToolCall, ts: time.Now(), tool: "read", hasResult: true},
 		{kind: entryToolCall, ts: time.Now(), tool: "bash", hasResult: true, isError: true},
 	}
-	out := renderToolCardGroup(es, 100)
-	// Both glyphs co-exist: 🔧 from the OK row and ✗ from the errored row.
+	if got := toolCardGroupBorderColor(mixed); got != colorTool {
+		t.Errorf("mixed group border = %v, want colorTool (%v)", got, colorTool)
+	}
+
+	// Mixed in the other order (error first) must also stay neutral —
+	// the "any error" predicate would have tripped on entry 0 here.
+	mixedErrFirst := []transcriptEntry{
+		{kind: entryToolCall, ts: time.Now(), tool: "bash", hasResult: true, isError: true},
+		{kind: entryToolCall, ts: time.Now(), tool: "read", hasResult: true},
+	}
+	if got := toolCardGroupBorderColor(mixedErrFirst); got != colorTool {
+		t.Errorf("mixed-error-first group border = %v, want colorTool (%v)", got, colorTool)
+	}
+
+	// And the rendered output for a mixed group still carries both
+	// per-row glyphs so the failed call is identifiable.
+	out := renderToolCardGroup(mixed, 100)
 	if !strings.Contains(out, "🔧") {
-		t.Errorf("group missing 🔧 from successful row:\n%s", out)
+		t.Errorf("mixed group missing 🔧 from successful row:\n%s", out)
 	}
 	if !strings.Contains(out, "✗") {
-		t.Errorf("group missing ✗ from errored row:\n%s", out)
+		t.Errorf("mixed group missing ✗ from errored row:\n%s", out)
+	}
+}
+
+// TestToolCardGroupBorderColor_AllSuccessNeutral pins the happy
+// path: every entry succeeded, so the outer border is the neutral
+// colorTool style.
+func TestToolCardGroupBorderColor_AllSuccessNeutral(t *testing.T) {
+	es := []transcriptEntry{
+		{kind: entryToolCall, ts: time.Now(), tool: "read", hasResult: true},
+		{kind: entryToolCall, ts: time.Now(), tool: "grep", hasResult: true},
+		{kind: entryToolCall, ts: time.Now(), tool: "bash", hasResult: true},
+	}
+	if got := toolCardGroupBorderColor(es); got != colorTool {
+		t.Errorf("all-success group border = %v, want colorTool (%v)", got, colorTool)
+	}
+}
+
+// TestToolCardGroupBorderColor_AllErroredWarn pins the all-failed
+// path: every entry errored, so the outer border flips to the warn
+// color so the user can see at a glance that the whole run failed.
+func TestToolCardGroupBorderColor_AllErroredWarn(t *testing.T) {
+	es := []transcriptEntry{
+		{kind: entryToolCall, ts: time.Now(), tool: "read", hasResult: true, isError: true},
+		{kind: entryToolCall, ts: time.Now(), tool: "bash", hasResult: true, isError: true},
+	}
+	if got := toolCardGroupBorderColor(es); got != colorWarn {
+		t.Errorf("all-error group border = %v, want colorWarn (%v)", got, colorWarn)
+	}
+}
+
+// TestToolCardGroupBorderColor_SingleErrored covers the degenerate
+// case of a one-row group containing a single error. By the "all
+// errored" rule it's still warn-bordered, which matches the existing
+// solo-card behavior (a lone error card renders with the warn border).
+func TestToolCardGroupBorderColor_SingleErrored(t *testing.T) {
+	es := []transcriptEntry{
+		{kind: entryToolCall, ts: time.Now(), tool: "bash", hasResult: true, isError: true},
+	}
+	if got := toolCardGroupBorderColor(es); got != colorWarn {
+		t.Errorf("single-errored group border = %v, want colorWarn (%v)", got, colorWarn)
+	}
+}
+
+// TestToolCardGroupBorderColor_Empty guards the early-return path:
+// an empty group never renders (renderToolCardGroup short-circuits),
+// but the predicate should still return a sensible neutral color so
+// it can be called defensively without a nil result.
+func TestToolCardGroupBorderColor_Empty(t *testing.T) {
+	if got := toolCardGroupBorderColor(nil); got != colorTool {
+		t.Errorf("empty group border = %v, want colorTool (%v)", got, colorTool)
 	}
 }
 
