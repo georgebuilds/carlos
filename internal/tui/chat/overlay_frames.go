@@ -180,10 +180,15 @@ func renderSwitcherGrid(
 		tiles = append(tiles, tile)
 	}
 	// "+ new frame" placeholder occupies the next slot when it fits on
-	// this page. It is not actionable in F-5; the wizard is F-10. We
-	// still draw it so the user sees the affordance.
+	// this page. The wizard is F-10; the placeholder lives at
+	// position len(Available), and the cursor can land on it (the
+	// switcherCursorOnNewTile predicate). When focused we paint it
+	// in accent color so the user can tell it's selected — without
+	// that, the grey-on-grey tile reads as "non-actionable" even
+	// when it's the active selection.
 	if len(tiles) < visible {
-		tiles = append(tiles, renderSwitcherNewFrameTile())
+		newFrameFocused := cursor == len(ui.Available) && end == len(ui.Available)
+		tiles = append(tiles, renderSwitcherNewFrameTile(newFrameFocused))
 	}
 	// Pad remaining slots with empty placeholders so the row math holds.
 	for len(tiles) < visible {
@@ -279,9 +284,24 @@ func renderSwitcherTile(name, activeGlyph string, isActive, isFocused bool, acti
 		Render(body)
 }
 
-func renderSwitcherNewFrameTile() string {
-	plus := lipgloss.NewStyle().Foreground(colorMuted).Bold(true).Render("+")
-	label := lipgloss.NewStyle().Foreground(colorMuted).Render("new frame")
+// renderSwitcherNewFrameTile paints the trailing "+ new frame" tile.
+// focused=true means the cursor is on it: the border and label
+// promote from muted/subtle to accent + bold so the selection state
+// is unmistakable. The "(F-10)" hint stays muted in both modes so it
+// reads as ancillary affordance, not part of the selection signal.
+func renderSwitcherNewFrameTile(focused bool) string {
+	glyphStyle := lipgloss.NewStyle().Foreground(colorMuted).Bold(true)
+	labelStyle := lipgloss.NewStyle().Foreground(colorMuted)
+	borderColor := colorSubtle
+	border := lipgloss.RoundedBorder()
+	if focused {
+		glyphStyle = lipgloss.NewStyle().Foreground(colorAccent).Bold(true)
+		labelStyle = lipgloss.NewStyle().Foreground(colorAccent).Bold(true)
+		borderColor = colorAccent
+		border = lipgloss.ThickBorder()
+	}
+	plus := glyphStyle.Render("+")
+	label := labelStyle.Render("new frame")
 	hint := lipgloss.NewStyle().Foreground(colorSubtle).Italic(true).Render("(F-10)")
 	body := lipgloss.JoinVertical(lipgloss.Center,
 		"",
@@ -291,8 +311,8 @@ func renderSwitcherNewFrameTile() string {
 		hint,
 	)
 	return lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(colorSubtle).
+		Border(border).
+		BorderForeground(borderColor).
 		Width(switcherTileWidth - 2).
 		Height(switcherTileHeight - 2).
 		Align(lipgloss.Center).
