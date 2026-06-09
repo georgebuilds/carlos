@@ -433,11 +433,11 @@ func TestStore_NilReceivers(t *testing.T) {
 	if _, err := s.AppendSummary(ctx, Summary{AgentID: "a", Text: "x"}); err == nil {
 		t.Error("AppendSummary nil receiver should error")
 	}
-	if _, err := s.Search(ctx, "x", 10); err == nil {
-		t.Error("Search nil receiver should error")
+	if _, err := s.SearchInFrame(ctx, "x", AnyFrame, 10); err == nil {
+		t.Error("SearchInFrame nil receiver should error")
 	}
-	if _, err := s.RecentSummaries(ctx, 10); err == nil {
-		t.Error("RecentSummaries nil receiver should error")
+	if _, err := s.RecentInFrame(ctx, AnyFrame, 10); err == nil {
+		t.Error("RecentInFrame nil receiver should error")
 	}
 	if _, _, err := s.GetFact(ctx, "k"); err == nil {
 		t.Error("GetFact nil receiver should error")
@@ -487,7 +487,7 @@ func TestAppendSummary_ZeroTimeStampsNow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	hits, err := s.RecentSummaries(ctx, 10)
+	hits, err := s.RecentInFrame(ctx, AnyFrame, 10)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -93,24 +93,38 @@ func (s *Store) AppendSummary(ctx context.Context, sum Summary) (int64, error) {
 	return id, nil
 }
 
-// Search runs an FTS5 MATCH against the summaries index and returns
-// rows ordered by closed_at DESC (newest first). If limit <= 0 we
-// default to 10.
+// AnyFrame is the explicit sentinel for "do not filter on frame" in
+// the read paths (SearchInFrame, RecentInFrame). It is the empty
+// string by design: legacy databases stamp the frame column with ""
+// for rows that predate frames, and the same value names "I want
+// every row, including legacy ones." Callers must pass either an
+// active-frame name OR this sentinel - there is no silent default.
+const AnyFrame = ""
+
+// SearchInFrame runs an FTS5 MATCH against the summaries index and
+// returns rows ordered by closed_at DESC (newest first). If limit
+// <= 0 we default to 10.
+//
+// Frame semantics (Phase F-13, hardened post-audit):
+//
+//   - frame == AnyFrame: no filter; every match across every frame is
+//     returned. Used by the `carlos memory search` CLI when invoked
+//     without -f / --frame so a script gets the full corpus.
+//   - frame != AnyFrame: predicate is `frame = ? OR frame = ''`. Rows
+//     stamped under the active frame surface; rows stamped under a
+//     different frame are hidden; legacy rows (frame = "") fall through
+//     so they remain reachable across the frames cutover.
+//
+// The frame argument is explicit and required - there is no silent
+// default. Callers in the agent loop pass the active-at-recall-time
+// frame; the CLI passes its -f flag value (which may be AnyFrame).
 //
 // The query is passed straight to FTS5 - callers may use the full
 // FTS5 query grammar (quoted phrases, AND/OR/NOT, NEAR/N, prefix*).
-// Bad-syntax queries surface the FTS5 error wrapped.
+// Bad-syntax queries surface the FTS5 error wrapped in ErrBadQuery.
 //
-// Legacy callers using two-arg Search get every frame's hits. Use
-// SearchInFrame to scope a search.
-func (s *Store) Search(ctx context.Context, query string, limit int) ([]Summary, error) {
-	return s.SearchInFrame(ctx, query, "", limit)
-}
-
-// SearchInFrame runs an FTS5 MATCH and filters to the named frame.
-// Empty frame returns every match (the legacy cross-frame behaviour).
-// Phase F-13. The summaries_by_frame index makes the per-frame scan
-// cheap even on large stores.
+// The summaries_by_frame index makes the per-frame scan cheap even
+// on large stores.
 func (s *Store) SearchInFrame(ctx context.Context, query, frame string, limit int) ([]Summary, error) {
 	if s == nil {
 		return nil, errors.New("memory: nil store")
@@ -121,7 +135,7 @@ func (s *Store) SearchInFrame(ctx context.Context, query, frame string, limit in
 	if limit <= 0 {
 		limit = 10
 	}
-	if frame == "" {
+	if frame == AnyFrame {
 		rows, err := s.db.QueryContext(ctx, `
 			SELECT id, agent_id, closed_at, text, tokens, source_seq, frame
 			  FROM summaries
@@ -142,7 +156,7 @@ func (s *Store) SearchInFrame(ctx context.Context, query, frame string, limit in
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, agent_id, closed_at, text, tokens, source_seq, frame
 		  FROM summaries
-		 WHERE frame = ?
+		 WHERE (frame = ? OR frame = '')
 		   AND id IN (SELECT rowid FROM summaries_fts WHERE summaries_fts MATCH ?)
 		 ORDER BY closed_at DESC
 		 LIMIT ?`,
@@ -158,18 +172,18 @@ func (s *Store) SearchInFrame(ctx context.Context, query, frame string, limit in
 	return scanSummaries(rows)
 }
 
-// RecentSummaries returns the top-N summaries by closed_at DESC. Used
-// by the agent boot path to seed working memory ("here's what we
-// last talked about") without invoking FTS5.
+// RecentInFrame returns the top-N summaries by closed_at DESC. Used
+// by the agent boot / recall path to seed working memory ("here's
+// what we last talked about") without invoking FTS5.
 //
-// Legacy two-arg callers get every frame's hits. Use RecentInFrame to
-// scope by frame.
-func (s *Store) RecentSummaries(ctx context.Context, limit int) ([]Summary, error) {
-	return s.RecentInFrame(ctx, "", limit)
-}
-
-// RecentInFrame returns the top-N summaries scoped to one frame.
-// Empty frame returns every frame's rows. Phase F-13.
+// Frame semantics mirror SearchInFrame exactly:
+//
+//   - frame == AnyFrame: no filter; every frame's rows are returned.
+//   - frame != AnyFrame: predicate is `frame = ? OR frame = ''` so the
+//     active frame's rows + legacy rows surface, but rows stamped
+//     under a different frame are hidden.
+//
+// The frame argument is explicit and required - no silent default.
 func (s *Store) RecentInFrame(ctx context.Context, frame string, limit int) ([]Summary, error) {
 	if s == nil {
 		return nil, errors.New("memory: nil store")
@@ -177,7 +191,7 @@ func (s *Store) RecentInFrame(ctx context.Context, frame string, limit int) ([]S
 	if limit <= 0 {
 		limit = 10
 	}
-	if frame == "" {
+	if frame == AnyFrame {
 		rows, err := s.db.QueryContext(ctx, `
 			SELECT id, agent_id, closed_at, text, tokens, source_seq, frame
 			  FROM summaries
@@ -193,7 +207,7 @@ func (s *Store) RecentInFrame(ctx context.Context, frame string, limit int) ([]S
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, agent_id, closed_at, text, tokens, source_seq, frame
 		  FROM summaries
-		 WHERE frame = ?
+		 WHERE frame = ? OR frame = ''
 		 ORDER BY closed_at DESC
 		 LIMIT ?`, frame, limit,
 	)

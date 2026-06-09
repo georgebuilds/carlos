@@ -106,9 +106,9 @@ func TestPersistenceAcrossReopen(t *testing.T) {
 	}
 	defer s2.Close()
 
-	hits, err := s2.RecentSummaries(ctx, 10)
+	hits, err := s2.RecentInFrame(ctx, memory.AnyFrame, 10)
 	if err != nil {
-		t.Fatalf("RecentSummaries: %v", err)
+		t.Fatalf("RecentInFrame: %v", err)
 	}
 	if len(hits) != 1 || hits[0].Text != "first chat" {
 		t.Errorf("after reopen: want 1 summary 'first chat', got %+v", hits)
