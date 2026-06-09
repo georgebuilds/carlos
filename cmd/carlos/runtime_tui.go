@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -22,6 +23,7 @@ import (
 	"github.com/georgebuilds/carlos/internal/memory"
 	"github.com/georgebuilds/carlos/internal/projectctx"
 	"github.com/georgebuilds/carlos/internal/research"
+	"github.com/georgebuilds/carlos/internal/skills"
 	"github.com/georgebuilds/carlos/internal/tools"
 	"github.com/georgebuilds/carlos/internal/tui/chat"
 	"github.com/georgebuilds/carlos/internal/tui/chatglue"
@@ -274,6 +276,17 @@ func runDefault(cfg *config.Config, sessionID string) error {
 		Env: os.Getenv("CARLOS_FRAME"),
 		Cwd: cwd,
 	})
+
+	// Load the skill library so the system prompt can announce each
+	// frame-applicable skill by name + description. Without this load
+	// the model only ever discovered skills by walking ~/.carlos/skills
+	// after the user explicitly mentioned them — the calendar skill
+	// shipped with the binary was effectively invisible until summoned.
+	// LoadFromConfig walks the five canonical search paths
+	// (~/.claude/skills, ~/.agents/skills, project equivalents,
+	// ~/.carlos/skills) and gracefully returns an empty library when
+	// none exist. Failures here aren't fatal; the chat boots either way.
+	skillsLib, _ := skills.LoadFromConfig(cfg, "")
 	// Phase F live-swap state. liveLoop holds the currently-running
 	// chatglue.Loop; liveDispatch mirrors d so /whoami reflects the
 	// currently-active provider + model after a swap. swapLoop is
@@ -286,6 +299,7 @@ func runDefault(cfg *config.Config, sessionID string) error {
 		liveLoop     *chatglue.Loop
 		liveDispatch = d
 		swapLoop     func(name string) error
+		swapModel    func(provider, model string) (string, string, error)
 	)
 	var activeFrame frame.Frame
 	frameInfo := agent.FrameInfo{}
@@ -301,6 +315,7 @@ func runDefault(cfg *config.Config, sessionID string) error {
 				VaultSubtree: activeFrame.VaultSubtree,
 				CwdHints:     activeFrame.CwdHints,
 				Capabilities: extractCapabilityBackends(activeFrame),
+				Skills:       summariseSkills(skillsLib, activeFrame.Name),
 			}
 			// Wire the supervisor's spawn cap to the active frame's
 			// mode at session boot. Without this the sysprompt would
@@ -371,6 +386,16 @@ func runDefault(cfg *config.Config, sessionID string) error {
 					cfg.Frames.List = append(cfg.Frames.List, f)
 					return config.Save(config.DefaultPath(), cfg)
 				},
+				RefreshAvailable: func() []string {
+					// Source-of-truth refresh: every Ctrl+F open re-
+					// reads cfg.Frames.Names() so a frame added via the
+					// wizard, /frame new <name>, OR an out-of-band edit
+					// of ~/.carlos/config.yaml shows up in the switcher
+					// without an app restart. cfg is the same struct the
+					// AddFrame closure above mutates, so the two stay
+					// trivially in sync.
+					return cfg.Frames.Names()
+				},
 				PersonalTemplate: func() frame.Frame {
 					if p := cfg.Frames.Find(frame.DefaultPersonalName); p != nil {
 						return *p
@@ -393,6 +418,15 @@ func runDefault(cfg *config.Config, sessionID string) error {
 						Mode:         frame.EffectiveMode(*f),
 						Capabilities: extractCapabilityBackends(*f),
 					}, true
+				},
+				SwitchModel: func(provider, model string) (string, string, error) {
+					if swapModel == nil {
+						return "", "", fmt.Errorf("model swap not wired")
+					}
+					return swapModel(provider, model)
+				},
+				ModelCompletions: func(partial string) []string {
+					return modelCompletionsFor(cfg, partial)
 				},
 			}
 		}
@@ -435,6 +469,7 @@ func runDefault(cfg *config.Config, sessionID string) error {
 			VaultSubtree: f.VaultSubtree,
 			CwdHints:     f.CwdHints,
 			Capabilities: extractCapabilityBackends(*f),
+			Skills:       summariseSkills(skillsLib, f.Name),
 		}
 		newSys := agent.SystemPromptWithFrame(cfg.UserName, chatCwd, chatProjectCtx, newInfo)
 		newLoop := chatglue.NewLoop(chatglue.Config{
@@ -463,6 +498,79 @@ func runDefault(cfg *config.Config, sessionID string) error {
 			layered.SetFrameSubtrees(newFrameName, subtrees)
 		}
 		return nil
+	}
+	// swapModel mirrors swapLoop's atomic chatglue.Loop rebuild but
+	// pivots on (provider, model) instead of a frame name. Empty
+	// provider means "keep the active provider, swap only the model"
+	// — the most common case for OpenRouter users hopping between
+	// catalog entries. Returns the resolved (provider, model) so the
+	// slash echo can confirm exactly what landed (useful when the
+	// caller passed a bare model and the provider was inferred).
+	swapModel = func(reqProvider, reqModel string) (string, string, error) {
+		if strings.TrimSpace(reqModel) == "" {
+			return "", "", fmt.Errorf("model is required (got empty)")
+		}
+		loopMu.Lock()
+		curName := liveDispatch.name
+		loopMu.Unlock()
+		provName := strings.TrimSpace(reqProvider)
+		if provName == "" {
+			provName = curName
+		}
+		newDispatch, err := buildDispatchForFrame(cfg, pleaseOptions{
+			provider: provName,
+			model:    strings.TrimSpace(reqModel),
+		}, activeFrameForDispatch(cfg, ""))
+		if err != nil {
+			return "", "", fmt.Errorf("rebuild dispatch: %w", err)
+		}
+		// Re-derive sysprompt + skill summaries against the CURRENT
+		// active frame so the new turn sees the same frame context as
+		// the prior one (model swaps preserve frame; frame swaps go
+		// through swapLoop).
+		var newInfo agent.FrameInfo
+		curFrameName := ""
+		if af := cfg.Frames.Find(cfg.Frames.Active); af != nil {
+			curFrameName = af.Name
+			newInfo = agent.FrameInfo{
+				Name:         af.Name,
+				Append:       af.SystemPromptAppend,
+				Mode:         frame.EffectiveMode(*af),
+				VaultPath:    cfg.Vault.Path,
+				VaultSubtree: af.VaultSubtree,
+				CwdHints:     af.CwdHints,
+				Capabilities: extractCapabilityBackends(*af),
+				Skills:       summariseSkills(skillsLib, af.Name),
+			}
+		}
+		_ = curFrameName
+		newSys := agent.SystemPromptWithFrame(cfg.UserName, chatCwd, chatProjectCtx, newInfo)
+		newLoop := chatglue.NewLoop(chatglue.Config{
+			Provider: newDispatch.provider,
+			Model:    newDispatch.model,
+			Tools:    parentReg,
+			Approver: layered,
+			System:   newSys,
+		}, log, src, defaultAgentID)
+		if err := newLoop.Start(ctx); err != nil {
+			return "", "", fmt.Errorf("start new loop: %w", err)
+		}
+		loopMu.Lock()
+		old := liveLoop
+		liveLoop = newLoop
+		liveDispatch = newDispatch
+		loopMu.Unlock()
+		old.Stop()
+		// Keep the supervisor's default model in sync so sub-agents
+		// spawned after the swap inherit the freshly-chosen model.
+		sup.SetDefaultModel(newDispatch.model)
+		// Update the persisted agents table row so a future session
+		// resume + projection rebuild lands on the freshly-chosen
+		// model. The in-memory header read goes through Identity()
+		// (see headerState in internal/tui/chat/view.go), so the user
+		// sees the swap immediately without a state_change event.
+		_ = log.UpdateAgentModel(ctx, defaultAgentID, newDispatch.model)
+		return newDispatch.name, newDispatch.model, nil
 	}
 
 	// Phase 9 slice 9j: build the summarizer the chat-side /compact verb
@@ -529,6 +637,15 @@ func runDefault(cfg *config.Config, sessionID string) error {
 	})
 
 	for {
+		// Refresh the frame list each iteration so a new frame
+		// created in the previous chat session (wizard or `/frame
+		// new`) is visible in this iteration's switcher even on the
+		// chat ⇄ manage ⇄ chat round-trip. The wizard already
+		// appends to the live chat Model's mirror; this line keeps
+		// the outer-loop snapshot honest too.
+		if frameUI.Active != "" {
+			frameUI.Available = cfg.Frames.Names()
+		}
 		opts := []chat.Option{
 			chat.WithTUIApprover(approver),
 			chat.WithUserName(cfg.UserName),
@@ -561,6 +678,36 @@ func runDefault(cfg *config.Config, sessionID string) error {
 		m := chat.New(log, defaultAgentID, src, opts...)
 		if _, err := m.Run(); err != nil {
 			return fmt.Errorf("chat: %w", err)
+		}
+		// /resume picker: when the user committed a session pick, swap
+		// the current chatglue.Loop for one bound to the chosen agent
+		// id and re-enter the chat loop on the same iteration so the
+		// new transcript backfills inline.
+		if picked := m.ResumeRequested(); picked != "" {
+			if err := ensureDefaultAgent(ctx, log, picked, d.name, d.model, cfg.UserName); err != nil {
+				return fmt.Errorf("resume %s: %w", picked, err)
+			}
+			loopMu.Lock()
+			old := liveLoop
+			loopMu.Unlock()
+			if old != nil {
+				old.Stop()
+			}
+			defaultAgentID = picked
+			newLoop := chatglue.NewLoop(chatglue.Config{
+				Provider: liveDispatch.provider,
+				Model:    liveDispatch.model,
+				Tools:    parentReg,
+				Approver: layered,
+				System:   systemPrompt,
+			}, log, src, defaultAgentID)
+			if err := newLoop.Start(ctx); err != nil {
+				return fmt.Errorf("resume %s: start loop: %w", picked, err)
+			}
+			loopMu.Lock()
+			liveLoop = newLoop
+			loopMu.Unlock()
+			continue
 		}
 		if !m.OpenManageRequested() {
 			return nil

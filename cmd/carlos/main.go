@@ -38,6 +38,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -45,6 +46,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime/debug"
+	"sort"
 	"strings"
 	"time"
 
@@ -60,6 +62,7 @@ import (
 	"github.com/georgebuilds/carlos/internal/providers/openai"
 	"github.com/georgebuilds/carlos/internal/providers/openrouter"
 	"github.com/georgebuilds/carlos/internal/research"
+	"github.com/georgebuilds/carlos/internal/skills"
 	"github.com/georgebuilds/carlos/internal/theme"
 	"github.com/georgebuilds/carlos/internal/tools"
 	"github.com/georgebuilds/carlos/internal/tui/chat"
@@ -698,6 +701,171 @@ func resolveProviderCreds(cfg *config.Config, providerName string, activeFrame *
 		}
 	}
 	return apiKey, baseURL, defaultModel
+}
+
+// modelCompletionsFor powers the /model slash autocomplete. The
+// input is whatever the user has typed past "/model "; the output is
+// a tab-completion list rendered in the suggest band. Branching:
+//
+//   - empty / no ":": list configured provider names suffixed with ":"
+//     so a single Tab gets the user from "/model " to "/model <prov>:"
+//     and the second character cycles to the model side.
+//   - "<prov>:<frag>": list models for that provider whose ids
+//     contain (or prefix) <frag>. We surface the provider's configured
+//     default model plus the OpenRouter live catalog when available.
+//
+// Returns nil for the "no completions" cases so the suggest layer
+// renders nothing.
+func modelCompletionsFor(cfg *config.Config, partial string) []string {
+	if cfg == nil {
+		return nil
+	}
+	partial = strings.TrimSpace(partial)
+	idx := strings.IndexByte(partial, ':')
+	if idx < 0 {
+		out := make([]string, 0, len(cfg.Providers))
+		for _, name := range sortedProviderNamesForCompletion(cfg.Providers) {
+			if partial == "" || strings.HasPrefix(name, strings.ToLower(partial)) {
+				out = append(out, name+":")
+			}
+		}
+		sort.Strings(out)
+		return out
+	}
+	provider := strings.ToLower(strings.TrimSpace(partial[:idx]))
+	frag := strings.TrimSpace(partial[idx+1:])
+	models := knownModelsFor(cfg, provider)
+	if len(models) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(models))
+	for _, m := range models {
+		if frag == "" || strings.Contains(strings.ToLower(m), strings.ToLower(frag)) {
+			out = append(out, provider+":"+m)
+		}
+	}
+	sort.Strings(out)
+	if len(out) > 12 {
+		out = out[:12]
+	}
+	return out
+}
+
+// sortedProviderNamesForCompletion is the cmd-side mirror of
+// chat.sortedProviderNames. Pulled out here to keep the chat package
+// free of cfg.Providers map iteration order surprises in tests.
+func sortedProviderNamesForCompletion(provs map[string]config.ProviderConfig) []string {
+	out := make([]string, 0, len(provs))
+	for n := range provs {
+		out = append(out, n)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// knownModelsFor returns the candidate model ids the autocomplete
+// surfaces for a provider. For OpenRouter we read the cached catalog
+// JSON file the onboarding flow drops at ~/.carlos/openrouter-models.json;
+// for every other provider the only authoritative source is the
+// provider's configured DefaultModel.
+//
+// Failures here are silent — the user still gets at least the default
+// model when one is configured, so an unreadable cache file degrades
+// to "no extra completions" rather than blocking the swap.
+func knownModelsFor(cfg *config.Config, provider string) []string {
+	var out []string
+	if pc, ok := cfg.Providers[provider]; ok && pc.DefaultModel != "" {
+		out = append(out, pc.DefaultModel)
+	}
+	if provider == "openrouter" {
+		out = append(out, loadOpenRouterCatalog()...)
+	}
+	return dedupStrings(out)
+}
+
+// loadOpenRouterCatalog reads the cached OpenRouter model catalog at
+// ~/.carlos/openrouter-models.json and returns the id list. The cache
+// is populated by the onboarding "models" step + the openrouter
+// provider's startup probe; we only READ here so a stale cache still
+// powers the autocomplete (catalogs change rarely; the user can
+// always type a model id directly). Returns nil on any read or parse
+// failure — autocomplete just shows the default model in that case.
+func loadOpenRouterCatalog() []string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil
+	}
+	path := filepath.Join(home, ".carlos", "openrouter-models.json")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	// The on-disk shape carries more fields (pricing, context window);
+	// we only need the id. A minimal struct keeps decode cheap and
+	// future-proof.
+	var doc struct {
+		Models []struct {
+			ID string `json:"id"`
+		} `json:"models"`
+	}
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		return nil
+	}
+	out := make([]string, 0, len(doc.Models))
+	for _, m := range doc.Models {
+		if m.ID != "" {
+			out = append(out, m.ID)
+		}
+	}
+	return out
+}
+
+// dedupStrings preserves first-occurrence order while dropping
+// duplicates. Tiny helper for the autocomplete path so the configured
+// default model + the cached catalog can both contribute without the
+// user seeing the same id twice.
+func dedupStrings(in []string) []string {
+	if len(in) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(in))
+	out := make([]string, 0, len(in))
+	for _, s := range in {
+		if _, ok := seen[s]; ok {
+			continue
+		}
+		seen[s] = struct{}{}
+		out = append(out, s)
+	}
+	return out
+}
+
+// summariseSkills projects the frame-applicable slice of a *skills.Library
+// into the lightweight []agent.SkillSummary the sysprompt builder needs.
+// Pulled out so the runtime + daemon share the same projection rule:
+// "use ForFrame() so frames:-restricted skills stay scoped, then keep
+// only the Name + Description so we don't ship the full body via the
+// prompt". Returns nil for a nil library so callers can pass straight
+// through to FrameInfo without a nil-check.
+func summariseSkills(lib *skills.Library, frameName string) []agent.SkillSummary {
+	if lib == nil {
+		return nil
+	}
+	applicable := lib.ForFrame(frameName)
+	if len(applicable) == 0 {
+		return nil
+	}
+	out := make([]agent.SkillSummary, 0, len(applicable))
+	for _, s := range applicable {
+		if s == nil {
+			continue
+		}
+		out = append(out, agent.SkillSummary{
+			Name:        s.Name,
+			Description: s.Description,
+		})
+	}
+	return out
 }
 
 // extractCapabilityBackends collapses a frame's full Capabilities map

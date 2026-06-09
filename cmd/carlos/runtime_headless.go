@@ -28,6 +28,7 @@ import (
 	"github.com/georgebuilds/carlos/internal/providers"
 	"github.com/georgebuilds/carlos/internal/research"
 	"github.com/georgebuilds/carlos/internal/sandbox"
+	"github.com/georgebuilds/carlos/internal/skills"
 	"github.com/georgebuilds/carlos/internal/tools"
 	"github.com/georgebuilds/carlos/internal/tui/chat"
 	"github.com/georgebuilds/carlos/internal/workspace"
@@ -297,6 +298,7 @@ func runHeadless(prompt string, opts pleaseOptions) error {
 		Cwd:  hcwd,
 	}); ok {
 		if f := cfg.Frames.Find(res.Frame); f != nil {
+			pleaseLib, _ := skills.LoadFromConfig(cfg, "")
 			pleaseFrameInfo = agent.FrameInfo{
 				Name:         f.Name,
 				Append:       f.SystemPromptAppend,
@@ -305,6 +307,7 @@ func runHeadless(prompt string, opts pleaseOptions) error {
 				VaultSubtree: f.VaultSubtree,
 				CwdHints:     f.CwdHints,
 				Capabilities: extractCapabilityBackends(*f),
+				Skills:       summariseSkills(pleaseLib, f.Name),
 			}
 			if opts.frame != "" || os.Getenv("CARLOS_FRAME") != "" {
 				fmt.Fprintf(os.Stderr, "carlos: frame=%s (via %s)\n", res.Frame, res.Reason)
