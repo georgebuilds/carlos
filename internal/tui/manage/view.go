@@ -35,20 +35,23 @@ func (m *Model) View() string {
 				minTermWidth, minTermHeight, w, h))
 	}
 
-	// Height(h - 3) + leading "\n": one-row top margin so terminals
-	// with overlaid tab bars (Ghostty tabbed mode, iTerm2 tabs, tmux
-	// status line, etc.) don't eat the top border. The wasted row in
-	// untabbed terminals is just blank - universal compatibility for
-	// the cost of one cell row.
+	// Match the chat view's window-size strategy: full-height box,
+	// no leading "\n" margin. The previous attempt added a one-row
+	// top margin to dodge overlaid tab bars (Ghostty tabbed mode,
+	// iTerm2 tabs), but field reports showed the margin actually
+	// made the top border MORE prone to clipping — the alt-screen
+	// scroll behavior interacts oddly with content that's slightly
+	// taller than the visible area. Chat uses h-2 + no margin and
+	// renders correctly in the same terminals, so we mirror that.
 	border := lipgloss.NewStyle().
 		Border(lipgloss.NormalBorder()).
 		BorderForeground(colorAccent).
 		Width(w - 2).
-		Height(h - 3).
+		Height(h - 2).
 		Padding(0, 1)
 
 	inner := m.renderInner(border.GetWidth(), border.GetHeight())
-	return "\n" + border.Render(inner)
+	return border.Render(inner)
 }
 
 func (m *Model) renderInner(innerW, innerH int) string {
@@ -96,11 +99,12 @@ func (m *Model) renderInner(innerW, innerH int) string {
 	rosterRows := m.populateSparklines(m.rosterRows)
 
 	rosterPane := renderRoster(rosterRows, rosterRenderOptions{
-		width:    rosterW,
-		height:   bodyH,
-		focusID:  m.focus.AgentID(),
-		scroll:   m.win.Top,
-		maxDepth: defaultMaxDepth,
+		width:     rosterW,
+		height:    bodyH,
+		focusID:   m.focus.AgentID(),
+		cursorIdx: m.cursor,
+		scroll:    m.win.Top,
+		maxDepth:  defaultMaxDepth,
 	})
 
 	divider := lipgloss.NewStyle().Foreground(colorMuted).Render(

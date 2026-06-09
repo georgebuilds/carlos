@@ -25,16 +25,18 @@ type rosterRow struct {
 
 // rosterRenderOptions bundles inputs the renderer needs from the
 // orchestrator: terminal sizing, the focused agent ID (rendered with
-// a highlight), and the optional sparkline accessor for the focused
-// agent.
+// a highlight), the cursor index (the row the user's ↑/↓ keys are
+// currently on; distinct from focus since enter commits cursor→focus),
+// and the optional sparkline accessor for the focused agent.
 type rosterRenderOptions struct {
-	width    int
-	height   int
-	focusID  string
-	scroll   int // top of the visible window
-	spark    func(id string) string
-	elapsed  func(createdAt time.Time) time.Duration
-	maxDepth int // cap rendered indentation at this many levels
+	width     int
+	height    int
+	focusID   string
+	cursorIdx int // index into rows the ↑/↓ cursor sits on; -1 = no cursor highlight
+	scroll    int // top of the visible window
+	spark     func(id string) string
+	elapsed   func(createdAt time.Time) time.Duration
+	maxDepth  int // cap rendered indentation at this many levels
 }
 
 // defaultMaxDepth caps visible nesting at 3 levels (per the brief);
@@ -162,6 +164,18 @@ func renderRoster(rows []rosterRow, opts rosterRenderOptions) string {
 	if visible < 1 {
 		visible = 1
 	}
+
+	if len(rows) == 0 {
+		// Empty roster: render a centered helper hint so the pane
+		// doesn't read as broken. Pad to `visible` rows so the
+		// focus pane on the right doesn't shift up.
+		empty := renderRosterEmptyState(w)
+		body = append(body, empty)
+		for i := 1; i < visible; i++ {
+			body = append(body, "")
+		}
+		return strings.Join(body, "\n")
+	}
 	start := opts.scroll
 	if start < 0 {
 		start = 0
@@ -175,7 +189,7 @@ func renderRoster(rows []rosterRow, opts rosterRenderOptions) string {
 	}
 
 	for i := start; i < end; i++ {
-		body = append(body, renderRosterRow(rows[i], opts, intentW, dropModel))
+		body = append(body, renderRosterRow(rows[i], opts, intentW, dropModel, i == opts.cursorIdx))
 	}
 
 	// If the visible window is shorter than the height, pad with
@@ -184,6 +198,16 @@ func renderRoster(rows []rosterRow, opts rosterRenderOptions) string {
 		body = append(body, "")
 	}
 	return strings.Join(body, "\n")
+}
+
+// renderRosterEmptyState is the helper row shown when the projection
+// has zero rows. Centered, dim, and free of fake column scaffolding
+// so the user can tell the pane is intentionally empty (and not
+// loading or broken).
+func renderRosterEmptyState(w int) string {
+	dim := lipgloss.NewStyle().Foreground(colorMuted).Italic(true)
+	line := dim.Render("no agents yet · /research, /please, or wait for a spawn")
+	return lipgloss.PlaceHorizontal(w, lipgloss.Center, line)
 }
 
 // renderRosterHeader is the bold column-name row. We don't render any
@@ -211,7 +235,13 @@ func renderRosterHeader(intentW int, dropModel bool) string {
 // raw strings + apply lipgloss styles, then pad each column to its
 // fixed width AFTER coloring (because pad treats ANSI escapes as
 // zero-width but lipgloss doesn't).
-func renderRosterRow(rr rosterRow, opts rosterRenderOptions, intentW int, dropModel bool) string {
+//
+// isCursor is true when this row is the ↑/↓ cursor position. We
+// paint it with a leading "›" marker + bold body so navigation is
+// visually obvious. Focused row (the agent shown in the right detail
+// pane) is a separate concern: that gets the leading "▸" marker.
+// When cursor and focus coincide, focus wins (▸).
+func renderRosterRow(rr rosterRow, opts rosterRenderOptions, intentW int, dropModel bool, isCursor bool) string {
 	r := rr.row
 
 	// Lineage indent on the title cell.
@@ -269,11 +299,23 @@ func renderRosterRow(rr rosterRow, opts rosterRenderOptions, intentW int, dropMo
 	)
 	row := strings.Join(parts, " ")
 
-	// Focused row gets a faint reverse-video so the user can locate
-	// the cursor even when the focus pane is showing the same agent.
-	if r.ID == opts.focusID {
+	// Markers:
+	//   ▸  focused agent (enter-committed; detail pane shows it)
+	//   ›  cursor row (current ↑/↓ position; not yet committed)
+	// When cursor lands on the focused row, paint BOTH markers
+	// together (▸›) so the user sees "this is the active one and
+	// my cursor is on it" — useful right after pressing enter, or
+	// when they navigate back to confirm focus.
+	switch {
+	case r.ID == opts.focusID && isCursor:
+		row = lipgloss.NewStyle().Foreground(colorAccent).Bold(true).Render("▸›") + " " +
+			lipgloss.NewStyle().Bold(true).Render(row)
+	case r.ID == opts.focusID:
 		row = lipgloss.NewStyle().Foreground(colorAgent).Render("▸ ") + row
-	} else {
+	case isCursor:
+		row = lipgloss.NewStyle().Foreground(colorAccent).Bold(true).Render("› ") +
+			lipgloss.NewStyle().Bold(true).Render(row)
+	default:
 		row = "  " + row
 	}
 	return row
