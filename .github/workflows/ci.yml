@@ -5,16 +5,22 @@
 #
 # # Job split
 #
-# Two parallel jobs:
-#   - `check`: vet + go.mod-tidy guard. Fast (<30s warm); surfaces
-#     style + dependency drift early so the PR status row shows the
-#     cheap signal before the test suite finishes.
-#   - `test`: full `go test ./...` suite (~38 packages, ~1800 tests,
-#     ~60s warm).
+# Three parallel jobs:
+#   - `check`: vet + go.mod-tidy guard. The tidy step is gated on a
+#     paths-filter so docs-only / source-only PRs skip the module
+#     graph walk entirely. Fast (<15s warm); surfaces style + dep
+#     drift early so the PR status row shows the cheap signal before
+#     the test suite finishes.
+#   - `test-shard-1` / `test-shard-2`: two parallel runners chewing
+#     through complementary halves of `./...`. Sharding is done by
+#     hand-curated path prefixes (`internal/agent/...` is the heavy
+#     one and gets its own shard) so the runners finish in roughly
+#     the same wall time. Each shard streams a per-shard coverage
+#     profile; Codecov merges them on upload.
 #
-# Running them in parallel bounds wall time by the longer job, and
-# the setup-go cache makes the per-job spin-up cheap enough that the
-# wall-clock win beats running setup twice.
+# Running them in parallel bounds wall time by the longest job. The
+# setup-go cache makes the per-job spin-up cheap enough that the
+# wall-clock win beats running setup three times.
 #
 # # Caching
 #
@@ -50,6 +56,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          # Need at least 2 commits so the path-change diff below can
+          # compare HEAD against its parent. fetch-depth: 0 would
+          # work but is wastefully wider.
+          fetch-depth: 2
 
       - name: Set up Go
         uses: actions/setup-go@v6
@@ -59,7 +70,27 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Detect go.mod / go.sum changes
+        # Output `changed=true|false`. The downstream tidy step only
+        # runs when the module graph actually changed; a typical
+        # source-only PR skips a ~3s `go mod tidy` walk + the diff
+        # check. Compares HEAD against the PR base for pull requests
+        # and against HEAD^ for manual dispatches.
+        id: mod_changes
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="${{ github.event.pull_request.base.sha }}"
+          else
+            base="HEAD^"
+          fi
+          if git diff --quiet "$base"...HEAD -- go.mod go.sum; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: go mod tidy is a no-op
+        if: steps.mod_changes.outputs.changed == 'true'
         # `go mod tidy` should leave go.mod and go.sum unchanged.
         # If this step fails, run it locally and commit the result.
         run: |
@@ -69,8 +100,8 @@ jobs:
       - name: Vet
         run: go vet ./...
 
-  test:
-    name: test
+  test-shard-1:
+    name: test (shard 1 — agent)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -83,18 +114,57 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Test
-        # `-count=1` disables the test cache so the run reflects the
-        # current code. `-timeout=5m` is generous given local wall
-        # time is ~40s. `-coverprofile`/`-covermode=atomic` feed the
-        # Codecov upload below.
-        run: go test ./... -count=1 -timeout=5m -coverprofile=coverage.txt -covermode=atomic
+      - name: Test (agent shard)
+        # internal/agent is by far the heaviest package (sub-agent
+        # supervisor + state machine + projection + event log). Give
+        # it a dedicated shard so the second shard's "everything
+        # else" finishes in roughly the same wall time.
+        run: |
+          go test \
+            -count=1 -timeout=5m \
+            -coverprofile=coverage.txt -covermode=atomic \
+            ./internal/agent/...
 
       - name: Upload coverage to Codecov
-        # Requires CODECOV_TOKEN as a repo Actions secret. Same wiring
-        # as the anneal repo. Failing the CI on upload errors would be
-        # noisy for a docs-only PR; the action defaults to non-blocking.
         uses: codecov/codecov-action@v6
         with:
           files: coverage.txt
+          flags: shard-1
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+  test-shard-2:
+    name: test (shard 2 — rest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: List packages outside agent
+        # Build the package list dynamically so a new package shipped
+        # outside internal/agent automatically lands here without a
+        # workflow edit. `go list ./...` is fast (~1s warm).
+        id: pkgs
+        run: |
+          pkgs=$(go list ./... | grep -v '^github.com/georgebuilds/carlos/internal/agent' | tr '\n' ' ')
+          echo "list=$pkgs" >> "$GITHUB_OUTPUT"
+
+      - name: Test (non-agent shard)
+        run: |
+          go test \
+            -count=1 -timeout=5m \
+            -coverprofile=coverage.txt -covermode=atomic \
+            ${{ steps.pkgs.outputs.list }}
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v6
+        with:
+          files: coverage.txt
+          flags: shard-2
           token: ${{ secrets.CODECOV_TOKEN }}
