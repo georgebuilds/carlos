@@ -170,11 +170,23 @@ func runDefault(cfg *config.Config, sessionID string) error {
 		return err
 	}
 
+	// Load the skill library before registry construction so the
+	// skill_use tool can ship with the bundled + user-installed
+	// catalog. Without this the model has no execution path for the
+	// "Available skills" sysprompt block — it would know the names
+	// but couldn't fetch the body of instructions. LoadFromConfig
+	// walks the five canonical disk paths and overlays the binary's
+	// embedded starter pack last, so a fresh install still sees the
+	// shipped calendar skill without manual copy. Failures aren't
+	// fatal; the chat boots either way.
+	skillsLib, _ := skills.LoadFromConfig(cfg, "")
+
 	// Phase F-11: thread the frame list + active frame through so the
 	// notes_* / obsidian_* tools can default to the active frame's
 	// vault_subtree and fan out across every configured frame on
 	// cross-frame queries.
 	baseReg := tools.NewDefaultRegistryWithIdentity("", cfg.Vault, cfg.Frames, cfg.Frames.Active, tools.ProviderSummariesFromConfig(cfg.Providers), cfg.UserName)
+	baseReg.Register(tools.NewSkillUseTool(skillsLib, cfg.Frames.Active))
 	// MCP v1: connect every configured MCP server enabled for the
 	// active frame and register each discovered tool under the
 	// "<server>__<tool>" namespace. Failures don't block boot - the
@@ -276,17 +288,6 @@ func runDefault(cfg *config.Config, sessionID string) error {
 		Env: os.Getenv("CARLOS_FRAME"),
 		Cwd: cwd,
 	})
-
-	// Load the skill library so the system prompt can announce each
-	// frame-applicable skill by name + description. Without this load
-	// the model only ever discovered skills by walking ~/.carlos/skills
-	// after the user explicitly mentioned them — the calendar skill
-	// shipped with the binary was effectively invisible until summoned.
-	// LoadFromConfig walks the five canonical search paths
-	// (~/.claude/skills, ~/.agents/skills, project equivalents,
-	// ~/.carlos/skills) and gracefully returns an empty library when
-	// none exist. Failures here aren't fatal; the chat boots either way.
-	skillsLib, _ := skills.LoadFromConfig(cfg, "")
 	// Phase F live-swap state. liveLoop holds the currently-running
 	// chatglue.Loop; liveDispatch mirrors d so /whoami reflects the
 	// currently-active provider + model after a swap. swapLoop is
@@ -427,6 +428,23 @@ func runDefault(cfg *config.Config, sessionID string) error {
 				},
 				ModelCompletions: func(partial string) []string {
 					return modelCompletionsFor(cfg, partial)
+				},
+				SkillsCatalog: func() []chat.SkillCatalogEntry {
+					if skillsLib == nil {
+						return nil
+					}
+					out := make([]chat.SkillCatalogEntry, 0)
+					for _, s := range skillsLib.ForFrame(activeFrame.Name) {
+						if s == nil {
+							continue
+						}
+						out = append(out, chat.SkillCatalogEntry{
+							Name:        s.Name,
+							Description: s.Description,
+							Backend:     s.Backend,
+						})
+					}
+					return out
 				},
 			}
 		}

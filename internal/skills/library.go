@@ -253,10 +253,15 @@ func loadSkillsAt(dir string) []*Skill {
 }
 
 // LoadFromConfig resolves the 5 SPEC search paths against the user's
-// home dir + projectRoot and calls LoadLibrary. The cfg's
-// Skills.Convention is intentionally NOT consulted - it governs writes,
-// not reads. Pass projectRoot="" to skip the project-level paths
-// (useful for the daemon or for unscoped CLI commands).
+// home dir + projectRoot, walks them via LoadLibrary, and overlays
+// the binary's embedded starter skills last so a fresh install still
+// sees the bundled calendar pack without the user having to copy
+// files into ~/.carlos/skills/. User-installed skills with a name
+// collision still win, since LoadLibrary applies later-wins per
+// Active[] index AND the embedded overlay only adds names not
+// already present. The cfg's Skills.Convention is intentionally NOT
+// consulted here — it governs writes, not reads. Pass projectRoot=""
+// to skip the project-level paths.
 func LoadFromConfig(cfg *config.Config, projectRoot string) (*Library, error) {
 	_ = cfg // reserved: future "skip this path" flags can be added here
 	home, err := os.UserHomeDir()
@@ -264,7 +269,38 @@ func LoadFromConfig(cfg *config.Config, projectRoot string) (*Library, error) {
 		home = ""
 	}
 	roots := DefaultSearchPaths(home, projectRoot)
-	return LoadLibrary(roots)
+	lib, err := LoadLibrary(roots)
+	if err != nil {
+		return lib, err
+	}
+	OverlayBundled(lib)
+	return lib, nil
+}
+
+// OverlayBundled merges the binary-embedded starter skills into the
+// already-loaded library. The merge rule: a bundled skill is added
+// only when no user-installed skill of the same Name was loaded.
+// User-installed (~/.claude/skills, ~/.agents/skills, ~/.carlos/skills,
+// project equivalents) ALWAYS wins. This matches the SPEC "later
+// wins" rule when you treat the embedded set as a 6th search path
+// pinned at the lowest priority.
+func OverlayBundled(lib *Library) {
+	if lib == nil {
+		return
+	}
+	existing := map[string]bool{}
+	for _, s := range lib.Active {
+		if s != nil {
+			existing[s.Name] = true
+		}
+	}
+	for _, b := range LoadBundled() {
+		if b == nil || existing[b.Name] {
+			continue
+		}
+		lib.Active = append(lib.Active, b)
+		existing[b.Name] = true
+	}
 }
 
 // DefaultSearchPaths returns the 5 SPEC paths in priority order. Empty

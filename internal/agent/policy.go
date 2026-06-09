@@ -164,6 +164,13 @@ var DefaultBuiltinAllow = []string{
 	// frames, capabilities, providers). Returns local data only;
 	// no network egress, no file mutation.
 	"carlos_about",
+	// Read-only access to the loaded skill library: list every
+	// frame-scoped skill or fetch a single skill's body so the
+	// model can follow its instructions. Pure read; the body may
+	// then instruct the model to call gated tools (web_fetch,
+	// bash, http_request, …), which still route through the
+	// approver as usual.
+	"skill_use",
 	// Generic read-only filesystem tools.
 	"read",
 	"grep",

@@ -166,6 +166,11 @@ func runHeadless(prompt string, opts pleaseOptions) error {
 	// itself is added to the PARENT'S registry only (below), NOT the
 	// base - children at depth 1 (the v0 cap) can't further spawn.
 	baseReg := tools.NewDefaultRegistryWithIdentity(baseDir, cfg.Vault, cfg.Frames, cfg.Frames.Active, tools.ProviderSummariesFromConfig(cfg.Providers), cfg.UserName)
+	// Skill library + the skill_use tool so `carlos please` sees the
+	// same skill catalog the chat surface does. Bundled-overlay path
+	// means even a fresh brew install gets the starter pack.
+	headlessSkillsLib, _ := skills.LoadFromConfig(cfg, "")
+	baseReg.Register(tools.NewSkillUseTool(headlessSkillsLib, cfg.Frames.Active))
 	// MCP v1: same registration as the TUI path. Children inherit
 	// these tools because we register into baseReg before the
 	// parentReg copy below is built.
@@ -298,7 +303,7 @@ func runHeadless(prompt string, opts pleaseOptions) error {
 		Cwd:  hcwd,
 	}); ok {
 		if f := cfg.Frames.Find(res.Frame); f != nil {
-			pleaseLib, _ := skills.LoadFromConfig(cfg, "")
+			pleaseLib := headlessSkillsLib
 			pleaseFrameInfo = agent.FrameInfo{
 				Name:         f.Name,
 				Append:       f.SystemPromptAppend,

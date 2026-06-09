@@ -523,6 +523,22 @@ type FrameUI struct {
 	// The empty list cleanly disables the popup; tests + the dev-aid
 	// loop can leave this nil without further wiring.
 	ModelCompletions func(partial string) []string
+	// SkillsCatalog returns a lightweight projection of the loaded
+	// skill library for the active frame: name + description +
+	// optional backend. Wired by /skills list. Nil leaves the slash
+	// echoing "not wired"; the skill_use tool still works because
+	// it's tool-side state, not chat-side.
+	SkillsCatalog func() []SkillCatalogEntry
+}
+
+// SkillCatalogEntry is the minimal projection of a skill the
+// /skills list echo needs. Keeps the chat package free of an
+// internal/skills import (mirrors the SkillSummary pattern in
+// internal/agent/sysprompt.go).
+type SkillCatalogEntry struct {
+	Name        string
+	Description string
+	Backend     string
 }
 
 // FrameUIUpdate carries the post-switch render fields the chat refreshes
@@ -1609,6 +1625,8 @@ func (m *Model) dispatchSlash(c slash.Command) tea.Cmd {
 		return m.modelSlash(c.Args)
 	case "resume":
 		return m.openResumePicker()
+	case "skills":
+		return m.skillsSlash(c.Args)
 	case "agents":
 		// Slice 7g: hand off to the manage TUI. We can't run two
 		// bubbletea Programs simultaneously, so chat quits + the
@@ -1909,6 +1927,58 @@ func slashHelpLine() string {
 // the slash echoes "not wired in this session" rather than silently
 // dropping the request (the prior behavior, which read as "no-op
 // crash" to the user).
+// skillsSlash echoes the loaded skill library so the user can see
+// what carlos has available in the current frame. `/skills` (no
+// args) and `/skills list` both print the catalog. Other verbs
+// (`review`, `edit`) advertise their hint but aren't wired in this
+// release — the slash spec documents the shape so the slash help
+// keeps the same vocabulary as it did pre-wire.
+func (m *Model) skillsSlash(arg string) tea.Cmd {
+	verb, _, _ := strings.Cut(strings.TrimSpace(arg), " ")
+	switch verb {
+	case "", "list":
+		return m.skillsListCmd()
+	default:
+		return statusCmd("/skills "+verb+" not yet wired; try /skills list", statusInfo)
+	}
+}
+
+// skillsListCmd builds the catalog status echo. With no skills
+// loaded the message points the user at where to drop them. With
+// a populated library it summarises name + (truncated) description
+// in a single status line; the user can call skill_use via the
+// model for the full body.
+func (m *Model) skillsListCmd() tea.Cmd {
+	if m.frame.SkillsCatalog == nil {
+		return statusCmd("/skills: skill library not wired in this session", statusWarn)
+	}
+	entries := m.frame.SkillsCatalog()
+	if len(entries) == 0 {
+		return statusCmd("/skills: no skills available in this frame (drop *.md files into ~/.carlos/skills/ or wait for a future starter pack)", statusInfo)
+	}
+	parts := make([]string, 0, len(entries))
+	for _, e := range entries {
+		name := strings.TrimSpace(e.Name)
+		if name == "" {
+			continue
+		}
+		desc := strings.TrimSpace(e.Description)
+		if desc == "" {
+			parts = append(parts, name)
+			continue
+		}
+		// Cap description so a few wordy skills don't blow the
+		// status row. The model can call skill_use for the full
+		// body when curiosity strikes.
+		const cap = 72
+		if len(desc) > cap {
+			desc = desc[:cap-1] + "…"
+		}
+		parts = append(parts, name+" — "+desc)
+	}
+	return statusCmd(strings.Join(parts, "  ·  "), statusInfo)
+}
+
 func (m *Model) modelSlash(arg string) tea.Cmd {
 	arg = strings.TrimSpace(arg)
 	if arg == "" {

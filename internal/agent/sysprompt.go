@@ -185,7 +185,7 @@ func SystemPromptWithFrame(userName, cwd, projectCtx string, fi FrameInfo) strin
 		// alphabetic per directory, so the output is stable across
 		// sessions for cache-friendliness.
 		if len(fi.Skills) > 0 {
-			where.WriteString("\n- Available skills (call when relevant; the skill body lives in ~/.carlos/skills/<name>/):")
+			where.WriteString("\n- Available skills (call `skill_use` with `{\"name\":\"<skill-name>\"}` to load the body of instructions; use them whenever the request is capability-shaped — calendars, scheduling, daily digests, etc.):")
 			for _, s := range fi.Skills {
 				name := strings.TrimSpace(s.Name)
 				if name == "" {

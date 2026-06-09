@@ -86,6 +86,7 @@ var builtinRows = []permsBuiltinRow{
 	{"notes_tagged", "read-only, configured vault only"},
 	{"notes_write", "write into active frame's vault_subtree only"},
 	{"carlos_about", "read-only introspection of carlos's own state"},
+	{"skill_use", "read a loaded skill's body — pure read, no side effects"},
 	{"read", "read-only filesystem"},
 	{"grep", "read-only filesystem"},
 	{"glob", "read-only filesystem"},
