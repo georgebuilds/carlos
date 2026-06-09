@@ -220,11 +220,14 @@ func joinWithGap(tiles []string, gap string) []string {
 	return out
 }
 
-// renderSwitcherTile paints one frame's tile. Active frames wear a
-// thick accent border; non-active wear a rounded normal border.
-// Focused tiles (cursor) get a bold name. The activeName argument lets
-// us paint the active tile's border even when this is not the focused
-// tile.
+// renderSwitcherTile paints one frame's tile. Each tile uses its
+// frame's accent color so the switcher reads as a palette of
+// distinct identities, not a uniform grid in the global theme
+// accent. Active tiles wear a thick frame-accent border; focused
+// (cursor) tiles wear a thick frame-accent border too, so the
+// cursor moving across the grid feels like the highlight changes
+// hue tile-by-tile. Idle tiles get a rounded subtle border so the
+// grid scaffolds visibly.
 func renderSwitcherTile(name, activeGlyph string, isActive, isFocused bool, activeName, mode string) string {
 	glyph := activeGlyph
 	if !isActive || glyph == "" {
@@ -238,10 +241,15 @@ func renderSwitcherTile(name, activeGlyph string, isActive, isFocused bool, acti
 	}
 
 	glyphStyle := lipgloss.NewStyle().Foreground(col).Bold(true)
-	nameStyle := lipgloss.NewStyle().Foreground(colorAccent)
-	if isFocused {
+	// Name uses the FRAME's own accent so the user sees the
+	// identity color repeated on every label, not the global theme
+	// accent that's identical across every tile.
+	nameStyle := lipgloss.NewStyle().Foreground(col)
+	if isFocused || isActive {
 		nameStyle = nameStyle.Bold(true)
-	} else if !isActive {
+	} else {
+		// Idle (not focused, not active): dim the name so the
+		// focused / active tile pops by contrast.
 		nameStyle = lipgloss.NewStyle().Foreground(colorMuted)
 	}
 
@@ -268,11 +276,13 @@ func renderSwitcherTile(name, activeGlyph string, isActive, isFocused bool, acti
 
 	border := lipgloss.RoundedBorder()
 	borderColor := colorSubtle
-	if isActive {
+	switch {
+	case isActive:
 		border = lipgloss.ThickBorder()
 		borderColor = col
-	} else if isFocused {
-		borderColor = colorAccent
+	case isFocused:
+		border = lipgloss.ThickBorder()
+		borderColor = col
 	}
 
 	return lipgloss.NewStyle().
