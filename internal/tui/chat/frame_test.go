@@ -393,6 +393,122 @@ func TestWhoamiSlash_HandlesNilIdentity(t *testing.T) {
 	}
 }
 
+// TestWhoamiSlash_AppendsTranscriptEntry is the regression test for
+// the "/whoami appears to do nothing" field report: even when the
+// footer status echo is invisible in a given terminal/theme combo,
+// the inline transcript row must surface the same identity string so
+// the slash is never a black hole. Pins three properties: a row is
+// appended, the kind is entrySlashEcho (not entrySystemNote — that
+// would render as a warn-colored error), and the body matches the
+// status echo so the two surfaces stay in sync.
+func TestWhoamiSlash_AppendsTranscriptEntry(t *testing.T) {
+	m := newFramedModel(t, FrameUI{
+		Active: "personal",
+		Mode:   "solo",
+		Identity: func() (string, string) {
+			return "openrouter", "gemini-3.5-flash"
+		},
+	})
+	startLen := len(m.transcript)
+	s := runStatusCmd(t, m.whoamiSlash())
+
+	if got := len(m.transcript) - startLen; got != 1 {
+		t.Fatalf("transcript grew by %d, want 1", got)
+	}
+	row := m.transcript[len(m.transcript)-1]
+	if row.kind != entrySlashEcho {
+		t.Errorf("appended row kind = %d, want entrySlashEcho (%d)", row.kind, entrySlashEcho)
+	}
+	if row.text != s.text {
+		t.Errorf("transcript row text = %q, want %q (must match status echo)", row.text, s.text)
+	}
+	for _, want := range []string{"personal", "solo", "openrouter", "gemini-3.5-flash"} {
+		if !strings.Contains(row.text, want) {
+			t.Errorf("transcript row missing %q: %q", want, row.text)
+		}
+	}
+}
+
+// TestWhoamiSlash_LegacyMode_AppendsTranscriptEntry covers the
+// no-frame-wired path the same way: still gets a transcript echo so
+// the user sees that /whoami did something.
+func TestWhoamiSlash_LegacyMode_AppendsTranscriptEntry(t *testing.T) {
+	m := newFramedModel(t, FrameUI{})
+	startLen := len(m.transcript)
+	s := runStatusCmd(t, m.whoamiSlash())
+
+	if got := len(m.transcript) - startLen; got != 1 {
+		t.Fatalf("transcript grew by %d, want 1", got)
+	}
+	row := m.transcript[len(m.transcript)-1]
+	if row.kind != entrySlashEcho {
+		t.Errorf("appended row kind = %d, want entrySlashEcho", row.kind)
+	}
+	if row.text != s.text {
+		t.Errorf("transcript row text = %q, want %q", row.text, s.text)
+	}
+	if !strings.Contains(row.text, "no frame wired") {
+		t.Errorf("legacy echo missing marker: %q", row.text)
+	}
+}
+
+// TestWhoamiSlash_RenderedViewContainsEcho closes the loop with a
+// full View() render: the transcript row's body must reach the
+// rendered output so the user actually sees /whoami's reply. This is
+// the assertion the original probe was missing — the previous test
+// only checked m.transcript and m.status separately.
+func TestWhoamiSlash_RenderedViewContainsEcho(t *testing.T) {
+	m := newFramedModel(t, FrameUI{
+		Active: "personal",
+		Mode:   "solo",
+		Identity: func() (string, string) {
+			return "openrouter", "gemini-3.5-flash"
+		},
+	})
+	m.width, m.height = 120, 30
+	_ = m.whoamiSlash()
+	view := m.View()
+	for _, want := range []string{"personal", "solo", "gemini-3.5-flash"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("rendered View missing %q from whoami echo", want)
+		}
+	}
+}
+
+// TestComposeWhoamiEcho_PureFunction pins the pure text composer so
+// future callers (e.g. headless `please` mode) can reuse it without
+// needing a full Model.
+func TestComposeWhoamiEcho_PureFunction(t *testing.T) {
+	got := composeWhoamiEcho(FrameUI{
+		Active: "work",
+		Mode:   "orchestrator",
+		Capabilities: map[string]string{
+			"calendar": "caldav",
+			"notes":    "obsidian",
+		},
+		Identity: func() (string, string) {
+			return "anthropic", "claude-sonnet-4-6"
+		},
+	})
+	for _, want := range []string{
+		"frame work",
+		"orchestrator",
+		"provider=anthropic",
+		"model=claude-sonnet-4-6",
+		"calendar=caldav",
+		"notes=obsidian",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("compose missing %q: %q", want, got)
+		}
+	}
+	// Capabilities should sort alphabetically so the echo is stable
+	// across map-iteration order.
+	if i, j := strings.Index(got, "calendar="), strings.Index(got, "notes="); i > j {
+		t.Errorf("capabilities not sorted: %q", got)
+	}
+}
+
 func TestRenderHeader_OmitsModeWhenSolo(t *testing.T) {
 	m := newFramedModel(t, FrameUI{
 		Active: "personal",

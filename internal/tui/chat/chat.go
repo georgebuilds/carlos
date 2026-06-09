@@ -154,6 +154,16 @@ const (
 	entrySteering
 	entryStateChange
 	entrySystemNote
+	// entrySlashEcho is the persistent in-transcript echo for slash
+	// commands whose output describes the session itself (/whoami so
+	// far; /mode, /frame, /capabilities could move here later). The
+	// pre-existing footer status row is a fleeting one-liner that
+	// some terminals + theme combinations effectively swallow; an
+	// inline transcript row stays scrollable and is impervious to
+	// status-bar rendering quirks. Rendered with a "›" prefix in
+	// the accent color so it reads as a user-initiated echo, not an
+	// error or model reply.
+	entrySlashEcho
 	// entryResearchProgress is the live progress line for a /research
 	// sub-agent. Slice 11e renders one entry per sub-agent (keyed by
 	// AgentID); each EvtResearchPhase event for that sub-agent rewrites

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -146,34 +147,61 @@ func (m *Model) modeSlash(args string) tea.Cmd {
 // whoamiSlash echoes a concise identity surface: frame, mode, provider,
 // model. Useful after a /frame switch when the user wants to confirm
 // the live swap actually flipped the dispatch. When the chat is
-// running in legacy single-shelf mode (no frame wired) the slash
-// returns just the model name surfaced in the header.
+// running in legacy single-shelf mode (no frame wired) the echo
+// reports just the legacy-mode marker.
+//
+// Persistence: the echo is appended to the transcript as an
+// entrySlashEcho row AND mirrored to the footer status. Field
+// reports surfaced cases where the footer status echo was effectively
+// invisible (terminal/theme combinations where the accent-colored
+// line above the keybind row blended into the background); the
+// transcript row is impervious to that and the user can scroll back
+// to it later. Appending happens synchronously inside this method,
+// before the Cmd fires, so the rerenderViewport in the next View
+// frame picks up the new entry on the same render tick the status
+// would have arrived on.
 func (m *Model) whoamiSlash() tea.Cmd {
-	if m.frame.Active == "" {
-		return statusCmd("carlos (no frame wired)", statusInfo)
+	echo := composeWhoamiEcho(m.frame)
+	m.transcript = append(m.transcript, transcriptEntry{
+		kind: entrySlashEcho,
+		ts:   time.Now().UTC(),
+		text: echo,
+	})
+	m.rerenderViewport()
+	return statusCmd(echo, statusInfo)
+}
+
+// composeWhoamiEcho is the pure, testable text composer behind
+// whoamiSlash. Pulled out so the transcript-append path and the
+// status-echo path share one source of truth — and so the unit
+// tests can pin the exact string without re-instantiating a full
+// chat Model.
+func composeWhoamiEcho(f FrameUI) string {
+	if f.Active == "" {
+		return "carlos (no frame wired)"
 	}
-	mode := m.frame.Mode
+	mode := f.Mode
 	if mode == "" {
 		mode = "solo"
 	}
 	parts := []string{
-		"carlos in frame " + m.frame.Active + " (" + mode + ")",
+		"carlos in frame " + f.Active + " (" + mode + ")",
 	}
-	if m.frame.Identity != nil {
-		provider, model := m.frame.Identity()
+	if f.Identity != nil {
+		provider, model := f.Identity()
 		if provider != "" || model != "" {
 			parts = append(parts, "provider="+provider+" model="+model)
 		}
 	}
-	if len(m.frame.Capabilities) > 0 {
-		caps := make([]string, 0, len(m.frame.Capabilities))
-		for k, v := range m.frame.Capabilities {
+	if len(f.Capabilities) > 0 {
+		caps := make([]string, 0, len(f.Capabilities))
+		for k, v := range f.Capabilities {
 			caps = append(caps, k+"="+v)
 		}
 		sort.Strings(caps)
 		parts = append(parts, "capabilities: "+strings.Join(caps, ", "))
 	}
-	return statusCmd(strings.Join(parts, " · "), statusInfo)
+	return strings.Join(parts, " · ")
 }
 
 // capabilitiesSlash echoes the wired capability -> backend map for the

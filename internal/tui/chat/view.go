@@ -1268,6 +1268,10 @@ func renderEntry(e transcriptEntry, md *glamour.TermRenderer, width int) string 
 		return body.Render(lipgloss.NewStyle().Foreground(colorMuted).Italic(true).Render("· " + e.text))
 	case entrySystemNote:
 		return body.Render(lipgloss.NewStyle().Foreground(colorWarn).Italic(true).Render("! " + e.text))
+	case entrySlashEcho:
+		prefix := lipgloss.NewStyle().Foreground(colorAccent).Bold(true).Render("›")
+		text := lipgloss.NewStyle().Foreground(colorAccent).Render(e.text)
+		return body.Render(prefix + " " + text)
 	case entryError:
 		return renderErrorCard(e, width)
 	case entryResearchProgress:
