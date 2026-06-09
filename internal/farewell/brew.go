@@ -64,6 +64,14 @@ func pathLooksLikeBrew(p string) bool {
 // GitHub formula and comparing semver) is fragile because brew may
 // be pinned, the user may have HOMEBREW_NO_AUTO_UPDATE set, etc.
 // Shelling out keeps the logic right.
+//
+// Output-format note: `brew outdated --quiet` prints
+// formula.full_installed_specified_name, which is the bare name for
+// core-tap formulae ("carlos") but the fully-qualified path for
+// custom-tap installs ("georgebuilds/tap/carlos"). carlos ships via
+// georgebuilds/tap, so the match must accept either shape — the
+// pre-fix exact-equality check silently missed every tap user, which
+// is the whole production install base.
 func CheckBrewUpdate(ctx context.Context, formula string) bool {
 	if formula == "" {
 		formula = "carlos"
@@ -74,9 +82,24 @@ func CheckBrewUpdate(ctx context.Context, formula string) bool {
 		return false
 	}
 	for _, line := range strings.Split(string(out), "\n") {
-		if strings.TrimSpace(line) == formula {
+		if matchOutdatedLine(strings.TrimSpace(line), formula) {
 			return true
 		}
 	}
 	return false
+}
+
+// matchOutdatedLine reports whether a single `brew outdated --quiet`
+// row refers to the given formula. Accepts the bare formula name
+// ("carlos") and any tap-qualified form ("user/tap/carlos"). We
+// require the slash form so an unrelated formula whose name happens
+// to end with the substring "carlos" doesn't trip a false positive.
+func matchOutdatedLine(line, formula string) bool {
+	if line == "" || formula == "" {
+		return false
+	}
+	if line == formula {
+		return true
+	}
+	return strings.HasSuffix(line, "/"+formula)
 }

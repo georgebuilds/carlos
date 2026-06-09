@@ -57,3 +57,39 @@ func TestPathLooksLikeBrew(t *testing.T) {
 func TestIsBrewInstall_RunsWithoutPanic(t *testing.T) {
 	_ = IsBrewInstall()
 }
+
+// TestMatchOutdatedLine pins the row-parser against every shape
+// `brew outdated --quiet` actually emits. The bare "carlos" form ships
+// only for core-tap formulae; carlos lives in georgebuilds/tap, so
+// real users hit the slash-qualified path. Pre-fix the matcher was a
+// bare line==formula check that silently dropped every tap install —
+// the entire shipped userbase — so the ⬆️ farewell row never showed.
+func TestMatchOutdatedLine(t *testing.T) {
+	tests := []struct {
+		name    string
+		line    string
+		formula string
+		want    bool
+	}{
+		{"bare-match", "carlos", "carlos", true},
+		{"tap-qualified-georgebuilds", "georgebuilds/tap/carlos", "carlos", true},
+		{"tap-qualified-other-tap", "rtk-ai/tap/carlos", "carlos", true},
+		{"unrelated-bare", "go", "carlos", false},
+		{"unrelated-tap", "georgebuilds/tap/persona", "carlos", false},
+		{"substring-trap-no-slash", "supercarlos", "carlos", false},
+		{"substring-trap-tap", "foo/tap/supercarlos", "carlos", false},
+		{"empty-line", "", "carlos", false},
+		{"empty-formula", "georgebuilds/tap/carlos", "", false},
+		// Whitespace-trimmed lines come in from Split; we still want the
+		// matcher to tolerate the exact-equality call directly since
+		// callers might trim or not.
+		{"leading-space-rejected", " carlos", "carlos", false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := matchOutdatedLine(tc.line, tc.formula); got != tc.want {
+				t.Errorf("matchOutdatedLine(%q, %q) = %v, want %v", tc.line, tc.formula, got, tc.want)
+			}
+		})
+	}
+}
