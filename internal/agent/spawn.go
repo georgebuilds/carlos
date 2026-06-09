@@ -289,8 +289,18 @@ func (s *Supervisor) runChild(ctx context.Context, child *runningChild, p provid
 		MaxTokens:    int64(contract.MaxTokens),
 		MaxWallClock: contract.MaxWallClock,
 	}
+	// Model fallback: the chat-side `agent` tool builds a SpawnContract
+	// without a Model field (it has no plumbing for per-call model
+	// selection). Hand the supervisor's installed defaultModel through
+	// so the child's first provider call doesn't go out with an empty
+	// model id — OpenAI-compatible endpoints (notably OpenRouter)
+	// reject those with HTTP 400.
+	childModel := contract.Model
+	if childModel == "" {
+		childModel = s.DefaultModel()
+	}
 	messages, runErr := Run(ctx, p, reg, LoopOptions{
-		Model:         contract.Model,
+		Model:         childModel,
 		System:        contract.System,
 		Tools:         specs,
 		Approver:      AutoApprover{},

@@ -3,17 +3,45 @@ package agent_test
 import (
 	"context"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/georgebuilds/carlos/internal/agent"
 	"github.com/georgebuilds/carlos/internal/frame"
+	"github.com/georgebuilds/carlos/internal/providers"
 	"github.com/georgebuilds/carlos/internal/tools"
 )
 
 // Supervisor branch tests: cap modes, worktree map edge cases, error
 // paths in Spawn / Steer / Interrupt / Retry that the existing suite
 // doesn't exercise.
+
+// capturingProvider records the most recent Request.Model so tests can
+// assert what the supervisor handed the child loop. Returns an empty
+// end-of-turn stream so the child terminates immediately. Mutex-
+// guarded because the supervisor spawns a goroutine for the child.
+type capturingProvider struct {
+	mu    sync.Mutex
+	model string
+}
+
+func (p *capturingProvider) Name() string                         { return "capture" }
+func (p *capturingProvider) Capabilities() providers.Capabilities { return providers.Capabilities{} }
+func (p *capturingProvider) Stream(ctx context.Context, req providers.Request) (<-chan providers.Event, error) {
+	p.mu.Lock()
+	p.model = req.Model
+	p.mu.Unlock()
+	ch := make(chan providers.Event, 1)
+	ch <- providers.Event{Kind: providers.EventStopReason, Stop: "end_turn"}
+	close(ch)
+	return ch, nil
+}
+func (p *capturingProvider) lastModel() string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.model
+}
 
 func TestSupervisor_Spawn_NilProviderErrors(t *testing.T) {
 	dir := t.TempDir()
@@ -64,6 +92,101 @@ func TestSupervisor_StopKill_UnknownAgentErrors(t *testing.T) {
 	}
 	if err := sup.Kill("ghost"); err == nil {
 		t.Fatal("Kill unknown agent should error")
+	}
+}
+
+// TestSupervisor_DefaultModel_FallsBackInChildSpawn pins the v0.7.6
+// fix: when SpawnContract.Model is empty (the chat-side `agent`
+// delegation tool never sets it), runChild substitutes the
+// supervisor's installed defaultModel before calling provider.Stream.
+// Before the fix, the empty model id reached OpenAI-compatible
+// endpoints and OpenRouter rejected with HTTP 400 "No models provided".
+//
+// The test stands up a capturing provider, installs a default model
+// on the supervisor, spawns a contract WITHOUT Model, drains the
+// child to completion, then asserts the captured request carried the
+// supervisor's default. A SpawnContract.Model SET to something
+// explicit must NOT be overridden (second sub-test).
+func TestSupervisor_DefaultModel_FallsBackInChildSpawn(t *testing.T) {
+	t.Run("empty contract.Model uses supervisor default", func(t *testing.T) {
+		dir := t.TempDir()
+		log, err := agent.OpenStateDB(filepath.Join(dir, "state.db"))
+		if err != nil {
+			t.Fatalf("open: %v", err)
+		}
+		defer agent.CloseStateDB(log)
+
+		cap := &capturingProvider{}
+		sup := agent.NewSupervisor(log, cap, tools.NewRegistry())
+		defer sup.Shutdown()
+		sup.SetMode(frame.ModeOrchestrator)
+		sup.SetDefaultModel("google/gemini-3.5-flash")
+
+		_, res, err := sup.Spawn(context.Background(), "", agent.SpawnContract{Objective: "x"})
+		if err != nil {
+			t.Fatalf("Spawn: %v", err)
+		}
+		// Wait for the child to finish so the request is recorded
+		// (the capturing provider returns immediately on Stream).
+		select {
+		case <-res:
+		case <-time.After(2 * time.Second):
+			t.Fatal("child did not complete within 2s")
+		}
+
+		if got, want := cap.lastModel(), "google/gemini-3.5-flash"; got != want {
+			t.Errorf("child request Model = %q, want %q (supervisor default)", got, want)
+		}
+	})
+
+	t.Run("explicit contract.Model is preserved", func(t *testing.T) {
+		dir := t.TempDir()
+		log, err := agent.OpenStateDB(filepath.Join(dir, "state.db"))
+		if err != nil {
+			t.Fatalf("open: %v", err)
+		}
+		defer agent.CloseStateDB(log)
+
+		cap := &capturingProvider{}
+		sup := agent.NewSupervisor(log, cap, tools.NewRegistry())
+		defer sup.Shutdown()
+		sup.SetMode(frame.ModeOrchestrator)
+		sup.SetDefaultModel("default-fallback")
+
+		_, res, err := sup.Spawn(context.Background(), "", agent.SpawnContract{
+			Objective: "x",
+			Model:     "explicit-override",
+		})
+		if err != nil {
+			t.Fatalf("Spawn: %v", err)
+		}
+		select {
+		case <-res:
+		case <-time.After(2 * time.Second):
+			t.Fatal("child did not complete within 2s")
+		}
+
+		if got, want := cap.lastModel(), "explicit-override"; got != want {
+			t.Errorf("explicit Model = %q, want %q (no override expected)", got, want)
+		}
+	})
+}
+
+// TestSupervisor_DefaultModel_GetterSetter pins the small public
+// surface added in v0.7.6.
+func TestSupervisor_DefaultModel_GetterSetter(t *testing.T) {
+	sup := agent.NewSupervisor(nil, nil, nil)
+	defer sup.Shutdown()
+	if got := sup.DefaultModel(); got != "" {
+		t.Errorf("zero DefaultModel = %q, want empty", got)
+	}
+	sup.SetDefaultModel("anthropic/claude-sonnet-4-6")
+	if got := sup.DefaultModel(); got != "anthropic/claude-sonnet-4-6" {
+		t.Errorf("DefaultModel after set = %q", got)
+	}
+	sup.SetDefaultModel("")
+	if got := sup.DefaultModel(); got != "" {
+		t.Errorf("DefaultModel after reset = %q, want empty", got)
 	}
 }
 

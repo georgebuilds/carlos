@@ -189,6 +189,11 @@ func runHeadless(prompt string, opts pleaseOptions) error {
 			sup.SetMode(frame.EffectiveMode(*f))
 		}
 	}
+	// Hand d.model through as the supervisor's sub-agent fallback so a
+	// `carlos please` invocation that spawns a child via the `agent`
+	// tool inherits the parent's model. Without this, OpenAI-compatible
+	// providers reject the child's first call with HTTP 400.
+	sup.SetDefaultModel(d.model)
 
 	// Parent's registry = base + Agent tool (Phase 3e). The parent
 	// can delegate to sub-agents; the description steers strongly

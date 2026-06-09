@@ -166,6 +166,16 @@ type Supervisor struct {
 	heartbeat *HeartbeatTicker
 	sweeper   *OrphanSweeper
 
+	// defaultModel is the provider model id (e.g. "claude-sonnet-4-6"
+	// or "google/gemini-3.5-flash") the supervisor hands to a child
+	// when SpawnContract.Model is empty. Empty here means "no
+	// fallback" — the child loop will hit the provider with whatever
+	// it had, which for OpenAI-compatible endpoints means an HTTP 400.
+	// cmd/carlos calls SetDefaultModel at session boot with the
+	// active frame's resolved model so the chat-side `agent`
+	// delegation tool doesn't have to thread it through every Spawn.
+	defaultModel string
+
 	// Slice 3b mutex-guarded state. children tracks every in-flight
 	// child agent (one entry per active spawn); retries tracks
 	// per-agent attempt timestamps for the OTP restart-intensity
@@ -717,6 +727,34 @@ func (s *Supervisor) Mode() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.mode
+}
+
+// SetDefaultModel installs the fallback provider model id used when a
+// SpawnContract carries an empty Model field. cmd/carlos calls this at
+// session boot (with the active frame's resolved model) and again on
+// /frame switch so the chat-side `agent` tool — which has no plumbing
+// for per-call model selection — can rely on the supervisor providing a
+// sane default. Pass "" to disable the fallback.
+//
+// Background: through v0.7.5 the AgentTool built a SpawnContract with
+// no Model field, runChild passed contract.Model verbatim to
+// providers.Request, and OpenAI-compatible endpoints (notably
+// OpenRouter) rejected the call with `HTTP 400: No models provided`.
+// Routing the parent's model through here closes that loop without
+// teaching every Spawn callsite about the active frame.
+func (s *Supervisor) SetDefaultModel(model string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.defaultModel = model
+}
+
+// DefaultModel returns the supervisor's fallback model id (the empty
+// string if none is configured). Exposed primarily for tests + the
+// /whoami diagnostic surface.
+func (s *Supervisor) DefaultModel() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.defaultModel
 }
 
 // SpawnCap returns the effective per-parent spawn cap. Exposed so the

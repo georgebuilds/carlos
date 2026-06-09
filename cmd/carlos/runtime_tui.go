@@ -308,6 +308,13 @@ func runDefault(cfg *config.Config, sessionID string) error {
 			// enforced the legacy hard ceiling (or refused everything
 			// because the default flipped to solo).
 			sup.SetMode(frame.EffectiveMode(activeFrame))
+			// Also hand the active model through as the supervisor's
+			// fallback for sub-agents. The chat-side `agent`
+			// delegation tool builds SpawnContracts without a Model
+			// field; without this the child's first provider call
+			// went out with an empty model id and OpenRouter rejected
+			// with HTTP 400.
+			sup.SetDefaultModel(d.model)
 			frameUI = chat.FrameUI{
 				Active:    activeFrame.Name,
 				Glyph:     activeFrame.Glyph,
