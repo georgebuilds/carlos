@@ -1113,7 +1113,7 @@ func renderEmptyState(userName string, width, height int, readOnly bool) string 
 func renderBetaBadge() string {
 	label := lipgloss.NewStyle().Foreground(colorWarn).Bold(true).Render("BETA")
 	body := lipgloss.NewStyle().Foreground(colorMuted).Render(
-		"carlos is rough around the edges. found a bug? please open an issue at ",
+		"found a bug? please open an issue at ",
 	)
 	url := lipgloss.NewStyle().Foreground(colorAccent).Underline(true).Render(
 		"github.com/georgebuilds/carlos/issues",
