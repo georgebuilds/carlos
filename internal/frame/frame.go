@@ -155,6 +155,16 @@ func IsValidAccent(name string) bool {
 // NewPersonal returns a fresh personal Frame populated with the proposal
 // defaults. Used by MigrateFromLegacy and by tests that need a zero-arg
 // frame to work with.
+//
+// Mode defaults to ModeOrchestrator (was ModeSolo through v0.7.5). The
+// solo default refused every Spawn, leaving the chat-side /agents
+// surface empty and the `agent` delegation tool unreachable from a
+// fresh install. A new user clicking "personal frame" was the most
+// common path into carlos, and the most likely to hit "delegation is
+// off" without context; flipping the default to orchestrator (cap 5)
+// matches the legacy pre-modes behaviour and lets sub-agent spawn
+// work out of the box. Users who want strict single-agent semantics
+// can flip back to solo via `/mode solo` or in the frames editor.
 func NewPersonal(provider, model string) Frame {
 	return Frame{
 		Name:     DefaultPersonalName,
@@ -162,7 +172,7 @@ func NewPersonal(provider, model string) Frame {
 		Accent:   DefaultPersonalAccent,
 		Provider: provider,
 		Model:    model,
-		Mode:     ModeSolo,
+		Mode:     ModeOrchestrator,
 	}
 }
 

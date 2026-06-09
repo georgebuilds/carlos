@@ -66,9 +66,21 @@ func TestEffectiveMode(t *testing.T) {
 	}
 }
 
-func TestNewPersonal_DefaultsToSoloMode(t *testing.T) {
-	if f := NewPersonal("a", "b"); f.Mode != ModeSolo {
-		t.Errorf("NewPersonal Mode = %q, want %q", f.Mode, ModeSolo)
+func TestNewPersonal_DefaultsToOrchestratorMode(t *testing.T) {
+	// v0.7.6 flip: the personal frame defaults to orchestrator so the
+	// chat-side /agents view and the `agent` delegation tool work out
+	// of the box. The previous solo default left a fresh install
+	// unable to spawn sub-agents — sub-tasks reported "delegation is
+	// off for this frame" with no obvious path to fix it. Solo is
+	// still available via `/mode solo` or the frames editor.
+	if f := NewPersonal("a", "b"); f.Mode != ModeOrchestrator {
+		t.Errorf("NewPersonal Mode = %q, want %q (orchestrator default)", f.Mode, ModeOrchestrator)
+	}
+	// Cross-check: the spawn cap that the supervisor reads from this
+	// mode matches the legacy pre-modes cap of 5 — proves the flip
+	// restores the historical behaviour, not just the label.
+	if got := SpawnCapFor(NewPersonal("a", "b").Mode); got != SpawnCapOrchestrator {
+		t.Errorf("personal SpawnCap = %d, want %d", got, SpawnCapOrchestrator)
 	}
 }
 
