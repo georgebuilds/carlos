@@ -1083,6 +1083,7 @@ func renderEmptyState(userName string, width, height int, readOnly bool) string 
 
 	rows := []string{greeting, "", hint, "", ""}
 	rows = append(rows, examples...)
+	rows = append(rows, "", "", renderBetaBadge())
 
 	// Center each row within the viewport width so the panel reads
 	// as a single composed block rather than left-flushed text.
@@ -1100,6 +1101,29 @@ func renderEmptyState(userName string, width, height int, readOnly bool) string 
 		}
 	}
 	return body
+}
+
+// renderBetaBadge paints a small bordered chip under the example
+// prompts that flags carlos as in-beta and points users at the
+// GitHub issue tracker. The chip's foreground is colorWarn (the
+// same yellow the approval surface uses for "pay attention") and
+// the border is colorSubtle so the box reads as informational, not
+// alarming. Composed as a single styled block so PlaceHorizontal
+// centers it cleanly inside the surrounding column.
+func renderBetaBadge() string {
+	label := lipgloss.NewStyle().Foreground(colorWarn).Bold(true).Render("BETA")
+	body := lipgloss.NewStyle().Foreground(colorMuted).Render(
+		"carlos is rough around the edges. found a bug? please open an issue at ",
+	)
+	url := lipgloss.NewStyle().Foreground(colorAccent).Underline(true).Render(
+		"github.com/georgebuilds/carlos/issues",
+	)
+	line := label + lipgloss.NewStyle().Foreground(colorSubtle).Render("  ·  ") + body + url
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(colorSubtle).
+		Padding(0, 2).
+		Render(line)
 }
 
 // composeTranscript renders the transcript entries followed by the
