@@ -8,6 +8,35 @@ import (
 	"time"
 )
 
+// ErrBadQuery is returned (wrapped) when Search's FTS5 MATCH fails
+// because the user's query string violates the FTS5 grammar (unmatched
+// quote, bare operator, etc.). Callers may errors.Is against this to
+// render a user-fixable hint instead of a generic "database error".
+var ErrBadQuery = errors.New("memory: bad FTS5 query syntax")
+
+// isFTS5SyntaxError sniffs the error string returned by
+// modernc.org/sqlite for the two shapes FTS5 actually emits:
+//
+//	SQL logic error: fts5: syntax error near "..." (1)
+//	SQL logic error: unterminated string (1)
+//
+// Either shape means the caller's query is malformed, not that the DB
+// is sick. We pair-sniff on substrings rather than the full prefix so
+// a future SQLite patch that adjusts the wording stays detectable.
+func isFTS5SyntaxError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	if strings.Contains(msg, "fts5:") && strings.Contains(msg, "syntax error") {
+		return true
+	}
+	if strings.Contains(msg, "unterminated string") {
+		return true
+	}
+	return false
+}
+
 // Summary is one closed-conversation summary, FTS5-indexed by Text.
 //
 // AgentID names the producing agent (root or sub); the summarizer
@@ -102,6 +131,9 @@ func (s *Store) SearchInFrame(ctx context.Context, query, frame string, limit in
 			query, limit,
 		)
 		if err != nil {
+			if isFTS5SyntaxError(err) {
+				return nil, fmt.Errorf("%w: %v", ErrBadQuery, err)
+			}
 			return nil, fmt.Errorf("memory: search: %w", err)
 		}
 		defer rows.Close()
@@ -117,6 +149,9 @@ func (s *Store) SearchInFrame(ctx context.Context, query, frame string, limit in
 		frame, query, limit,
 	)
 	if err != nil {
+		if isFTS5SyntaxError(err) {
+			return nil, fmt.Errorf("%w: %v", ErrBadQuery, err)
+		}
 		return nil, fmt.Errorf("memory: search: %w", err)
 	}
 	defer rows.Close()

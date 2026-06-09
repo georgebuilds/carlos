@@ -2,6 +2,7 @@ package memory_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -200,5 +201,90 @@ func TestSearch_SubstringTokenMatch(t *testing.T) {
 	}
 	if len(hits) != 1 {
 		t.Errorf("gpu MATCH: want 1, got %d", len(hits))
+	}
+}
+
+// TestSearch_BadFTS5QueryReturnsErrBadQuery verifies that malformed
+// FTS5 query strings (unmatched quote, bare operator, etc.) are wrapped
+// with the ErrBadQuery sentinel so CLI consumers can render a
+// user-fixable hint rather than a generic "database error".
+//
+// The driver (modernc.org/sqlite) emits two error shapes for these:
+//
+//	SQL logic error: fts5: syntax error near "..." (1)
+//	SQL logic error: unterminated string (1)
+//
+// Both must satisfy errors.Is(err, ErrBadQuery).
+func TestSearch_BadFTS5QueryReturnsErrBadQuery(t *testing.T) {
+	s, _ := newStore(t)
+	ctx := context.Background()
+	if _, err := s.AppendSummary(ctx, memory.Summary{
+		AgentID: "a", Text: "seed row so the table is non-empty",
+	}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	cases := []struct {
+		name  string
+		query string
+	}{
+		{"unmatched_quote", `"unclosed`},
+		{"bare_operator_AND", `AND`},
+		{"lone_quote", `"`},
+		{"trailing_OR", `a OR`},
+		{"unbalanced_paren", `((`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := s.Search(ctx, tc.query, 10)
+			if err == nil {
+				t.Fatalf("query %q: expected error, got nil", tc.query)
+			}
+			if !errors.Is(err, memory.ErrBadQuery) {
+				t.Errorf("query %q: errors.Is(err, ErrBadQuery)=false; err=%v", tc.query, err)
+			}
+		})
+	}
+}
+
+// TestSearch_BadFTS5QueryInFrameReturnsErrBadQuery covers the
+// frame-scoped Search path (SearchInFrame with a non-empty frame),
+// which executes a different SQL statement than the cross-frame path.
+func TestSearch_BadFTS5QueryInFrameReturnsErrBadQuery(t *testing.T) {
+	s, _ := newStore(t)
+	ctx := context.Background()
+	if _, err := s.AppendSummary(ctx, memory.Summary{
+		AgentID: "a", Frame: "personal", Text: "frame-scoped seed row",
+	}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	_, err := s.SearchInFrame(ctx, `"unclosed`, "personal", 10)
+	if err == nil {
+		t.Fatal("expected error on bad FTS5 query")
+	}
+	if !errors.Is(err, memory.ErrBadQuery) {
+		t.Errorf("errors.Is(err, ErrBadQuery)=false; err=%v", err)
+	}
+}
+
+// TestSearch_HappyPathStillWorks is a trivial smoke that the new
+// error-classification wrap does not regress well-formed queries.
+func TestSearch_HappyPathStillWorks(t *testing.T) {
+	s, _ := newStore(t)
+	ctx := context.Background()
+	if _, err := s.AppendSummary(ctx, memory.Summary{
+		AgentID: "a", Text: "the carlos memory subsystem speaks FTS5",
+	}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	hits, err := s.Search(ctx, "carlos", 10)
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if len(hits) != 1 {
+		t.Fatalf("want 1 hit, got %d", len(hits))
+	}
+	if errors.Is(err, memory.ErrBadQuery) {
+		t.Errorf("happy path should not be classified as ErrBadQuery")
 	}
 }
