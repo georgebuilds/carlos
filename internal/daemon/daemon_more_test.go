@@ -163,7 +163,10 @@ func TestStop_IsIdempotent(t *testing.T) {
 	d.Stop() // must be a no-op
 	select {
 	case <-done:
-	case <-time.After(2 * time.Second):
+	case <-time.After(5 * time.Second):
+		// Ubuntu CI runners cold-start the goroutine drain measurably
+		// slower than a warm M3; 2s flakes there, 5s is comfortable
+		// both places without masking a real hang.
 		t.Fatal("daemon did not exit after Stop")
 	}
 }
