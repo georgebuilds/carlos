@@ -93,7 +93,10 @@ func (t *EditTool) Execute(_ context.Context, input []byte) ([]byte, error) {
 		return nil, errors.New("edit: expect_match_count must be non-negative")
 	}
 
-	path := resolveBaseDir(t.BaseDir, in.Path)
+	path, err := resolveBaseDir(t.BaseDir, in.Path)
+	if err != nil {
+		return nil, fmt.Errorf("edit: %w", err)
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("edit: open %s: %w", path, err)

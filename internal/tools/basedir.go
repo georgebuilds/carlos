@@ -1,6 +1,10 @@
 package tools
 
-import "path/filepath"
+import (
+	"fmt"
+	"path/filepath"
+	"strings"
+)
 
 // resolveBaseDir returns path joined onto baseDir when path is relative
 // and baseDir is non-empty; otherwise returns path verbatim.
@@ -16,12 +20,23 @@ import "path/filepath"
 // /etc/hosts (or any path outside the worktree) is not silently
 // redirected - that's a user-visible policy decision, not a stealthy
 // reroute.
-func resolveBaseDir(baseDir, path string) string {
+//
+// Relative paths containing `..` segments that would escape baseDir
+// are rejected with an error. Without that check, a path like
+// `../../etc/passwd` cleans down to `/etc/passwd` inside filepath.Join
+// and silently breaks containment - exactly the failure mode the
+// sandbox is supposed to prevent.
+func resolveBaseDir(baseDir, path string) (string, error) {
 	if baseDir == "" {
-		return path
+		return path, nil
 	}
 	if filepath.IsAbs(path) {
-		return path
+		return path, nil
 	}
-	return filepath.Join(baseDir, path)
+	joined := filepath.Join(baseDir, path)
+	rel, err := filepath.Rel(baseDir, joined)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("path %q escapes sandbox base %q", path, baseDir)
+	}
+	return joined, nil
 }

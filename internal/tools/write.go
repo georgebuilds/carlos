@@ -82,7 +82,10 @@ func (t *WriteTool) Execute(_ context.Context, input []byte) ([]byte, error) {
 		return nil, fmt.Errorf("write: invalid mode %q (want create|overwrite)", in.Mode)
 	}
 
-	path := resolveBaseDir(t.BaseDir, in.Path)
+	path, err := resolveBaseDir(t.BaseDir, in.Path)
+	if err != nil {
+		return nil, fmt.Errorf("write: %w", err)
+	}
 
 	if in.Mode == "create" {
 		if _, err := os.Stat(path); err == nil {

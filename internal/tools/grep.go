@@ -110,7 +110,11 @@ func (t *GrepTool) Execute(ctx context.Context, input []byte) ([]byte, error) {
 			}
 		}
 	} else {
-		root = resolveBaseDir(t.BaseDir, root)
+		resolved, err := resolveBaseDir(t.BaseDir, root)
+		if err != nil {
+			return nil, fmt.Errorf("grep: %w", err)
+		}
+		root = resolved
 	}
 
 	respect := true

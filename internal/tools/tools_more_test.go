@@ -767,7 +767,12 @@ func TestResolveBaseDir(t *testing.T) {
 		{"/base", "/abs/path.txt", "/abs/path.txt"},
 	}
 	for _, c := range cases {
-		if got := resolveBaseDir(c.base, c.in); got != c.want {
+		got, err := resolveBaseDir(c.base, c.in)
+		if err != nil {
+			t.Errorf("resolveBaseDir(%q,%q) unexpected error: %v", c.base, c.in, err)
+			continue
+		}
+		if got != c.want {
 			t.Errorf("resolveBaseDir(%q,%q) = %q, want %q", c.base, c.in, got, c.want)
 		}
 	}

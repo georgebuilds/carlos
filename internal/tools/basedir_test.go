@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -87,18 +88,99 @@ func TestBaseDir_ZeroValuePreservesOldBehavior(t *testing.T) {
 // fs involvement.
 func TestResolveBaseDir_Direct(t *testing.T) {
 	cases := []struct {
-		baseDir, path, want string
+		name             string
+		baseDir, path    string
+		want             string
+		wantErrSubstring string
 	}{
-		{"", "foo.go", "foo.go"},
-		{"", "/etc/hosts", "/etc/hosts"},
-		{"/tmp/wt", "foo.go", "/tmp/wt/foo.go"},
-		{"/tmp/wt", "sub/foo.go", "/tmp/wt/sub/foo.go"},
-		{"/tmp/wt", "/etc/hosts", "/etc/hosts"},
+		{"empty-base-relative", "", "foo.go", "foo.go", ""},
+		{"empty-base-absolute", "", "/etc/hosts", "/etc/hosts", ""},
+		{"join-relative", "/tmp/wt", "foo.go", "/tmp/wt/foo.go", ""},
+		{"join-relative-subdir", "/tmp/wt", "sub/foo.go", "/tmp/wt/sub/foo.go", ""},
+		{"absolute-honoured-with-base", "/tmp/wt", "/etc/hosts", "/etc/hosts", ""},
+		{"clean-redundant-dot", "/tmp/wt", "./sub/foo.go", "/tmp/wt/sub/foo.go", ""},
+		{"inside-dotdot-back-in", "/tmp/wt", "sub/../foo.go", "/tmp/wt/foo.go", ""},
 	}
 	for _, c := range cases {
-		got := resolveBaseDir(c.baseDir, c.path)
-		if got != c.want {
-			t.Errorf("resolveBaseDir(%q,%q) = %q, want %q", c.baseDir, c.path, got, c.want)
-		}
+		t.Run(c.name, func(t *testing.T) {
+			got, err := resolveBaseDir(c.baseDir, c.path)
+			if c.wantErrSubstring != "" {
+				if err == nil {
+					t.Fatalf("want error containing %q, got nil (path = %q)", c.wantErrSubstring, got)
+				}
+				if !strings.Contains(err.Error(), c.wantErrSubstring) {
+					t.Errorf("error = %q, want substring %q", err.Error(), c.wantErrSubstring)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != c.want {
+				t.Errorf("got %q, want %q", got, c.want)
+			}
+		})
+	}
+}
+
+// TestResolveBaseDir_RejectsSandboxEscape is the security regression
+// guard: any relative path that resolves outside baseDir (via leading
+// `..` or nested `..` that overshoots) must be rejected with an error,
+// not silently rewritten to escape the sandbox.
+func TestResolveBaseDir_RejectsSandboxEscape(t *testing.T) {
+	cases := []string{
+		"../etc/passwd",
+		"../../etc/passwd",
+		"../../../etc/passwd",
+		"sub/../../../etc/passwd",
+		"..",
+		"./../outside",
+	}
+	for _, p := range cases {
+		t.Run(p, func(t *testing.T) {
+			got, err := resolveBaseDir("/tmp/wt", p)
+			if err == nil {
+				t.Fatalf("path %q escaped baseDir, resolved to %q without error", p, got)
+			}
+			if !strings.Contains(err.Error(), "escapes sandbox base") {
+				t.Errorf("error = %q, want \"escapes sandbox base\" wording", err.Error())
+			}
+		})
+	}
+}
+
+// TestBaseDir_RelativeDotDotIsRejected wires the escape-rejection guard
+// through one of the actual file tools (Read) so we cover the
+// end-to-end model path: a model that submits `../../../etc/passwd`
+// while the agent runs under a sandbox baseDir gets a clean error
+// instead of a file from the host fs.
+func TestBaseDir_RelativeDotDotIsRejected(t *testing.T) {
+	sandbox := t.TempDir()
+	outside := t.TempDir()
+	secret := filepath.Join(outside, "secret.txt")
+	if err := os.WriteFile(secret, []byte("sensitive\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Build a relative path that, under filepath.Join semantics, would
+	// resolve to `outside/secret.txt`. The fix must reject this before
+	// the open syscall ever runs.
+	rel, err := filepath.Rel(sandbox, secret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(rel, "..") {
+		t.Fatalf("test setup wrong: rel %q does not begin with ..", rel)
+	}
+
+	r := NewReadTool()
+	r.BaseDir = sandbox
+	in, _ := json.Marshal(map[string]any{"path": rel})
+	out, execErr := r.Execute(context.Background(), in)
+	if execErr == nil {
+		t.Fatalf("relative ../ path read succeeded with %q; sandbox escape", string(out))
+	}
+	if !strings.Contains(execErr.Error(), "escapes sandbox base") {
+		t.Errorf("error = %q, want \"escapes sandbox base\" wording", execErr.Error())
 	}
 }

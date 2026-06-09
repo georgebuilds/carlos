@@ -100,7 +100,10 @@ func (t *ReadTool) Execute(_ context.Context, input []byte) ([]byte, error) {
 		cap = defaultReadCap
 	}
 
-	path := resolveBaseDir(t.BaseDir, in.Path)
+	path, err := resolveBaseDir(t.BaseDir, in.Path)
+	if err != nil {
+		return nil, fmt.Errorf("read: %w", err)
+	}
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("read: open %s: %w", path, err)
