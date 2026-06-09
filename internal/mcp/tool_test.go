@@ -151,6 +151,33 @@ func TestToolExecute_IsErrorWrappedAsError(t *testing.T) {
 	if !strings.Contains(err.Error(), "permission denied") {
 		t.Errorf("error message lost the body: %v", err)
 	}
+	// Pins the sentinel contract: callers (agent loop, retry policy) can
+	// distinguish a tool-reported failure from a transport / parse error
+	// via errors.Is, instead of string-matching the body.
+	if !errors.Is(err, ErrToolResult) {
+		t.Errorf("IsError result should wrap ErrToolResult; got %v", err)
+	}
+}
+
+// TestToolExecute_TransportErrorIsNotErrToolResult guards the
+// discrimination contract from the other side: a session/transport
+// failure must NOT match ErrToolResult, because callers may want to
+// retry transport errors while surfacing tool-result errors to the
+// model unchanged.
+func TestToolExecute_TransportErrorIsNotErrToolResult(t *testing.T) {
+	stub := &stubSession{
+		callFn: func(ctx context.Context, p *sdk.CallToolParams) (*sdk.CallToolResult, error) {
+			return nil, errors.New("transport closed")
+		},
+	}
+	tool := NewTool(&Server{Name: "s", Session: stub}, ToolDef{Name: "x"})
+	_, err := tool.Execute(context.Background(), []byte(`{}`))
+	if err == nil {
+		t.Fatal("transport error should propagate")
+	}
+	if errors.Is(err, ErrToolResult) {
+		t.Errorf("transport error should NOT match ErrToolResult; got %v", err)
+	}
 }
 
 // TestToolExecute_SDKErrorPropagates verifies a protocol-level error

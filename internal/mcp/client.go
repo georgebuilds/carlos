@@ -33,6 +33,14 @@ type ToolDef struct {
 	Schema      []byte
 }
 
+// ErrToolResult marks a Server.Call error as "the MCP server returned a
+// successful response with IsError=true" - distinct from a transport
+// failure, a session-closed error, or a parse error. Callers that need
+// to discriminate ("retry transport vs. surface tool failure to the
+// model") match with errors.Is(err, ErrToolResult); the wrapped body
+// stays in err.Error() for human-readable rendering.
+var ErrToolResult = errors.New("mcp: tool returned error result")
+
 // Session abstracts the subset of *sdk.ClientSession that Server uses,
 // so unit tests can stub the upstream calls without spawning a real
 // subprocess or wiring an in-memory transport. The official SDK exposes
@@ -152,8 +160,10 @@ func (s *Server) Call(ctx context.Context, toolName string, input []byte) ([]byt
 	if res.IsError {
 		// Surface as an error so the agent loop tags the tool result
 		// with isError=true; the body is still the model-facing
-		// content the server wanted to return.
-		return []byte(body), fmt.Errorf("%s", body)
+		// content the server wanted to return. Wrap ErrToolResult so
+		// callers can distinguish "tool reported failure" from
+		// transport / parse errors via errors.Is.
+		return []byte(body), fmt.Errorf("%w: %s", ErrToolResult, body)
 	}
 	return []byte(body), nil
 }
