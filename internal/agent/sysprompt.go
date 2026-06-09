@@ -108,6 +108,25 @@ type FrameInfo struct {
 	// (e.g. {"calendar": "caldav"}). Surfaced so the model knows which
 	// backend skill to delegate to without re-reading config.
 	Capabilities map[string]string
+	// Skills is the list of skill summaries available in this frame.
+	// Surfaced in the system prompt so the model is *aware* of skills
+	// it could invoke without first having to discover the
+	// `~/.carlos/skills/` directory by hand. Without this list, even a
+	// loaded calendar skill stays invisible until the user explicitly
+	// mentions it. Kept as a plain summary so the sysprompt package
+	// doesn't need to import internal/skills (avoids a dependency loop
+	// in tests).
+	Skills []SkillSummary
+}
+
+// SkillSummary is the minimal projection of a skill the system prompt
+// needs to render its "available skills" bullet list. Populated by
+// runtime_tui.go + daemon.go from the loaded *skills.Library; kept as
+// a plain struct (no skills.Skill pointer) so callers and tests can
+// build FrameInfo without dragging the skills package in.
+type SkillSummary struct {
+	Name        string
+	Description string
 }
 
 // SystemPromptWithFrame composes the runtime system prompt and folds in
@@ -157,6 +176,28 @@ func SystemPromptWithFrame(userName, cwd, projectCtx string, fi FrameInfo) strin
 			}
 			sortStrings(parts)
 			fmt.Fprintf(&where, "\n- Capabilities wired for this frame: %s", strings.Join(parts, ", "))
+		}
+		// Skills surface: list each frame-applicable skill by name +
+		// one-line description. Without this the model would only
+		// "find" a skill after the user typed its trigger word —
+		// defeating the whole "carlos quietly knows how to do this"
+		// promise. Order is the load order from the library, which is
+		// alphabetic per directory, so the output is stable across
+		// sessions for cache-friendliness.
+		if len(fi.Skills) > 0 {
+			where.WriteString("\n- Available skills (call when relevant; the skill body lives in ~/.carlos/skills/<name>/):")
+			for _, s := range fi.Skills {
+				name := strings.TrimSpace(s.Name)
+				if name == "" {
+					continue
+				}
+				desc := strings.TrimSpace(s.Description)
+				if desc == "" {
+					fmt.Fprintf(&where, "\n  - %s", name)
+					continue
+				}
+				fmt.Fprintf(&where, "\n  - %s: %s", name, desc)
+			}
 		}
 		if where.Len() > 0 {
 			b.WriteString(where.String())

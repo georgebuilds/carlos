@@ -334,6 +334,32 @@ func (l *SQLiteEventLog) UpdateAgentState(ctx context.Context, agentID string, s
 	return nil
 }
 
+// UpdateAgentModel updates the projection cache row's `model` for
+// `agentID`. Called when the user runs `/model <provider>:<model>`
+// mid-chat so the header pill / `/whoami` echo reflect the freshly-
+// chosen model on the very next render — model swaps don't emit a
+// state_change event the projection would otherwise pick up
+// naturally. Returns an error when no row was updated so the caller
+// (the model-swap closure in runtime_tui.go) can surface a bug
+// instead of silently no-oping when the agent id is wrong.
+func (l *SQLiteEventLog) UpdateAgentModel(ctx context.Context, agentID, model string) error {
+	res, err := l.db.ExecContext(ctx,
+		`UPDATE agents SET model = ?, updated_at = ? WHERE id = ?`,
+		model, time.Now().UTC().UnixMilli(), agentID,
+	)
+	if err != nil {
+		return fmt.Errorf("eventlog: update agent model %s: %w", agentID, err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return fmt.Errorf("eventlog: update agent model %s: no row", agentID)
+	}
+	return nil
+}
+
 // UpdateHeartbeat updates the projection cache row's
 // `last_heartbeat_at` (and `updated_at`) for `agentID`. Called by the
 // HeartbeatTicker immediately after appending an EvtHeartbeat event, for

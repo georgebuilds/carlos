@@ -160,6 +160,76 @@ func TestSystemPromptWithFrame_CommitAuthorAttributionInBase(t *testing.T) {
 	}
 }
 
+// TestSystemPromptWithFrame_AnnouncesSkills proves that a populated
+// FrameInfo.Skills surfaces every skill by name + description in the
+// frame block, so the model is aware of available skills without
+// having to walk ~/.carlos/skills/ explicitly.
+func TestSystemPromptWithFrame_AnnouncesSkills(t *testing.T) {
+	fi := FrameInfo{
+		Name: "personal",
+		Skills: []SkillSummary{
+			{Name: "calendar-caldav", Description: "talk to a CalDAV server"},
+			{Name: "calendar-apple", Description: "talk to Apple Calendar via osascript"},
+		},
+	}
+	out := SystemPromptWithFrame("", "", "", fi)
+	if !strings.Contains(out, "Available skills") {
+		t.Errorf("missing Available skills header; got:\n%s", out)
+	}
+	for _, s := range fi.Skills {
+		if !strings.Contains(out, s.Name) {
+			t.Errorf("skill name %q missing from prompt", s.Name)
+		}
+		if !strings.Contains(out, s.Description) {
+			t.Errorf("skill description %q missing from prompt", s.Description)
+		}
+	}
+}
+
+// TestSystemPromptWithFrame_SkipsEmptySkill ensures a malformed empty-
+// name skill doesn't render a stray "- :" line.
+func TestSystemPromptWithFrame_SkipsEmptySkill(t *testing.T) {
+	out := SystemPromptWithFrame("", "", "", FrameInfo{
+		Name: "personal",
+		Skills: []SkillSummary{
+			{Name: "", Description: "useless"},
+			{Name: "good-one", Description: "actually useful"},
+		},
+	})
+	if strings.Contains(out, "- : useless") {
+		t.Errorf("empty-name skill should be skipped; got:\n%s", out)
+	}
+	if !strings.Contains(out, "good-one") {
+		t.Errorf("should still surface valid skills; got:\n%s", out)
+	}
+}
+
+// TestSystemPromptWithFrame_SkillsWithoutDescription degrades to
+// name-only line (no trailing ": ").
+func TestSystemPromptWithFrame_SkillsWithoutDescription(t *testing.T) {
+	out := SystemPromptWithFrame("", "", "", FrameInfo{
+		Name: "personal",
+		Skills: []SkillSummary{
+			{Name: "name-only", Description: ""},
+		},
+	})
+	if !strings.Contains(out, "- name-only") {
+		t.Errorf("expected '- name-only' line; got:\n%s", out)
+	}
+	if strings.Contains(out, "- name-only:") {
+		t.Errorf("no trailing colon when description is empty; got:\n%s", out)
+	}
+}
+
+// TestSystemPromptWithFrame_NoSkillsBlockWhenEmpty — an empty list
+// (or nil) shouldn't render the "Available skills" header at all.
+func TestSystemPromptWithFrame_NoSkillsBlockWhenEmpty(t *testing.T) {
+	out := SystemPromptWithFrame("", "", "", FrameInfo{Name: "personal"})
+	if strings.Contains(out, "Available skills") {
+		t.Errorf("empty Skills should suppress the header; got:\n%s", out)
+	}
+}
+
 func TestSystemPromptWithFrame_FrameBeforeRuntime(t *testing.T) {
 	// Cache stability: chatBaseSystem → Frame block → Runtime block →
 	// Project context. Reordering invalidates the per-frame cache

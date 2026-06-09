@@ -34,6 +34,48 @@ func TestSQLiteEventLog_UpdateAgentState_MissingRowErrors(t *testing.T) {
 	}
 }
 
+func TestSQLiteEventLog_UpdateAgentModel_MissingRowErrors(t *testing.T) {
+	log := openLog(t)
+	err := log.UpdateAgentModel(context.Background(), "ghost", "claude-opus-4-7")
+	if err == nil || !strings.Contains(err.Error(), "no row") {
+		t.Fatalf("want no-row err, got %v", err)
+	}
+}
+
+// TestSQLiteEventLog_UpdateAgentModel_UpdatesRow seeds a real agent
+// row, swaps its model, and confirms the change lands.
+func TestSQLiteEventLog_UpdateAgentModel_UpdatesRow(t *testing.T) {
+	log := openLog(t)
+	now := time.Now().UTC()
+	row := agent.AgentRow{
+		ID:              "01HVTESTTESTTESTTESTTESTTEST",
+		RootID:          "01HVTESTTESTTESTTESTTESTTEST",
+		State:           agent.StateRunning,
+		Attempt:         1,
+		Title:           "test chat",
+		Model:           "anthropic:claude-opus-4-7",
+		CreatedAt:       now,
+		UpdatedAt:       now,
+		LastHeartbeatAt: now,
+	}
+	if err := log.InsertAgent(context.Background(), row); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if err := log.UpdateAgentModel(context.Background(), row.ID, "openrouter:google/gemini-3.5-flash"); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	got, ok, err := log.GetAgent(context.Background(), row.ID)
+	if err != nil {
+		t.Fatalf("getagent: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected row to exist post-update")
+	}
+	if got.Model != "openrouter:google/gemini-3.5-flash" {
+		t.Errorf("model did not update; got %q", got.Model)
+	}
+}
+
 func TestSQLiteEventLog_UpdateHeartbeat_MissingRowErrors(t *testing.T) {
 	log := openLog(t)
 	err := log.UpdateHeartbeat(context.Background(), "ghost", time.Now().UTC())
