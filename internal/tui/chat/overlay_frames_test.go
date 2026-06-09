@@ -88,6 +88,65 @@ func TestRenderFrameSwitcher_RendersFrameGlyphsAndNames(t *testing.T) {
 	}
 }
 
+// TestTruncateFrameName_PreservesShortNames + TruncatesLongOnes pins
+// the contract: short names render verbatim (the common case); names
+// longer than switcherTileNameMax runes get an ellipsis so the
+// switcher grid keeps its row alignment instead of letting one fat
+// tile wrap mid-row. Multi-byte runes (emoji, accented chars) are
+// counted as one rune each.
+func TestTruncateFrameName_PreservesShortNames(t *testing.T) {
+	cases := []string{"", "a", "personal", "twentycharacterzzzzz"}
+	for _, in := range cases {
+		if got := truncateFrameName(in); got != in {
+			t.Errorf("truncateFrameName(%q) = %q, want unchanged", in, got)
+		}
+	}
+}
+
+func TestTruncateFrameName_TruncatesOverLimit(t *testing.T) {
+	long := "this-is-an-unreasonably-long-frame-name"
+	got := truncateFrameName(long)
+	if !strings.HasSuffix(got, "…") {
+		t.Errorf("truncated name should end with ellipsis, got %q", got)
+	}
+	if r := []rune(got); len(r) != switcherTileNameMax {
+		t.Errorf("truncated rune count = %d, want %d", len(r), switcherTileNameMax)
+	}
+}
+
+func TestTruncateFrameName_HandlesMultiByteRunes(t *testing.T) {
+	// 21 emoji runes (each 4 bytes UTF-8) should truncate to 19 + "…".
+	emoji := strings.Repeat("🌊", 21)
+	got := truncateFrameName(emoji)
+	if r := []rune(got); len(r) != switcherTileNameMax {
+		t.Errorf("emoji truncation rune count = %d, want %d", len(r), switcherTileNameMax)
+	}
+	if !strings.HasSuffix(got, "…") {
+		t.Errorf("emoji truncation missing ellipsis: %q", got)
+	}
+}
+
+// TestRenderFrameSwitcher_LongNameDoesNotWrap renders a switcher with
+// a name far longer than one tile row and verifies (a) the ellipsis
+// lands in the output and (b) the original long-tail substring does
+// NOT appear (proves the truncation actually took effect rather than
+// the full name leaking through and wrapping into the next row).
+func TestRenderFrameSwitcher_LongNameDoesNotWrap(t *testing.T) {
+	const longTail = "tail-that-must-not-appear"
+	longName := "very-long-frame-name-with-a-" + longTail
+	ui := FrameUI{
+		Active:    "personal",
+		Available: []string{"personal", longName},
+	}
+	out := renderFrameSwitcher(ui, 0, 0, 120, 30, false)
+	if !strings.Contains(out, "…") {
+		t.Errorf("rendered switcher missing ellipsis marker; long name leaked through\n%s", out)
+	}
+	if strings.Contains(out, longTail) {
+		t.Errorf("long-name tail %q survived truncation\n%s", longTail, out)
+	}
+}
+
 func TestRenderFrameSwitcher_ShowsNewFrameTile(t *testing.T) {
 	ui := FrameUI{
 		Active:    "personal",

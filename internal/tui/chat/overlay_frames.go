@@ -39,6 +39,12 @@ const (
 	switcherTileWidth  = 26
 	switcherTileHeight = 8
 	switcherGridRows   = 2
+	// switcherTileNameMax bounds the rendered frame name to one tile row.
+	// A 26-cell tile minus the 2-cell border leaves 24 interior cells;
+	// 20 rune-wide names fit with breathing room. Anything longer is
+	// truncated to switcherTileNameMax-1 + "…" so the grid keeps its
+	// row alignment instead of wrapping mid-tile.
+	switcherTileNameMax = 20
 )
 
 // switcherColumns returns the responsive column count for the given
@@ -270,7 +276,7 @@ func renderSwitcherTile(name, activeGlyph string, isActive, isFocused bool, acti
 		"",
 		glyphStyle.Render(glyph),
 		"",
-		nameStyle.Render(name),
+		nameStyle.Render(truncateFrameName(name)),
 		summary,
 	)
 
@@ -292,6 +298,18 @@ func renderSwitcherTile(name, activeGlyph string, isActive, isFocused bool, acti
 		Height(switcherTileHeight - 2).
 		Align(lipgloss.Center).
 		Render(body)
+}
+
+// truncateFrameName clips a frame name to switcherTileNameMax runes,
+// appending an ellipsis. Runes (not bytes) because frame names commonly
+// contain multi-byte glyphs (emoji prefixes, accented characters). A
+// name within the bound is returned unchanged.
+func truncateFrameName(name string) string {
+	r := []rune(name)
+	if len(r) <= switcherTileNameMax {
+		return name
+	}
+	return string(r[:switcherTileNameMax-1]) + "…"
 }
 
 // renderSwitcherNewFrameTile paints the trailing "+ new frame" tile.
