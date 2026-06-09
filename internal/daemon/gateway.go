@@ -27,6 +27,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -68,7 +69,15 @@ type gatewayRuntime struct {
 // broker has no SQLite to write events to. parent is the daemon's
 // shutdown context; the gateway derives its own child context so the
 // daemon can cancel us in isolation if it ever wants to.
-func startGateway(parent context.Context, log *agent.SQLiteEventLog, cfg config.GatewayConfig) (*gatewayRuntime, error) {
+//
+// logger MAY be nil; when nil we fall back to a stderr text handler so
+// the function can still be invoked from tests that don't care about
+// log capture.
+func startGateway(parent context.Context, log *agent.SQLiteEventLog, cfg config.GatewayConfig, logger *slog.Logger) (*gatewayRuntime, error) {
+	if logger == nil {
+		logger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	}
+	logger = logger.With("subsystem", "gateway")
 	if !cfg.Enabled {
 		return nil, nil
 	}
@@ -155,7 +164,7 @@ func startGateway(parent context.Context, log *agent.SQLiteEventLog, cfg config.
 		go func() {
 			defer rt.wg.Done()
 			if err := rt.httpServer.Serve(rt.listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
-				fmt.Fprintf(os.Stderr, "carlos gateway: http serve: %v\n", err)
+				logger.Error("http serve", "err", err)
 			}
 		}()
 	}
@@ -164,7 +173,7 @@ func startGateway(parent context.Context, log *agent.SQLiteEventLog, cfg config.
 	go func() {
 		defer rt.wg.Done()
 		if err := broker.Start(ctx); err != nil && !errors.Is(err, context.Canceled) {
-			fmt.Fprintf(os.Stderr, "carlos gateway: broker: %v\n", err)
+			logger.Error("broker", "err", err)
 		}
 	}()
 
@@ -172,7 +181,7 @@ func startGateway(parent context.Context, log *agent.SQLiteEventLog, cfg config.
 	go func() {
 		defer rt.wg.Done()
 		if err := router.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
-			fmt.Fprintf(os.Stderr, "carlos gateway: approvals router: %v\n", err)
+			logger.Error("approvals router", "err", err)
 		}
 	}()
 

@@ -1,13 +1,16 @@
 package daemon
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -19,6 +22,27 @@ import (
 	"github.com/georgebuilds/carlos/internal/providers"
 	"github.com/georgebuilds/carlos/internal/schedule"
 )
+
+// syncBuffer is a *bytes.Buffer with a mutex so the slog handler can
+// write from one goroutine while the test reads from another. slog's
+// text handler is not concurrency-safe with respect to its underlying
+// Writer; the mutex closes that gap for the Phase B logger-capture test.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
 
 // TestNew_EmptyConfigPathErrors guards the must-have field. A future
 // refactor that drops this check would silently break the CLI flag
@@ -230,6 +254,181 @@ func TestDispatch_ReloadHandlesError(t *testing.T) {
 	}
 	cancel()
 	<-done
+}
+
+// TestReload_FailedReloadSurfacedInStatus - a bad config on SIGHUP must
+// surface through `carlos daemon status` (LastReloadStatus) so an
+// operator sees the failure even if the stderr line scrolled off the
+// journal.
+func TestReload_FailedReloadSurfacedInStatus(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+	writeTestConfig(t, cfgPath, nil)
+
+	clock := &fakeClock{now: time.Date(2026, 6, 5, 12, 0, 0, 0, time.UTC)}
+	d, err := New(Options{
+		ConfigPath:     cfgPath,
+		SocketPath:     shortSock(t),
+		Spawner:        &fakeSpawner{},
+		TickInterval:   500 * time.Millisecond,
+		DisableSignals: true,
+		Now:            clock,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Corrupt the config so loadConfig fails.
+	if err := os.WriteFile(cfgPath, []byte("???: [unclosed"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	before := clock.Now()
+	if err := d.Reload(); err == nil {
+		t.Fatal("expected Reload to fail on bad YAML")
+	}
+
+	resp := d.statusResponse()
+	if resp.LastReloadStatus == nil {
+		t.Fatal("LastReloadStatus should be non-nil after a failed Reload")
+	}
+	if resp.LastReloadStatus.OK {
+		t.Errorf("LastReloadStatus.OK should be false; got %+v", resp.LastReloadStatus)
+	}
+	if resp.LastReloadStatus.Msg == "" {
+		t.Errorf("LastReloadStatus.Msg should carry the error text; got empty")
+	}
+	if resp.LastReloadStatus.At.Before(before) {
+		t.Errorf("LastReloadStatus.At should be recent; got %v (clock=%v)", resp.LastReloadStatus.At, before)
+	}
+	// LastReloadAt should NOT advance on failure - it tracks the last
+	// successful reload's timestamp for ops.
+	if resp.LastReloadAt != nil {
+		t.Errorf("LastReloadAt should stay nil after a failed reload; got %v", resp.LastReloadAt)
+	}
+}
+
+// TestReload_SuccessfulReloadSurfacedInStatus - the positive path: a
+// good Reload bumps LastReloadStatus to OK=true and populates a
+// human-readable Msg.
+func TestReload_SuccessfulReloadSurfacedInStatus(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+	writeTestConfig(t, cfgPath, []schedule.Schedule{
+		{Name: "a", Spec: "0 9 * * *", Prompt: "x"},
+	})
+
+	clock := &fakeClock{now: time.Date(2026, 6, 5, 12, 0, 0, 0, time.UTC)}
+	d, err := New(Options{
+		ConfigPath:     cfgPath,
+		SocketPath:     shortSock(t),
+		Spawner:        &fakeSpawner{},
+		TickInterval:   500 * time.Millisecond,
+		DisableSignals: true,
+		Now:            clock,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Initial load so the daemon is in the same state Reload would find it.
+	if err := d.loadConfig(); err != nil {
+		t.Fatalf("loadConfig: %v", err)
+	}
+
+	if err := d.Reload(); err != nil {
+		t.Fatalf("Reload: %v", err)
+	}
+
+	resp := d.statusResponse()
+	if resp.LastReloadStatus == nil {
+		t.Fatal("LastReloadStatus should be non-nil after Reload")
+	}
+	if !resp.LastReloadStatus.OK {
+		t.Errorf("LastReloadStatus.OK should be true; got %+v", resp.LastReloadStatus)
+	}
+	if resp.LastReloadStatus.Msg == "" {
+		t.Errorf("LastReloadStatus.Msg should be populated on success")
+	}
+	if resp.LastReloadAt == nil {
+		t.Errorf("LastReloadAt should be populated after a successful reload")
+	}
+	if !resp.LastReloadStatus.At.Equal(clock.Now().UTC()) {
+		t.Errorf("LastReloadStatus.At = %v, want %v", resp.LastReloadStatus.At, clock.Now().UTC())
+	}
+}
+
+// TestDaemon_LoggerCapturesLifecycleEvent - Phase B. The slog migration
+// must keep lifecycle events visible: feed a *bytes.Buffer-backed slog
+// logger into the daemon via Options.Logger, trigger a lifecycle event
+// (a successful Reload), and assert the captured output carries the
+// event keyword + the daemon component attribute. This is the
+// regression test that protects the migration from being silently
+// reverted to fmt.Fprintf.
+func TestDaemon_LoggerCapturesLifecycleEvent(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+	writeTestConfig(t, cfgPath, []schedule.Schedule{
+		{Name: "a", Spec: "0 9 * * *", Prompt: "x"},
+	})
+
+	buf := &syncBuffer{}
+	logger := slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	clock := &fakeClock{now: time.Date(2026, 6, 5, 12, 0, 0, 0, time.UTC)}
+	d, err := New(Options{
+		ConfigPath:     cfgPath,
+		SocketPath:     shortSock(t),
+		Spawner:        &fakeSpawner{},
+		TickInterval:   500 * time.Millisecond,
+		DisableSignals: true,
+		Now:            clock,
+		Logger:         logger,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Reload is a deterministic lifecycle event that doesn't require
+	// the full Run loop. Trigger a failing one too so both severities
+	// land in the buffer.
+	if err := d.Reload(); err != nil {
+		t.Fatalf("first Reload: %v", err)
+	}
+	if err := os.WriteFile(cfgPath, []byte("???: [unclosed"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// Trigger the logger.Warn path: feed an invalid schedule via reload.
+	// loadConfig itself returns the parse error; we don't get a Warn for
+	// that case. Instead trigger the schedule-validate warning by
+	// writing a config with a malformed schedule spec.
+	cfg := &config.Config{
+		UserName:        "Tester",
+		Providers:       map[string]config.ProviderConfig{"anthropic": {APIKey: "sk-test"}},
+		DefaultProvider: "anthropic",
+		Schedules: []schedule.Schedule{
+			{Name: "bad", Spec: "this is not cron", Prompt: "x"},
+		},
+	}
+	if err := config.Save(cfgPath, cfg); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.Reload(); err != nil {
+		t.Fatalf("second Reload: %v", err)
+	}
+
+	out := buf.String()
+	if out == "" {
+		t.Fatal("logger buffer is empty after Reload; migration appears to have lost the lifecycle event")
+	}
+	if !strings.Contains(out, "component=carlos-daemon") {
+		t.Errorf("expected component attr in output; got: %s", out)
+	}
+	if !strings.Contains(out, "skipping invalid schedule") {
+		t.Errorf("expected schedule-skip warn line in output; got: %s", out)
+	}
+	if !strings.Contains(out, "name=bad") {
+		t.Errorf("expected name=bad attr in output; got: %s", out)
+	}
 }
 
 // TestPersistSchedules_LoadErrorPropagates ensures persistSchedules

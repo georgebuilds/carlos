@@ -80,11 +80,21 @@ type Response struct {
 	Msg string `json:"msg,omitempty"`
 
 	// Status-specific fields.
-	Schedules    []ScheduleStatus `json:"schedules,omitempty"`
-	NextFireAt   *time.Time       `json:"next_fire_at,omitempty"`
-	StartedAt    *time.Time       `json:"started_at,omitempty"`
-	LastReloadAt *time.Time       `json:"last_reload_at,omitempty"`
-	ActiveCount  int              `json:"active_count,omitempty"`
+	Schedules        []ScheduleStatus  `json:"schedules,omitempty"`
+	NextFireAt       *time.Time        `json:"next_fire_at,omitempty"`
+	StartedAt        *time.Time        `json:"started_at,omitempty"`
+	LastReloadAt     *time.Time        `json:"last_reload_at,omitempty"`
+	LastReloadStatus *ReloadStatus     `json:"last_reload_status,omitempty"`
+	ActiveCount      int               `json:"active_count,omitempty"`
+}
+
+// ReloadStatus is the outcome of the most recent Reload attempt. Nil on
+// the status response means no Reload has happened yet (the initial
+// loadConfig at startup does not populate this).
+type ReloadStatus struct {
+	At  time.Time `json:"at"`
+	OK  bool      `json:"ok"`
+	Msg string    `json:"msg,omitempty"`
 }
 
 // ScheduleStatus is one row in Response.Schedules. Mirrors a subset of
@@ -154,8 +164,14 @@ func Dial(path string) (net.Conn, error) {
 // SendRequest writes one Request as JSON+newline and reads one Response
 // as JSON+newline. Returns an error if the read or write fails or the
 // reply is unparseable.
+//
+// SetDeadline failure is treated as a hard fail of the connection: a
+// connection without a deadline lets a wedged daemon keep a CLI client
+// blocked indefinitely.
 func SendRequest(conn net.Conn, req Request) (Response, error) {
-	_ = conn.SetDeadline(time.Now().Add(5 * time.Second))
+	if err := conn.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		return Response{}, fmt.Errorf("daemon: set deadline: %w", err)
+	}
 	enc := json.NewEncoder(conn)
 	if err := enc.Encode(req); err != nil {
 		return Response{}, fmt.Errorf("daemon: write request: %w", err)
@@ -176,9 +192,17 @@ func SendRequest(conn net.Conn, req Request) (Response, error) {
 // Exported so the Daemon implementation in daemon.go can route accepted
 // connections to it; also testable in isolation by passing a synthetic
 // dispatcher.
+//
+// SetDeadline failure is treated as a hard fail: without a deadline a
+// slow or wedged client can pin this goroutine forever. We write a
+// best-effort ok=false response and close so the client at least sees
+// the failure mode.
 func HandleConn(conn net.Conn, dispatch func(Request) Response) {
 	defer conn.Close()
-	_ = conn.SetDeadline(time.Now().Add(5 * time.Second))
+	if err := conn.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		_ = json.NewEncoder(conn).Encode(Response{Ok: false, Msg: "set deadline: " + err.Error()})
+		return
+	}
 
 	dec := json.NewDecoder(bufio.NewReader(conn))
 	var req Request

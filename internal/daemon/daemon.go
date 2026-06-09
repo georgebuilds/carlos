@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"os"
 	"os/signal"
@@ -96,6 +97,14 @@ type Options struct {
 	// every fire uses opts.Provider unconditionally - the legacy
 	// behaviour.
 	ProviderBuilder func(frame.ResolvedProvider) (providers.Provider, error)
+
+	// Logger, when non-nil, is used for every package-internal log line
+	// (lifecycle events, schedule fires, gateway errors). Defaults to a
+	// text handler writing to os.Stderr at Info level so production
+	// launchd / systemd units get structured output without any extra
+	// wiring. Tests pass a *bytes.Buffer-backed handler to assert on
+	// emitted attributes.
+	Logger *slog.Logger
 }
 
 // Daemon is one running carlos daemon process: it owns the UDS listener,
@@ -130,12 +139,13 @@ type Daemon struct {
 
 	listener net.Listener
 
-	mu         sync.Mutex
-	schedules  []schedule.Schedule
-	gatewayCfg config.GatewayConfig
-	gw         *gatewayRuntime
-	startedAt  time.Time
-	reloadAt   time.Time
+	mu               sync.Mutex
+	schedules        []schedule.Schedule
+	gatewayCfg       config.GatewayConfig
+	gw               *gatewayRuntime
+	startedAt        time.Time
+	reloadAt         time.Time
+	lastReloadStatus *ReloadStatus
 
 	// Phase F-14: cached cfg fields the per-fire frame resolver needs.
 	// Snapshotted by loadConfig (and refreshed on reload) so fire() does
@@ -154,6 +164,27 @@ type Daemon struct {
 	// handler, the IPC stop command, and ctx cancellation.
 	stopOnce sync.Once
 	stopFn   context.CancelFunc
+
+	// logger is the package-internal slog.Logger. Always non-nil after
+	// New (defaulted to a stderr text handler so call sites never need a
+	// nil check). Scoped with a "component" attr so multi-binary
+	// journals can filter on it.
+	//
+	// Use d.slogger() instead of reading this field directly: a handful
+	// of tests construct Daemon{} literals without going through New,
+	// and slogger backfills slog.Default() so those keep working
+	// without a panic.
+	logger *slog.Logger
+}
+
+// slogger returns a never-nil *slog.Logger. Always-on backstop for
+// callers that bypass New (a few existing in-package tests do this) so
+// migrated lifecycle logging never panics on the zero Daemon.
+func (d *Daemon) slogger() *slog.Logger {
+	if d.logger != nil {
+		return d.logger
+	}
+	return slog.Default()
 }
 
 // New constructs a Daemon from Options. Does NOT start anything - call
@@ -171,7 +202,12 @@ func New(opts Options) (*Daemon, error) {
 	if opts.SocketPath == "" {
 		opts.SocketPath = DefaultSocketPath()
 	}
-	return &Daemon{opts: opts}, nil
+	logger := opts.Logger
+	if logger == nil {
+		logger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	}
+	logger = logger.With("component", "carlos-daemon")
+	return &Daemon{opts: opts, logger: logger}, nil
 }
 
 // Run drives the daemon until ctx is cancelled (or a stop request
@@ -229,9 +265,10 @@ func (d *Daemon) Run(ctx context.Context) error {
 				case syscall.SIGHUP:
 					if err := d.Reload(); err != nil {
 						// Best-effort: a malformed config on reload leaves
-						// the previous schedule list in place; we just log
-						// to stderr so the user sees what happened.
-						fmt.Fprintf(os.Stderr, "carlos daemon: reload failed: %v\n", err)
+						// the previous schedule list in place. The error
+						// is also captured in lastReloadStatus so the IPC
+						// status surface picks it up.
+						d.slogger().Error("reload failed", "err", err)
 					}
 				case syscall.SIGTERM, syscall.SIGINT:
 					d.Stop()
@@ -264,7 +301,7 @@ func (d *Daemon) Run(ctx context.Context) error {
 	gwCfg := d.gatewayCfg
 	d.mu.Unlock()
 	if d.log != nil && gwCfg.Enabled {
-		gw, err := startGateway(runCtx, d.log, gwCfg)
+		gw, err := startGateway(runCtx, d.log, gwCfg, d.slogger())
 		if err != nil {
 			_ = d.listener.Close()
 			_ = d.log.Close()
@@ -331,6 +368,11 @@ func (d *Daemon) Stop() {
 // Schedules with the same Name and Spec preserve their LastRunAt /
 // LastRunOK fields (otherwise a SIGHUP would cause an immediate
 // re-fire of any schedule that already ran today).
+//
+// On both success and failure the outcome is captured in
+// d.lastReloadStatus so `carlos daemon status` can surface a bad
+// reload to operators (without that, the only signal is a stderr line
+// in the launchd / systemd journal).
 func (d *Daemon) Reload() error {
 	d.mu.Lock()
 	prev := make(map[string]schedule.Schedule, len(d.schedules))
@@ -339,6 +381,13 @@ func (d *Daemon) Reload() error {
 	}
 	d.mu.Unlock()
 	if err := d.loadConfig(); err != nil {
+		d.mu.Lock()
+		d.lastReloadStatus = &ReloadStatus{
+			At:  d.opts.Now.Now().UTC(),
+			OK:  false,
+			Msg: err.Error(),
+		}
+		d.mu.Unlock()
 		return err
 	}
 	d.mu.Lock()
@@ -348,7 +397,13 @@ func (d *Daemon) Reload() error {
 			d.schedules[i].LastRunOK = old.LastRunOK
 		}
 	}
-	d.reloadAt = d.opts.Now.Now().UTC()
+	now := d.opts.Now.Now().UTC()
+	d.reloadAt = now
+	d.lastReloadStatus = &ReloadStatus{
+		At:  now,
+		OK:  true,
+		Msg: "config reloaded",
+	}
 	d.mu.Unlock()
 	return nil
 }
@@ -368,7 +423,7 @@ func (d *Daemon) loadConfig() error {
 	good := make([]schedule.Schedule, 0, len(cfg.Schedules))
 	for _, s := range cfg.Schedules {
 		if err := s.Validate(); err != nil {
-			fmt.Fprintf(os.Stderr, "carlos daemon: skipping schedule %q: %v\n", s.Name, err)
+			d.slogger().Warn("skipping invalid schedule", "name", s.Name, "err", err)
 			continue
 		}
 		good = append(good, s)
@@ -423,7 +478,7 @@ func (d *Daemon) tick(ctx context.Context) {
 		}
 		d.mu.Unlock()
 		if err := d.persistSchedules(); err != nil {
-			fmt.Fprintf(os.Stderr, "carlos daemon: persist schedules: %v\n", err)
+			d.slogger().Error("persist schedules", "err", err)
 		}
 		// One-shot: remove on successful fire.
 		if s.Once && ok {
@@ -461,7 +516,7 @@ func (d *Daemon) fire(ctx context.Context, s schedule.Schedule) bool {
 		OverrideProvider: frameProvider,
 	}
 
-	fmt.Fprintf(os.Stderr, "carlos daemon: firing schedule %q in frame=%s\n", s.Name, frameName)
+	d.slogger().Info("firing schedule", "name", s.Name, "frame", frameName)
 
 	d.mu.Lock()
 	d.activeCount++
@@ -474,7 +529,7 @@ func (d *Daemon) fire(ctx context.Context, s schedule.Schedule) bool {
 
 	_, resultCh, err := d.spawner.Spawn(ctx, "", contract)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "carlos daemon: spawn %q: %v\n", s.Name, err)
+		d.slogger().Error("spawn failed", "name", s.Name, "err", err)
 		d.pushNotification(ctx, s, false, err.Error())
 		return false
 	}
@@ -559,7 +614,7 @@ func (d *Daemon) resolveFrameForFire(s schedule.Schedule) (string, agent.FrameIn
 		if resolved, ok := frame.ResolveProvider(*f, defaultProvider, pantry); ok {
 			built, err := d.opts.ProviderBuilder(resolved)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "carlos daemon: provider build for %q failed, falling back: %v\n", s.Name, err)
+				d.slogger().Warn("provider build failed, falling back", "name", s.Name, "err", err)
 			} else {
 				prov = built
 				model = resolved.Model
@@ -592,7 +647,7 @@ func (d *Daemon) pushNotification(ctx context.Context, s schedule.Schedule, ok b
 		Body:    body,
 		Urgency: urgency,
 	}); err != nil {
-		fmt.Fprintf(os.Stderr, "carlos daemon: notify %q: %v\n", s.Name, err)
+		d.slogger().Warn("notify failed", "name", s.Name, "err", err)
 	}
 }
 
@@ -650,7 +705,7 @@ func (d *Daemon) acceptLoop(ctx context.Context) {
 			if errors.Is(err, net.ErrClosed) {
 				return
 			}
-			fmt.Fprintf(os.Stderr, "carlos daemon: accept: %v\n", err)
+			d.slogger().Error("accept failed", "err", err)
 			return
 		}
 		go HandleConn(conn, d.dispatch)
@@ -768,6 +823,11 @@ func (d *Daemon) statusResponse() Response {
 	}
 	if !d.reloadAt.IsZero() {
 		out.LastReloadAt = timePtr(d.reloadAt)
+	}
+	if d.lastReloadStatus != nil {
+		// Defensive copy so the caller can't mutate the daemon's state.
+		s := *d.lastReloadStatus
+		out.LastReloadStatus = &s
 	}
 	var soonest time.Time
 	for _, s := range d.schedules {

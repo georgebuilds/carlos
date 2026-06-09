@@ -1,11 +1,15 @@
 package daemon
 
 import (
+	"bytes"
+	"encoding/json"
+	"errors"
 	"net"
 	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 // TestIPC_RoundTrip exercises the full Listen → Dial → SendRequest →
@@ -121,6 +125,83 @@ func TestIPC_StaleSocketCleanup(t *testing.T) {
 		t.Fatalf("Listen over stale socket: %v", err)
 	}
 	defer l2.Close()
+}
+
+// errDeadlineConn wraps a net.Conn and returns a synthetic error from
+// SetDeadline so we can exercise HandleConn's deadline-failure path
+// without relying on a real OS-level UDS failure (which is essentially
+// impossible to provoke deterministically on macOS / Linux).
+type errDeadlineConn struct {
+	net.Conn
+	// captures everything HandleConn writes to the wire so the test can
+	// assert the ok=false response landed before close.
+	written *bytes.Buffer
+	mu      sync.Mutex
+}
+
+func newErrDeadlineConn() *errDeadlineConn {
+	a, b := net.Pipe()
+	// We don't need the peer end's reader for this test - drain it.
+	go func() {
+		buf := make([]byte, 256)
+		for {
+			if _, err := a.Read(buf); err != nil {
+				return
+			}
+		}
+	}()
+	return &errDeadlineConn{Conn: b, written: &bytes.Buffer{}}
+}
+
+func (c *errDeadlineConn) SetDeadline(time.Time) error {
+	return errors.New("synthetic deadline failure")
+}
+
+func (c *errDeadlineConn) Write(p []byte) (int, error) {
+	c.mu.Lock()
+	c.written.Write(p)
+	c.mu.Unlock()
+	return c.Conn.Write(p)
+}
+
+func (c *errDeadlineConn) bytes() []byte {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	out := make([]byte, c.written.Len())
+	copy(out, c.written.Bytes())
+	return out
+}
+
+// TestHandleConn_SetDeadlineFailureClosesCleanly - if SetDeadline fails
+// (synthetic; rare on real UDS but possible on a wedged kernel handle),
+// HandleConn must write an ok=false response and close rather than
+// proceeding without a deadline (which would let a slow peer pin the
+// goroutine forever).
+func TestHandleConn_SetDeadlineFailureClosesCleanly(t *testing.T) {
+	conn := newErrDeadlineConn()
+	dispatchCalled := false
+	HandleConn(conn, func(Request) Response {
+		dispatchCalled = true
+		return Response{Ok: true}
+	})
+
+	if dispatchCalled {
+		t.Errorf("dispatch should NOT be invoked when SetDeadline fails")
+	}
+	out := conn.bytes()
+	if len(out) == 0 {
+		t.Fatal("expected a best-effort response on the wire before close")
+	}
+	var resp Response
+	if err := json.Unmarshal(bytes.TrimSpace(out), &resp); err != nil {
+		t.Fatalf("response should be valid JSON; got %q (%v)", out, err)
+	}
+	if resp.Ok {
+		t.Errorf("response.Ok should be false on SetDeadline failure; got %+v", resp)
+	}
+	if !strings.Contains(resp.Msg, "set deadline") {
+		t.Errorf("response.Msg should mention set-deadline failure; got %q", resp.Msg)
+	}
 }
 
 // TestIPC_BadRequest verifies HandleConn surfaces a parseable error

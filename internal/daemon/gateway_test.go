@@ -32,7 +32,7 @@ func newGatewayLog(t *testing.T) *agent.SQLiteEventLog {
 }
 
 func TestStartGateway_DisabledReturnsNil(t *testing.T) {
-	rt, err := startGateway(context.Background(), newGatewayLog(t), config.GatewayConfig{})
+	rt, err := startGateway(context.Background(), newGatewayLog(t), config.GatewayConfig{}, nil)
 	if err != nil {
 		t.Fatalf("startGateway: %v", err)
 	}
@@ -42,7 +42,7 @@ func TestStartGateway_DisabledReturnsNil(t *testing.T) {
 }
 
 func TestStartGateway_EnabledButNoLogErrors(t *testing.T) {
-	_, err := startGateway(context.Background(), nil, config.GatewayConfig{Enabled: true})
+	_, err := startGateway(context.Background(), nil, config.GatewayConfig{Enabled: true}, nil)
 	if err == nil {
 		t.Error("expected error when gateway enabled without a log")
 	}
@@ -52,14 +52,14 @@ func TestStartGateway_RetryConfigError(t *testing.T) {
 	_, err := startGateway(context.Background(), newGatewayLog(t), config.GatewayConfig{
 		Enabled: true,
 		Retry:   config.GatewayRetry{BackoffInitial: "nonsense"},
-	})
+	}, nil)
 	if err == nil {
 		t.Error("expected error on unparseable retry duration")
 	}
 }
 
 func TestStartGateway_NoChannelsStillStarts(t *testing.T) {
-	rt, err := startGateway(context.Background(), newGatewayLog(t), config.GatewayConfig{Enabled: true})
+	rt, err := startGateway(context.Background(), newGatewayLog(t), config.GatewayConfig{Enabled: true}, nil)
 	if err != nil {
 		t.Fatalf("startGateway: %v", err)
 	}
@@ -94,7 +94,7 @@ func TestStartGateway_RegistersTelegram(t *testing.T) {
 			AllowedChatIDs: []int64{42},
 		},
 	}
-	rt, err := startGateway(context.Background(), newGatewayLog(t), cfg)
+	rt, err := startGateway(context.Background(), newGatewayLog(t), cfg, nil)
 	if err != nil {
 		t.Fatalf("startGateway: %v", err)
 	}
@@ -110,7 +110,7 @@ func TestStartGateway_TelegramMissingToken(t *testing.T) {
 		Enabled:  true,
 		Telegram: config.TelegramConfig{Enabled: true}, // no token
 	}
-	_, err := startGateway(context.Background(), newGatewayLog(t), cfg)
+	_, err := startGateway(context.Background(), newGatewayLog(t), cfg, nil)
 	if err == nil {
 		t.Error("expected error when telegram enabled without bot token")
 	}
@@ -126,7 +126,7 @@ func TestStartGateway_NtfyWithoutListener(t *testing.T) {
 			SigningKey: "0123456789abcdef0123456789abcdef",
 		},
 	}
-	rt, err := startGateway(context.Background(), newGatewayLog(t), cfg)
+	rt, err := startGateway(context.Background(), newGatewayLog(t), cfg, nil)
 	if err != nil {
 		t.Fatalf("startGateway: %v", err)
 	}
@@ -151,7 +151,7 @@ func TestStartGateway_NtfyMountsListener(t *testing.T) {
 			SigningKey:     "0123456789abcdef0123456789abcdef",
 		},
 	}
-	rt, err := startGateway(context.Background(), newGatewayLog(t), cfg)
+	rt, err := startGateway(context.Background(), newGatewayLog(t), cfg, nil)
 	if err != nil {
 		t.Fatalf("startGateway: %v", err)
 	}
@@ -187,7 +187,7 @@ func TestStartGateway_NtfyListenerWithValidToken(t *testing.T) {
 		},
 	}
 	log := newGatewayLog(t)
-	rt, err := startGateway(context.Background(), log, cfg)
+	rt, err := startGateway(context.Background(), log, cfg, nil)
 	if err != nil {
 		t.Fatalf("startGateway: %v", err)
 	}
@@ -225,7 +225,7 @@ func TestStartGateway_SignalRegistersEvenWhenDisabled(t *testing.T) {
 		Enabled: true,
 		Signal:  config.SignalConfig{Enabled: false},
 	}
-	rt, err := startGateway(context.Background(), newGatewayLog(t), cfg)
+	rt, err := startGateway(context.Background(), newGatewayLog(t), cfg, nil)
 	if err != nil {
 		t.Fatalf("startGateway: %v", err)
 	}
@@ -240,7 +240,7 @@ func TestStartGateway_SignalEnabledMissingSocket(t *testing.T) {
 		Enabled: true,
 		Signal:  config.SignalConfig{Enabled: true, SenderNumber: "+15551234567"},
 	}
-	_, err := startGateway(context.Background(), newGatewayLog(t), cfg)
+	_, err := startGateway(context.Background(), newGatewayLog(t), cfg, nil)
 	if err == nil {
 		t.Error("expected error when signal enabled without socket")
 	}
@@ -254,7 +254,7 @@ func TestStartGateway_RoutingTranslated(t *testing.T) {
 		},
 		Telegram: config.TelegramConfig{Enabled: true, BotToken: "tok"},
 	}
-	rt, err := startGateway(context.Background(), newGatewayLog(t), cfg)
+	rt, err := startGateway(context.Background(), newGatewayLog(t), cfg, nil)
 	if err != nil {
 		t.Fatalf("startGateway: %v", err)
 	}
@@ -266,7 +266,7 @@ func TestStartGateway_RoutingTranslated(t *testing.T) {
 }
 
 func TestStartGateway_StopRespectsContextDeadline(t *testing.T) {
-	rt, err := startGateway(context.Background(), newGatewayLog(t), config.GatewayConfig{Enabled: true})
+	rt, err := startGateway(context.Background(), newGatewayLog(t), config.GatewayConfig{Enabled: true}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -448,7 +448,7 @@ func TestStartGateway_FullLifecycle(t *testing.T) {
 	}
 	parent, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	rt, err := startGateway(parent, newGatewayLog(t), cfg)
+	rt, err := startGateway(parent, newGatewayLog(t), cfg, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
