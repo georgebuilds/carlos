@@ -433,6 +433,32 @@ func (m *Model) renderFooter(w int) string {
 // is purely surface dressing — the full text remains on disk in the
 // event log for triage.
 func renderErrorCard(e transcriptEntry, width int) string {
+	return renderErrorCardGroup([]transcriptEntry{e}, width)
+}
+
+// renderErrorCardGroup renders one or more error entries inside a
+// single rounded-border box, separating consecutive rows with a thin
+// horizontal rule. A single-entry group is visually identical to the
+// pre-grouping renderErrorCard output — the border style, color, glyph,
+// and content composition are unchanged.
+//
+// Group form (2+):
+//
+//	┌──────────────────────────────────────────────────┐
+//	│ ✗ openrouter · HTTP 400: No models provided      │
+//	├──────────────────────────────────────────────────┤
+//	│ ✗ supervisor · spawn refused, frame mode 'solo'  │
+//	└──────────────────────────────────────────────────┘
+//
+// Rationale: a flurry of provider / supervisor errors back-to-back was
+// previously a stack of independent boxes that consumed N×3 vertical
+// rows. The group packs N rows into N + 2 (one border top + one
+// border bottom + N content rows + N-1 separators), which on three
+// errors shaves four rows of chrome.
+func renderErrorCardGroup(es []transcriptEntry, width int) string {
+	if len(es) == 0 {
+		return ""
+	}
 	const sideMargin = 4
 	totalW := width - sideMargin*2
 	if totalW < 30 {
@@ -444,33 +470,21 @@ func renderErrorCard(e transcriptEntry, width int) string {
 		contentW = 20
 	}
 
-	label, detail := splitErrorHead(e.text)
-	if label == "" {
-		label = "error"
-	}
-
-	glyphStyle := lipgloss.NewStyle().Foreground(colorWarn).Bold(true)
-	nameStyle := lipgloss.NewStyle().Foreground(colorWarn).Bold(true)
-	sepStyle := lipgloss.NewStyle().Foreground(colorMuted)
-	mutedStyle := lipgloss.NewStyle().Foreground(colorMuted)
-
-	head := glyphStyle.Render("✗") + " " + nameStyle.Render(label)
-
-	var preview string
-	if detail != "" {
-		maxInputW := contentW - lipgloss.Width(head) - 4
-		if maxInputW >= 10 {
-			preview = sepStyle.Render(" · ") + mutedStyle.Render(oneLine(detail, maxInputW))
+	lines := make([]string, 0, len(es)*2-1)
+	for i, e := range es {
+		if i > 0 {
+			lines = append(lines, errorCardSeparator(contentW))
 		}
+		lines = append(lines, errorCardInnerLine(e, contentW))
 	}
+	body := strings.Join(lines, "\n")
 
-	line := head + preview
 	rendered := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(colorWarn).
 		Padding(0, 1).
 		Width(boxW).
-		Render(line)
+		Render(body)
 
 	pad := strings.Repeat(" ", sideMargin)
 	rows := strings.Split(rendered, "\n")
@@ -478,6 +492,41 @@ func renderErrorCard(e transcriptEntry, width int) string {
 		rows[i] = pad + rows[i]
 	}
 	return strings.Join(rows, "\n")
+}
+
+// errorCardInnerLine composes one content row of an error card —
+// glyph + label + optional " · detail". Width-budgeted so the caller
+// can pack it into a multi-row group or a single-row card.
+func errorCardInnerLine(e transcriptEntry, contentW int) string {
+	label, detail := splitErrorHead(e.text)
+	if label == "" {
+		label = "error"
+	}
+	glyphStyle := lipgloss.NewStyle().Foreground(colorWarn).Bold(true)
+	nameStyle := lipgloss.NewStyle().Foreground(colorWarn).Bold(true)
+	sepStyle := lipgloss.NewStyle().Foreground(colorMuted)
+	mutedStyle := lipgloss.NewStyle().Foreground(colorMuted)
+
+	head := glyphStyle.Render("✗") + " " + nameStyle.Render(label)
+	var preview string
+	if detail != "" {
+		maxInputW := contentW - lipgloss.Width(head) - 4
+		if maxInputW >= 10 {
+			preview = sepStyle.Render(" · ") + mutedStyle.Render(oneLine(detail, maxInputW))
+		}
+	}
+	return head + preview
+}
+
+// errorCardSeparator paints the thin horizontal rule between two
+// grouped error rows. Uses the muted color so the rule reads as a
+// quiet divider, not a second border — color emphasis stays on the
+// outer warn-tinted box.
+func errorCardSeparator(contentW int) string {
+	if contentW < 1 {
+		contentW = 1
+	}
+	return lipgloss.NewStyle().Foreground(colorMuted).Render(strings.Repeat("─", contentW))
 }
 
 // splitErrorHead picks a short "head" label out of a wrapped error
@@ -515,48 +564,96 @@ func splitErrorHead(text string) (label, detail string) {
 // already saw it; the user gets a summary. An expand keybind is a
 // future slice.
 func renderToolCard(e transcriptEntry, width int) string {
-	glyph := "🔧"
+	return renderToolCardGroup([]transcriptEntry{e}, width)
+}
+
+// renderToolCardGroup renders one or more tool-call entries inside a
+// single rounded-border box, separating consecutive rows with a thin
+// horizontal rule (similar to a Bootstrap list-group). A single-entry
+// group is visually identical to the pre-grouping renderToolCard
+// output — the border style, color, glyph, and content composition
+// are unchanged.
+//
+// Border + separator color rule: if EVERY entry in the group succeeded,
+// the border uses colorTool and the separators read as muted dividers.
+// If ANY entry in the group errored, the outer border flips to
+// colorWarn so the group reads as "something failed in this run";
+// individual entries still carry their own glyph (🔧 vs ✗) so the
+// user can identify which row was the failure.
+func renderToolCardGroup(es []transcriptEntry, width int) string {
+	if len(es) == 0 {
+		return ""
+	}
+	groupHasError := false
+	for _, e := range es {
+		if e.isError {
+			groupHasError = true
+			break
+		}
+	}
 	borderColor := colorTool
-	if e.isError {
-		glyph = "✗"
+	if groupHasError {
 		borderColor = colorWarn
 	}
 
-	// Inset so the card sits in the same column as conversation
-	// text: 4 cells of left indent (matches the avatar gutter on
-	// 👤/🧢 messages) and a symmetric 4 cells of right margin.
-	// Total visual width of the card = width - sideMargin*2.
 	const sideMargin = 4
 	totalW := width - sideMargin*2
 	if totalW < 30 {
 		totalW = 30
 	}
-	// lipgloss: Width = content area incl. padding; Border adds 2
-	// more. Subtract the border to land on the requested totalW.
 	boxW := totalW - 2
-	// Inside the box: padding 0,1 leaves boxW-2 cells for content.
 	contentW := boxW - 2
 	if contentW < 20 {
 		contentW = 20
 	}
 
-	gear := lipgloss.NewStyle().Foreground(borderColor).Render(glyph)
-	name := lipgloss.NewStyle().Foreground(borderColor).Bold(true).Render(e.tool)
+	lines := make([]string, 0, len(es)*2-1)
+	for i, e := range es {
+		if i > 0 {
+			lines = append(lines, toolCardSeparator(contentW))
+		}
+		lines = append(lines, toolCardInnerLine(e, contentW))
+	}
+	body := strings.Join(lines, "\n")
+
+	rendered := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(borderColor).
+		Padding(0, 1).
+		Width(boxW).
+		Render(body)
+
+	pad := strings.Repeat(" ", sideMargin)
+	rows := strings.Split(rendered, "\n")
+	for i := range rows {
+		rows[i] = pad + rows[i]
+	}
+	return strings.Join(rows, "\n")
+}
+
+// toolCardInnerLine composes one content row of a tool card — glyph
+// + tool name + optional " · input preview" + right-aligned status.
+// Width-budgeted so the caller can pack it into a multi-row group.
+func toolCardInnerLine(e transcriptEntry, contentW int) string {
+	glyph := "🔧"
+	rowColor := colorTool
+	if e.isError {
+		glyph = "✗"
+		rowColor = colorWarn
+	}
+	gear := lipgloss.NewStyle().Foreground(rowColor).Render(glyph)
+	name := lipgloss.NewStyle().Foreground(rowColor).Bold(true).Render(e.tool)
 	sepStyle := lipgloss.NewStyle().Foreground(colorMuted)
 	mutedStyle := lipgloss.NewStyle().Foreground(colorMuted)
 
 	head := gear + " " + name
-
-	// Status suffix sits right-aligned.
 	status := toolCardStatus(e)
 	statusRender := mutedStyle.Render(status)
 	statusW := lipgloss.Width(statusRender)
 
-	// One-line input preview between head and status. Cap so it
-	// never starves the status suffix of room.
 	var preview string
 	if e.toolInput != "" {
-		maxInputW := contentW - lipgloss.Width(head) - statusW - 6 // 6 = " · " + "  " gap
+		maxInputW := contentW - lipgloss.Width(head) - statusW - 6
 		if maxInputW >= 10 {
 			preview = sepStyle.Render(" · ") + mutedStyle.Render(oneLine(e.toolInput, maxInputW))
 		}
@@ -567,26 +664,17 @@ func renderToolCard(e transcriptEntry, width int) string {
 	if gap < 1 {
 		gap = 1
 	}
-	line := headSection + strings.Repeat(" ", gap) + statusRender
+	return headSection + strings.Repeat(" ", gap) + statusRender
+}
 
-	rendered := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(borderColor).
-		Padding(0, 1).
-		Width(boxW).
-		Render(line)
-
-	// Prepend the side margin to every row so the card sits indented
-	// under the conversation column instead of flush-left. lipgloss's
-	// MarginLeft would have worked but adds its own margin char which
-	// can interact oddly with the rounded border on some terminals;
-	// manual padding is bulletproof.
-	pad := strings.Repeat(" ", sideMargin)
-	rows := strings.Split(rendered, "\n")
-	for i := range rows {
-		rows[i] = pad + rows[i]
+// toolCardSeparator paints the thin horizontal rule between two
+// grouped tool rows. Muted color so the divider doesn't compete with
+// the per-row content or the outer border color.
+func toolCardSeparator(contentW int) string {
+	if contentW < 1 {
+		contentW = 1
 	}
-	return strings.Join(rows, "\n")
+	return lipgloss.NewStyle().Foreground(colorMuted).Render(strings.Repeat("─", contentW))
 }
 
 // toolCardStatus derives the right-aligned status suffix from the
@@ -987,25 +1075,62 @@ func renderEmptyState(userName string, width, height int, readOnly bool) string 
 // just renders what it's asked to.
 func composeTranscript(entries []transcriptEntry, liveText, thinkingRow string, md *glamour.TermRenderer, width int) string {
 	var sb strings.Builder
-	for i, e := range entries {
-		if i > 0 {
+	// Two-or-more consecutive entries of the same groupable kind
+	// (entryToolCall, entryError) get folded into a single bordered
+	// group with internal separators — Bootstrap list-group style.
+	// Solo entries take the existing single-card path so the visual
+	// language for one tool / one error is unchanged.
+	wrote := false
+	for i := 0; i < len(entries); {
+		kind := entries[i].kind
+		runEnd := i + 1
+		if isGroupableKind(kind) {
+			for runEnd < len(entries) && entries[runEnd].kind == kind {
+				runEnd++
+			}
+		}
+		if wrote {
 			sb.WriteString("\n")
 		}
-		sb.WriteString(renderEntry(e, md, width))
+		switch {
+		case runEnd-i >= 2 && kind == entryToolCall:
+			sb.WriteString(renderToolCardGroup(entries[i:runEnd], width))
+		case runEnd-i >= 2 && kind == entryError:
+			sb.WriteString(renderErrorCardGroup(entries[i:runEnd], width))
+		default:
+			sb.WriteString(renderEntry(entries[i], md, width))
+			runEnd = i + 1 // single-entry path: advance by one
+		}
+		wrote = true
+		i = runEnd
 	}
 	if liveText != "" {
-		if len(entries) > 0 {
+		if wrote {
 			sb.WriteString("\n")
 		}
 		sb.WriteString(renderAssistantLive(liveText, width))
+		wrote = true
 	}
 	if thinkingRow != "" {
-		if len(entries) > 0 || liveText != "" {
+		if wrote {
 			sb.WriteString("\n")
 		}
 		sb.WriteString(thinkingRow)
 	}
 	return sb.String()
+}
+
+// isGroupableKind reports whether consecutive entries of the given
+// kind should be folded into a single bordered group. Only tool calls
+// and errors qualify today — user/assistant turns are conversational
+// content (own avatar, own markdown rendering) and don't benefit from
+// being boxed together.
+func isGroupableKind(k entryKind) bool {
+	switch k {
+	case entryToolCall, entryError:
+		return true
+	}
+	return false
 }
 
 // renderEntry styles one transcript entry. User and assistant turns use

@@ -80,3 +80,98 @@ func TestRenderErrorCard_ContainsLabelAndDetail(t *testing.T) {
 		t.Errorf("card missing detail:\n%s", out)
 	}
 }
+
+// TestRenderErrorCardGroup_GroupsConsecutiveEntries pins the v0.7.6
+// behavior: 2+ error entries collapse into a single rounded-border
+// card with internal `─` separators (Bootstrap list-group style),
+// shrinking the vertical real estate consumed by a flurry of
+// back-to-back errors. The user explicitly asked for this layout
+// over the previous N×3-row stack of independent boxes.
+func TestRenderErrorCardGroup_GroupsConsecutiveEntries(t *testing.T) {
+	es := []transcriptEntry{
+		{kind: entryError, ts: time.Now(), text: "openrouter: HTTP 400: No models provided"},
+		{kind: entryError, ts: time.Now(), text: "supervisor: spawn refused, frame mode 'solo'"},
+		{kind: entryError, ts: time.Now(), text: "loop: budget exceeded"},
+	}
+	out := renderErrorCardGroup(es, 100)
+
+	// Each row's label must survive into the group output.
+	for _, want := range []string{"HTTP 400", "spawn refused", "budget exceeded"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("group missing %q:\n%s", want, out)
+		}
+	}
+	// The ✗ glyph appears N times (one per row) — not just once.
+	if got := strings.Count(out, "✗"); got != len(es) {
+		t.Errorf("✗ count = %d, want %d (one per row)", got, len(es))
+	}
+	// Output shape: 2 border rows (top, bottom) + N content rows +
+	// (N-1) internal separator rows. A separator row looks like
+	// "│ ───…─── │"; we identify it by the `│` edges paired with a
+	// long dash run AND no glyph-bearing payload (✗ would mark a
+	// content row).
+	lines := strings.Split(out, "\n")
+	wantLines := 2 + len(es) + (len(es) - 1)
+	if got := len(lines); got != wantLines {
+		t.Errorf("output line count = %d, want %d (2 borders + %d content + %d separators):\n%s",
+			got, wantLines, len(es), len(es)-1, out)
+	}
+	separatorRows := 0
+	for _, ln := range lines {
+		stripped := stripChatANSI(ln)
+		if !strings.Contains(stripped, "│") {
+			continue
+		}
+		if strings.Contains(stripped, "✗") {
+			continue
+		}
+		if strings.Contains(stripped, "──") {
+			separatorRows++
+		}
+	}
+	if want := len(es) - 1; separatorRows != want {
+		t.Errorf("internal separator rows = %d, want %d", separatorRows, want)
+	}
+}
+
+// TestRenderErrorCardGroup_SingleEntryMatchesLegacyCard guards the
+// "one error looks the same" contract: a 1-element group must
+// produce the identical output as the legacy single-card render so
+// the user sees zero visual change for solo errors.
+func TestRenderErrorCardGroup_SingleEntryMatchesLegacyCard(t *testing.T) {
+	e := transcriptEntry{
+		kind: entryError,
+		ts:   time.Now(),
+		text: "openrouter: rate limited",
+	}
+	group := renderErrorCardGroup([]transcriptEntry{e}, 100)
+	solo := renderErrorCard(e, 100)
+	if group != solo {
+		t.Errorf("solo group differs from single-card render:\ngroup:\n%s\nsolo:\n%s", group, solo)
+	}
+}
+
+// stripChatANSI removes ANSI escapes for snapshot-style assertions.
+// Local to this test file; the chat package already has multiple
+// strippers but they live in test files we don't share state with.
+func stripChatANSI(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	for i := 0; i < len(s); {
+		if s[i] == 0x1b && i+1 < len(s) && s[i+1] == '[' {
+			j := i + 2
+			for j < len(s) {
+				c := s[j]
+				j++
+				if c >= 0x40 && c <= 0x7e {
+					break
+				}
+			}
+			i = j
+			continue
+		}
+		b.WriteByte(s[i])
+		i++
+	}
+	return b.String()
+}
