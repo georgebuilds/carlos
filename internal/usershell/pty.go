@@ -111,8 +111,12 @@ func (ptyRunner) Start(ctx context.Context, command, cwd string) (io.Reader, fun
 		close(done)
 		// Always close the tty after wait returns so the reader
 		// goroutine sees EOF. Without this it parks on a pty fd
-		// no one will ever write to again.
-		_ = tty.Close()
+		// no one will ever write to again. A Close error usually
+		// means a leaked file descriptor — surface it so the
+		// pattern shows up in operator logs.
+		if closeErr := tty.Close(); closeErr != nil {
+			warnf("pty close (pid %d): %v", cmd.Process.Pid, closeErr)
+		}
 		if err == nil {
 			return cmd.ProcessState.ExitCode(), nil
 		}

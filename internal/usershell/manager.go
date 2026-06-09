@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sync"
@@ -21,6 +22,28 @@ import (
 // the "felt right" default - enough for `cargo test`, `npm run dev`,
 // and a `tail -f` simultaneously without the user losing track.
 const DefaultBackgroundParallelism = 3
+
+// OutputBufferDroppedMarker is the synthetic chunk published when the
+// per-job ring buffer's Write returns an error. The chat view renders
+// this verbatim so the user knows their stream was truncated rather
+// than silently disappearing.
+const OutputBufferDroppedMarker = "\n[output buffer dropped]\n"
+
+// finalizeAppendEndTimeout bounds the per-job End-event write so a
+// stuck SQLite log can't leave the runJob goroutine wedged forever.
+const finalizeAppendEndTimeout = 5 * time.Second
+
+// errLog is where this package writes warning-level surface for the
+// silent-error sites (setOutcome invalid transition, AppendEnd failure,
+// tty.Close failure, ring-buffer write failure). Tests swap this for a
+// bytes.Buffer to assert the surface fires.
+var errLog io.Writer = os.Stderr
+
+// warnf writes a single warning line to errLog using the
+// "carlos usershell: ..." prefix convention shared with internal/daemon.
+func warnf(format string, args ...any) {
+	fmt.Fprintf(errLog, "carlos usershell: "+format+"\n", args...)
+}
 
 // Options configures a Manager. All fields have sane defaults; nil
 // Options is equivalent to an empty struct.
@@ -115,6 +138,11 @@ type Manager struct {
 	// closed flags whether Close has been called; further Submit
 	// calls return ErrClosed.
 	closed bool
+
+	// outputWriterFor is an unexported test hook that lets tests wrap
+	// the per-job ring buffer with a writer that returns errors. nil
+	// in production - the reader goroutine writes straight to rb.
+	outputWriterFor func(jobID string, rb *RingBuffer) io.Writer
 
 	// subscribers is the in-process fan-out for state changes. Each
 	// Subscribe call appends a channel; publish sends best-effort
@@ -341,7 +369,22 @@ func (m *Manager) runJob(ctx context.Context, job *Job, rb *RingBuffer) {
 		return
 	}
 
-	// Reader goroutine: copy PTY → ring buffer + publish chunks.
+	// outputW is the sink the reader goroutine writes to. Production
+	// hands it the ring buffer directly; tests can wrap via
+	// outputWriterFor to inject Write errors and exercise the
+	// truncation-marker path.
+	var outputW io.Writer = rb
+	if m.outputWriterFor != nil {
+		outputW = m.outputWriterFor(job.ID, rb)
+	}
+
+	// Reader goroutine: copy PTY → ring buffer + publish chunks. If
+	// the ring buffer's Write ever returns an error the ring is
+	// wedged (or a test stub forced it) — there's no point reading
+	// more bytes we can't store, so we publish a synthetic
+	// "[output buffer dropped]" marker so the chat view can show the
+	// truncation explicitly and then break the loop. The reader
+	// goroutine MUST NOT crash here: finalize still needs to run.
 	readDone := make(chan struct{})
 	go func() {
 		defer close(readDone)
@@ -349,7 +392,12 @@ func (m *Manager) runJob(ctx context.Context, job *Job, rb *RingBuffer) {
 		for {
 			n, err := reader.Read(buf)
 			if n > 0 {
-				_, _ = rb.Write(buf[:n])
+				if _, werr := outputW.Write(buf[:n]); werr != nil {
+					warnf("ring buffer write for job %s failed: %v", job.ID, werr)
+					marker := []byte(OutputBufferDroppedMarker)
+					m.publish(Update{JobID: job.ID, State: StateRunning, Output: marker})
+					return
+				}
 				chunk := make([]byte, n)
 				copy(chunk, buf[:n])
 				m.publish(Update{JobID: job.ID, State: StateRunning, Output: chunk})
@@ -427,8 +475,13 @@ func (m *Manager) finalize(job *Job, rb *RingBuffer, next State, exit int, failE
 	}
 
 	// Atomic-with-the-lock outcome stamp so the End event observes
-	// EndedAt + ExitCode internally consistent.
-	_ = job.setOutcome(next, exit, failErr)
+	// EndedAt + ExitCode internally consistent. An invalid-transition
+	// error here means the job hit a terminal state twice — a state-
+	// machine bug worth surfacing (not crashing on, the job is
+	// already terminal so the user-visible state stays consistent).
+	if err := job.setOutcome(next, exit, failErr); err != nil {
+		warnf("setOutcome for job %s (-> %s, exit %d): %v", job.ID, next, exit, err)
+	}
 	snap := job.Snapshot()
 
 	if m.log != nil {
@@ -437,7 +490,11 @@ func (m *Manager) finalize(job *Job, rb *RingBuffer, next State, exit int, failE
 		if failErr != nil {
 			failMsg = failErr.Error()
 		}
-		_, _ = AppendEnd(context.Background(), m.log, EndPayload{
+		// Bound the End-event write so a wedged log can't strand the
+		// runJob goroutine. context.Background() previously meant a
+		// stuck SQLite write would block here indefinitely.
+		appendCtx, cancel := context.WithTimeout(context.Background(), finalizeAppendEndTimeout)
+		_, err := AppendEnd(appendCtx, m.log, EndPayload{
 			JobID:          job.ID,
 			ExitCode:       exit,
 			Duration:       snap.Duration(),
@@ -448,6 +505,10 @@ func (m *Manager) finalize(job *Job, rb *RingBuffer, next State, exit int, failE
 			TruncatedBytes: dropped,
 			OutputPath:     outputPath,
 		})
+		cancel()
+		if err != nil {
+			warnf("AppendEnd for job %s: %v", job.ID, err)
+		}
 	}
 
 	m.publishState(job.ID, next)
