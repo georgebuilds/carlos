@@ -11,8 +11,10 @@ import (
 // gateways (Telegram, Discord, scheduled runs) but the TUI works without
 // it, so opt-in keeps the surface area minimal.
 //
-// Phase 0.5 ONLY records the user's choice into config. The actual
-// launchd/systemd install lives in Phase 8 - see TODO note in Flow.View.
+// This screen ONLY records the user's choice into config. The actual
+// launchd/systemd unit install runs behind `carlos daemon enable` (see
+// internal/daemon/unit_macos.go + unit_linux.go); runtime_tui.go prints
+// a hint pointing the user there when they opt in here.
 type daemonModel struct {
 	choice  bool // current toggle; default false (or the preloaded initial)
 	decided bool // true once user confirmed
