@@ -192,6 +192,19 @@ type Supervisor struct {
 	// SetRunBudget installs both. nil = no enforcement (legacy default).
 	parentTracker *Tracker
 
+	// Phase F-12 (Fix 4) sub-agent approver inheritance. When a parent
+	// in frame X spawns a child, the child's tool calls must hit the
+	// same cross-frame WRITE detector the parent's calls hit; otherwise
+	// the parent could bypass the cross-frame prompt by saying "delegate
+	// this write to a subagent". cmd/carlos calls SetSubAgentApprover
+	// with the same *LayeredApprover the parent loop uses, so the
+	// child's loop sees the live activeFrame + subtree map (the approver
+	// is mutex-guarded on SetFrameSubtrees so mid-conversation /frame
+	// switches propagate to in-flight children too). nil falls back to
+	// AutoApprover{}, preserving the pre-fix behaviour for tests and any
+	// caller that doesn't wire one.
+	subAgentApprover Approver
+
 	// Phase 7 slice 7e/7f: per-agent worktree handles. The foreground
 	// (cmd/carlos --worktree) opens a sandbox.Worktree for a session
 	// and registers it under the top-level agent id so the apply
@@ -792,6 +805,33 @@ func (s *Supervisor) effectiveSpawnCapLocked() int {
 func (s *Supervisor) SetRestartIntensity(maxR int, maxT time.Duration) {
 	s.restartMaxR = maxR
 	s.restartMaxT = maxT
+}
+
+// SetSubAgentApprover installs the Approver every Spawn-launched child
+// loop should use in place of the legacy AutoApprover. cmd/carlos calls
+// this at session boot with the parent's LayeredApprover so a child's
+// write/edit calls flow through the same Phase F-12 cross-frame
+// detector. The supervisor stores the Approver by reference; subsequent
+// LayeredApprover.SetFrameSubtrees calls (e.g. on /frame switch)
+// propagate to every in-flight child automatically because the loop
+// re-invokes ApproveToolCall on the same instance.
+//
+// Pass nil to restore the AutoApprover fallback (tests + the headless
+// dispatch path that runs without a layered approver). The sub-agent
+// approver does NOT affect the parent loop's approver — the parent
+// remains wired through chatglue/loop options.
+func (s *Supervisor) SetSubAgentApprover(a Approver) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.subAgentApprover = a
+}
+
+// SubAgentApprover returns the currently-installed sub-agent approver,
+// or nil if none has been set. Exposed for tests + diagnostic surfaces.
+func (s *Supervisor) SubAgentApprover() Approver {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.subAgentApprover
 }
 
 // SetRunBudget installs the supervisor's run-wide Tracker. After this

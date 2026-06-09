@@ -268,6 +268,12 @@ func runHeadless(prompt string, opts pleaseOptions) error {
 		layered.SetFrameSubtrees(activeFrameName, subtrees)
 	}
 	approver = layered
+	// Phase F-12 (Fix 4): subagents inherit the parent's layered
+	// approver. A `carlos please` invocation that delegates via the
+	// `agent` tool would otherwise run the child under AutoApprover,
+	// bypassing the cross-frame WRITE prompt entirely. Same wiring as
+	// the chat path.
+	sup.SetSubAgentApprover(layered)
 
 	// Surface which provider/model we're using on stderr so scripts
 	// and users both see it. Skipped when the live status panel is

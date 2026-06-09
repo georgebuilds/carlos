@@ -299,11 +299,26 @@ func (s *Supervisor) runChild(ctx context.Context, child *runningChild, p provid
 	if childModel == "" {
 		childModel = s.DefaultModel()
 	}
+	// Phase F-12 (Fix 4): the child must run under the parent's approver
+	// when one is wired, so cross-frame WRITE attempts the child issues
+	// trip the same Phase F-12 prompt the parent would have seen. Without
+	// this, a parent in frame `work` could delegate "write to personal"
+	// to a child and the child's AutoApprover would silently let it
+	// through. The supervisor stores the approver by reference (typically
+	// the cmd/carlos *LayeredApprover whose active frame + subtree map
+	// stay live across /frame switch), so an in-flight child sees the
+	// up-to-date frame contract automatically. nil falls back to the
+	// legacy AutoApprover so existing tests that never wire one keep
+	// working unchanged.
+	childApprover := s.SubAgentApprover()
+	if childApprover == nil {
+		childApprover = AutoApprover{}
+	}
 	messages, runErr := Run(ctx, p, reg, LoopOptions{
 		Model:         childModel,
 		System:        contract.System,
 		Tools:         specs,
-		Approver:      AutoApprover{},
+		Approver:      childApprover,
 		MaxIterations: maxTurns,
 		// Wire the child's steering channel so Supervisor.Steer can
 		// nudge this loop at the next tool-call boundary.

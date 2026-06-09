@@ -264,6 +264,15 @@ func runDefault(cfg *config.Config, sessionID string) error {
 		}
 		layered.SetFrameSubtrees(activeName, subtrees)
 	}
+	// Phase F-12 (Fix 4): subagents inherit the parent's layered
+	// approver so a child writing into a non-active frame's subtree
+	// trips the same cross-frame WRITE prompt the parent would have
+	// seen. Without this the child runs under AutoApprover and a parent
+	// in frame `work` could delegate a write into `personal` with no
+	// audit hit. The supervisor stores the approver by reference, so the
+	// SetFrameSubtrees call on /frame switch propagates to in-flight
+	// children automatically.
+	sup.SetSubAgentApprover(layered)
 	// Identity prompt: tells the model it is carlos (Gemini in
 	// particular otherwise answers "I am Gemini" to "what's your
 	// name?"). Also folds in AGENTS.md / CLAUDE.md from cwd up to
