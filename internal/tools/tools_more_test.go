@@ -380,8 +380,10 @@ func (f *fakeTool) Schema() []byte                                     { return 
 func (f *fakeTool) Execute(context.Context, []byte) ([]byte, error)    { return f.out, f.err }
 
 // TestCappedWriter_OverflowDiscards confirms the cappedWriter caps the
-// buffer at .max but still reports len(p) so the io.Copy loop never
-// stalls.
+// payload at .max but still reports len(p) so the io.Copy loop never
+// stalls. On first overflow a truncation sentinel is appended (matching
+// the non-PTY path's convention) so the model can tell a clean finish
+// apart from a silent cut.
 func TestCappedWriter_OverflowDiscards(t *testing.T) {
 	buf := &bytes.Buffer{}
 	cw := &cappedWriter{buf: buf, max: 10}
@@ -392,13 +394,25 @@ func TestCappedWriter_OverflowDiscards(t *testing.T) {
 	if n != 16 {
 		t.Errorf("Write should report full len; got %d", n)
 	}
-	if buf.Len() != 10 {
-		t.Errorf("buf should be capped at 10; got %d", buf.Len())
+	wantMarker := truncationMarker(10)
+	wantLen := 10 + len(wantMarker)
+	if buf.Len() != wantLen {
+		t.Errorf("buf len = %d, want %d (cap 10 + marker %d)", buf.Len(), wantLen, len(wantMarker))
 	}
-	// Subsequent write should also report success without growing buf.
+	if !bytes.HasPrefix(buf.Bytes(), []byte("0123456789")) {
+		t.Errorf("buf payload mismatch: %q", buf.Bytes())
+	}
+	if !bytes.HasSuffix(buf.Bytes(), []byte(wantMarker)) {
+		t.Errorf("buf missing truncation marker: %q", buf.Bytes())
+	}
+	// Subsequent write should report success without re-emitting the
+	// marker or growing the payload region.
 	n, err = cw.Write([]byte("more"))
-	if err != nil || n != 4 || buf.Len() != 10 {
-		t.Errorf("post-cap write: n=%d err=%v buflen=%d", n, err, buf.Len())
+	if err != nil || n != 4 || buf.Len() != wantLen {
+		t.Errorf("post-cap write: n=%d err=%v buflen=%d want=%d", n, err, buf.Len(), wantLen)
+	}
+	if c := bytes.Count(buf.Bytes(), []byte(wantMarker)); c != 1 {
+		t.Errorf("marker appeared %d times after second write, want exactly 1", c)
 	}
 }
 

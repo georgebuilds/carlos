@@ -234,21 +234,55 @@ func (t *BashTool) runPTY(ctx context.Context, cmd *exec.Cmd, buf *bytes.Buffer,
 // cappedWriter writes up to `max` bytes into buf, then silently
 // discards the rest. Necessary in PTY mode so we never block the child
 // on a stalled io.Copy.
+//
+// When the cap is first reached, cappedWriter appends a one-shot
+// truncation marker mirroring the non-PTY path's convention so the model
+// can tell "command finished" apart from "output was cut". The marker is
+// emitted exactly once and its bytes do NOT count toward `max` (they sit
+// after the cap as a sentinel).
 type cappedWriter struct {
-	buf *bytes.Buffer
-	max int
+	buf         *bytes.Buffer
+	max         int
+	markerWrote bool
+}
+
+// truncationMarker is the sentinel cappedWriter writes once on overflow.
+// Chosen to match the non-PTY path's style (`\n[truncated, ...]\n`) so
+// downstream log readers and the model see the same shape regardless of
+// PTY mode. The cap is interpolated rather than the discarded byte count
+// because cappedWriter can't faithfully report the true discarded total
+// across subsequent writes without recording it for a marker we've
+// promised to emit only once.
+func truncationMarker(cap int) string {
+	return fmt.Sprintf("\n[truncated, output capped at %d bytes]\n", cap)
 }
 
 func (w *cappedWriter) Write(p []byte) (int, error) {
 	remaining := w.max - w.buf.Len()
 	if remaining <= 0 {
+		w.writeMarkerOnce()
 		return len(p), nil
 	}
 	if len(p) <= remaining {
 		return w.buf.Write(p)
 	}
 	w.buf.Write(p[:remaining])
+	w.writeMarkerOnce()
 	return len(p), nil
+}
+
+// writeMarkerOnce appends the truncation sentinel to buf the first time
+// the cap is exceeded. Subsequent calls are no-ops so repeated overflows
+// don't duplicate the marker. The marker bytes sit beyond `max` and are
+// not counted against the cap, so a follow-on Write that finds
+// `buf.Len() > max` still routes to the discard path rather than
+// re-triggering the marker (markerWrote stays true).
+func (w *cappedWriter) writeMarkerOnce() {
+	if w.markerWrote {
+		return
+	}
+	w.markerWrote = true
+	w.buf.WriteString(truncationMarker(w.max))
 }
 
 // Compile-time check: BashTool implements Tool.

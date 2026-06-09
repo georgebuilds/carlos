@@ -150,3 +150,103 @@ func TestBash_PTYTimeout(t *testing.T) {
 		t.Errorf("PTY output missing kill marker: %q", out)
 	}
 }
+
+// TestCappedWriter_OverflowEmitsMarkerOnce drives the PTY-mode capped
+// sink directly: write past the cap in chunks, confirm the buffer ends
+// with exactly `cap` bytes of payload + the truncation sentinel, and
+// confirm a follow-on Write past the cap does NOT duplicate the marker.
+// This is the regression test for the silent-discard bug at bash.go:227.
+func TestCappedWriter_OverflowEmitsMarkerOnce(t *testing.T) {
+	const cap = 32
+	var buf bytes.Buffer
+	cw := &cappedWriter{buf: &buf, max: cap}
+
+	// Write 100 bytes in chunks to exercise the multi-Write path. Chunks
+	// chosen so the cap is crossed mid-chunk (the second write) and
+	// subsequent chunks land in the discard branch.
+	chunks := [][]byte{
+		bytes.Repeat([]byte("A"), 20),
+		bytes.Repeat([]byte("B"), 20), // crosses cap inside this chunk
+		bytes.Repeat([]byte("C"), 20),
+		bytes.Repeat([]byte("D"), 20),
+		bytes.Repeat([]byte("E"), 20),
+	}
+	totalWritten := 0
+	for _, c := range chunks {
+		n, err := cw.Write(c)
+		if err != nil {
+			t.Fatalf("Write: %v", err)
+		}
+		if n != len(c) {
+			t.Errorf("Write returned %d, want %d (cappedWriter must report full consumption to keep io.Copy draining)", n, len(c))
+		}
+		totalWritten += len(c)
+	}
+	if totalWritten != 100 {
+		t.Fatalf("sanity: expected to write 100 bytes, wrote %d", totalWritten)
+	}
+
+	wantPayload := bytes.Repeat([]byte("A"), 20)
+	wantPayload = append(wantPayload, bytes.Repeat([]byte("B"), 12)...)
+	wantMarker := truncationMarker(cap)
+	want := append(append([]byte{}, wantPayload...), []byte(wantMarker)...)
+
+	if !bytes.Equal(buf.Bytes(), want) {
+		t.Errorf("buffer mismatch\n got: %q\nwant: %q", buf.Bytes(), want)
+	}
+	if got := len(buf.Bytes()); got != cap+len(wantMarker) {
+		t.Errorf("buffer length = %d, want %d (cap %d + marker %d)", got, cap+len(wantMarker), cap, len(wantMarker))
+	}
+	if c := bytes.Count(buf.Bytes(), []byte(wantMarker)); c != 1 {
+		t.Errorf("marker appeared %d times, want exactly 1", c)
+	}
+}
+
+// TestCappedWriter_NoMarkerWhenWithinCap confirms cappedWriter stays
+// silent when the cap is never reached - the marker only fires on real
+// overflow so we don't decorate well-bounded output with noise.
+func TestCappedWriter_NoMarkerWhenWithinCap(t *testing.T) {
+	const cap = 64
+	var buf bytes.Buffer
+	cw := &cappedWriter{buf: &buf, max: cap}
+
+	payload := []byte("hello world")
+	if _, err := cw.Write(payload); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	if !bytes.Equal(buf.Bytes(), payload) {
+		t.Errorf("buffer = %q, want %q", buf.Bytes(), payload)
+	}
+	if bytes.Contains(buf.Bytes(), []byte("truncated")) {
+		t.Errorf("unexpected truncation marker on under-cap write: %q", buf.Bytes())
+	}
+}
+
+// TestCappedWriter_ExactFillNoMarker confirms a write that fills the
+// buffer to exactly `cap` (no overflow) does not emit the marker.
+// Boundary case: marker should only fire when bytes actually overflow.
+func TestCappedWriter_ExactFillNoMarker(t *testing.T) {
+	const cap = 16
+	var buf bytes.Buffer
+	cw := &cappedWriter{buf: &buf, max: cap}
+
+	payload := bytes.Repeat([]byte("x"), cap)
+	if _, err := cw.Write(payload); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	if !bytes.Equal(buf.Bytes(), payload) {
+		t.Errorf("buffer = %q, want %q", buf.Bytes(), payload)
+	}
+	if bytes.Contains(buf.Bytes(), []byte("truncated")) {
+		t.Errorf("unexpected marker on exact-fill write: %q", buf.Bytes())
+	}
+
+	// Now overflow by one byte across a second Write — marker should fire.
+	if _, err := cw.Write([]byte("y")); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	wantMarker := truncationMarker(cap)
+	if !bytes.HasSuffix(buf.Bytes(), []byte(wantMarker)) {
+		t.Errorf("expected buffer to end with marker, got: %q", buf.Bytes())
+	}
+}
