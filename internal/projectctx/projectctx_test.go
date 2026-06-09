@@ -327,6 +327,93 @@ func TestExpandIncludesMissingFile(t *testing.T) {
 	}
 }
 
+func TestLoad_IncludeExpansionErrorEmitsStub(t *testing.T) {
+	// When an @-include fails (here: target file doesn't exist), the
+	// loader must surface the failure rather than silently writing
+	// partial content:
+	//   - the inline `[project context: include failed - ...]` stub from
+	//     expandIncludes is preserved
+	//   - a trailing `[project context: include expand failed - ...]`
+	//     summary stub is appended after the expanded content
+	//   - the prefix content BEFORE the failed include is still present
+	//   - the LoadedFile is flagged Partial=true so callers can surface
+	//     the degraded state
+	//   - the overall Load call does not return an error or panic
+	root := t.TempDir()
+	markGitRoot(t, root)
+	writeFile(t, filepath.Join(root, "AGENTS.md"),
+		"PREFIX-CONTENT\n@./missing.md\nSUFFIX-CONTENT\n")
+
+	ctx, err := LoadFromCwd(root)
+	if err != nil {
+		t.Fatalf("LoadFromCwd: %v", err)
+	}
+	if ctx == nil {
+		t.Fatal("ctx is nil")
+	}
+
+	// Prefix content before the broken include must still be present
+	// (verifies we didn't drop the partial expansion).
+	if !strings.Contains(ctx.Combined, "PREFIX-CONTENT") {
+		t.Errorf("prefix content lost on include failure:\n%s", ctx.Combined)
+	}
+	// Suffix after the broken include should also be present — the
+	// individual include failure is non-fatal; expansion continues.
+	if !strings.Contains(ctx.Combined, "SUFFIX-CONTENT") {
+		t.Errorf("suffix content lost on include failure:\n%s", ctx.Combined)
+	}
+
+	// Inline stub from expandIncludes (the per-line marker).
+	if !strings.Contains(ctx.Combined, "[project context: include failed - ./missing.md") {
+		t.Errorf("missing inline include-failed stub:\n%s", ctx.Combined)
+	}
+	// Trailing summary stub appended by Load.
+	if !strings.Contains(ctx.Combined, "[project context: include expand failed - AGENTS.md") {
+		t.Errorf("missing trailing 'include expand failed' summary stub:\n%s", ctx.Combined)
+	}
+
+	// LoadedFile.Partial must reflect the degraded state.
+	if len(ctx.Files) != 1 {
+		t.Fatalf("Files: want 1 got %d", len(ctx.Files))
+	}
+	if !ctx.Files[0].Partial {
+		t.Errorf("LoadedFile.Partial: want true on include failure, got false")
+	}
+
+	// The summary stub must appear AFTER the prefix content in reading
+	// order, so the model reads the partial output and then the marker.
+	prefixIdx := strings.Index(ctx.Combined, "PREFIX-CONTENT")
+	stubIdx := strings.Index(ctx.Combined, "include expand failed")
+	if prefixIdx < 0 || stubIdx < 0 || stubIdx <= prefixIdx {
+		t.Errorf("expected summary stub after prefix; prefixIdx=%d stubIdx=%d in:\n%s",
+			prefixIdx, stubIdx, ctx.Combined)
+	}
+}
+
+func TestLoad_IncludeExpansionHappyPathNotPartial(t *testing.T) {
+	// Sanity check: a successful expansion must NOT set Partial and must
+	// NOT emit a trailing 'include expand failed' stub. Guards the new
+	// flag against regressing on happy-path loads.
+	root := t.TempDir()
+	markGitRoot(t, root)
+	writeFile(t, filepath.Join(root, "AGENTS.md"), "main\n@./inc.md\ntail\n")
+	writeFile(t, filepath.Join(root, "inc.md"), "INCLUDED\n")
+
+	ctx, err := LoadFromCwd(root)
+	if err != nil {
+		t.Fatalf("LoadFromCwd: %v", err)
+	}
+	if len(ctx.Files) != 1 {
+		t.Fatalf("Files: want 1 got %d", len(ctx.Files))
+	}
+	if ctx.Files[0].Partial {
+		t.Errorf("LoadedFile.Partial: want false on clean expansion, got true")
+	}
+	if strings.Contains(ctx.Combined, "include expand failed") {
+		t.Errorf("unexpected failure stub on clean expansion:\n%s", ctx.Combined)
+	}
+}
+
 func TestExpandIncludesIgnoresEmailLike(t *testing.T) {
 	// "@georgebuilds" in prose must NOT be treated as an include — would
 	// generate spurious "include failed" stubs in every README that

@@ -85,9 +85,17 @@ type DiscoveredFile struct {
 
 // LoadedFile pairs the discovery metadata with the file's expanded
 // content (after @-include resolution).
+//
+// Partial=true means at least one @-include in this file (or one of its
+// transitive includes) failed to resolve; the inline content includes
+// `[project context: include ...]` stubs marking the failure and a
+// trailing `[project context: include expand failed - ...]` summary
+// stub. Callers that want to surface the degraded state in UI can key
+// off this flag without reparsing Content.
 type LoadedFile struct {
 	DiscoveredFile
 	Content string
+	Partial bool
 }
 
 // Context is the assembled project-context bundle ready to prepend to
@@ -203,7 +211,10 @@ func isGitRoot(dir string) bool {
 //
 // Errors only on fatal IO. A failed @-include is replaced inline with a
 // "[project context: include failed - <path>: <err>]" stub so a single
-// missing file doesn't abort the whole load.
+// missing file doesn't abort the whole load; the enclosing file is
+// also marked LoadedFile.Partial=true, gets a trailing
+// "[project context: include expand failed - ...]" summary stub, and
+// the underlying warnings are mirrored to stderr.
 func Load(files []DiscoveredFile) (*Context, error) {
 	// Sort for output ordering: shallowest level FIRST (parent context
 	// comes before child context, so closest-to-cwd conventions land
@@ -239,12 +250,32 @@ func Load(files []DiscoveredFile) (*Context, error) {
 		}
 
 		seen := map[string]bool{df.Path: true}
-		expanded, _ := expandIncludes(string(raw), filepath.Dir(df.Path), 0, MaxIncludeDepth, seen)
+		expanded, warnings := expandIncludes(string(raw), filepath.Dir(df.Path), 0, MaxIncludeDepth, seen)
+
+		// Surface include-expansion failures so the model sees a clearly-
+		// marked stub instead of silent partial content. Each warning is
+		// already mirrored as an inline `[project context: include ...]`
+		// stub by expandIncludes (read failures, depth caps, cycles); we
+		// add a trailing summary stub here so the failure is unmissable
+		// in the model's reading order and log to stderr for the operator.
+		partial := len(warnings) > 0
+		var failureStub string
+		if partial {
+			for _, w := range warnings {
+				fmt.Fprintf(os.Stderr, "projectctx: include expand %s: %s\n", df.RelPath, w)
+			}
+			// Join warnings into a single line so the trailing stub is one
+			// compact marker rather than a multi-line dump.
+			failureStub = fmt.Sprintf("[project context: include expand failed - %s: %s]\n", df.RelPath, strings.Join(warnings, "; "))
+		}
 
 		header := fmt.Sprintf("# [project context: %s]\n\n", df.RelPath)
 		section := header + expanded
 		if !strings.HasSuffix(section, "\n") {
 			section += "\n"
+		}
+		if failureStub != "" {
+			section += failureStub
 		}
 		section += "\n"
 
@@ -258,6 +289,7 @@ func Load(files []DiscoveredFile) (*Context, error) {
 			ctx.Files = append(ctx.Files, LoadedFile{
 				DiscoveredFile: df,
 				Content:        expanded,
+				Partial:        partial,
 			})
 			break
 		}
@@ -267,6 +299,7 @@ func Load(files []DiscoveredFile) (*Context, error) {
 		ctx.Files = append(ctx.Files, LoadedFile{
 			DiscoveredFile: df,
 			Content:        expanded,
+			Partial:        partial,
 		})
 	}
 
