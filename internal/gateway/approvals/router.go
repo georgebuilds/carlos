@@ -213,9 +213,8 @@ func (r *Router) poll(ctx context.Context, wg *sync.WaitGroup) {
 	pending, err := agent.ListPendingApprovals(ctx, r.log)
 	if err != nil {
 		// Transient DB error (e.g. ctx cancelled mid-query). The next
-		// tick will retry. We don't have a structured logger here; the
-		// broker doesn't either, so we silently drop. Future: wire a
-		// *slog.Logger through Config.
+		// tick will retry. We don't have a structured logger here, so
+		// we silently drop.
 		return
 	}
 	stillPending := make(map[string]struct{}, len(pending))
