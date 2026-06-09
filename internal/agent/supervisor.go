@@ -510,16 +510,20 @@ func (s *Supervisor) Steer(id, message string) error {
 		return ErrAgentNotFound
 	}
 	// Audit event first - the log is the source of truth, even if the
-	// runtime delivery drops on a full channel.
+	// runtime delivery drops on a full channel. An Append failure here
+	// is a real storage error (not the documented runtime-delivery drop
+	// that justifies the non-blocking send below), so surface it.
 	payload, _ := json.Marshal(struct {
 		Message string `json:"message"`
 	}{Message: message})
-	_, _ = s.log.Append(context.Background(), Event{
+	if _, err := s.log.Append(context.Background(), Event{
 		AgentID: id,
 		TS:      time.Now().UTC().Truncate(time.Millisecond),
 		Type:    EvtSteering,
 		Payload: payload,
-	})
+	}); err != nil {
+		return fmt.Errorf("supervisor.Steer: append audit event: %w", err)
+	}
 	// Non-blocking send: drop on full so we never wedge the supervisor.
 	select {
 	case child.steering <- message:

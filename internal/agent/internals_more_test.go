@@ -6,6 +6,7 @@ package agent
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -149,5 +150,46 @@ func TestRetryCount_TrimsStaleEntries(t *testing.T) {
 	s.mu.Unlock()
 	if got != 2 {
 		t.Errorf("retryCount = %d, want 2 (one stale entry trimmed)", got)
+	}
+}
+
+// TestSteer_AuditAppendFailureSurfaces pins the contract that an audit
+// log Append failure is a real storage error - distinct from the
+// non-blocking runtime-delivery drop documented at supervisor.go:523.
+// We register a fake child directly so we can drive Steer past the
+// child-not-found check, then close the event log so the next Append
+// fails. The earlier implementation swallowed this error with `_, _ =`;
+// the fix surfaces it via a wrapped error.
+func TestSteer_AuditAppendFailureSurfaces(t *testing.T) {
+	dir := t.TempDir()
+	log, err := OpenSQLiteEventLog(dir + "/state.db")
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	s := NewSupervisor(log, nil, nil)
+	defer s.Shutdown()
+
+	// Register a fake child so Steer reaches the Append call instead of
+	// returning ErrAgentNotFound.
+	s.mu.Lock()
+	s.children["fake"] = &runningChild{
+		id:       "fake",
+		cancel:   func() {},
+		done:     make(chan struct{}),
+		steering: make(chan string, 1),
+	}
+	s.mu.Unlock()
+
+	// Close the log so the next Append fails with "database is closed".
+	if err := log.Close(); err != nil {
+		t.Fatalf("close log: %v", err)
+	}
+
+	err = s.Steer("fake", "this should not be silently dropped")
+	if err == nil {
+		t.Fatal("Steer with closed audit log should return an error, got nil")
+	}
+	if msg := err.Error(); !strings.Contains(msg, "append audit event") {
+		t.Errorf("error %q missing 'append audit event' prefix", msg)
 	}
 }
