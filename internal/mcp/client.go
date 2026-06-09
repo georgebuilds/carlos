@@ -183,10 +183,18 @@ func marshalSchema(schema any) ([]byte, error) {
 // empty, or whitespace-only input is treated as an empty object so a
 // model that calls a no-arg tool with `null` or `""` doesn't trip the
 // JSON parser.
+//
+// Any other non-object shape (array, string, number, bool) is rejected
+// with a typed error so a malformed model response surfaces as a tool
+// failure instead of silently collapsing to {}, which would mask the
+// real bug from the operator.
 func parseArgs(input []byte) (map[string]any, error) {
 	trimmed := bytesTrimSpace(input)
 	if len(trimmed) == 0 || string(trimmed) == "null" {
 		return map[string]any{}, nil
+	}
+	if kind := jsonKind(trimmed); kind != "object" {
+		return nil, fmt.Errorf("expected JSON object, got %s", kind)
 	}
 	var args map[string]any
 	if err := json.Unmarshal(trimmed, &args); err != nil {
@@ -196,6 +204,31 @@ func parseArgs(input []byte) (map[string]any, error) {
 		args = map[string]any{}
 	}
 	return args, nil
+}
+
+// jsonKind classifies a trimmed JSON value by its first byte. Used to
+// label a parseArgs rejection with the shape the model actually sent
+// (e.g. "array", "string") instead of a generic unmarshal error.
+func jsonKind(trimmed []byte) string {
+	if len(trimmed) == 0 {
+		return "empty"
+	}
+	switch c := trimmed[0]; {
+	case c == '{':
+		return "object"
+	case c == '[':
+		return "array"
+	case c == '"':
+		return "string"
+	case c == '-' || (c >= '0' && c <= '9'):
+		return "number"
+	case c == 't' || c == 'f':
+		return "bool"
+	case c == 'n':
+		return "null"
+	default:
+		return "unknown"
+	}
 }
 
 // joinContent flattens a CallToolResult.Content slice into one string.
@@ -208,10 +241,17 @@ func joinContent(blocks []sdk.Content) string {
 		return ""
 	}
 	var b strings.Builder
-	for i, c := range blocks {
-		if i > 0 {
+	first := true
+	for _, c := range blocks {
+		// Skip nil entries so a server that emits a sparse Content
+		// slice (or a typed-nil block) doesn't panic the type switch.
+		if c == nil {
+			continue
+		}
+		if !first {
 			b.WriteByte('\n')
 		}
+		first = false
 		switch v := c.(type) {
 		case *sdk.TextContent:
 			b.WriteString(v.Text)
