@@ -136,6 +136,14 @@ const (
 	// Subscribe pump streams an output chunk. Renders as a styled
 	// block: prompt line, monospace output body, status badge.
 	entryUserShell
+	// entryError is a chatglue-surfaced loop or provider error
+	// (network blip, persist failure, model 5xx). chatglue emits
+	// these as EvtAssistantMessage events tagged with the
+	// chatglue.ErrorEventPrefix marker; applyEvent reroutes them
+	// here so they render in a bordered warn-color card instead of
+	// leaking through the regular assistant-turn renderer prefixed
+	// with "carlos: …" as a normal-looking reply.
+	entryError
 )
 
 // Model is the bubbletea Model for the single-agent chat view.
@@ -1049,6 +1057,18 @@ func (m *Model) applyEvent(ev agent.Event) {
 	case agent.EvtAssistantMessage:
 		var p agent.MessagePayload
 		_ = json.Unmarshal(ev.Payload, &p)
+		// chatglue surfaces loop / provider errors as EvtAssistantMessage
+		// tagged with chatglue.ErrorEventPrefix so this surface renders
+		// them as a bordered warn-color card instead of an avatar
+		// reply. We strip the marker before storing.
+		if rest, ok := stripErrorPrefix(p.Text); ok {
+			m.transcript = append(m.transcript, transcriptEntry{
+				kind: entryError,
+				ts:   ev.TS,
+				text: rest,
+			})
+			break
+		}
 		m.transcript = append(m.transcript, transcriptEntry{
 			kind: entryAssistantMessage,
 			ts:   ev.TS,
@@ -1763,6 +1783,23 @@ func slashModelLine(arg string) string {
 		parts = append(parts, fmt.Sprintf("%s%s=%s", mark, name, model))
 	}
 	return "configured: " + strings.Join(parts, "  ") + "   (* = default)"
+}
+
+// chatglueErrorPrefix mirrors chatglue.ErrorEventPrefix verbatim so
+// applyEvent can route tagged assistant messages to the error-card
+// renderer without importing chatglue (the dep graph already runs
+// chat → chatglue at startup; importing the other direction would
+// cycle).
+const chatglueErrorPrefix = "[carlos-error] "
+
+// stripErrorPrefix returns (text without the marker, true) when text
+// begins with chatglueErrorPrefix, or ("", false) otherwise. Single
+// purpose: keeps applyEvent's case statement readable.
+func stripErrorPrefix(text string) (string, bool) {
+	if strings.HasPrefix(text, chatglueErrorPrefix) {
+		return strings.TrimPrefix(text, chatglueErrorPrefix), true
+	}
+	return "", false
 }
 
 // absDuration returns d's absolute value. Used by the EvtUserMessage

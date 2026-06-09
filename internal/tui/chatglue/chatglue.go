@@ -377,13 +377,24 @@ func (l *Loop) persistAssistantTurn(ctx context.Context, text string) error {
 	return err
 }
 
-// surfaceError pushes the failure as both a live TextSource delta
-// (visible immediately) AND a sealed EvtAssistantMessage (visible
-// across reloads). Prefix marks the line as carlos-generated so the
-// user can tell it apart from a real model response.
+// ErrorEventPrefix marks an EvtAssistantMessage as a chatglue-
+// surfaced loop / provider error rather than a real model turn.
+// The chat package's applyEvent detects this marker and routes the
+// message to a bordered "error card" instead of the usual avatar +
+// markdown render. The bytes are deliberately ugly (square brackets
+// + a hyphen) so a real model is extremely unlikely to produce them
+// verbatim at the head of a reply.
+const ErrorEventPrefix = "[carlos-error] "
+
+// surfaceError persists a single sealed EvtAssistantMessage tagged
+// with [ErrorEventPrefix] so the chat surface renders it as an
+// error card instead of an assistant turn. Skipping the live
+// TextSource push means the user sees the error a tick later (once
+// the subscription pump delivers the event), but the trade is the
+// styled card vs. the prior raw "carlos: …" leak into the streaming
+// buffer.
 func (l *Loop) surfaceError(ctx context.Context, err error) {
-	msg := "carlos: " + err.Error()
-	l.source.Append(l.agentID, msg)
+	msg := ErrorEventPrefix + err.Error()
 	_ = l.persistAssistantTurn(ctx, msg)
 	l.source.Reset(l.agentID)
 }

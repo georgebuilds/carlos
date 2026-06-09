@@ -416,6 +416,92 @@ func (m *Model) renderFooter(w int) string {
 // Width tracks the inner chat box minus the box's own border
 // (Border = 2 cols; Padding = 0 - vertical real estate is precious
 // when the transcript shares the screen).
+// renderErrorCard paints a chatglue-surfaced loop / provider error
+// as a bordered warn-color card so it visually matches the tool-card
+// idiom (✗ glyph + label + brief detail) instead of leaking through
+// the regular avatar/markdown renderer prefixed with "carlos: …".
+//
+// Layout:
+//
+//	┌───────────────────────────────────────────────────────────┐
+//	│ ✗ openrouter · http2: timeout awaiting response header    │
+//	└───────────────────────────────────────────────────────────┘
+//
+// The first colon-separated segment of the error text is treated as
+// the "source" label (the head, e.g. "openrouter", "persist
+// assistant turn", "loop"); the rest becomes the body preview. This
+// is purely surface dressing — the full text remains on disk in the
+// event log for triage.
+func renderErrorCard(e transcriptEntry, width int) string {
+	const sideMargin = 4
+	totalW := width - sideMargin*2
+	if totalW < 30 {
+		totalW = 30
+	}
+	boxW := totalW - 2
+	contentW := boxW - 2
+	if contentW < 20 {
+		contentW = 20
+	}
+
+	label, detail := splitErrorHead(e.text)
+	if label == "" {
+		label = "error"
+	}
+
+	glyphStyle := lipgloss.NewStyle().Foreground(colorWarn).Bold(true)
+	nameStyle := lipgloss.NewStyle().Foreground(colorWarn).Bold(true)
+	sepStyle := lipgloss.NewStyle().Foreground(colorMuted)
+	mutedStyle := lipgloss.NewStyle().Foreground(colorMuted)
+
+	head := glyphStyle.Render("✗") + " " + nameStyle.Render(label)
+
+	var preview string
+	if detail != "" {
+		maxInputW := contentW - lipgloss.Width(head) - 4
+		if maxInputW >= 10 {
+			preview = sepStyle.Render(" · ") + mutedStyle.Render(oneLine(detail, maxInputW))
+		}
+	}
+
+	line := head + preview
+	rendered := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(colorWarn).
+		Padding(0, 1).
+		Width(boxW).
+		Render(line)
+
+	pad := strings.Repeat(" ", sideMargin)
+	rows := strings.Split(rendered, "\n")
+	for i := range rows {
+		rows[i] = pad + rows[i]
+	}
+	return strings.Join(rows, "\n")
+}
+
+// splitErrorHead picks a short "head" label out of a wrapped error
+// chain. We take everything before the last colon-space pair as the
+// source (e.g. "openrouter") and everything after as the body
+// preview. Falls back to (text, "") when there's no clear split, so
+// a short error still renders something readable.
+func splitErrorHead(text string) (label, detail string) {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return "", ""
+	}
+	// Walk left-to-right collecting colon-separated segments; the
+	// last segment is the actual error body, the segment immediately
+	// before is the closest source label.
+	parts := strings.Split(text, ": ")
+	if len(parts) == 1 {
+		return text, ""
+	}
+	label = parts[len(parts)-2]
+	detail = parts[len(parts)-1]
+	return label, detail
+}
+
 // renderToolCard is the bordered tool-call card. Single header row
 // inside a rounded box, in the tool's accent color (warn if errored):
 //
@@ -983,6 +1069,8 @@ func renderEntry(e transcriptEntry, md *glamour.TermRenderer, width int) string 
 		return body.Render(lipgloss.NewStyle().Foreground(colorMuted).Italic(true).Render("· " + e.text))
 	case entrySystemNote:
 		return body.Render(lipgloss.NewStyle().Foreground(colorWarn).Italic(true).Render("! " + e.text))
+	case entryError:
+		return renderErrorCard(e, width)
 	case entryResearchProgress:
 		// Phase 11 slice 11e: live progress line for a /research sub-
 		// agent. e.text is pre-formatted by formatResearchProgress so
