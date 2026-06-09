@@ -381,9 +381,11 @@ func TestStream_EmbeddedStreamErrorSurfacesAsEvent(t *testing.T) {
 	}
 }
 
-func TestStream_MalformedFrameDoesNotTearDownStream(t *testing.T) {
-	// One garbage frame should emit EventError + continue, NOT close the
-	// channel prematurely.
+func TestStream_MalformedFrameTerminatesStream(t *testing.T) {
+	// Post-quality-pass policy: a malformed frame surfaces ONE EventError
+	// and stops the stream. Continuing would feed downstream partial /
+	// garbage tokens that the agent loop can't detect. Frames after the
+	// bad one ("b" + stop) must NOT make it through.
 	body := strings.Join([]string{
 		`data: {"choices":[{"index":0,"delta":{"content":"a"}}]}`, ``,
 		`data: not-json-at-all`, ``,
@@ -397,21 +399,25 @@ func TestStream_MalformedFrameDoesNotTearDownStream(t *testing.T) {
 		t.Fatal(err)
 	}
 	var text strings.Builder
-	var sawErr bool
+	var errCount, stopCount int
 	for ev := range ch {
 		switch ev.Kind {
 		case providers.EventTextDelta:
 			text.WriteString(ev.Text)
 		case providers.EventError:
-			sawErr = true
+			errCount++
+		case providers.EventStopReason:
+			stopCount++
 		}
 	}
-	if !sawErr {
-		t.Error("expected EventError on malformed frame")
+	if errCount != 1 {
+		t.Errorf("error events = %d, want exactly 1", errCount)
 	}
-	// Both a and b should have made it through.
-	if text.String() != "ab" {
-		t.Errorf("text after recovery: %q", text.String())
+	if stopCount != 0 {
+		t.Errorf("stop events = %d, want 0 (stream must terminate before the next frame)", stopCount)
+	}
+	if text.String() != "a" {
+		t.Errorf("text after malformed = %q, want %q", text.String(), "a")
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,6 +12,12 @@ import (
 
 	"github.com/georgebuilds/carlos/internal/providers"
 )
+
+// errChunkMalformed terminates ParseSSE from the callback after we've
+// already surfaced the decode failure as an EventError. The cleanup
+// path below checks for this sentinel so it doesn't re-emit the same
+// error.
+var errChunkMalformed = errors.New("oacompat: malformed chunk")
 
 // Config carries per-provider knobs into Stream. Each field has a
 // behavior reason documented inline; provider clients populate this
@@ -85,9 +92,22 @@ func Stream(ctx context.Context, cfg Config, req providers.Request) (<-chan prov
 	}
 	if resp.StatusCode != http.StatusOK {
 		// Drain + close before returning so the connection can be reused.
-		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		// Cap at 64 KiB to bound memory; OpenAI / OpenRouter validation
+		// envelopes routinely exceed 4 KiB so a tight cap was hiding
+		// the real reason. Tag with a (truncated) marker so the operator
+		// knows there was more.
+		const errBodyCap = 64 * 1024
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, errBodyCap+1))
 		resp.Body.Close()
+		truncated := false
+		if len(b) > errBodyCap {
+			b = b[:errBodyCap]
+			truncated = true
+		}
 		msg := extractErrorMessage(b)
+		if truncated {
+			msg += " (truncated)"
+		}
 		return nil, fmt.Errorf("%s: HTTP %d: %s", cfg.Name, resp.StatusCode, msg)
 	}
 
@@ -211,15 +231,17 @@ func ProcessStream(
 
 		var chunk StreamChunk
 		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
-			// One malformed frame shouldn't tear down the stream;
-			// surface as an error event and continue. Scrub any
-			// model-name reveal first so identity framing stays
-			// carlos's.
+			// A malformed chunk corrupts the model's view of the
+			// turn (partial tokens, dangling tool_calls, etc.).
+			// Surface the decode failure once, then terminate the
+			// stream so the agent loop sees a hard failure instead
+			// of continuing to read potentially-garbage frames.
+			// Scrub any model-name reveal first.
 			emit(providers.Event{
 				Kind: providers.EventError,
 				Err:  providers.ScrubModelName(fmt.Errorf("%s: parse chunk: %w", errPrefix, err)),
 			})
-			return nil
+			return errChunkMalformed
 		}
 		// Server-side error embedded in the stream. Both OpenAI and
 		// OpenRouter use this when an upstream provider fails after
@@ -314,7 +336,7 @@ func ProcessStream(
 	// flush whatever we have so partial tool_calls aren't lost.
 	flushAllTools()
 
-	if parseErr != nil && !isContextCancellation(ctx, parseErr) {
+	if parseErr != nil && !isContextCancellation(ctx, parseErr) && !errors.Is(parseErr, errChunkMalformed) {
 		emit(providers.Event{Kind: providers.EventError, Err: providers.ScrubModelName(parseErr)})
 	}
 }

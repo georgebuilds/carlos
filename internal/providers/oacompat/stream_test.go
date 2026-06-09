@@ -2,6 +2,9 @@ package oacompat
 
 import (
 	"context"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -118,6 +121,107 @@ func TestProcessStream_MalformedFrameSurfacesError(t *testing.T) {
 	if !sawErr {
 		t.Error("malformed frame did not surface an EventError")
 	}
+}
+
+// TestProcessStream_MalformedFrameTerminatesStream pins the
+// hard-fail-on-malformed-chunk policy: a JSON decode failure mid-stream
+// must surface an EventError and then STOP reading. Continuing would
+// feed downstream partial / garbage tokens that the agent loop has no
+// way to detect.
+func TestProcessStream_MalformedFrameTerminatesStream(t *testing.T) {
+	// The stop frame after the malformed one MUST NOT be processed.
+	body := "data: not-json\n\n" +
+		"data: {\"choices\":[{\"finish_reason\":\"stop\"}]}\n\n" +
+		"data: [DONE]\n\n"
+	events := runProcessStream(t, body)
+
+	var errCount, stopCount int
+	for _, ev := range events {
+		switch ev.Kind {
+		case providers.EventError:
+			errCount++
+		case providers.EventStopReason:
+			stopCount++
+		}
+	}
+	if errCount != 1 {
+		t.Errorf("error events = %d, want exactly 1 (decode failure should not double-emit)", errCount)
+	}
+	if stopCount != 0 {
+		t.Errorf("stop events = %d, want 0 (stream must terminate before the next frame)", stopCount)
+	}
+}
+
+// TestStream_HTTPErrorBodyNotTruncatedAtFourKiB confirms the
+// post-quality-pass cap of 64 KiB on error response bodies: a 10 KiB
+// validation envelope must round-trip into the returned error
+// untruncated, where the previous 4 KiB cap would have lopped it.
+func TestStream_HTTPErrorBodyNotTruncatedAtFourKiB(t *testing.T) {
+	longDetail := strings.Repeat("x", 10*1024)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintf(w, `{"error":{"message":"validation failed: %s"}}`, longDetail)
+	}))
+	t.Cleanup(srv.Close)
+
+	cfg := Config{
+		Name:       "test",
+		BaseURL:    srv.URL,
+		Path:       "/v1/chat/completions",
+		APIKey:     "key",
+		HTTPClient: srv.Client(),
+	}
+	_, err := Stream(context.Background(), cfg, providers.Request{
+		Model:    "test-model",
+		Messages: []providers.Message{{Role: "user", Content: []providers.Block{{Kind: "text", Text: "hi"}}}},
+	})
+	if err == nil {
+		t.Fatal("want HTTP 400 error, got nil")
+	}
+	if !strings.Contains(err.Error(), longDetail) {
+		t.Errorf("error body lost the long-tail bytes; want %d-byte payload to round-trip in error, got: %v", len(longDetail), truncate(err.Error(), 200))
+	}
+	if strings.Contains(err.Error(), "(truncated)") {
+		t.Errorf("a 10 KiB body should fit under the 64 KiB cap; error = %v", truncate(err.Error(), 200))
+	}
+}
+
+// TestStream_HTTPErrorBodyMarkedTruncatedPastCap confirms the truncation
+// marker fires once a payload genuinely overflows the new 64 KiB cap.
+func TestStream_HTTPErrorBodyMarkedTruncatedPastCap(t *testing.T) {
+	tooLong := strings.Repeat("y", 65*1024)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintf(w, `{"error":{"message":"%s"}}`, tooLong)
+	}))
+	t.Cleanup(srv.Close)
+
+	cfg := Config{
+		Name:       "test",
+		BaseURL:    srv.URL,
+		Path:       "/v1/chat/completions",
+		APIKey:     "key",
+		HTTPClient: srv.Client(),
+	}
+	_, err := Stream(context.Background(), cfg, providers.Request{
+		Model:    "test-model",
+		Messages: []providers.Message{{Role: "user", Content: []providers.Block{{Kind: "text", Text: "hi"}}}},
+	})
+	if err == nil {
+		t.Fatal("want HTTP 400 error, got nil")
+	}
+	if !strings.Contains(err.Error(), "(truncated)") {
+		t.Errorf("oversize error body should be marked (truncated); error = %v", truncate(err.Error(), 200))
+	}
+}
+
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "..."
 }
 
 func TestProcessStream_DefensiveFlushOnEOF(t *testing.T) {
