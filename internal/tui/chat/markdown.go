@@ -37,21 +37,25 @@ const mdMinWidth = 24
 // renderAssistantMarkdown paints an assistant turn through glamour.
 // Layout:
 //
-//	🧢
-//	  Here is the answer.
+//	🧢: Here is the answer.
 //
-//	  • bullet one
-//	  • bullet two
+//	    • bullet one
+//	    • bullet two
 //
-//	  ┌────────────┐
-//	  │ code       │
-//	  └────────────┘
+//	    ┌────────────┐
+//	    │ code       │
+//	    └────────────┘
 //
-// The 🧢 avatar sits on its own row at column 0 so glamour owns the
-// full body indentation — fighting glamour's 2-space margin produces
-// double-indented bullets and code blocks. Stripping trailing
-// whitespace per line removes the background-fill padding glamour
-// adds, which would otherwise extend rows past the visible content.
+// The avatar sits inline with the first line of glamour's output,
+// matching the `👤: <text>` shape user messages use so a turn-pair
+// reads as one conversational beat. Glamour pads each line with 2
+// leading spaces (its default left margin); we strip those and
+// re-pad continuation rows under the avatar gutter so the body
+// aligns under itself instead of double-indenting.
+//
+// Stripping trailing whitespace per line removes the background-fill
+// padding glamour adds, which would otherwise extend rows past the
+// visible content and break mouse copy-paste.
 //
 // Falls back to renderAvatarBlock on glamour errors (which can happen
 // with malformed markdown) so a broken markdown reply never vanishes.
@@ -65,11 +69,58 @@ func renderAssistantMarkdown(text string, width int, md *glamour.TermRenderer) s
 	}
 	body = trimPerLineRight(body)
 	body = strings.TrimRight(body, "\n")
+	body = strings.TrimLeft(body, "\n") // glamour leads with a blank row
 	if body == "" {
 		return renderAvatarBlockPlain(text, width)
 	}
-	avatar := lipgloss.NewStyle().Foreground(colorAgent).Render("🧢")
-	return avatar + "\n" + body
+	return foldAvatarOntoMarkdown(body)
+}
+
+// foldAvatarOntoMarkdown rewrites glamour's body so the first line
+// carries the avatar prefix and the continuation rows sit under the
+// avatar gutter (4 cells = avatar width + ": ") instead of glamour's
+// default 2-space margin.
+//
+// Glamour always indents each row by 2 spaces; we trim those uniformly
+// and then either substitute the avatar prefix (line 1) or pad with 4
+// spaces (lines 2+). Lines that don't start with the 2-space margin
+// (rare; mostly happens inside fenced code blocks that glamour styles
+// differently) keep their existing leading whitespace.
+func foldAvatarOntoMarkdown(body string) string {
+	const glamourMargin = "  "
+	const avatarPrefix = "🧢: "
+	const continuationPad = "    " // 4 cells, same width as avatar+": "
+
+	avatarStyle := lipgloss.NewStyle().Foreground(colorAgent)
+	colonStyle := lipgloss.NewStyle().Foreground(colorMuted)
+	styledHead := avatarStyle.Render("🧢") + colonStyle.Render(":") + " "
+
+	lines := strings.Split(body, "\n")
+	out := make([]string, 0, len(lines))
+	headPlaced := false
+	for _, ln := range lines {
+		trimmed := strings.TrimPrefix(ln, glamourMargin)
+		// Avatar lands on the first non-blank row; earlier blank
+		// rows (rare after our TrimLeft above, but defensive) stay
+		// blank to preserve glamour's vertical rhythm.
+		if !headPlaced && strings.TrimSpace(trimmed) == "" {
+			out = append(out, "")
+			continue
+		}
+		if !headPlaced {
+			out = append(out, styledHead+trimmed)
+			headPlaced = true
+			continue
+		}
+		out = append(out, continuationPad+trimmed)
+	}
+	if !headPlaced {
+		// Body was entirely blank after trimming; render just the
+		// avatar so the entry isn't silently dropped.
+		out = append(out, styledHead)
+	}
+	_ = avatarPrefix // referenced in the doc comment above for clarity
+	return strings.Join(out, "\n")
 }
 
 // renderAvatarBlockPlain is the fallback used when glamour is

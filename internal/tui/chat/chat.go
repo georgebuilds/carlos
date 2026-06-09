@@ -1025,6 +1025,22 @@ func (m *Model) applyEvent(ev agent.Event) {
 	case agent.EvtUserMessage:
 		var p agent.MessagePayload
 		_ = json.Unmarshal(ev.Payload, &p)
+		// Dedup against an optimistic append (see appendUserMessage):
+		// when submit() paints the user-bubble immediately for
+		// responsiveness, the subscription pump delivers the canonical
+		// event a beat later. Skip when the most recent transcript
+		// entry is an identical user_message and the timestamps are
+		// within a small window — that's our optimistic copy, not a
+		// new submit. Backfill events come through with old
+		// timestamps and bypass the window check, so resume-from-log
+		// still hydrates correctly.
+		if n := len(m.transcript); n > 0 {
+			last := m.transcript[n-1]
+			if last.kind == entryUserMessage && last.text == p.Text &&
+				absDuration(ev.TS.Sub(last.ts)) < 5*time.Second {
+				break
+			}
+		}
 		m.transcript = append(m.transcript, transcriptEntry{
 			kind: entryUserMessage,
 			ts:   ev.TS,
@@ -1749,11 +1765,37 @@ func slashModelLine(arg string) string {
 	return "configured: " + strings.Join(parts, "  ") + "   (* = default)"
 }
 
-// appendUserMessage writes a user_message event to the log. The event
-// flows back through the subscription → eventMsg path and lands in the
-// transcript via applyEvent - so we do NOT touch the local transcript
-// here. Single source of truth: render only what the log has accepted.
+// absDuration returns d's absolute value. Used by the EvtUserMessage
+// optimistic-append dedup so clock skew (the optimistic row stamps
+// time.Now(); the log event may stamp a few µs earlier or later)
+// doesn't break the window comparison.
+func absDuration(d time.Duration) time.Duration {
+	if d < 0 {
+		return -d
+	}
+	return d
+}
+
+// appendUserMessage writes a user_message event to the log AND
+// optimistically paints the row into the local transcript so the
+// user sees their submit immediately. Without the optimistic step
+// there's a visible lag between Enter and the user-bubble showing,
+// driven by the SQLite append + subscription round-trip; with it the
+// row lands on the next render frame and the "thinking" indicator
+// trips right away (isThinking keys off the most recent transcript
+// entry).
+//
+// The optimistic copy is then deduped against the canonical event
+// when the subscription pump delivers it — see applyEvent's
+// EvtUserMessage case for the matching logic.
 func (m *Model) appendUserMessage(text string) tea.Cmd {
+	m.transcript = append(m.transcript, transcriptEntry{
+		kind: entryUserMessage,
+		ts:   time.Now().UTC(),
+		text: text,
+	})
+	m.rerenderViewport()
+
 	agentID := m.agentID
 	log := m.log
 	return func() tea.Msg {
