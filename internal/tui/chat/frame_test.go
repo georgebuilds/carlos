@@ -509,7 +509,11 @@ func TestComposeWhoamiEcho_PureFunction(t *testing.T) {
 	}
 }
 
-func TestRenderHeader_OmitsModeWhenSolo(t *testing.T) {
+func TestRenderHeader_RendersModePillForSolo(t *testing.T) {
+	// Contract update: the mode pill is now always rendered (even for
+	// solo) so it has a stable click hitbox for the mouse-driven mode
+	// switcher. Solo stays subtle so the visual weight roughly tracks
+	// the prior "hide solo" behaviour.
 	m := newFramedModel(t, FrameUI{
 		Active: "personal",
 		Glyph:  "◉",
@@ -517,8 +521,8 @@ func TestRenderHeader_OmitsModeWhenSolo(t *testing.T) {
 		Mode:   "solo",
 	})
 	out := m.renderHeader(120)
-	if strings.Contains(out, "solo") {
-		t.Errorf("solo mode should be suppressed (it's the default); got:\n%s", out)
+	if !strings.Contains(out, "solo") {
+		t.Errorf("solo mode pill should be rendered (click target); got:\n%s", out)
 	}
 }
 

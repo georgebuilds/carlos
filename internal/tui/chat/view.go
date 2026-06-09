@@ -114,6 +114,21 @@ func (m *Model) renderInner(innerW, innerH int) string {
 			m.switcherHelp,
 		)
 		approvalH = lipgloss.Height(approval)
+	} else if m.showModeSwitcher {
+		// Mode picker: same takeover slot as the frame switcher,
+		// mutually exclusive with it (chat.Update gates each open).
+		switcherH := innerH - headerH - footerH - inputH - 1
+		if switcherH < 10 {
+			switcherH = 10
+		}
+		approval = renderModeSwitcher(
+			m.frame,
+			m.modeSwitcherCursor,
+			innerW,
+			switcherH,
+			m.modeSwitcherHelp,
+		)
+		approvalH = lipgloss.Height(approval)
 	} else if m.showResume {
 		// /resume picker shares the takeover slot.
 		resumeH := innerH - headerH - footerH - inputH - 1
@@ -258,9 +273,17 @@ func (m *Model) renderInput(w int) string {
 }
 
 // renderHeader shows the agent ID + state badge + model name + (Phase F)
-// frame pill. State comes from the projection - single source of truth.
-// Pill suppressed when no frame is wired (legacy single-shelf mode) so
-// the header stays compatible with tests built before Phase F.
+// frame pill + mode pill. State comes from the projection - single
+// source of truth. Pills suppressed when no frame is wired (legacy
+// single-shelf mode) so the header stays compatible with tests built
+// before Phase F.
+//
+// Side effect: records the terminal-cell columns of the frame and mode
+// pills onto the model so tea.MouseMsg can route header clicks to the
+// matching overlay. The columns are absolute (border + padding are
+// already accounted for - the chat box's outer border eats 1 cell on
+// the left and the inner Padding(0,1) eats another, so the header
+// content sits at x=2 in the alt-screen).
 func (m *Model) renderHeader(w int) string {
 	id := shortID(m.agentID)
 	state, model := m.headerState()
@@ -268,15 +291,44 @@ func (m *Model) renderHeader(w int) string {
 	idStyle := lipgloss.NewStyle().Bold(true).Foreground(colorAccent)
 	modelStyle := lipgloss.NewStyle().Foreground(colorMuted)
 
+	// Reset hitboxes each frame; the writers below populate them when
+	// the matching pill renders. headerContentX0 mirrors View()'s outer
+	// border (1) + Padding(0,1) (1) = 2-cell left offset.
+	const headerContentX0 = 2
+	m.framePillColStart, m.framePillColEnd = 0, 0
+	m.modePillColStart, m.modePillColEnd = 0, 0
+
 	left := idStyle.Render(id) + " " + badge
 	if model != "" {
 		left += " " + modelStyle.Render("("+displayModelName(model)+")")
 	}
 	if m.frame.Active != "" {
-		left += " " + framePillSep + " " + framePill(m.frame)
-		if mode := m.frame.Mode; mode != "" && mode != "solo" {
-			left += " " + framePillSep + " " + lipgloss.NewStyle().Foreground(colorSubtle).Render(mode)
+		left += " " + framePillSep + " "
+		pill := framePill(m.frame)
+		// Frame pill hitbox: the glyph + name string the user sees.
+		// lipgloss.Width strips ANSI for the cell count we want.
+		m.framePillColStart = headerContentX0 + lipgloss.Width(left)
+		left += pill
+		m.framePillColEnd = headerContentX0 + lipgloss.Width(left)
+
+		// Always render the mode pill (even for solo) so it has a
+		// stable click target. Solo stays subtle so the visual
+		// weight matches the prior "hide solo" behaviour.
+		mode := m.frame.Mode
+		if mode == "" {
+			mode = frame.ModeSolo
 		}
+		left += " " + framePillSep + " "
+		modeStyle := lipgloss.NewStyle().Foreground(colorSubtle)
+		if mode != frame.ModeSolo {
+			// Non-solo modes get the muted color so they read as
+			// "this frame is in a non-default posture" without
+			// fighting the frame pill's accent.
+			modeStyle = lipgloss.NewStyle().Foreground(colorMuted)
+		}
+		m.modePillColStart = headerContentX0 + lipgloss.Width(left)
+		left += modeStyle.Render(mode)
+		m.modePillColEnd = headerContentX0 + lipgloss.Width(left)
 	}
 	right := lipgloss.NewStyle().Foreground(colorMuted).Render("carlos chat")
 

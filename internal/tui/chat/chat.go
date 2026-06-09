@@ -368,6 +368,25 @@ type Model struct {
 	switcherPage      int
 	switcherHelp      bool
 
+	// Mode switcher overlay (Ctrl+O). Mirrors the frame switcher but
+	// renders a single row of 3 cards (tight / solo / orchestrator).
+	// modeSwitcherCursor is the focused card index; modeSwitcherHelp
+	// toggles the verbose footer the same way switcherHelp does.
+	showModeSwitcher   bool
+	modeSwitcherCursor int
+	modeSwitcherHelp   bool
+
+	// Header pill click hitboxes. Re-computed by renderHeader every
+	// frame; consumed by the tea.MouseMsg branch so clicking the
+	// frame pill opens the frame switcher and clicking the mode pill
+	// opens the mode switcher. Empty (both 0) means the pill wasn't
+	// rendered this frame and clicks at that cell are no-ops.
+	// Columns are 0-indexed terminal cells in the View output.
+	framePillColStart int
+	framePillColEnd   int
+	modePillColStart  int
+	modePillColEnd    int
+
 	// Phase F-8 cwd-hint footer state. footerHint is the text shown
 	// when an in-band `!cd` lands the user in a path that matches a
 	// non-active frame's cwd_hints. hintsLocked is set by Ctrl+L for
@@ -753,6 +772,22 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.MouseMsg:
+		// Header pill clicks: a left-button press on the rendered
+		// frame pill or mode pill opens the matching switcher. The
+		// hitbox columns are populated by renderHeader on the prior
+		// frame; row 1 is the header line (border at row 0). When
+		// the user has toggled mouse capture off via Alt+M we never
+		// see clicks at all, so no opt-out is needed here.
+		if msg.Button == tea.MouseButtonLeft && msg.Action == tea.MouseActionPress && msg.Y == 1 {
+			switch {
+			case m.frame.Active != "" && msg.X >= m.framePillColStart && msg.X < m.framePillColEnd && m.framePillColEnd > m.framePillColStart:
+				m.openFrameSwitcher()
+				return m, nil
+			case m.frame.Active != "" && msg.X >= m.modePillColStart && msg.X < m.modePillColEnd && m.modePillColEnd > m.modePillColStart:
+				m.openModeSwitcher()
+				return m, nil
+			}
+		}
 		// Mouse / trackpad scrolling. bubbletea forwards every
 		// MouseMsg here (WithMouseCellMotion is set in Run); we
 		// hand them to the viewport which already has
@@ -798,6 +833,15 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// waiting and a frame switch shouldn't interrupt that.
 		if m.showFrameSwitcher {
 			next, cmd, handled := m.handleFrameSwitcherKey(msg)
+			if handled {
+				return next, cmd
+			}
+		}
+		// Mode switcher: same modal precedence as the frame switcher so
+		// nav keys reach the card-picker without the composer eating
+		// them. ctrl+c still falls through.
+		if m.showModeSwitcher {
+			next, cmd, handled := m.handleModeSwitcherKey(msg)
 			if handled {
 				return next, cmd
 			}
@@ -942,6 +986,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// the slash echo from /frame already covers that path.
 			if m.frame.Active != "" {
 				m.openFrameSwitcher()
+				return m, nil
+			}
+		case "ctrl+o":
+			// Mode switcher takeover. Ctrl+M would have been the
+			// obvious mnemonic but it shares the keyCR byte with
+			// Enter on macOS Terminal - see overlay_modes.go header
+			// for the full rationale. No-op when frames aren't wired
+			// since the mode field lives on the active frame.
+			if m.frame.Active != "" {
+				m.openModeSwitcher()
 				return m, nil
 			}
 		case "ctrl+l":
