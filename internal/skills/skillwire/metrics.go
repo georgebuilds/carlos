@@ -70,7 +70,14 @@ type Report struct {
 	Survival30dRatio float64   `json:"survival_30d_ratio"`
 	Survival60dRatio float64   `json:"survival_60d_ratio"`
 	Survival90dRatio float64   `json:"survival_90d_ratio"`
-	GeneratedAt      time.Time `json:"generated_at"`
+	// DecodeFailures is the count of approval-event payloads that
+	// failed to JSON-decode during the scan. Surfacing this matters
+	// because under-counts otherwise hide the very failure mode these
+	// metrics are designed to expose; non-zero values mean some
+	// proposals/decisions were silently dropped and should be
+	// investigated.
+	DecodeFailures int       `json:"decode_failures"`
+	GeneratedAt    time.Time `json:"generated_at"`
 }
 
 // String returns a multi-line printable summary. Useful for `carlos
@@ -88,7 +95,7 @@ func (m *Metrics) AcceptanceRate(ctx context.Context, log *agent.SQLiteEventLog)
 	if log == nil {
 		return 0, fmt.Errorf("metrics: nil log")
 	}
-	a, r, _, err := m.proposalCounts(ctx, log)
+	a, r, _, _, err := m.proposalCounts(ctx, log)
 	if err != nil {
 		return 0, err
 	}
@@ -105,7 +112,7 @@ func (m *Metrics) AcceptanceRate(ctx context.Context, log *agent.SQLiteEventLog)
 func (m *Metrics) Snapshot(ctx context.Context, log *agent.SQLiteEventLog, lib *skills.Library, now time.Time) (Report, error) {
 	rep := Report{GeneratedAt: now}
 	if log != nil {
-		a, r, p, err := m.proposalCounts(ctx, log)
+		a, r, p, df, err := m.proposalCounts(ctx, log)
 		if err != nil {
 			return rep, err
 		}
@@ -113,6 +120,7 @@ func (m *Metrics) Snapshot(ctx context.Context, log *agent.SQLiteEventLog, lib *
 		rep.Rejected = r
 		rep.Pending = p
 		rep.TotalProposals = a + r + p
+		rep.DecodeFailures = df
 		if a+r > 0 {
 			rep.AcceptanceRate = float64(a) / float64(a+r)
 		}
@@ -159,14 +167,20 @@ func (m *Metrics) Snapshot(ctx context.Context, log *agent.SQLiteEventLog, lib *
 
 // proposalCounts scans the event log for skill_proposal artifacts and
 // their accept/reject resolutions. Returns (accepted, rejected,
-// pending, error).
+// pending, decodeFailures, error).
+//
+// decodeFailures counts approval-event payloads that failed to
+// JSON-decode. The legitimate counts still come back so a single
+// malformed row doesn't blow up the readout, but the caller (and the
+// printed Report) MUST surface the failure count - silently dropping
+// these defeats the entire purpose of acceptance-rate instrumentation.
 //
 // Implementation note: we issue ONE cross-namespace events query for
 // every approval-queue event, then filter in-memory to those whose
 // ArtifactRef.Kind matches our SkillProposalKind. At v0 scale the full
 // scan is cheap (low thousands of events); the same projection-table
 // upgrade path applies if it becomes hot.
-func (m *Metrics) proposalCounts(ctx context.Context, log *agent.SQLiteEventLog) (accepted, rejected, pending int, err error) {
+func (m *Metrics) proposalCounts(ctx context.Context, log *agent.SQLiteEventLog) (accepted, rejected, pending, decodeFailures int, err error) {
 	kind := m.SkillProposalKind
 	if kind == "" {
 		kind = agent.ArtifactKindSkillProposal
@@ -178,7 +192,7 @@ func (m *Metrics) proposalCounts(ctx context.Context, log *agent.SQLiteEventLog)
 		ORDER BY seq ASC
 	`, string(agent.EvtApprovalProposed), string(agent.EvtApprovalAccepted), string(agent.EvtApprovalRejected))
 	if err != nil {
-		return 0, 0, 0, fmt.Errorf("metrics: query approvals: %w", err)
+		return 0, 0, 0, 0, fmt.Errorf("metrics: query approvals: %w", err)
 	}
 	defer rows.Close()
 
@@ -197,12 +211,13 @@ func (m *Metrics) proposalCounts(ctx context.Context, log *agent.SQLiteEventLog)
 			payload []byte
 		)
 		if err := rows.Scan(&typeS, &payload); err != nil {
-			return 0, 0, 0, err
+			return 0, 0, 0, 0, err
 		}
 		switch agent.EventType(typeS) {
 		case agent.EvtApprovalProposed:
 			var p agent.ApprovalProposalPayload
 			if err := json.Unmarshal(payload, &p); err != nil {
+				decodeFailures++
 				continue
 			}
 			if p.Ref.Kind != kind {
@@ -213,6 +228,7 @@ func (m *Metrics) proposalCounts(ctx context.Context, log *agent.SQLiteEventLog)
 		case agent.EvtApprovalAccepted:
 			var r agent.ApprovalResolutionPayload
 			if err := json.Unmarshal(payload, &r); err != nil {
+				decodeFailures++
 				continue
 			}
 			if !isSkill[r.ArtifactID] {
@@ -222,6 +238,7 @@ func (m *Metrics) proposalCounts(ctx context.Context, log *agent.SQLiteEventLog)
 		case agent.EvtApprovalRejected:
 			var r agent.ApprovalResolutionPayload
 			if err := json.Unmarshal(payload, &r); err != nil {
+				decodeFailures++
 				continue
 			}
 			if !isSkill[r.ArtifactID] {
@@ -231,7 +248,7 @@ func (m *Metrics) proposalCounts(ctx context.Context, log *agent.SQLiteEventLog)
 		}
 	}
 	if err := rows.Err(); err != nil {
-		return 0, 0, 0, err
+		return 0, 0, 0, 0, err
 	}
 
 	for _, st := range tracked {
@@ -244,5 +261,5 @@ func (m *Metrics) proposalCounts(ctx context.Context, log *agent.SQLiteEventLog)
 			pending++
 		}
 	}
-	return accepted, rejected, pending, nil
+	return accepted, rejected, pending, decodeFailures, nil
 }

@@ -2,6 +2,7 @@ package skillwire_test
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -268,5 +269,98 @@ func TestMetrics_Snapshot(t *testing.T) {
 	}
 	if rep.Survival90dCount != 1 {
 		t.Errorf("survival90d count: want 1, got %d", rep.Survival90dCount)
+	}
+}
+
+// TestProposalCounts_DecodeFailuresCounted feeds three legitimate
+// approval events (1 propose + 1 accept + 1 reject covering two
+// distinct skill proposals) alongside two malformed approval payloads
+// and asserts the malformed rows are surfaced via Report.DecodeFailures
+// without dropping the legitimate counts. Regression for the
+// "skillwire metrics silently drop malformed approval events" finding
+// (quality-pass: internal/skills/skillwire/metrics.go:205,215,224).
+func TestProposalCounts_DecodeFailuresCounted(t *testing.T) {
+	log := newLog(t)
+	ctx := context.Background()
+	seedAgent(t, ctx, log, "agent-1")
+
+	// Legitimate event 1: propose skill "good-a".
+	refA := agent.ArtifactRef{ID: "art-good-a", AgentID: "agent-1", Kind: agent.ArtifactKindSkillProposal}
+	proposeA, err := json.Marshal(agent.ApprovalProposalPayload{Title: "skill: good-a", Ref: refA})
+	if err != nil {
+		t.Fatalf("marshal proposeA: %v", err)
+	}
+	if _, err := log.Append(ctx, agent.Event{
+		AgentID: "agent-1", TS: time.Now().UTC(), Type: agent.EvtApprovalProposed, Payload: proposeA,
+	}); err != nil {
+		t.Fatalf("append proposeA: %v", err)
+	}
+
+	// Legitimate event 2: propose skill "good-b".
+	refB := agent.ArtifactRef{ID: "art-good-b", AgentID: "agent-1", Kind: agent.ArtifactKindSkillProposal}
+	proposeB, err := json.Marshal(agent.ApprovalProposalPayload{Title: "skill: good-b", Ref: refB})
+	if err != nil {
+		t.Fatalf("marshal proposeB: %v", err)
+	}
+	if _, err := log.Append(ctx, agent.Event{
+		AgentID: "agent-1", TS: time.Now().UTC(), Type: agent.EvtApprovalProposed, Payload: proposeB,
+	}); err != nil {
+		t.Fatalf("append proposeB: %v", err)
+	}
+
+	// Legitimate event 3: accept "good-a".
+	acceptA, err := json.Marshal(agent.ApprovalResolutionPayload{ArtifactID: refA.ID})
+	if err != nil {
+		t.Fatalf("marshal acceptA: %v", err)
+	}
+	if _, err := log.Append(ctx, agent.Event{
+		AgentID: "user", TS: time.Now().UTC(), Type: agent.EvtApprovalAccepted, Payload: acceptA,
+	}); err != nil {
+		t.Fatalf("append acceptA: %v", err)
+	}
+
+	// Malformed event 1: garbage payload on a Proposed row. Triggers
+	// the decode-failure path in the EvtApprovalProposed branch.
+	if _, err := log.Append(ctx, agent.Event{
+		AgentID: "agent-1", TS: time.Now().UTC(), Type: agent.EvtApprovalProposed,
+		Payload: []byte("not json at all"),
+	}); err != nil {
+		t.Fatalf("append malformed propose: %v", err)
+	}
+	// Malformed event 2: garbage payload on a Rejected row. Triggers
+	// the decode-failure path in the EvtApprovalRejected branch.
+	if _, err := log.Append(ctx, agent.Event{
+		AgentID: "user", TS: time.Now().UTC(), Type: agent.EvtApprovalRejected,
+		Payload: []byte("{this is also not json"),
+	}); err != nil {
+		t.Fatalf("append malformed reject: %v", err)
+	}
+
+	m := skillwire.NewMetrics()
+	rep, err := m.Snapshot(ctx, log, nil, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("Snapshot: %v", err)
+	}
+
+	if rep.DecodeFailures != 2 {
+		t.Errorf("DecodeFailures: want 2, got %d", rep.DecodeFailures)
+	}
+	// good-a: proposed + accepted → Accepted=1
+	// good-b: proposed, no resolution    → Pending=1
+	// Malformed rows must not perturb the legitimate counts.
+	if rep.Accepted != 1 {
+		t.Errorf("Accepted: want 1, got %d", rep.Accepted)
+	}
+	if rep.Rejected != 0 {
+		t.Errorf("Rejected: want 0, got %d", rep.Rejected)
+	}
+	if rep.Pending != 1 {
+		t.Errorf("Pending: want 1, got %d", rep.Pending)
+	}
+	if rep.TotalProposals != 2 {
+		t.Errorf("TotalProposals: want 2, got %d", rep.TotalProposals)
+	}
+	if rep.AcceptanceRate != 1.0 {
+		t.Errorf("AcceptanceRate: want 1.0, got %v", rep.AcceptanceRate)
 	}
 }
