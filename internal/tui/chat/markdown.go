@@ -149,10 +149,18 @@ func trimPerLineRight(s string) string {
 }
 
 // newMarkdownRenderer constructs a glamour TermRenderer sized for
-// the current viewport. WithAutoStyle picks dark/light/notty based
-// on terminal capability; WithEmoji enables :+1: shorthand; the
-// word-wrap width leaves 2 cells of right breathing room so the
-// last column doesn't kiss the viewport edge.
+// the current viewport. The style name is pinned from carlos's
+// boot-time theme variant (see glamourStyle / glamourStyleFor in
+// chat.go) so glamour never invokes termenv's WithAutoStyle, which
+// fires an OSC 11 background-color query against the terminal. In
+// tabbed Ghostty the query response arrived after the alt-screen
+// was already up and was read as text input by the textarea ("weird
+// characters appear after a long thinking pause" in field reports);
+// pinning the style cuts the query off at the source.
+//
+// WithEmoji enables :+1: shorthand; the word-wrap width leaves 2
+// cells of right breathing room so the last column doesn't kiss
+// the viewport edge.
 //
 // Returns (nil, err) on any setup error — callers fall back to
 // plain rendering rather than panicking. Cheap enough to cache; we
@@ -162,7 +170,7 @@ func newMarkdownRenderer(width int) (*glamour.TermRenderer, error) {
 		width = mdMinWidth
 	}
 	return glamour.NewTermRenderer(
-		glamour.WithAutoStyle(),
+		glamour.WithStandardStyle(glamourStyle),
 		glamour.WithWordWrap(width-2),
 		glamour.WithEmoji(),
 		glamour.WithPreservedNewLines(),

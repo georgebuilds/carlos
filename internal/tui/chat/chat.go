@@ -46,6 +46,18 @@ var (
 	colorWarn   lipgloss.Color
 	colorOK     lipgloss.Color
 	colorSubtle lipgloss.Color
+
+	// glamourStyle is the markdown-renderer style we hand to glamour
+	// at TermRenderer construction. Set at boot from the same
+	// theme.Variant the rest of the palette is built from, so the
+	// renderer never has to query the terminal at runtime (which is
+	// the bug behind the v0.7.1 "weird characters appear in the
+	// textarea after a long thinking pause" report — glamour's
+	// WithAutoStyle invokes termenv background-color detection,
+	// which fires an OSC 11 query against the terminal; in tabbed
+	// Ghostty the response arrived after the alt-screen was up and
+	// was read as keystrokes by the textarea).
+	glamourStyle = "dark"
 )
 
 func init() {
@@ -65,6 +77,24 @@ func ApplyPalette(p theme.Palette) {
 	colorWarn = p.Warn
 	colorOK = p.OK
 	colorSubtle = p.Subtle
+	glamourStyle = glamourStyleFor(p.Variant)
+}
+
+// glamourStyleFor maps carlos's theme variant to a glamour standard
+// style name. Pinning the style at boot (rather than letting glamour
+// auto-detect at every renderer construction) avoids the OSC 11
+// background-color query that termenv triggers under WithAutoStyle.
+// "notty" is a deliberate choice for NO_COLOR / non-TTY environments
+// because it skips ANSI styling entirely.
+func glamourStyleFor(v theme.Variant) string {
+	switch v {
+	case theme.Light:
+		return "light"
+	case theme.Dark:
+		return "dark"
+	default:
+		return "notty"
+	}
 }
 
 // Minimum terminal size. Chat is a working surface, not a poster - the

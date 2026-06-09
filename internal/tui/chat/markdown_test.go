@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/glamour"
+
+	"github.com/georgebuilds/carlos/internal/theme"
 )
 
 // TestRenderAssistantMarkdown_BoldAndCode is the headline behavior:
@@ -99,6 +101,78 @@ func TestRenderAssistantMarkdown_EmptyTextFallbackToPlain(t *testing.T) {
 	out := renderAssistantMarkdown("", 80, r)
 	if !strings.Contains(out, "🧢") {
 		t.Errorf("empty text should still render the avatar:\n%q", out)
+	}
+}
+
+// TestGlamourStyleFor_VariantMatrix pins the variant→style mapping
+// the boot-time renderer uses. Field bug: leaving WithAutoStyle in
+// place caused glamour to invoke termenv's OSC 11 background-color
+// query against the live terminal; in tabbed Ghostty the response
+// landed inside the textarea as a literal "]11;rgb:..." escape.
+// Pinning the style from carlos's pre-detected theme variant cuts
+// that query off entirely.
+func TestGlamourStyleFor_VariantMatrix(t *testing.T) {
+	cases := []struct {
+		variant theme.Variant
+		want    string
+	}{
+		{theme.Dark, "dark"},
+		{theme.Light, "light"},
+		{theme.Variant(99), "notty"}, // unknown → safe fallback
+	}
+	for _, tc := range cases {
+		if got := glamourStyleFor(tc.variant); got != tc.want {
+			t.Errorf("glamourStyleFor(%v) = %q, want %q", tc.variant, got, tc.want)
+		}
+	}
+}
+
+// TestApplyPalette_UpdatesGlamourStyle locks the chat package's
+// boot wire-up: calling ApplyPalette with a dark palette pins the
+// glamour style to "dark", and a light palette flips it to "light".
+// Without this regression test a future ApplyPalette refactor could
+// silently re-introduce the WithAutoStyle bug.
+func TestApplyPalette_UpdatesGlamourStyle(t *testing.T) {
+	// Stash + restore so the test doesn't leak into siblings.
+	saved := glamourStyle
+	t.Cleanup(func() { glamourStyle = saved })
+
+	ApplyPalette(theme.Palette{Variant: theme.Dark})
+	if glamourStyle != "dark" {
+		t.Errorf("dark variant: got %q", glamourStyle)
+	}
+	ApplyPalette(theme.Palette{Variant: theme.Light})
+	if glamourStyle != "light" {
+		t.Errorf("light variant: got %q", glamourStyle)
+	}
+}
+
+// TestNewMarkdownRenderer_DoesNotInvokeAutoStyle is a smoke gate
+// over the boot path that ensures we build without surfacing the
+// auto-style code path. We can't directly assert "termenv was not
+// queried" in-process, but we CAN verify the renderer builds
+// successfully under a zeroed environment (no $TERM, no
+// $COLORTERM) — WithAutoStyle would have nothing to detect and
+// would fall back to notty; our pinned style still produces a
+// styled output.
+func TestNewMarkdownRenderer_DoesNotInvokeAutoStyle(t *testing.T) {
+	saved := glamourStyle
+	t.Cleanup(func() { glamourStyle = saved })
+	glamourStyle = "dark"
+
+	t.Setenv("TERM", "")
+	t.Setenv("COLORTERM", "")
+
+	r, err := newMarkdownRenderer(80)
+	if err != nil {
+		t.Fatalf("renderer: %v", err)
+	}
+	out, err := r.Render("**bold**")
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if strings.Contains(out, "**bold**") {
+		t.Errorf("dark style should have rendered bold markdown; got raw asterisks:\n%q", out)
 	}
 }
 
