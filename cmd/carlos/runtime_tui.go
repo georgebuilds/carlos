@@ -193,6 +193,21 @@ func runDefault(cfg *config.Config, sessionID string) error {
 	// this process is up.
 	sup.StartHeartbeat(ctx, defaultAgentID)
 
+	// Parent's registry = baseReg + the Agent delegation tool. This
+	// is the same shape carlos please uses (runtime_headless.go);
+	// without it the interactive TUI model literally cannot reach
+	// Supervisor.Spawn and the /agents view stays empty even when
+	// the active frame is in orchestrator mode. Sub-agents inherit
+	// the BASE registry (no Agent tool) so they can't further
+	// delegate; that's enforced by Supervisor.Spawn's depth cap
+	// independently, but keeping the child registry tool-list
+	// honest avoids a confusing tool spec the child can't use.
+	parentReg := tools.NewRegistry()
+	for _, t := range baseReg.All() {
+		parentReg.Register(t)
+	}
+	parentReg.Register(agent.NewAgentTool(sup))
+
 	// Phase 11 slice 11f: wire the research engine off the same
 	// provider + web tools the chat already uses. nil-safe - the
 	// chat-side /research handler echoes "not wired" when this is
@@ -382,7 +397,7 @@ func runDefault(cfg *config.Config, sessionID string) error {
 	loop := chatglue.NewLoop(chatglue.Config{
 		Provider: d.provider,
 		Model:    d.model,
-		Tools:    baseReg,
+		Tools:    parentReg,
 		Approver: layered,
 		System:   systemPrompt,
 	}, log, src, defaultAgentID)
@@ -418,7 +433,7 @@ func runDefault(cfg *config.Config, sessionID string) error {
 		newLoop := chatglue.NewLoop(chatglue.Config{
 			Provider: newDispatch.provider,
 			Model:    newDispatch.model,
-			Tools:    baseReg,
+			Tools:    parentReg,
 			Approver: layered,
 			System:   newSys,
 		}, log, src, defaultAgentID)
