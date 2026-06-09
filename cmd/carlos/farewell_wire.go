@@ -90,32 +90,6 @@ func printFarewell(panel *farewell.Panel, userName string) {
 // drag.
 const brewProbeTimeout = 2 * time.Second
 
-// startBrewProbe kicks off a background goroutine that consults
-// `brew outdated --quiet` and queues the ⬆️ message when carlos is
-// in the output. No-op when the running binary isn't a Homebrew
-// install. Returns a channel the caller can wait on at shutdown so
-// the result lands in the panel before render.
-func startBrewProbe(panel *farewell.Panel) <-chan struct{} {
-	return startBrewProbeWith(panel, farewell.IsBrewInstall, runBrewCheck)
-}
-
-// startBrewProbeWith is the seam: it takes the install-detector and
-// the check-runner as parameters so unit tests can inject behaviour
-// without spawning a real brew. The production wiring (startBrewProbe)
-// hooks the two real helpers.
-func startBrewProbeWith(panel *farewell.Panel, isBrew func() bool, check func(*farewell.Panel)) <-chan struct{} {
-	done := make(chan struct{})
-	if !isBrew() {
-		close(done)
-		return done
-	}
-	go func() {
-		defer close(done)
-		check(panel)
-	}()
-	return done
-}
-
 // runBrewCheck is the production check-runner: bounded ctx + brew
 // outdated lookup + queue the ⬆️ message when carlos is named.
 func runBrewCheck(panel *farewell.Panel) {
@@ -127,17 +101,29 @@ func runBrewCheck(panel *farewell.Panel) {
 	}
 }
 
-// waitBrewProbe blocks (briefly) until the probe finishes or its
-// shutdown ceiling elapses. Called via defer right before
-// printFarewell — small wait so the brew result, when present,
-// makes it into the rendered box.
-func waitBrewProbe(done <-chan struct{}) {
-	if done == nil {
+// checkBrewAtExit is the deferred exit-time hook: when the binary
+// lives in a Homebrew Cellar, it runs the synchronous (timeout-
+// bounded) update probe and queues the ⬆️ message into the panel
+// before printFarewell renders. The user is already on their way
+// out by the time this runs, so a small wall-clock wait is fine —
+// the trade is "show the update notice promptly" vs. "delay
+// startup with a check the user didn't ask for at session boot".
+// No-op when the running binary isn't a Homebrew install or when
+// the panel is nil (tests). Pulled out behind checkBrewAtExitWith
+// so unit tests can inject the detector + check function without
+// shelling out to a real brew.
+func checkBrewAtExit(panel *farewell.Panel) {
+	checkBrewAtExitWith(panel, farewell.IsBrewInstall, runBrewCheck)
+}
+
+// checkBrewAtExitWith is the testable seam behind checkBrewAtExit.
+// Pure function; no globals consulted.
+func checkBrewAtExitWith(panel *farewell.Panel, isBrew func() bool, check func(*farewell.Panel)) {
+	if panel == nil {
 		return
 	}
-	select {
-	case <-done:
-	case <-time.After(brewProbeTimeout + 100*time.Millisecond):
-		// Hit the ceiling; the rest of the shutdown wins.
+	if !isBrew() {
+		return
 	}
+	check(panel)
 }

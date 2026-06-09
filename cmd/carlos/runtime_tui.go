@@ -122,16 +122,16 @@ func runDefault(cfg *config.Config, sessionID string) error {
 	// clean sign-off instead.
 	panel := farewell.New()
 	defer printFarewell(panel, cfg.UserName)
+	// Defers run LIFO: the brew check fires before printFarewell so
+	// the ⬆️ row, when present, lands in the same rendered box as
+	// the rest of the end-of-session notes. We probe at EXIT (not
+	// startup) so a slow `brew outdated` only delays the goodbye
+	// box, not the boot — the user is already on their way out and
+	// the timeout is the same 2s ceiling.
+	defer checkBrewAtExit(panel)
 	queueGatewayOrphaned(cfg, panel)
 	home, _ := os.UserHomeDir()
 	queueFrameMigration(home, panel)
-	// Background-probe Homebrew for an outdated carlos formula. We
-	// kick off the goroutine here so the result is ready by the time
-	// the TUI exits (typical session is minutes; the probe takes
-	// hundreds of ms). printFarewell waits with a short ceiling
-	// before rendering so a slow brew never blocks shutdown.
-	brewDone := startBrewProbe(panel)
-	defer waitBrewProbe(brewDone)
 	dbPath := filepath.Join(home, ".carlos", "state.db")
 	log, err := agent.OpenStateDB(dbPath)
 	if err != nil {

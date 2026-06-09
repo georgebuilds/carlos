@@ -4,7 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 
 	"github.com/georgebuilds/carlos/internal/config"
@@ -179,39 +178,63 @@ func TestPrintFarewell_DefaultNameFallback(t *testing.T) {
 	}
 }
 
-// TestStartBrewProbe_NonBrewInstallClosesImmediately is the fast
-// path: a binary not under a Cellar/ segment should never spawn the
-// brew goroutine.
-func TestStartBrewProbe_NonBrewInstallClosesImmediately(t *testing.T) {
-	// In the test process os.Executable() lands under go-build,
-	// nowhere near a Cellar/ segment.
+// TestCheckBrewAtExit_NonBrewInstallSkipsCheck pins the fast path: a
+// binary not under a Cellar/ segment never invokes the check
+// function. Under `go test` the binary lives under go-build, nowhere
+// near a Cellar/ segment, so the real isBrew() returns false.
+func TestCheckBrewAtExit_NonBrewInstallSkipsCheck(t *testing.T) {
 	panel := farewell.New()
-	done := startBrewProbe(panel)
-	select {
-	case <-done:
-	default:
-		t.Error("startBrewProbe should close the done channel synchronously when not a brew install")
-	}
+	checkBrewAtExit(panel)
 	if panel.Len() != 0 {
 		t.Errorf("non-brew install should never queue a brew message; got %d", panel.Len())
 	}
 }
 
-// TestStartBrewProbeWith_GoroutinePathQueuesUpdate covers the brew-
+// TestCheckBrewAtExitWith_BrewInstallRunsCheck covers the brew-
 // install branch by injecting an isBrew=true detector and a check
-// function that queues a message synchronously. Proves the goroutine
-// fires + closes the done channel + the panel sees the message.
-func TestStartBrewProbeWith_GoroutinePathQueuesUpdate(t *testing.T) {
+// function that queues a message synchronously. Proves the check
+// runs in-line (no goroutine, no done channel) and the panel sees
+// the message.
+func TestCheckBrewAtExitWith_BrewInstallRunsCheck(t *testing.T) {
 	panel := farewell.New()
-	done := startBrewProbeWith(panel,
+	checkBrewAtExitWith(panel,
 		func() bool { return true },
 		func(p *farewell.Panel) {
 			p.Add("⬆️", "update available")
 		},
 	)
-	<-done // wait for goroutine
 	if panel.Len() != 1 {
 		t.Errorf("expected 1 message after probe, got %d", panel.Len())
+	}
+}
+
+// TestCheckBrewAtExitWith_NotABrewInstallNoCheck — wired isBrew=false
+// branch never calls the check function.
+func TestCheckBrewAtExitWith_NotABrewInstallNoCheck(t *testing.T) {
+	panel := farewell.New()
+	called := false
+	checkBrewAtExitWith(panel,
+		func() bool { return false },
+		func(p *farewell.Panel) { called = true },
+	)
+	if called {
+		t.Error("check should not be called when isBrew returns false")
+	}
+	if panel.Len() != 0 {
+		t.Errorf("panel should be empty; got %d messages", panel.Len())
+	}
+}
+
+// TestCheckBrewAtExitWith_NilPanelIsNoOp guards the defensive
+// nil-panel branch so a misuse in main doesn't panic.
+func TestCheckBrewAtExitWith_NilPanelIsNoOp(t *testing.T) {
+	called := false
+	checkBrewAtExitWith(nil,
+		func() bool { return true },
+		func(p *farewell.Panel) { called = true },
+	)
+	if called {
+		t.Error("check should not be called when panel is nil")
 	}
 }
 
@@ -253,19 +276,6 @@ func TestPrintFarewell_NilPanelIsNoOp(t *testing.T) {
 	printFarewell(nil, "George") // should not panic
 }
 
-// TestWaitBrewProbe_HandlesNilDone proves the defensive nil-channel
-// branch — used when startBrewProbe was never called.
-func TestWaitBrewProbe_HandlesNilDone(t *testing.T) {
-	// Should not panic, should return immediately.
-	wg := sync.WaitGroup{}
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		waitBrewProbe(nil)
-	}()
-	wg.Wait()
-}
-
 // TestFarewellTerminalWidth_FallbackOnNonTTY proves the fallback
 // path (78) fires when stderr isn't a TTY — which is always true
 // under `go test` since it pipes stderr.
@@ -277,16 +287,6 @@ func TestFarewellTerminalWidth_FallbackOnNonTTY(t *testing.T) {
 	if got < 40 || got > 200 {
 		t.Errorf("farewellTerminalWidth returned %d, want a reasonable column count", got)
 	}
-}
-
-// TestWaitBrewProbe_ClosedChannelReturnsImmediately covers the
-// already-closed-done fast path, which is what happens when the
-// binary isn't a brew install and startBrewProbe closed the channel
-// synchronously.
-func TestWaitBrewProbe_ClosedChannelReturnsImmediately(t *testing.T) {
-	done := make(chan struct{})
-	close(done)
-	waitBrewProbe(done)
 }
 
 // TestQueueGatewayOrphaned_NilCfgIsNoOp pins the early-return
