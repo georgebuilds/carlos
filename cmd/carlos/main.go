@@ -984,6 +984,7 @@ Usage:
   carlos schedule list                     list configured scheduled runs
   carlos schedule add "<when>" <prompt>    add a schedule (e.g. "every weekday at 9am")
   carlos schedule rm <name>                remove a scheduled run by name
+  carlos gateway add                       interactive wizard to configure ntfy / Telegram / Signal channels
   carlos gateway test <channel>            send a test notification through one gateway channel
                                              (ntfy | telegram | signal | custom)
   carlos chat                              [dev-aid, Slice 1e] chat TUI against a temp log

@@ -62,6 +62,7 @@ carlos please "<prompt>"         # one-shot, no TUI
 carlos research "<question>"     # multi-phase deep research
 carlos memory search <query>     # FTS5 over conversation summaries
 carlos schedule list|add|rm      # cron + natural language
+carlos gateway add               # wizard to configure ntfy / Telegram / Signal
 carlos gateway test <channel>    # verify ntfy / Telegram wiring
 carlos daemon enable|disable     # background service
 ```
@@ -105,7 +106,7 @@ GOOS=darwin GOARCH=amd64  go build ./cmd/carlos
 
 ### Test discipline
 
-- `go test ./...` is the floor. Current count is ~3390 tests across 41 packages.
+- `go test ./...` is the floor. Current count is ~3490 tests across 41 packages.
 - `go vet ./...` must be clean.
 - New code aims for 80%+ coverage on touched packages.
 - The sub-agent + daemon + event log paths have integration tests; if you touch any of them, run `go test -race ./internal/agent/... ./internal/daemon/...` at least once before pushing.
