@@ -120,7 +120,10 @@ func TestRoster_RendersAllStateBadges(t *testing.T) {
 
 	src := NewSQLiteSnapshotSource(log)
 	m := New(src, log, nil)
-	m = driveModel(t, m, 160, 60)
+	// v0.7.4 card layout consumes ~5 rows per agent — bump the test
+	// height so all 11 cards fit in one viewport without the
+	// virtualization window hiding the tail of the list.
+	m = driveModel(t, m, 160, 80)
 
 	view := m.View()
 	for _, s := range states {

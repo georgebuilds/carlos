@@ -7,35 +7,20 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/georgebuilds/carlos/internal/agent"
+	"github.com/georgebuilds/carlos/internal/theme"
 )
 
-// View composes the manage TUI:
+// View composes the manage TUI inside a rounded accent-colored outer
+// border, matching the chat surface. v0.7.4 ground-up redesign:
 //
-//	┌─ carlos · manage · N agents ──────────────────────────────────┐
-//	│ roster (40% width)                │ focus pane                │
-//	│ ...                                                            │
-//	│                                                                │
-//	├────────────────────────────────────────────────────────────────┤
-//	│ s steer  i interrupt  x stop   /  filter  enter focus  q quit │
-//	└────────────────────────────────────────────────────────────────┘
-//
-// Below the minimum terminal size we refuse to render - same posture
-// as onboarding + chat.
-// View renders the manage TUI inside a rounded accent-colored
-// outer border, matching the chat surface. The v0.7.2 redesign
-// stripped the border to fix Ghostty top-clipping, but the new
-// chrome (status bar + inline rules + footer) is sleek enough
-// that adding the box back is welcome — and the clip is solvable
-// without removing the box.
-//
-// Anti-clipping recipe (v0.7.3):
-//   - Render INSIDE Height(h-2) so the border itself counts toward
-//     the reported viewport height. Same arithmetic chat uses.
-//   - No leading "\n" — past field tests showed it made clipping
-//     worse, not better, by inviting the alt-screen scroll heuristic
-//     to scroll the top off-screen.
-//   - The internal layout (header + rule + body + rule + footer) is
-//     unchanged from v0.7.2 so the data density stays high.
+//   - Roster pane renders agents as bordered "button" cards stacked
+//     vertically. Selection flips the focused card to a thick-bordered
+//     reverse-video fill so the cursor position is unmistakable.
+//   - Detail pane (right) is a structured info panel: title card,
+//     stats grid, then a scrollable activity transcript below.
+//   - The outer border math matches chat's recipe (Width(w-2) +
+//     Height(h-2)) so the top edge renders reliably across Ghostty,
+//     iTerm, and Kitty.
 func (m *Model) View() string {
 	if m.quitting {
 		return ""
@@ -69,14 +54,11 @@ func (m *Model) renderInner(innerW, innerH int) string {
 
 	headerH := lipgloss.Height(header)
 	footerH := lipgloss.Height(footer)
-	ruleH := lipgloss.Height(topRule) // both rules are 1 row by design
+	ruleH := lipgloss.Height(topRule)
 
-	// Body gets everything left over after the four chrome rows
-	// (header + top rule + bottom rule + footer). Floor at 4 so
-	// extremely short windows still render something usable.
 	bodyH := innerH - headerH - footerH - 2*ruleH
-	if bodyH < 4 {
-		bodyH = 4
+	if bodyH < cardLines {
+		bodyH = cardLines
 	}
 
 	// Slice 4h approval pane takes over the body when active.
@@ -93,20 +75,28 @@ func (m *Model) renderInner(innerW, innerH int) string {
 
 	rosterW := rosterPaneWidth(innerW)
 	focusW := innerW - rosterW - 3
-	if focusW < 20 {
-		focusW = 20
+	if focusW < 30 {
+		focusW = 30
 	}
 
-	// Mutate the focus pane's viewport to track the body box. The
-	// orchestrator's relayout already does this on resize; we redo
-	// here so a transient render before WindowSizeMsg still works.
-	m.focus.Resize(focusW, bodyH-1)
+	// Track viewport for the activity transcript portion of the
+	// focus pane. The detail header eats a chunk of the right column;
+	// the viewport gets what's left.
+	detailHeaderH := focusDetailHeaderH
+	activityH := bodyH - detailHeaderH - 1 // -1 for the section rule
+	if activityH < 3 {
+		activityH = 3
+	}
+	m.focus.Resize(focusW-2, activityH) // -2 for the card border
 
-	// Roster window: total + visible may have drifted since the last
-	// snapshot; clamp before render.
+	// Roster window math: visible card slots.
 	m.win.Total = len(m.rosterRows)
-	if m.win.Visible != bodyH-1 {
-		m.win.Visible = bodyH - 1
+	cardCap := bodyH / cardLines
+	if cardCap < 1 {
+		cardCap = 1
+	}
+	if m.win.Visible != cardCap {
+		m.win.Visible = cardCap
 		m.win = m.win.Clamp()
 	}
 
@@ -121,18 +111,12 @@ func (m *Model) renderInner(innerW, innerH int) string {
 		maxDepth:  defaultMaxDepth,
 	})
 
-	divider := lipgloss.NewStyle().Foreground(colorSubtle).Render(
-		strings.Repeat("│\n", bodyH),
-	)
-
-	focusHeader := m.renderFocusHeader(focusW)
-	focusBody := m.focus.View()
-	focusPane := lipgloss.JoinVertical(lipgloss.Left, focusHeader, focusBody)
+	focusPane := m.renderFocusPane(focusW, bodyH)
 
 	body := lipgloss.JoinHorizontal(
 		lipgloss.Top,
 		lipgloss.NewStyle().Width(rosterW).Render(rosterPane),
-		divider,
+		" ",
 		lipgloss.NewStyle().Width(focusW).Render(focusPane),
 	)
 
@@ -145,12 +129,12 @@ func (m *Model) renderInner(innerW, innerH int) string {
 	return lipgloss.JoinVertical(lipgloss.Left, parts...)
 }
 
-// renderHRule paints a single-row horizontal rule using the box-
-// drawing light horizontal glyph in the subtle palette slot. Used
-// as the section divider above the body and above the footer.
-// Modern TUI surfaces (lazygit, k9s, btop) lean on thin rules
-// instead of bordered boxes to chunk vertical space; we follow
-// suit so the chrome stays out of the way of the data.
+// focusDetailHeaderH is the line budget for the detail-pane header
+// card (title + stats grid + intent block). Kept as a constant so the
+// activity viewport height calculation is trivial.
+const focusDetailHeaderH = 10
+
+// renderHRule paints a single-row horizontal rule.
 func renderHRule(w int) string {
 	if w < 1 {
 		w = 1
@@ -158,14 +142,11 @@ func renderHRule(w int) string {
 	return lipgloss.NewStyle().Foreground(colorSubtle).Render(strings.Repeat("─", w))
 }
 
-// renderHeader is the top bar: brand, agent count, filter chip,
-// sort indicator. When the wired VerbDispatcher implements ModeReporter
-// we append a "mode=X (cap N)" chip so the operator can see at a glance
-// which orchestrator mode is gating new Spawn calls.
+// renderHeader is the top bar.
 func (m *Model) renderHeader(w int) string {
 	brand := lipgloss.NewStyle().Bold(true).Foreground(colorAccent).Render("carlos")
 	sep := lipgloss.NewStyle().Foreground(colorMuted).Render(" · ")
-	mode := lipgloss.NewStyle().Foreground(colorAccent).Render("manage")
+	mode := lipgloss.NewStyle().Foreground(colorAccent).Render("agents")
 
 	count := lipgloss.NewStyle().Foreground(colorMuted).Render(
 		fmt.Sprintf("%d agent%s", len(m.rosterRows), plural(len(m.rosterRows))),
@@ -204,27 +185,140 @@ func (m *Model) renderHeader(w int) string {
 	return left + strings.Repeat(" ", gap) + right
 }
 
-// renderFocusHeader labels the focus pane with the bound agent's
-// shortened ID + state badge. Empty when nothing is bound.
-func (m *Model) renderFocusHeader(w int) string {
+// renderFocusPane composes the right-hand detail panel: header card
+// with title + stats grid, a section rule, then the activity viewport
+// underneath. When no agent is selected (focus unbound) the pane shows
+// a hint and pads to the same height so the rest of the layout
+// doesn't shift.
+func (m *Model) renderFocusPane(w, h int) string {
 	id := m.focus.AgentID()
 	if id == "" {
-		return lipgloss.NewStyle().
-			Foreground(colorMuted).
-			Render("focus: (none - enter on a row)")
+		hint := lipgloss.NewStyle().Foreground(colorMuted).Italic(true).Render(
+			"select an agent (↑/↓ then enter) to see its detail")
+		card := lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(colorSubtle).
+			Padding(1, 2).
+			Width(w - 2).
+			Height(h - 2).
+			Align(lipgloss.Center, lipgloss.Center).
+			Render(hint)
+		return card
 	}
+
 	row, ok := m.findRow(id)
 	if !ok {
-		return lipgloss.NewStyle().Foreground(colorMuted).Render("focus: " + shortID(id))
+		return lipgloss.NewStyle().Foreground(colorMuted).Render(
+			"focused agent " + shortID(id) + " no longer in projection")
 	}
-	idStyle := lipgloss.NewStyle().Bold(true).Foreground(colorAccent)
-	return idStyle.Render(shortID(id)) + " " + stateBadge(row.State) + " " +
-		lipgloss.NewStyle().Foreground(colorMuted).Render("· "+row.Title)
+
+	header := m.renderFocusDetailHeader(row, w)
+	rule := lipgloss.NewStyle().Foreground(colorSubtle).Render(
+		strings.Repeat("─", w-2),
+	)
+	activityLabel := lipgloss.NewStyle().
+		Foreground(colorMuted).
+		Bold(true).
+		Render(" activity ")
+	activity := m.focus.View()
+
+	return lipgloss.JoinVertical(lipgloss.Left,
+		header,
+		rule,
+		activityLabel,
+		activity,
+	)
 }
 
-// renderFooter is the keybind row, always shown in brand accent so
-// the three verbs are discoverable. Status echo (verb result, errors)
-// sits above the keybind row when present.
+// renderFocusDetailHeader is the rich info card at the top of the
+// focus pane. Layout:
+//
+//	┌─ 01KTP1RQ  ● running ──────────────────╮
+//	│ chat with you about whatever this is   │
+//	│                                        │
+//	│ tokens  123 in · 456 out               │
+//	│ cost    $0.04                          │
+//	│ elapsed 1m11s                          │
+//	│ model   google/gemini-3.5-flash        │
+//	│ parent  01KTKMC9                       │
+//	╰────────────────────────────────────────╯
+//
+// Heights are fixed (cardW × focusDetailHeaderH) so the activity
+// viewport math below it stays trivial.
+func (m *Model) renderFocusDetailHeader(row agent.AgentRow, paneW int) string {
+	innerW := paneW - 4
+	if innerW < 16 {
+		innerW = 16
+	}
+
+	idLabel := lipgloss.NewStyle().Bold(true).Foreground(colorAccent).Render(shortID(row.ID))
+	stateText := "[" + theme.StateGlyph(row.State) + " " + row.State.String() + "]"
+	titleLine := idLabel + "  " + lipgloss.NewStyle().Foreground(stateColor(row.State)).Render(stateText)
+
+	intent := row.Title
+	if intent == "" {
+		intent = "(no intent recorded)"
+	}
+	intent = truncate(intent, innerW)
+	intentLine := lipgloss.NewStyle().Foreground(colorAgent).Render(intent)
+
+	tokens := fmt.Sprintf("%s in · %s out", formatTokens(row.TokensIn), formatTokens(row.TokensOut))
+	cost := formatCost(row.CostCents)
+	elapsed := formatElapsed(nowFunc().Sub(row.CreatedAt))
+	model := row.Model
+	if model == "" {
+		model = "(unset)"
+	}
+	parent := row.ParentID
+	if parent == "" {
+		parent = "(root)"
+	} else {
+		parent = shortID(parent)
+	}
+
+	stats := renderStatsGrid(innerW, [][2]string{
+		{"tokens", tokens},
+		{"cost", cost},
+		{"elapsed", elapsed},
+		{"model", truncate(model, innerW-9)},
+		{"parent", parent},
+	})
+
+	body := lipgloss.JoinVertical(lipgloss.Left,
+		padCellsToWidth(titleLine, innerW),
+		padCellsToWidth(intentLine, innerW),
+		stats,
+	)
+
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(colorAgent).
+		Padding(0, 1).
+		Width(paneW - 2).
+		Render(body)
+}
+
+// renderStatsGrid lays out a two-column label/value table. Labels are
+// left-justified in a 9-char gutter; values fill the remaining width.
+// Each row is padded to innerW so the surrounding card border draws
+// cleanly when lipgloss right-pads the card.
+func renderStatsGrid(innerW int, rows [][2]string) string {
+	labelW := 9
+	valueW := innerW - labelW
+	if valueW < 1 {
+		valueW = 1
+	}
+	lines := make([]string, 0, len(rows))
+	for _, r := range rows {
+		label := lipgloss.NewStyle().Foreground(colorMuted).Render(padRight(r[0], labelW))
+		value := lipgloss.NewStyle().Foreground(colorSubtle).Render(truncate(r[1], valueW))
+		line := label + value
+		lines = append(lines, padCellsToWidth(line, innerW))
+	}
+	return strings.Join(lines, "\n")
+}
+
+// renderFooter is the keybind row.
 func (m *Model) renderFooter(w int) string {
 	keyStyle := lipgloss.NewStyle().Foreground(colorAccent).Bold(true)
 	hintStyle := lipgloss.NewStyle().Foreground(colorMuted)
@@ -232,7 +326,6 @@ func (m *Model) renderFooter(w int) string {
 	var keybinds string
 
 	if m.view == viewApprovals {
-		// Approval pane vocabulary is narrower + different.
 		left := keyStyle.Render("y") + hintStyle.Render(" accept  ") +
 			keyStyle.Render("r") + hintStyle.Render(" reject  ") +
 			keyStyle.Render("R") + hintStyle.Render(" refresh")
@@ -245,7 +338,6 @@ func (m *Model) renderFooter(w int) string {
 		}
 		keybinds = left + strings.Repeat(" ", gap) + right
 	} else {
-		// Roster (default) vocabulary.
 		verbs := keyStyle.Render("s") + hintStyle.Render(" steer  ") +
 			keyStyle.Render("i") + hintStyle.Render(" interrupt  ") +
 			keyStyle.Render("x") + hintStyle.Render(" stop")
@@ -277,8 +369,7 @@ func (m *Model) renderFooter(w int) string {
 	return statusStyle.Render(m.status) + "\n" + keybinds
 }
 
-// renderOverlay returns the active overlay's prompt + textinput, or
-// "" when no overlay is active.
+// renderOverlay returns the active overlay's prompt + textinput.
 func (m *Model) renderOverlay(w int) string {
 	if m.overlay == overlayNone {
 		return ""
@@ -292,8 +383,6 @@ func (m *Model) renderOverlay(w int) string {
 	style := lipgloss.NewStyle().Foreground(colorAccent).Bold(true)
 	switch m.overlay {
 	case overlayInterruptConfirm, overlayStopConfirm:
-		// Confirm prompts don't need the textinput - just the
-		// y/N prompt.
 		return style.Render(prompt) +
 			lipgloss.NewStyle().Foreground(colorMuted).Render("(esc to cancel)")
 	default:
@@ -307,8 +396,7 @@ func (m *Model) renderOverlay(w int) string {
 
 // populateSparklines decorates the rendered rows with sparkline +
 // elapsed time, computing the focused agent's spark from the live
-// token ring. Non-focused rows show an empty placeholder so the
-// column stays consistent.
+// token ring.
 func (m *Model) populateSparklines(rows []rosterRow) []rosterRow {
 	now := nowFunc()
 	out := make([]rosterRow, len(rows))
@@ -322,8 +410,6 @@ func (m *Model) populateSparklines(rows []rosterRow) []rosterRow {
 	return out
 }
 
-// plural returns "s" when n != 1, "" otherwise. Used by the header
-// count cell ("3 agents" vs "1 agent").
 func plural(n int) string {
 	if n == 1 {
 		return ""
@@ -331,7 +417,6 @@ func plural(n int) string {
 	return "s"
 }
 
-// sortDirGlyph returns a tiny ASCII arrow indicating sort direction.
 func sortDirGlyph(asc bool) string {
 	if asc {
 		return " ↑"
@@ -340,7 +425,7 @@ func sortDirGlyph(asc bool) string {
 }
 
 // findRow returns the agent.AgentRow for id in the most-recent
-// snapshot, or false. Linear scan - the projection is ~tens of rows.
+// snapshot, or false. Linear scan.
 func (m *Model) findRow(id string) (agent.AgentRow, bool) {
 	for _, r := range m.rawRows {
 		if r.ID == id {

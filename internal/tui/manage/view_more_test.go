@@ -101,33 +101,43 @@ func TestRenderOverlay_NarrowWidthClamps(t *testing.T) {
 	}
 }
 
-// TestRenderFocusHeader_UnboundAndBound covers both header branches.
-func TestRenderFocusHeader_UnboundAndBound(t *testing.T) {
+// TestRenderFocusPane_UnboundAndBound covers the three branches of
+// the rewritten focus pane: unbound (hint message), bound to an agent
+// in the snapshot (rich detail card with title + stats), and bound to
+// a stale id no longer in the projection (graceful fallback line).
+func TestRenderFocusPane_UnboundAndBound(t *testing.T) {
 	m := New(staticSnapshot{}, nil, nil)
 
-	// Unbound focus pane.
-	if got := m.renderFocusHeader(120); !strings.Contains(got, "none") {
-		t.Errorf("unbound header = %q, want 'none'", got)
+	// Unbound focus pane shows the "pick an agent" hint.
+	if got := m.renderFocusPane(120, 30); !strings.Contains(got, "select an agent") {
+		t.Errorf("unbound pane = %q, want 'select an agent' hint", got)
 	}
 
-	// Bind to an agent that's in rawRows.
+	// Bind to an agent that's in rawRows: the pane should surface the
+	// title, the short id, and a stats label.
 	m.rawRows = []agent.AgentRow{
-		{ID: "01HVfound1234567", Title: "demo task", State: agent.StateRunning},
+		{ID: "01HVfound1234567", Title: "demo task", State: agent.StateRunning, Model: "gpt-4o-mini"},
 	}
 	m.focus.Bind("01HVfound1234567")
-	got := m.renderFocusHeader(120)
+	got := m.renderFocusPane(120, 30)
 	if !strings.Contains(got, "demo task") {
-		t.Errorf("bound header missing title: %q", got)
+		t.Errorf("bound pane missing title: %q", got)
 	}
 	if !strings.Contains(got, "01HVfoun") {
-		t.Errorf("bound header missing short id: %q", got)
+		t.Errorf("bound pane missing short id: %q", got)
+	}
+	if !strings.Contains(got, "tokens") {
+		t.Errorf("bound pane missing stats grid: %q", got)
+	}
+	if !strings.Contains(got, "model") {
+		t.Errorf("bound pane missing model row: %q", got)
 	}
 
-	// Bind to an agent that is NOT in rawRows so the ok=false branch
-	// (focus-only id, no row) runs.
+	// Bind to a stale id: the fallback line surfaces the short id +
+	// "no longer in projection" so the user knows the cursor moved.
 	m.focus.Bind("01HVghost1234567")
-	if got := m.renderFocusHeader(120); !strings.Contains(got, "01HVghos") {
-		t.Errorf("ghost-bind header = %q", got)
+	if got := m.renderFocusPane(120, 30); !strings.Contains(got, "01HVghos") {
+		t.Errorf("stale-id pane = %q, want short id substring", got)
 	}
 }
 

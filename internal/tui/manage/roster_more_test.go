@@ -190,13 +190,13 @@ func TestRenderRoster_VirtualizationClampsScroll(t *testing.T) {
 	}
 }
 
-// TestRenderRoster_CursorMarkerOnSelectedRow pins the post-fix
-// behavior: the row whose index matches cursorIdx gets the "▎"
-// accent left-bar (v0.7.2 swap from the previous "›" arrow — the
-// left-bar is the modern lazygit/k9s/btop pattern). Before any of
-// this fix family, ↑/↓ moved the internal cursor with no visual
-// feedback at all.
-func TestRenderRoster_CursorMarkerOnSelectedRow(t *testing.T) {
+// TestRenderRoster_CursorCardUsesThickBorder pins the v0.7.4 card
+// redesign: the selected card flips to a thick-border (┏ ━ ┓ ┗ ┛)
+// glyph set + reverse-video fill so the cursor position is
+// unmistakable. Previously the cursor showed as a thin "▎" left-bar
+// which got lost against busy data; the user explicitly asked for
+// "selected agent should be filled and its text inverted".
+func TestRenderRoster_CursorCardUsesThickBorder(t *testing.T) {
 	rows := []rosterRow{
 		{row: agent.AgentRow{ID: "aaa", Title: "first", State: agent.StateRunning}},
 		{row: agent.AgentRow{ID: "bbb", Title: "second", State: agent.StateRunning}},
@@ -204,62 +204,74 @@ func TestRenderRoster_CursorMarkerOnSelectedRow(t *testing.T) {
 	}
 	out := renderRoster(rows, rosterRenderOptions{
 		width:     120,
-		height:    6,
+		height:    20,
 		cursorIdx: 1,
 		maxDepth:  3,
 	})
-	if !strings.Contains(out, "▎") {
-		t.Errorf("cursor left-bar missing from output:\n%s", out)
+	// Thick-border glyph appears at least once (the selected card).
+	if !strings.Contains(out, "┏") {
+		t.Errorf("thick-border top-left glyph missing from selected card:\n%s", out)
 	}
-	// Marker is on the SECOND visible row: appears after "first"
-	// and before "third".
-	firstIdx := strings.Index(out, "first")
-	cursorIdx := strings.Index(out, "▎")
-	thirdIdx := strings.Index(out, "third")
-	if !(firstIdx < cursorIdx && cursorIdx < thirdIdx) {
-		t.Errorf("cursor left-bar not on the expected row (first=%d cursor=%d third=%d):\n%s",
-			firstIdx, cursorIdx, thirdIdx, out)
+	// Selected card carries the ANSI reverse-video escape (CSI 7m).
+	if !strings.Contains(out, "\x1b[7m") {
+		t.Errorf("selected card should emit reverse-video escape (\\x1b[7m):\n%s", out)
+	}
+	// Sanity: every agent's title makes it into the output.
+	for _, want := range []string{"first", "second", "third"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("agent title %q missing from card output:\n%s", want, out)
+		}
 	}
 }
 
-// TestRenderRoster_CursorOverridesFocusBar covers the precedence
-// rule: when the cursor lands on the already-focused row, the
-// accent (cursor) bar wins over the agent-color (focus) bar so the
-// user can always see WHERE the cursor is, even on the focused
-// row. Focused state still conveys via the focus pane header.
-func TestRenderRoster_CursorOverridesFocusBar(t *testing.T) {
+// TestRenderRoster_CursorWinsOverFocus pins the precedence rule:
+// when the cursor lands on the already-focused agent, the thick
+// reverse-video card wins so the user can see WHERE the cursor is.
+// Focus state still conveys through the right detail pane's
+// agent-accent border.
+func TestRenderRoster_CursorWinsOverFocus(t *testing.T) {
 	rows := []rosterRow{
 		{row: agent.AgentRow{ID: "aaa", Title: "alpha", State: agent.StateRunning}},
 	}
 	out := renderRoster(rows, rosterRenderOptions{
 		width:     120,
-		height:    3,
+		height:    10,
 		focusID:   "aaa",
 		cursorIdx: 0,
 		maxDepth:  3,
 	})
-	if !strings.Contains(out, "▎") {
-		t.Errorf("expected cursor bar on focused row when cursor lands on it:\n%s", out)
+	if !strings.Contains(out, "┏") {
+		t.Errorf("cursor-on-focused row should still use the thick selection border:\n%s", out)
+	}
+	if !strings.Contains(out, "\x1b[7m") {
+		t.Errorf("cursor-on-focused row should still emit reverse-video:\n%s", out)
 	}
 }
 
-// TestRenderRoster_FocusBarWhenCursorElsewhere pins the focused-
-// only branch: cursor is somewhere else, focus is on row 0 → row
-// 0 gets the agent-color "█" bar.
-func TestRenderRoster_FocusBarWhenCursorElsewhere(t *testing.T) {
+// TestRenderRoster_FocusCardUsesRoundedBorder pins the focus-only
+// branch: cursor is on row 1 (selected, thick), focus is on row 0
+// (rounded border + agent accent color). Both visual states
+// coexist; the user can scan past their cursor to see where the
+// detail pane is currently bound.
+func TestRenderRoster_FocusCardUsesRoundedBorder(t *testing.T) {
 	rows := []rosterRow{
 		{row: agent.AgentRow{ID: "aaa", Title: "alpha", State: agent.StateRunning}},
 		{row: agent.AgentRow{ID: "bbb", Title: "beta", State: agent.StateRunning}},
 	}
 	out := renderRoster(rows, rosterRenderOptions{
 		width:     120,
-		height:    4,
+		height:    20,
 		focusID:   "aaa",
 		cursorIdx: 1,
 		maxDepth:  3,
 	})
-	if !strings.Contains(out, "█") {
-		t.Errorf("expected focus bar when cursor is elsewhere:\n%s", out)
+	// Rounded border on the (non-selected) focus card.
+	if !strings.Contains(out, "╭") {
+		t.Errorf("focused card should carry rounded-border glyphs:\n%s", out)
+	}
+	// Thick border on the cursor card so both states are visible.
+	if !strings.Contains(out, "┏") {
+		t.Errorf("cursor card should still carry thick border:\n%s", out)
 	}
 }
 

@@ -1,12 +1,14 @@
 package manage
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/georgebuilds/carlos/internal/agent"
+	"github.com/georgebuilds/carlos/internal/theme"
 )
 
 // rosterRow is one renderable line of the roster. We compute the
@@ -24,24 +26,33 @@ type rosterRow struct {
 }
 
 // rosterRenderOptions bundles inputs the renderer needs from the
-// orchestrator: terminal sizing, the focused agent ID (rendered with
-// a highlight), the cursor index (the row the user's ↑/↓ keys are
-// currently on; distinct from focus since enter commits cursor→focus),
-// and the optional sparkline accessor for the focused agent.
+// orchestrator.
 type rosterRenderOptions struct {
 	width     int
 	height    int
 	focusID   string
 	cursorIdx int // index into rows the ↑/↓ cursor sits on; -1 = no cursor highlight
-	scroll    int // top of the visible window
+	scroll    int // top of the visible card window
 	spark     func(id string) string
 	elapsed   func(createdAt time.Time) time.Duration
 	maxDepth  int // cap rendered indentation at this many levels
 }
 
-// defaultMaxDepth caps visible nesting at 3 levels (per the brief);
-// deeper subtrees show "…N more" on the deepest visible parent.
+// defaultMaxDepth caps visible nesting at 3 levels; deeper subtrees
+// show "…N more" on the deepest visible parent.
 const defaultMaxDepth = 3
+
+// cardLines is the per-agent card height in terminal rows. Layout:
+//
+//	row 0  top border (rounded / thick when selected)
+//	row 1  ID + state badge + indent gutter
+//	row 2  intent (truncated to card width)
+//	row 3  meta strip: tokens · cost · elapsed · sparkline
+//	row 4  bottom border
+//
+// Pinned as a constant so the virtualization window math stays trivial:
+// visible_cards = bodyH / cardLines.
+const cardLines = 5
 
 // buildRosterRows flattens the projection into a depth-ordered list,
 // applying lineage indentation. Sort order is preserved for siblings;
@@ -52,15 +63,11 @@ func buildRosterRows(rows []agent.AgentRow, focusID string, maxDepth int) []rost
 		maxDepth = defaultMaxDepth
 	}
 
-	// Index by ID for cheap children() lookups.
 	byID := make(map[string]agent.AgentRow, len(rows))
 	for _, r := range rows {
 		byID[r.ID] = r
 	}
 
-	// Children groups keyed by parent_id. We iterate `rows` (the
-	// caller's sorted slice) so sibling order matches the active sort
-	// instead of falling back to ID order.
 	childrenOf := make(map[string][]agent.AgentRow, len(rows))
 	rootList := make([]agent.AgentRow, 0, len(rows))
 	for _, r := range rows {
@@ -70,8 +77,7 @@ func buildRosterRows(rows []agent.AgentRow, focusID string, maxDepth int) []rost
 		}
 		// If the parent is missing from this slice (filter narrowed
 		// it out), treat the orphaned child as a root so it stays
-		// visible - losing rows silently would be a worse UX than
-		// rendering a stray child at the root level.
+		// visible.
 		if _, ok := byID[r.ParentID]; !ok {
 			rootList = append(rootList, r)
 			continue
@@ -83,9 +89,6 @@ func buildRosterRows(rows []agent.AgentRow, focusID string, maxDepth int) []rost
 	var walk func(r agent.AgentRow, depth int)
 	walk = func(r agent.AgentRow, depth int) {
 		if depth >= maxDepth {
-			// We have reached the visible cap. Render the row itself
-			// at this depth, then if it has descendants, attach a
-			// "…N more" marker.
 			out = append(out, rosterRow{
 				row:        r,
 				indent:     depth,
@@ -105,8 +108,7 @@ func buildRosterRows(rows []agent.AgentRow, focusID string, maxDepth int) []rost
 	return out
 }
 
-// countDescendants returns the total number of nodes under id in the
-// adjacency map.
+// countDescendants returns the total number of nodes under id.
 func countDescendants(id string, childrenOf map[string][]agent.AgentRow) int {
 	kids := childrenOf[id]
 	n := len(kids)
@@ -116,65 +118,29 @@ func countDescendants(id string, childrenOf map[string][]agent.AgentRow) int {
 	return n
 }
 
-// renderRoster composes the roster header + the visible window of
-// rows. The output is the table as a single string suitable for
-// JoinVertical with the focus pane.
+// renderRoster composes the visible window of agent cards. Each card
+// is a self-contained bordered button — rounded on idle/focus, thick
+// + reverse-video filled on cursor selection. Cards stack vertically
+// with no inter-card gap so the borders themselves provide segmentation.
 //
-// Column layout (fixed widths):
-//
-//	id  state            intent                model     tok        cost     spark        elapsed
-//	8   18 (badge)       variable              16        11         7        12           7
-//
-// Total fixed columns ~= 8 + 1 + 18 + 1 + (variable) + 1 + 16 + 1 + 11 + 1 + 7 + 1 + 12 + 1 + 7 = 105 + intent
-// We allocate intent the leftover width after the fixed slots, with a
-// floor of 12 chars; below the floor we drop the model column to
-// keep the row legible.
+// Replaces the v0.7.x column-table layout, which broke down once the
+// roster pane fell below ~90 cells (rows wrapped, columns desynced).
+// The card format is height-bounded instead of width-bounded so it
+// degrades gracefully on narrow terminals.
 func renderRoster(rows []rosterRow, opts rosterRenderOptions) string {
 	w := opts.width
-	if w < 40 {
-		w = 40
-	}
-	const (
-		idW     = 8
-		stateW  = 18
-		modelW  = 16
-		tokensW = 11
-		costW   = 7
-		sparkW  = 12
-		timeW   = 7
-		gap     = 1
-	)
-	fixed := idW + stateW + modelW + tokensW + costW + sparkW + timeW + gap*7
-	intentW := w - fixed
-	dropModel := false
-	if intentW < 12 {
-		intentW = w - (fixed - modelW - gap)
-		dropModel = true
-	}
-	if intentW < 8 {
-		intentW = 8
-	}
-
-	header := renderRosterHeader(intentW, dropModel)
-	body := make([]string, 0, len(rows)+1)
-	body = append(body, header)
-
-	// Virtualization: only render the visible slice of rows.
-	visible := opts.height - 1 // header row
-	if visible < 1 {
-		visible = 1
+	if w < cardMinWidth {
+		w = cardMinWidth
 	}
 
 	if len(rows) == 0 {
-		// Empty roster: render a centered helper hint so the pane
-		// doesn't read as broken. Pad to `visible` rows so the
-		// focus pane on the right doesn't shift up.
-		empty := renderRosterEmptyState(w)
-		body = append(body, empty)
-		for i := 1; i < visible; i++ {
-			body = append(body, "")
-		}
-		return strings.Join(body, "\n")
+		return renderRosterEmptyState(w, opts.height)
+	}
+
+	// Window math: how many full cards fit in the visible height.
+	visible := opts.height / cardLines
+	if visible < 1 {
+		visible = 1
 	}
 	start := opts.scroll
 	if start < 0 {
@@ -188,148 +154,205 @@ func renderRoster(rows []rosterRow, opts rosterRenderOptions) string {
 		end = len(rows)
 	}
 
+	cards := make([]string, 0, end-start)
 	for i := start; i < end; i++ {
-		body = append(body, renderRosterRow(rows[i], opts, intentW, dropModel, i == opts.cursorIdx))
+		cards = append(cards, renderAgentCard(rows[i], w, i == opts.cursorIdx, rows[i].row.ID == opts.focusID))
 	}
 
-	// If the visible window is shorter than the height, pad with
-	// blanks so the focus pane on the right doesn't shift up.
-	for i := end - start; i < visible; i++ {
-		body = append(body, "")
+	// Footer chip — overflow indicator. Tells the user the visible
+	// window is a slice of a larger roster so they don't think the
+	// pane is showing everything.
+	if len(rows) > visible {
+		chip := lipgloss.NewStyle().Foreground(colorMuted).Italic(true).Render(
+			fmt.Sprintf("  · showing %d–%d of %d ·", start+1, end, len(rows)),
+		)
+		cards = append(cards, lipgloss.PlaceHorizontal(w, lipgloss.Center, chip))
 	}
-	return strings.Join(body, "\n")
+
+	return strings.Join(cards, "\n")
 }
 
-// renderRosterEmptyState is the helper row shown when the projection
-// has zero rows. Centered, dim, and free of fake column scaffolding
-// so the user can tell the pane is intentionally empty (and not
-// loading or broken).
-func renderRosterEmptyState(w int) string {
-	dim := lipgloss.NewStyle().Foreground(colorMuted).Italic(true)
-	line := dim.Render("no agents yet · /research, /please, or wait for a spawn")
-	return lipgloss.PlaceHorizontal(w, lipgloss.Center, line)
-}
+// cardMinWidth is the floor below which a card refuses to render
+// content (it still draws the border so the layout stays stable).
+const cardMinWidth = 32
 
-// renderRosterHeader is the bold column-name row. We don't render any
-// border around the table - the outer manage view provides the frame.
-func renderRosterHeader(intentW int, dropModel bool) string {
-	style := lipgloss.NewStyle().Foreground(colorMuted).Bold(true)
-	parts := []string{
-		padRight("id", 8),
-		padRight("state", 18),
-		padRight("intent", intentW),
-	}
-	if !dropModel {
-		parts = append(parts, padRight("model", 16))
-	}
-	parts = append(parts,
-		padRight("tokens", 11),
-		padRight("cost", 7),
-		padRight("spark", 12),
-		padRight("time", 7),
-	)
-	return style.Render(strings.Join(parts, " "))
-}
-
-// renderRosterRow is the per-row column-assembled line. We compose
-// raw strings + apply lipgloss styles, then pad each column to its
-// fixed width AFTER coloring (because pad treats ANSI escapes as
-// zero-width but lipgloss doesn't).
+// renderAgentCard paints one agent as a bordered button. Selection
+// state takes visual priority over focus state — when the cursor lands
+// on a card, the whole card flips to a thick-bordered, reverse-video
+// fill so selection is unmistakable. Focus (the agent whose transcript
+// shows in the right pane) carries an accent-colored rounded border;
+// idle cards use a subtle rounded border.
 //
-// isCursor is true when this row is the ↑/↓ cursor position. We
-// paint it with a leading "›" marker + bold body so navigation is
-// visually obvious. Focused row (the agent shown in the right detail
-// pane) is a separate concern: that gets the leading "▸" marker.
-// When cursor and focus coincide, focus wins (▸).
-func renderRosterRow(rr rosterRow, opts rosterRenderOptions, intentW int, dropModel bool, isCursor bool) string {
+// The card body is always rendered in plain text (no inner ANSI
+// styles) so the outer Reverse(true) wrapper cleanly inverts every
+// cell when selected. Pre-styled inner runs would leak their original
+// colors through the reverse flip and look glitchy.
+func renderAgentCard(rr rosterRow, paneW int, isCursor, isFocus bool) string {
 	r := rr.row
 
-	// Lineage indent on the title cell.
-	indent := strings.Repeat("  ", rr.indent)
-	intent := indent + r.Title
+	// Inner width: pane width minus border (2) minus horizontal padding (2).
+	innerW := paneW - 4
+	if innerW < 8 {
+		innerW = 8
+	}
+
+	// Line 1: ID + state badge. Indent gutter renders as "  " per level
+	// so lineage is visible without consuming horizontal range.
+	gutter := strings.Repeat("  ", rr.indent)
+	id := shortID(r.ID)
+	stateText := "[" + theme.StateGlyph(r.State) + " " + r.State.String() + "]"
+	titleLeft := gutter + id + "  " + stateText
+
+	// Line 2: intent.
+	intent := r.Title
+	if intent == "" {
+		intent = "(no intent recorded)"
+	}
 	if rr.collapsed && rr.hiddenKids > 0 {
-		intent += " "
-		intent += lipgloss.NewStyle().
-			Foreground(colorMuted).
-			Italic(true).
-			Render(suffixMore(rr.hiddenKids))
+		intent += " " + suffixMore(rr.hiddenKids)
 	}
-	intent = truncate(intent, intentW)
+	intent = truncate(intent, innerW)
 
-	idCell := shortID(r.ID)
-	idStyle := lipgloss.NewStyle().Foreground(colorSubtle)
-	if r.ID == opts.focusID {
-		idStyle = lipgloss.NewStyle().Foreground(colorAccent).Bold(true).Reverse(true)
-	}
-
-	badge := stateBadge(r.State)
-
-	model := r.Model
-	if model == "" {
-		model = "-"
-	}
-	model = truncate(model, 16)
-
-	tokens := formatTokensColumn(r.TokensIn, r.TokensOut)
+	// Line 3: meta strip — tokens · cost · elapsed · sparkline.
+	tokens := formatTokensColumn(r.TokensIn, r.TokensOut) + " tok"
 	cost := formatCost(r.CostCents)
-
-	spark := rr.spark
-	if spark == "" {
-		spark = strings.Repeat(string(sparkBlocks[0]), numSparkBuckets)
-	}
 	elapsed := formatElapsed(rr.elapsed)
+	meta := tokens + "  ·  " + cost + "  ·  " + elapsed
+	if rr.spark != "" && lipgloss.Width(meta)+2+numSparkBuckets <= innerW {
+		// Sparkline aligns to the right when there's room. We strip
+		// ANSI from the spark when selected so the reverse-video flip
+		// doesn't leave colored residue.
+		spark := rr.spark
+		if isCursor {
+			spark = stripCSI(spark)
+		}
+		gap := innerW - lipgloss.Width(meta) - lipgloss.Width(spark)
+		if gap < 2 {
+			gap = 2
+		}
+		meta = meta + strings.Repeat(" ", gap) + spark
+	}
 
-	// padRight respects ANSI by computing visible width with
-	// lipgloss.Width.
-	parts := []string{
-		padRightANSI(idStyle.Render(idCell), 8),
-		padRightANSI(badge, 18),
-		padRightANSI(intent, intentW),
-	}
-	if !dropModel {
-		parts = append(parts,
-			padRightANSI(lipgloss.NewStyle().Foreground(colorMuted).Render(model), 16),
-		)
-	}
-	parts = append(parts,
-		padRightANSI(lipgloss.NewStyle().Foreground(colorAgent).Render(tokens), 11),
-		padRightANSI(lipgloss.NewStyle().Foreground(colorAccent).Render(cost), 7),
-		padRightANSI(spark, 12),
-		padRightANSI(lipgloss.NewStyle().Foreground(colorMuted).Render(elapsed), 7),
+	// Body before styling: three lines, padded to inner width so
+	// background fills the whole card uniformly when reversed.
+	body := lipgloss.JoinVertical(lipgloss.Left,
+		padCellsToWidth(titleLeft, innerW),
+		padCellsToWidth(intent, innerW),
+		padCellsToWidth(meta, innerW),
 	)
-	row := strings.Join(parts, " ")
 
-	// Left-bar selection accent — the modern TUI pattern (lazygit,
-	// k9s, btop). Two cells of left gutter on every row keeps the
-	// data columns aligned; the cursor / focus state colors the
-	// first cell to broadcast state without shifting layout.
-	//
-	//   "▎ <row>"  cursor here  (accent-colored bar, bold body)
-	//   "█ <row>"  focused here (agent-colored bar, normal body)
-	//   "▎ <row>"  both: accent bar wins so the user can see where
-	//              the cursor is; "[•] focused" badge would belong
-	//              in the focus pane header, not on the row.
 	switch {
 	case isCursor:
-		bar := lipgloss.NewStyle().Foreground(colorAccent).Bold(true).Render("▎")
-		row = bar + " " + lipgloss.NewStyle().Bold(true).Render(row)
-	case r.ID == opts.focusID:
-		bar := lipgloss.NewStyle().Foreground(colorAgent).Render("█")
-		row = bar + " " + row
+		// Selected: thick border, accent foreground (border), full
+		// reverse-video on the body so every cell inverts as a unit.
+		// Bold to add weight to the inverted text.
+		return lipgloss.NewStyle().
+			Border(lipgloss.ThickBorder()).
+			BorderForeground(colorAccent).
+			Padding(0, 1).
+			Width(paneW - 2).
+			Reverse(true).
+			Bold(true).
+			Render(body)
+	case isFocus:
+		// Focused (in detail pane, but cursor is elsewhere): rounded
+		// agent-accent border, body in agent color so the user can
+		// trace which card the right pane is showing.
+		title := lipgloss.NewStyle().Foreground(colorAgent).Bold(true).Render(
+			padCellsToWidth(titleLeft, innerW),
+		)
+		styled := lipgloss.JoinVertical(lipgloss.Left,
+			title,
+			lipgloss.NewStyle().Foreground(colorMuted).Render(padCellsToWidth(intent, innerW)),
+			lipgloss.NewStyle().Foreground(colorSubtle).Render(padCellsToWidth(meta, innerW)),
+		)
+		return lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(colorAgent).
+			Padding(0, 1).
+			Width(paneW - 2).
+			Render(styled)
 	default:
-		row = "  " + row
+		// Idle: rounded subtle border + colored state badge inline.
+		titleColored := lipgloss.NewStyle().Foreground(colorMuted).Render(gutter+id) +
+			"  " + stateBadge(r.State)
+		styled := lipgloss.JoinVertical(lipgloss.Left,
+			padCellsToWidth(titleColored, innerW),
+			lipgloss.NewStyle().Foreground(colorMuted).Render(padCellsToWidth(intent, innerW)),
+			lipgloss.NewStyle().Foreground(colorSubtle).Render(padCellsToWidth(meta, innerW)),
+		)
+		return lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(colorSubtle).
+			Padding(0, 1).
+			Width(paneW - 2).
+			Render(styled)
 	}
-	return row
+}
+
+// padCellsToWidth right-pads s with spaces to exactly w terminal
+// cells, counting via lipgloss.Width so embedded ANSI escapes don't
+// distort the gap calculation. If s is already wider than w, it's
+// returned unchanged (the card border will clip it).
+func padCellsToWidth(s string, w int) string {
+	if w <= 0 {
+		return ""
+	}
+	gap := w - lipgloss.Width(s)
+	if gap <= 0 {
+		return s
+	}
+	return s + strings.Repeat(" ", gap)
+}
+
+// stripCSI removes ANSI CSI escape sequences from s. Used on the
+// sparkline before rendering a selected card, since lipgloss
+// Reverse(true) on the outer style doesn't propagate into already-
+// styled inner runs.
+func stripCSI(s string) string {
+	if !strings.Contains(s, "\x1b") {
+		return s
+	}
+	var b strings.Builder
+	b.Grow(len(s))
+	for i := 0; i < len(s); {
+		if s[i] == '\x1b' && i+1 < len(s) && s[i+1] == '[' {
+			j := i + 2
+			for j < len(s) {
+				c := s[j]
+				j++
+				if (c >= 0x40 && c <= 0x7e) {
+					break
+				}
+			}
+			i = j
+			continue
+		}
+		b.WriteByte(s[i])
+		i++
+	}
+	return b.String()
+}
+
+// renderRosterEmptyState is shown when the projection has zero rows
+// (or all rows were filtered out). Centered, italicized, dim.
+func renderRosterEmptyState(w, h int) string {
+	dim := lipgloss.NewStyle().Foreground(colorMuted).Italic(true)
+	msg := dim.Render("no agents yet")
+	hint := dim.Render("/research or /please will spawn one")
+	body := lipgloss.JoinVertical(lipgloss.Center, msg, "", hint)
+	if h < 1 {
+		h = 3
+	}
+	return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, body)
 }
 
 // suffixMore returns the "…N more" marker for a collapsed subtree.
-// N=1 reads as "…1 more"; pluralization not worth the cycles.
 func suffixMore(n int) string {
 	return "…" + itoa(n) + " more"
 }
 
-// itoa is a tiny utility (we only need it for small counts; avoid
-// strconv import here to keep allocations minimal in the render path).
+// itoa is a tiny utility for small counts.
 func itoa(n int) string {
 	if n == 0 {
 		return "0"
@@ -342,9 +365,7 @@ func itoa(n int) string {
 	return string(b)
 }
 
-// truncate cuts s to at most n runes; appends "…" if truncated. We
-// count runes (not bytes) because emoji/non-ASCII titles otherwise
-// over-truncate.
+// truncate cuts s to at most n runes; appends "…" if truncated.
 func truncate(s string, n int) string {
 	if n <= 0 {
 		return ""
@@ -369,9 +390,7 @@ func padRight(s string, n int) string {
 }
 
 // padRightANSI pads s (which may contain ANSI escapes) to a visible
-// width of n. lipgloss.Width discounts the escape sequences. If s is
-// wider than n we leave it alone - truncating an already-styled
-// string would corrupt the escape pairs.
+// width of n. lipgloss.Width discounts the escape sequences.
 func padRightANSI(s string, n int) string {
 	gap := n - lipgloss.Width(s)
 	if gap <= 0 {
@@ -381,7 +400,6 @@ func padRightANSI(s string, n int) string {
 }
 
 // formatElapsed compacts a duration to fit a 7-char column.
-// <1m → "Ns" / "NNs"; <1h → "NmMMs" or just "NNm"; ≥1h → "NhMMm".
 func formatElapsed(d time.Duration) string {
 	if d <= 0 {
 		return "-"

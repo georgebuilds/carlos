@@ -61,24 +61,43 @@ func TestRenderHRule_NegativeWidthDoesNotPanic(t *testing.T) {
 // stripANSI is a tiny helper that drops ANSI escape sequences for
 // snapshot-style assertions. Bubbletea + lipgloss output is full of
 // them; we only care about the glyph shape here.
+//
+// Correctness note: CSI sequences are ESC `[` <params> <intermediate>
+// <final> where final ∈ [0x40, 0x7e]. The `[` itself is 0x5b which is
+// in that final-byte range, so a naïve "skip until 0x40-0x7e" loop
+// terminates one byte too early and lets the SGR digits leak through.
+// Special-case the leading `[` so the loop only considers bytes AFTER
+// it as candidates for the final byte.
 func stripANSI(s string) string {
 	var b strings.Builder
-	inEsc := false
-	for _, r := range s {
-		if r == 0x1b {
-			inEsc = true
-			continue
-		}
-		if inEsc {
-			// CSI runs end at a letter; OSC runs end at BEL (0x07) or
-			// ST (ESC \). For our snapshot purposes a coarse "drop
-			// until we see a letter or string-terminator" is enough.
-			if (r >= '@' && r <= '~') || r == 0x07 {
-				inEsc = false
+	b.Grow(len(s))
+	for i := 0; i < len(s); {
+		if s[i] == 0x1b && i+1 < len(s) && s[i+1] == '[' {
+			j := i + 2 // skip ESC + [
+			for j < len(s) {
+				c := s[j]
+				j++
+				if c >= 0x40 && c <= 0x7e {
+					break
+				}
 			}
+			i = j
 			continue
 		}
-		b.WriteRune(r)
+		if s[i] == 0x1b {
+			// Non-CSI escape (OSC, etc.). Skip until BEL or ST.
+			j := i + 1
+			for j < len(s) && s[j] != 0x07 {
+				j++
+			}
+			if j < len(s) {
+				j++ // consume the BEL
+			}
+			i = j
+			continue
+		}
+		b.WriteByte(s[i])
+		i++
 	}
 	return b.String()
 }
