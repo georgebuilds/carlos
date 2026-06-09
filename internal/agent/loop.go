@@ -309,9 +309,20 @@ func collectAssistant(stream <-chan providers.Event, textSink io.Writer) (provid
 	for ev := range stream {
 		switch ev.Kind {
 		case providers.EventTextDelta:
+			// Scrub terminal control sequences before they hit the
+			// live text sink. A misbehaving (or compromised) provider
+			// streaming raw ANSI / OSC escapes — or an error envelope
+			// leaking control bytes through the SSE channel — would
+			// otherwise repaint the chat surface OR get echoed by the
+			// terminal as input back into bubbletea's stdin (which is
+			// where "weird characters appear in the input box" reports
+			// come from). The persisted message still gets the raw
+			// text (in case the provider intentionally returned a
+			// control glyph as content), but the textSink sees only
+			// printable bytes.
 			textBuf.WriteString(ev.Text)
 			if textSink != nil {
-				_, _ = textSink.Write([]byte(ev.Text))
+				_, _ = textSink.Write([]byte(scrubControlChars(ev.Text)))
 			}
 		case providers.EventToolUseStart:
 			flushText()
@@ -347,4 +358,63 @@ func collectAssistant(stream <-chan providers.Event, textSink io.Writer) (provid
 	}
 	flushText()
 	return providers.Message{Role: "assistant", Content: blocks}, stopReason, nil
+}
+
+// scrubControlChars strips C0/C1 terminal control bytes from s before
+// it reaches a live text sink. Most consequentially this drops ESC
+// (0x1b) — the lead byte of every CSI / OSC sequence — so a streamed
+// SSE chunk containing raw ANSI cannot reach the terminal and provoke
+// an interactive response (OSC 11 background-color query, OSC 4 color
+// palette query, etc.) that would then be echoed back into bubbletea's
+// stdin and land in the chat composer as garbage. Preserves newline,
+// carriage return, and tab — those are legitimate printable whitespace.
+//
+// The non-streamed assistant message keeps the raw text so the model's
+// own context window stays faithful; only the human-visible live
+// surface is scrubbed.
+func scrubControlChars(s string) string {
+	// Hot path: no escapes / controls → return verbatim. Most provider
+	// chunks land here.
+	clean := true
+	for i := 0; i < len(s); i++ {
+		if isControlByte(s[i]) {
+			clean = false
+			break
+		}
+	}
+	if clean {
+		return s
+	}
+	var b strings.Builder
+	b.Grow(len(s))
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if isControlByte(c) {
+			continue
+		}
+		b.WriteByte(c)
+	}
+	return b.String()
+}
+
+// isControlByte reports whether c is a C0 / C1 control byte the live
+// text sink must drop. Allows newline (0x0a), carriage return (0x0d),
+// and tab (0x09); drops everything else in [0x00, 0x1f] plus DEL
+// (0x7f) and the C1 range [0x80, 0x9f]. Multi-byte UTF-8 continuation
+// bytes are all >= 0xc0 so this byte-level scrub never severs a code
+// point.
+func isControlByte(c byte) bool {
+	switch c {
+	case '\t', '\n', '\r':
+		return false
+	case 0x7f: // DEL
+		return true
+	}
+	if c < 0x20 {
+		return true
+	}
+	if c >= 0x80 && c <= 0x9f {
+		return true
+	}
+	return false
 }

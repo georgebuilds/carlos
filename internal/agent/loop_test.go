@@ -90,6 +90,76 @@ func TestLoop_TextOnlyOneTurn(t *testing.T) {
 	}
 }
 
+// TestLoop_TextSinkScrubsControlChars pins the v0.7.6 fix: the live
+// text sink must drop terminal control bytes (ESC, BEL, OSC lead, C1
+// range, DEL) so a streamed chunk containing raw ANSI cannot reach the
+// terminal and provoke an OSC 11 / OSC 4 response that bubbletea then
+// reads back into the chat composer as garbage. The persisted
+// assistant message keeps the raw text — only the sink is scrubbed.
+func TestLoop_TextSinkScrubsControlChars(t *testing.T) {
+	// Hostile chunk: OSC 11 query (ESC ] 11 ; ? BEL), CSI fg red,
+	// then plain text and a final CSI reset. The model never emits
+	// these legitimately; in the wild they come from a corrupt SSE
+	// envelope leaking bytes through the EventTextDelta channel.
+	hostile := "\x1b]11;?\x07\x1b[31mhello\x1b[0m"
+	p := &sequenceProvider{scripts: [][]providers.Event{
+		{
+			{Kind: providers.EventTextDelta, Text: hostile},
+			{Kind: providers.EventStopReason, Stop: "end_turn"},
+		},
+	}}
+	var sink bytes.Buffer
+	out, err := agent.Run(context.Background(), p, tools.NewRegistry(),
+		agent.LoopOptions{Model: "x", TextSink: &sink},
+		[]providers.Message{{Role: "user", Content: []providers.Block{{Kind: "text", Text: "hi"}}}},
+	)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	got := sink.String()
+	// Sink received printable text only.
+	if got != "]11;?[31mhello[0m" {
+		t.Errorf("sink = %q, want %q (control bytes stripped, payload preserved)", got, "]11;?[31mhello[0m")
+	}
+	// Specific guards: no ESC, no BEL, no DEL byte reached the sink.
+	for _, c := range []byte{0x1b, 0x07, 0x7f} {
+		if strings.ContainsRune(got, rune(c)) {
+			t.Errorf("sink leaked control byte 0x%02x: %q", c, got)
+		}
+	}
+	// Persisted message retains the raw text so the model's own
+	// context window stays faithful across re-renders.
+	if len(out) != 2 {
+		t.Fatalf("messages: want 2 got %d", len(out))
+	}
+	if out[1].Content[0].Text != hostile {
+		t.Errorf("persisted text was modified: %q, want raw %q", out[1].Content[0].Text, hostile)
+	}
+}
+
+// TestLoop_TextSinkPreservesWhitespace guards against over-scrubbing:
+// the scrub must keep \n, \r, \t since markdown rendering relies on
+// them. Streamed code blocks, prose paragraphs, and table layouts
+// would all break if printable whitespace got dropped.
+func TestLoop_TextSinkPreservesWhitespace(t *testing.T) {
+	p := &sequenceProvider{scripts: [][]providers.Event{
+		{
+			{Kind: providers.EventTextDelta, Text: "line1\nline2\r\n\tindented"},
+			{Kind: providers.EventStopReason, Stop: "end_turn"},
+		},
+	}}
+	var sink bytes.Buffer
+	if _, err := agent.Run(context.Background(), p, tools.NewRegistry(),
+		agent.LoopOptions{Model: "x", TextSink: &sink},
+		[]providers.Message{{Role: "user", Content: []providers.Block{{Kind: "text", Text: "hi"}}}},
+	); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got, want := sink.String(), "line1\nline2\r\n\tindented"; got != want {
+		t.Errorf("sink = %q, want %q (whitespace preserved)", got, want)
+	}
+}
+
 func TestLoop_ToolUseRoundTrip(t *testing.T) {
 	p := &sequenceProvider{scripts: [][]providers.Event{
 		// Turn 1: text + tool_use, stop=tool_use
