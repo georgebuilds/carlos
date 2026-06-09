@@ -308,6 +308,16 @@ type Model struct {
 	// multi-line input).
 	shellHistory *usershell.History
 
+	// Chat-input history: ↑/↓ walk previously-submitted user
+	// messages (sourced from the in-memory transcript so it composes
+	// with backfill / resume). chatHistoryCursor == -1 means "not
+	// walking"; 0+ is an index into chatHistoryEntries(). On first
+	// ↑ the current composer text is stashed in chatHistoryDraft so
+	// stepping past the most-recent entry back ↓ restores it. See
+	// chat_history.go.
+	chatHistoryCursor int
+	chatHistoryDraft  string
+
 	// Phase T-2: workspace-trust policy for /trust + /untrust +
 	// /trusts slash commands. nil means trust isn't wired (tests,
 	// the headless `please` path); the slashes echo a "not wired"
@@ -665,13 +675,14 @@ func New(log agent.EventLog, agentID string, source TextSource, opts ...Option) 
 	ta.KeyMap.InsertNewline.SetKeys("shift+enter", "ctrl+j")
 
 	m := &Model{
-		log:      log,
-		agentID:  agentID,
-		source:   source,
-		proj:     agent.NewProjection(),
-		vp:       vp,
-		ta:       ta,
-		userName: "Boss",
+		log:               log,
+		agentID:           agentID,
+		source:            source,
+		proj:              agent.NewProjection(),
+		vp:                vp,
+		ta:                ta,
+		userName:          "Boss",
+		chatHistoryCursor: -1,
 	}
 	for _, opt := range opts {
 		opt(m)
@@ -958,6 +969,18 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return m, nil
 			}
+			// Chat-input history: terminal-style recall of prior
+			// user messages. Engages only when slash autocomplete
+			// isn't owning the arrow (handled later by
+			// handleSlashSuggestKey when the match list has 2+
+			// entries) and the composer is single-line so the
+			// textarea's native multi-line cursor nav still wins
+			// when the user is mid-compose.
+			if m.chatHistoryShouldEngage() && !(m.slashSuggest.open && len(m.slashSuggest.matches) > 1) {
+				if m.chatHistoryUp() {
+					return m, nil
+				}
+			}
 		case "down":
 			if !m.readOnly && m.shellHistory != nil && hasShellPrefix(m.ta.Value()) {
 				next := m.shellHistory.Next()
@@ -968,6 +991,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.ta.CursorEnd()
 				return m, nil
+			}
+			if m.chatHistoryShouldEngage() && !(m.slashSuggest.open && len(m.slashSuggest.matches) > 1) {
+				if m.chatHistoryDown() {
+					return m, nil
+				}
 			}
 		}
 		// Slash-mode autocomplete intercepts Tab / ↑↓ / Esc before the
@@ -1469,6 +1497,10 @@ func (m *Model) submit() tea.Cmd {
 
 	m.slashSuggest.reset()
 	m.ta.Reset()
+	// Any successful submit ends the current history walk so the
+	// next ↑ starts from the most-recent entry again. Cheap; safe to
+	// call when no walk is active.
+	m.chatHistoryReset()
 
 	cmd, err := slash.Parse(raw)
 	if err == nil {
@@ -1671,6 +1703,11 @@ func (m *Model) dispatchSlash(c slash.Command) tea.Cmd {
 		// would keep talking about the old conversation on the
 		// next "hi" - exactly the bug we hit in field testing.
 		m.transcript = nil
+		// History walk is sourced from the transcript we just
+		// emptied; drop any in-flight cursor so the next ↑ falls
+		// through to the textarea cleanly rather than indexing into
+		// a stale length.
+		m.chatHistoryReset()
 		m.rerenderViewport()
 		log, ok := m.log.(*agent.SQLiteEventLog)
 		agentID := m.agentID
