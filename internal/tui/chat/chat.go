@@ -377,6 +377,15 @@ type Model struct {
 	// to run on the next Update tick.
 	queuedCmds []tea.Cmd
 
+	// queuedUserMessages holds raw user-message text the user typed
+	// while the assistant was mid-turn (streaming, tool-calling, or in
+	// the in-flight Spawning / Running / Compacting projection
+	// states). FIFO. submit() pushes here when assistantBusy() is true
+	// instead of silently dropping the input; flushQueuedUserMessage
+	// pops one entry per assistant-idle tick so each queued message
+	// gets its own turn.
+	queuedUserMessages []string
+
 	// Phase O five-checkbox heuristic.
 	showHeuristic     bool
 	heuristicChecks   [heuristicQuestionCount]bool
@@ -1006,7 +1015,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case eventMsg:
 		m.applyEvent(msg.ev)
 		m.rerenderViewport()
-		return m, m.repumpCmd()
+		// Drain one queued mid-turn user message if the event we just
+		// processed left the assistant idle. assistant_message and
+		// chatglue's error-as-assistant-message events both transition
+		// out of the in-flight projection state, so this naturally
+		// fires when the turn ends without us having to switch on
+		// event type. Returns nil when the queue is empty or the
+		// assistant is still busy (e.g. mid-tool), so the common path
+		// is a no-op.
+		flush := m.flushQueuedUserMessage()
+		return m, tea.Batch(flush, m.repumpCmd())
 
 	case approvalRequestMsg:
 		// Stash the request; overlay renders on next View. Force
@@ -1464,6 +1482,21 @@ func (m *Model) submit() tea.Cmd {
 			return errMsg{err: fmt.Errorf("slash parse: %w", err)}
 		}
 	}
+	// Mid-turn queueing: if the assistant is still working on the
+	// previous turn, park the raw text in queuedUserMessages and let
+	// flushQueuedUserMessage release it once the turn ends. Without
+	// this, the message gets swallowed — submit() would have to wait
+	// on the same goroutine the agent loop is serializing on, which
+	// in practice means the user sees nothing happen until they
+	// re-type after the turn finishes. Heuristic check is skipped on
+	// the queued path: the user has already decided to send this and
+	// a confirmation modal popping up minutes later (when the queue
+	// flushes) would feel disconnected from the keystroke.
+	if m.assistantBusy() {
+		m.queuedUserMessages = append(m.queuedUserMessages, raw)
+		m.status = m.queuedHintLine()
+		return nil
+	}
 	// Phase O: when the active frame runs in orchestrator mode and the
 	// prompt is non-trivial, pause and ask the user to evaluate the
 	// five-checkbox heuristic before dispatching to the model.
@@ -1472,6 +1505,48 @@ func (m *Model) submit() tea.Cmd {
 		return nil
 	}
 	return m.appendUserMessage(raw)
+}
+
+// queuedHintLine renders the status hint shown after a mid-turn
+// submit, so the user can tell that the keystroke landed and is
+// parked rather than lost. Pluralized for the multi-queue case.
+func (m *Model) queuedHintLine() string {
+	n := len(m.queuedUserMessages)
+	if n == 1 {
+		return "queued — will send when assistant finishes"
+	}
+	return fmt.Sprintf("%d queued — will send when assistant finishes", n)
+}
+
+// flushQueuedUserMessage pops the head of queuedUserMessages and
+// dispatches it as a normal user message, but only when the
+// assistant has gone idle. Called from the eventMsg arm of Update
+// after every event so any state-transition that lands the
+// assistant in idle (assistant_message, chatglue error surfaced as
+// assistant_message, etc.) drains the queue. Returns nil when the
+// queue is empty or the assistant is still busy — both are no-ops.
+//
+// Releases one entry per call so each queued message gets its own
+// turn (the next assistant_message will fire the next flush). This
+// keeps the user model simple: "messages I typed mid-turn dispatch
+// one at a time, in order, as the assistant frees up."
+func (m *Model) flushQueuedUserMessage() tea.Cmd {
+	if len(m.queuedUserMessages) == 0 {
+		return nil
+	}
+	if m.assistantBusy() {
+		return nil
+	}
+	text := m.queuedUserMessages[0]
+	m.queuedUserMessages = m.queuedUserMessages[1:]
+	// Clear the hint once the queue empties; otherwise refresh it so
+	// the remaining count is accurate.
+	if len(m.queuedUserMessages) == 0 {
+		m.status = ""
+	} else {
+		m.status = m.queuedHintLine()
+	}
+	return m.appendUserMessage(text)
 }
 
 // submitBackgroundShell extracts the "!cmd" body and submits it as

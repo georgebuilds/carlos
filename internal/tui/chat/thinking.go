@@ -82,6 +82,24 @@ func (m *Model) isThinking() bool {
 	return false
 }
 
+// assistantBusy returns true when the assistant is mid-turn — either
+// streaming text into the live buffer, or in one of the in-flight
+// projection states (Spawning, Running, Compacting) waiting on a tool
+// or model response. Used by submit() to decide whether a fresh
+// user-typed line should dispatch immediately or be parked in the
+// queue for flushQueuedUserMessage to release once the turn ends.
+//
+// isThinking() returns false during live text streaming (it defers to
+// the streamed text as the alive signal), so OR-ing the two captures
+// "the model is currently doing something on our behalf" without
+// double-counting either condition.
+func (m *Model) assistantBusy() bool {
+	if m.source != nil && m.source.Get(m.agentID) != "" {
+		return true
+	}
+	return m.isThinking()
+}
+
 // thinkingElapsed returns the wall-clock time since the most recent
 // transcript entry. Zero when the transcript is empty. Used by the
 // indicator to surface a "(Ns)" trailer once the wait crosses
