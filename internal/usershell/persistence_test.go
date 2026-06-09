@@ -33,6 +33,9 @@ func TestPersistence_StartAndEndEventsLanded(t *testing.T) {
 	if err := waitForState(t, m, job.ID, StateDone, time.Second); err != nil {
 		t.Fatal(err)
 	}
+	if err := waitForEvents(t, log, EventAgentID, 2, time.Second); err != nil {
+		t.Fatal(err)
+	}
 
 	events, err := log.Read(context.Background(), EventAgentID, 0)
 	if err != nil {
@@ -156,6 +159,7 @@ func TestPersistence_FailedJobStillWritesEnd(t *testing.T) {
 	defer m.Close()
 	job, _ := m.Submit(context.Background(), "false", Foreground)
 	_ = waitForState(t, m, job.ID, StateFailed, time.Second)
+	_ = waitForEvents(t, log, EventAgentID, 2, time.Second)
 	events, _ := log.Read(context.Background(), EventAgentID, 0)
 	if len(events) != 2 {
 		t.Fatalf("want 2 events; got %d", len(events))
@@ -185,6 +189,7 @@ func TestPersistence_CancelledJobMarkedCancelled(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = waitForState(t, m, job.ID, StateCancelled, time.Second)
+	_ = waitForEvents(t, log, EventAgentID, 2, time.Second)
 	events, _ := log.Read(context.Background(), EventAgentID, 0)
 	if len(events) != 2 {
 		t.Fatalf("want 2 events; got %d", len(events))
@@ -218,6 +223,7 @@ func TestPersistence_BackgroundJobsRecordedAsBg(t *testing.T) {
 	defer m.Close()
 	job, _ := m.Submit(context.Background(), "x", Background)
 	_ = waitForState(t, m, job.ID, StateDone, time.Second)
+	_ = waitForEvents(t, log, EventAgentID, 2, time.Second)
 	events, _ := log.Read(context.Background(), EventAgentID, 0)
 	start, _ := DecodeStartPayload(events[0].Payload)
 	if start.Mode != "background" || !start.Background {
@@ -244,6 +250,9 @@ func TestPersistence_LongOutputTruncatedInline(t *testing.T) {
 	defer m.Close()
 	job, _ := m.Submit(context.Background(), "spam", Foreground)
 	if err := waitForState(t, m, job.ID, StateDone, 2*time.Second); err != nil {
+		t.Fatal(err)
+	}
+	if err := waitForEvents(t, log, EventAgentID, 2, 2*time.Second); err != nil {
 		t.Fatal(err)
 	}
 	events, _ := log.Read(context.Background(), EventAgentID, 0)

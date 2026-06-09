@@ -9,6 +9,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/georgebuilds/carlos/internal/agent"
 )
 
 // fakeRunner is a deterministic in-process runner used by the
@@ -132,4 +134,26 @@ func waitForState(t *testing.T, m *Manager, id string, want State, timeout time.
 		time.Sleep(time.Millisecond)
 	}
 	return fmt.Errorf("job %s: want state %v, still at %v after %s", id, want, last, timeout)
+}
+
+// waitForEvents polls log for at least want events on agentID. Used
+// to close the race window in persistence tests: Manager.finalize
+// sets the job's terminal state BEFORE appending the End event to
+// the log, so waitForState(Done) can return while the log still
+// only holds the Start event. Polling the log directly avoids that
+// race without changing the manager's transition order (which is
+// correct from a user-visible state perspective).
+func waitForEvents(t *testing.T, log agent.EventLog, agentID string, want int, timeout time.Duration) error {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	var last int
+	for time.Now().Before(deadline) {
+		evs, _ := log.Read(context.Background(), agentID, 0)
+		last = len(evs)
+		if last >= want {
+			return nil
+		}
+		time.Sleep(time.Millisecond)
+	}
+	return fmt.Errorf("agent %s: want >=%d events, got %d after %s", agentID, want, last, timeout)
 }
