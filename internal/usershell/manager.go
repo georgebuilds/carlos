@@ -13,6 +13,7 @@ import (
 	"github.com/oklog/ulid/v2"
 
 	"github.com/georgebuilds/carlos/internal/agent"
+	"github.com/georgebuilds/carlos/internal/frame"
 )
 
 // DefaultBackgroundParallelism is how many background jobs may run
@@ -165,6 +166,15 @@ func New(opts Options) *Manager {
 	if r == nil {
 		r = ptyRunner{}
 	}
+	// Resolve the output directory. Callers in the production wire-
+	// up should ALWAYS pass an explicit per-frame path (see
+	// cmd/carlos/runtime_tui.go), but the default needs to track the
+	// per-frame layout too — otherwise tests, dev-aid harnesses, or
+	// any future caller that forgets the option silently writes to
+	// the legacy ~/.carlos/usershell directory and the next
+	// queueFrameMigration shovels their work into the per-frame tree
+	// at boot. That was the v0.7.2 "migrated 213 shell jobs to per-
+	// frame layout" loop: every session re-fed the legacy directory.
 	outputDir := opts.OutputDir
 	if outputDir == "" {
 		outputDir = defaultOutputDir()
@@ -184,14 +194,26 @@ func New(opts Options) *Manager {
 	}
 }
 
-// defaultOutputDir returns ~/.carlos/usershell/ for the per-job log
-// files. Falls back to a relative path if the home dir isn't
-// resolvable (same recipe agent/artifacts.go uses).
+// defaultOutputDir returns the per-frame personal usershell directory
+// (~/.carlos/frames/personal/usershell/) — the canonical post-Phase-
+// F-17 location for per-job log files. Pre-F-17 this returned the
+// legacy ~/.carlos/usershell path, which caused a self-feeding loop:
+// new jobs landed in legacy → next launch's queueFrameMigration
+// moved them into per-frame → next session wrote to legacy again →
+// next launch migrated again. Users saw "migrated N shell jobs to
+// per-frame layout" on every boot with N tracking their `!cmd` usage
+// between launches.
+//
+// The string is reconstructed from frame.PathsFor so a future
+// frame.DefaultPersonalName rename stays in lockstep. Falls back to
+// a relative path if $HOME isn't resolvable (same defensive recipe
+// agent/artifacts.go uses) — the relative path still lands inside
+// frames/personal/usershell so the migration loop stays closed.
 func defaultOutputDir() string {
 	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		return filepath.Join(home, ".carlos", "usershell")
+		return frame.PathsFor(home, frame.DefaultPersonalName).JobsDir
 	}
-	return filepath.Join(".carlos", "usershell")
+	return frame.PathsFor(".", frame.DefaultPersonalName).JobsDir
 }
 
 // Submit enqueues a new shell command and immediately advances the

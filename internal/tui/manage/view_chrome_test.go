@@ -7,18 +7,11 @@ import (
 	"github.com/georgebuilds/carlos/internal/agent"
 )
 
-// TestView_NoOuterBorderGlyphsInChrome pins the v0.7.2 redesign:
-// the manage View must not start with the rounded / normal-border
-// top glyph row that would clip under Ghostty's tab strip. Before
-// this fix every render started with "─" (or "╭"); now the first
-// row of the body is the status bar, with horizontal rules used
-// only as inline section dividers.
-//
-// We can't easily snapshot the chrome bytes deterministically
-// (color profile, terminal width affect them), so we assert a
-// shape contract: the first non-empty row of the view does NOT
-// begin with a corner glyph.
-func TestView_NoOuterBorderGlyphsInChrome(t *testing.T) {
+// TestView_OuterBorderPresent confirms the v0.7.3 swap back to a
+// rounded outer border (we briefly dropped it in v0.7.2 to fix the
+// Ghostty top-clip; better arithmetic — Height(h-2), no leading
+// "\n" margin — lets the box come back without the clip).
+func TestView_OuterBorderPresent(t *testing.T) {
 	log := openTempLog(t)
 	seedAgent(t, log, "01HV0000000000000000000001", "", "alpha", "fake", agent.StateRunning)
 	src := NewSQLiteSnapshotSource(log)
@@ -30,12 +23,11 @@ func TestView_NoOuterBorderGlyphsInChrome(t *testing.T) {
 	if len(rows) < 4 {
 		t.Fatalf("view too short: %d rows", len(rows))
 	}
-	// Strip ANSI to look at the raw glyphs.
-	first := stripANSI(rows[0])
-	for _, bad := range []string{"╭", "╮", "┌", "┐"} {
-		if strings.HasPrefix(strings.TrimSpace(first), bad) {
-			t.Errorf("first row starts with outer-border corner %q (Ghostty top-clip regression):\n%s", bad, first)
-		}
+	// First non-blank row should be the rounded-border top edge,
+	// starting with the rounded-top-left corner "╭".
+	first := strings.TrimSpace(stripANSI(rows[0]))
+	if !strings.HasPrefix(first, "╭") {
+		t.Errorf("first row should start with the rounded-corner '╭'; got:\n%q", first)
 	}
 }
 

@@ -469,13 +469,27 @@ func runDefault(cfg *config.Config, sessionID string) error {
 	// chat surface routes "!cmd" submissions here; the Manager writes
 	// EvtUserShellStart/End events into the same log the chat is
 	// already reading from, so the model context projection picks
-	// them up on the next turn for free. F-17: per-job logs land
-	// under the active frame's JobsDir.
+	// them up on the next turn for free.
+	//
+	// F-17 + v0.7.3 bug fix: per-job logs ALWAYS land under a frame's
+	// JobsDir. Previously this was conditional on activeFrame.Name
+	// being non-empty AND $HOME resolving; either branch failing
+	// silently dropped jobs into the legacy ~/.carlos/usershell
+	// directory, which the next session's farewell migration then
+	// shoveled into the per-frame tree. The cycle repeated every
+	// boot ("migrated N shell jobs to per-frame layout"). Now we
+	// resolve a frame name (active → "personal" fallback) and a
+	// home (resolved → "" fallback handled inside Manager) so the
+	// OutputDir is always set; usershell.defaultOutputDir() also
+	// targets the per-frame personal layout as a belt-and-braces
+	// guard for any caller that doesn't pass an explicit option.
+	usershellFrame := activeFrame.Name
+	if usershellFrame == "" {
+		usershellFrame = frame.DefaultPersonalName
+	}
 	shellOpts := usershell.Options{Log: log}
-	if activeFrame.Name != "" {
-		if home, herr := os.UserHomeDir(); herr == nil {
-			shellOpts.OutputDir = frame.PathsFor(home, activeFrame.Name).JobsDir
-		}
+	if home, herr := os.UserHomeDir(); herr == nil {
+		shellOpts.OutputDir = frame.PathsFor(home, usershellFrame).JobsDir
 	}
 	shellMgr := usershell.New(shellOpts)
 	defer shellMgr.Close()

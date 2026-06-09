@@ -21,20 +21,21 @@ import (
 //
 // Below the minimum terminal size we refuse to render - same posture
 // as onboarding + chat.
-// View renders the manage TUI. v0.7.2 swap: the previous outer
-// rounded border was the source of the persistent "top border
-// clipped under Ghostty tabs" reports. Two compounding causes
-// drove that bug: (a) alt-screen content slightly taller than the
-// reported viewport scrolls, hiding row 0, and (b) tabbed
-// terminals overlay their own chrome on row 0 of the alt-screen.
-// Both interact badly with a top-edge `─` glyph.
+// View renders the manage TUI inside a rounded accent-colored
+// outer border, matching the chat surface. The v0.7.2 redesign
+// stripped the border to fix Ghostty top-clipping, but the new
+// chrome (status bar + inline rules + footer) is sleek enough
+// that adding the box back is welcome — and the clip is solvable
+// without removing the box.
 //
-// Modern TUI projects in this space (lazygit, k9s, gh dashboard,
-// btop) drop the outer frame entirely; the terminal IS the frame.
-// We mirror that: status bar at the top, body in the middle, hint
-// row at the bottom, with thin horizontal rules between sections
-// instead of a heavy outer box. There's no top `─` anymore, so the
-// Ghostty clip is a non-event by construction.
+// Anti-clipping recipe (v0.7.3):
+//   - Render INSIDE Height(h-2) so the border itself counts toward
+//     the reported viewport height. Same arithmetic chat uses.
+//   - No leading "\n" — past field tests showed it made clipping
+//     worse, not better, by inviting the alt-screen scroll heuristic
+//     to scroll the top off-screen.
+//   - The internal layout (header + rule + body + rule + footer) is
+//     unchanged from v0.7.2 so the data density stays high.
 func (m *Model) View() string {
 	if m.quitting {
 		return ""
@@ -48,7 +49,16 @@ func (m *Model) View() string {
 			fmt.Sprintf("carlos manage needs at least %dx%d. Current: %dx%d.",
 				minTermWidth, minTermHeight, w, h))
 	}
-	return m.renderInner(w, h)
+
+	border := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(colorAccent).
+		Width(w - 2).
+		Height(h - 2).
+		Padding(0, 1)
+
+	inner := m.renderInner(border.GetWidth()-2, border.GetHeight())
+	return border.Render(inner)
 }
 
 func (m *Model) renderInner(innerW, innerH int) string {
