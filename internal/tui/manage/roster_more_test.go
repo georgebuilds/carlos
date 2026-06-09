@@ -191,10 +191,11 @@ func TestRenderRoster_VirtualizationClampsScroll(t *testing.T) {
 }
 
 // TestRenderRoster_CursorMarkerOnSelectedRow pins the post-fix
-// behavior: the row whose index matches cursorIdx gets the "›"
-// cursor marker. Before this fix ↑/↓ moved the internal cursor but
-// no visual feedback fired, so users couldn't tell which row was
-// selected.
+// behavior: the row whose index matches cursorIdx gets the "▎"
+// accent left-bar (v0.7.2 swap from the previous "›" arrow — the
+// left-bar is the modern lazygit/k9s/btop pattern). Before any of
+// this fix family, ↑/↓ moved the internal cursor with no visual
+// feedback at all.
 func TestRenderRoster_CursorMarkerOnSelectedRow(t *testing.T) {
 	rows := []rosterRow{
 		{row: agent.AgentRow{ID: "aaa", Title: "first", State: agent.StateRunning}},
@@ -207,24 +208,26 @@ func TestRenderRoster_CursorMarkerOnSelectedRow(t *testing.T) {
 		cursorIdx: 1,
 		maxDepth:  3,
 	})
-	if !strings.Contains(out, "›") {
-		t.Errorf("cursor marker missing from output:\n%s", out)
+	if !strings.Contains(out, "▎") {
+		t.Errorf("cursor left-bar missing from output:\n%s", out)
 	}
-	// Make sure the marker is on the SECOND visible row by checking
-	// the marker appears after "first" and before "third".
+	// Marker is on the SECOND visible row: appears after "first"
+	// and before "third".
 	firstIdx := strings.Index(out, "first")
-	cursorIdx := strings.Index(out, "›")
+	cursorIdx := strings.Index(out, "▎")
 	thirdIdx := strings.Index(out, "third")
 	if !(firstIdx < cursorIdx && cursorIdx < thirdIdx) {
-		t.Errorf("cursor marker not on the expected row (first=%d cursor=%d third=%d):\n%s",
+		t.Errorf("cursor left-bar not on the expected row (first=%d cursor=%d third=%d):\n%s",
 			firstIdx, cursorIdx, thirdIdx, out)
 	}
 }
 
-// TestRenderRoster_CursorOnFocusedRowDoublesMarker covers the
-// "cursor and focus on same row" branch — the renderer paints "▸›"
-// as a combined marker so the user can tell both states overlap.
-func TestRenderRoster_CursorOnFocusedRowDoublesMarker(t *testing.T) {
+// TestRenderRoster_CursorOverridesFocusBar covers the precedence
+// rule: when the cursor lands on the already-focused row, the
+// accent (cursor) bar wins over the agent-color (focus) bar so the
+// user can always see WHERE the cursor is, even on the focused
+// row. Focused state still conveys via the focus pane header.
+func TestRenderRoster_CursorOverridesFocusBar(t *testing.T) {
 	rows := []rosterRow{
 		{row: agent.AgentRow{ID: "aaa", Title: "alpha", State: agent.StateRunning}},
 	}
@@ -235,8 +238,28 @@ func TestRenderRoster_CursorOnFocusedRowDoublesMarker(t *testing.T) {
 		cursorIdx: 0,
 		maxDepth:  3,
 	})
-	if !strings.Contains(out, "▸›") {
-		t.Errorf("combined marker missing:\n%s", out)
+	if !strings.Contains(out, "▎") {
+		t.Errorf("expected cursor bar on focused row when cursor lands on it:\n%s", out)
+	}
+}
+
+// TestRenderRoster_FocusBarWhenCursorElsewhere pins the focused-
+// only branch: cursor is somewhere else, focus is on row 0 → row
+// 0 gets the agent-color "█" bar.
+func TestRenderRoster_FocusBarWhenCursorElsewhere(t *testing.T) {
+	rows := []rosterRow{
+		{row: agent.AgentRow{ID: "aaa", Title: "alpha", State: agent.StateRunning}},
+		{row: agent.AgentRow{ID: "bbb", Title: "beta", State: agent.StateRunning}},
+	}
+	out := renderRoster(rows, rosterRenderOptions{
+		width:     120,
+		height:    4,
+		focusID:   "aaa",
+		cursorIdx: 1,
+		maxDepth:  3,
+	})
+	if !strings.Contains(out, "█") {
+		t.Errorf("expected focus bar when cursor is elsewhere:\n%s", out)
 	}
 }
 

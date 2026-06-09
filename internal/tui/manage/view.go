@@ -21,6 +21,20 @@ import (
 //
 // Below the minimum terminal size we refuse to render - same posture
 // as onboarding + chat.
+// View renders the manage TUI. v0.7.2 swap: the previous outer
+// rounded border was the source of the persistent "top border
+// clipped under Ghostty tabs" reports. Two compounding causes
+// drove that bug: (a) alt-screen content slightly taller than the
+// reported viewport scrolls, hiding row 0, and (b) tabbed
+// terminals overlay their own chrome on row 0 of the alt-screen.
+// Both interact badly with a top-edge `─` glyph.
+//
+// Modern TUI projects in this space (lazygit, k9s, gh dashboard,
+// btop) drop the outer frame entirely; the terminal IS the frame.
+// We mirror that: status bar at the top, body in the middle, hint
+// row at the bottom, with thin horizontal rules between sections
+// instead of a heavy outer box. There's no top `─` anymore, so the
+// Ghostty clip is a non-event by construction.
 func (m *Model) View() string {
 	if m.quitting {
 		return ""
@@ -34,33 +48,23 @@ func (m *Model) View() string {
 			fmt.Sprintf("carlos manage needs at least %dx%d. Current: %dx%d.",
 				minTermWidth, minTermHeight, w, h))
 	}
-
-	// Match the chat view's window-size strategy: full-height box,
-	// no leading "\n" margin. The previous attempt added a one-row
-	// top margin to dodge overlaid tab bars (Ghostty tabbed mode,
-	// iTerm2 tabs), but field reports showed the margin actually
-	// made the top border MORE prone to clipping — the alt-screen
-	// scroll behavior interacts oddly with content that's slightly
-	// taller than the visible area. Chat uses h-2 + no margin and
-	// renders correctly in the same terminals, so we mirror that.
-	border := lipgloss.NewStyle().
-		Border(lipgloss.NormalBorder()).
-		BorderForeground(colorAccent).
-		Width(w - 2).
-		Height(h - 2).
-		Padding(0, 1)
-
-	inner := m.renderInner(border.GetWidth(), border.GetHeight())
-	return border.Render(inner)
+	return m.renderInner(w, h)
 }
 
 func (m *Model) renderInner(innerW, innerH int) string {
 	header := m.renderHeader(innerW)
 	footer := m.renderFooter(innerW)
+	topRule := renderHRule(innerW)
+	bottomRule := renderHRule(innerW)
+
 	headerH := lipgloss.Height(header)
 	footerH := lipgloss.Height(footer)
+	ruleH := lipgloss.Height(topRule) // both rules are 1 row by design
 
-	bodyH := innerH - headerH - footerH - 1
+	// Body gets everything left over after the four chrome rows
+	// (header + top rule + bottom rule + footer). Floor at 4 so
+	// extremely short windows still render something usable.
+	bodyH := innerH - headerH - footerH - 2*ruleH
 	if bodyH < 4 {
 		bodyH = 4
 	}
@@ -69,7 +73,7 @@ func (m *Model) renderInner(innerW, innerH int) string {
 	if m.view == viewApprovals {
 		body := m.approvals.render(innerW, bodyH)
 		overlay := m.renderOverlay(innerW)
-		parts := []string{header, body}
+		parts := []string{header, topRule, body, bottomRule}
 		if overlay != "" {
 			parts = append(parts, overlay)
 		}
@@ -107,7 +111,7 @@ func (m *Model) renderInner(innerW, innerH int) string {
 		maxDepth:  defaultMaxDepth,
 	})
 
-	divider := lipgloss.NewStyle().Foreground(colorMuted).Render(
+	divider := lipgloss.NewStyle().Foreground(colorSubtle).Render(
 		strings.Repeat("│\n", bodyH),
 	)
 
@@ -123,12 +127,25 @@ func (m *Model) renderInner(innerW, innerH int) string {
 	)
 
 	overlay := m.renderOverlay(innerW)
-	parts := []string{header, body}
+	parts := []string{header, topRule, body, bottomRule}
 	if overlay != "" {
 		parts = append(parts, overlay)
 	}
 	parts = append(parts, footer)
 	return lipgloss.JoinVertical(lipgloss.Left, parts...)
+}
+
+// renderHRule paints a single-row horizontal rule using the box-
+// drawing light horizontal glyph in the subtle palette slot. Used
+// as the section divider above the body and above the footer.
+// Modern TUI surfaces (lazygit, k9s, btop) lean on thin rules
+// instead of bordered boxes to chunk vertical space; we follow
+// suit so the chrome stays out of the way of the data.
+func renderHRule(w int) string {
+	if w < 1 {
+		w = 1
+	}
+	return lipgloss.NewStyle().Foreground(colorSubtle).Render(strings.Repeat("─", w))
 }
 
 // renderHeader is the top bar: brand, agent count, filter chip,

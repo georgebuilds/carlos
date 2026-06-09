@@ -299,22 +299,23 @@ func renderRosterRow(rr rosterRow, opts rosterRenderOptions, intentW int, dropMo
 	)
 	row := strings.Join(parts, " ")
 
-	// Markers:
-	//   ▸  focused agent (enter-committed; detail pane shows it)
-	//   ›  cursor row (current ↑/↓ position; not yet committed)
-	// When cursor lands on the focused row, paint BOTH markers
-	// together (▸›) so the user sees "this is the active one and
-	// my cursor is on it" — useful right after pressing enter, or
-	// when they navigate back to confirm focus.
+	// Left-bar selection accent — the modern TUI pattern (lazygit,
+	// k9s, btop). Two cells of left gutter on every row keeps the
+	// data columns aligned; the cursor / focus state colors the
+	// first cell to broadcast state without shifting layout.
+	//
+	//   "▎ <row>"  cursor here  (accent-colored bar, bold body)
+	//   "█ <row>"  focused here (agent-colored bar, normal body)
+	//   "▎ <row>"  both: accent bar wins so the user can see where
+	//              the cursor is; "[•] focused" badge would belong
+	//              in the focus pane header, not on the row.
 	switch {
-	case r.ID == opts.focusID && isCursor:
-		row = lipgloss.NewStyle().Foreground(colorAccent).Bold(true).Render("▸›") + " " +
-			lipgloss.NewStyle().Bold(true).Render(row)
-	case r.ID == opts.focusID:
-		row = lipgloss.NewStyle().Foreground(colorAgent).Render("▸ ") + row
 	case isCursor:
-		row = lipgloss.NewStyle().Foreground(colorAccent).Bold(true).Render("› ") +
-			lipgloss.NewStyle().Bold(true).Render(row)
+		bar := lipgloss.NewStyle().Foreground(colorAccent).Bold(true).Render("▎")
+		row = bar + " " + lipgloss.NewStyle().Bold(true).Render(row)
+	case r.ID == opts.focusID:
+		bar := lipgloss.NewStyle().Foreground(colorAgent).Render("█")
+		row = bar + " " + row
 	default:
 		row = "  " + row
 	}
