@@ -53,11 +53,10 @@ func InstallSystemdUnit(home string) (string, error) {
 			return "", fmt.Errorf("install: home dir: %w", err)
 		}
 	}
-	binPath, err := os.Executable()
+	binPath, err := resolveBinaryPath()
 	if err != nil {
 		return "", fmt.Errorf("install: locate carlos binary: %w", err)
 	}
-	binPath, _ = filepath.EvalSymlinks(binPath)
 
 	unitPath := linuxUnitPath(home)
 	if err := os.MkdirAll(filepath.Dir(unitPath), 0o755); err != nil {

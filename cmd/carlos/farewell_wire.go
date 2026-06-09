@@ -123,7 +123,7 @@ func runBrewCheck(panel *farewell.Panel) {
 	defer cancel()
 	if farewell.CheckBrewUpdate(ctx, "carlos") {
 		panel.AddWithDetail("⬆️", "update available",
-			"run `brew upgrade carlos`")
+			"run `brew upgrade carlos` (restart the daemon to pick it up)")
 	}
 }
 
