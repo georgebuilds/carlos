@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -411,6 +412,28 @@ type Model struct {
 	// internal/tui/chat/markdown.go for the rationale.
 	markdown       *glamour.TermRenderer
 	markdownWidth  int
+
+	// mouseOff toggles bubbletea's mouse capture. When TRUE we've
+	// emitted tea.DisableMouse so the terminal owns the cursor again
+	// and the user can drag-select transcript text for copy. Off
+	// trade-off: the viewport's mouse-wheel scroll stops working
+	// (the alt-screen ignores wheel events without capture). The
+	// keybind to flip this is Alt+M; without it, users on Ghostty
+	// (and most modern terminals where Shift+drag does NOT pass
+	// through) had no way to copy carlos's responses.
+	mouseOff bool
+
+	// /resume picker state. showResume gates the takeover overlay;
+	// resumeSessions is the list loaded from the SQLite log on
+	// open; resumeCursor is the focused card; resumeSelected is
+	// the picked session id (empty until Enter, populated when the
+	// outer loop should swap in that agent id). All defined in
+	// overlay_resume.go but lives here so the Model owns the only
+	// authoritative state slot.
+	showResume     bool
+	resumeSessions []resumeSession
+	resumeCursor   int
+	resumeSelected string
 }
 
 // FrameUI is the Phase F display + switch contract the chat Model
@@ -458,6 +481,14 @@ type FrameUI struct {
 	// open, or `/frame new [name]`). nil makes the wizard echo "not
 	// wired" rather than failing.
 	AddFrame func(f frame.Frame) error
+	// RefreshAvailable returns the current authoritative list of
+	// frame names from the live config. When non-nil the frame
+	// switcher calls it on every open so a frame created via the
+	// wizard, the slash command, or an out-of-band config edit shows
+	// up without an app restart. Old behavior (snapshot the list at
+	// boot) is preserved when this is nil — handy for tests that
+	// don't want to wire the hook.
+	RefreshAvailable func() []string
 	// PersonalTemplate returns the field bundle the new-frame wizard
 	// uses when the user picks "copy personal" on the start-from
 	// toggle. Returning a zero Frame is fine - the wizard treats that
@@ -475,6 +506,23 @@ type FrameUI struct {
 	// session. nil disables the refresh - Mode + Capabilities stay
 	// what they were until the next restart.
 	LookupFrame func(name string) (FrameUIUpdate, bool)
+	// SwitchModel swaps the provider + model used for the next assistant
+	// turn. Wired by /model <provider:model>. The runtime closure
+	// rebuilds the chatglue.Loop with the new dispatch and atomically
+	// swaps it so the user's NEXT message goes through the new model.
+	// nil makes /model echo "not wired"; provider empty means "keep the
+	// current provider, just change the model". Returns the resolved
+	// (provider, model) pair so the slash echo can surface the actual
+	// applied identity (handy when /model was passed bare).
+	SwitchModel func(provider, model string) (string, string, error)
+	// ModelCompletions returns the suggestion list for /model
+	// autocomplete. For an empty partial it returns the configured
+	// provider list with a ":" suffix. For "<provider>:" or
+	// "<provider>:<frag>" it returns models known for that provider
+	// (default model, plus cached OpenRouter catalog when available).
+	// The empty list cleanly disables the popup; tests + the dev-aid
+	// loop can leave this nil without further wiring.
+	ModelCompletions func(partial string) []string
 }
 
 // FrameUIUpdate carries the post-switch render fields the chat refreshes
@@ -708,6 +756,15 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return next, cmd
 			}
 		}
+		// /resume picker: same modal precedence as the frame switcher
+		// so the user can navigate cards with ↑↓ + commit with Enter
+		// without the composer eating keystrokes.
+		if m.showResume {
+			next, cmd, handled := m.handleResumeKey(msg)
+			if handled {
+				return next, cmd
+			}
+		}
 		// Phase O five-checkbox heuristic. The overlay sits in the same
 		// modal slot as jobs / perms; keys 1-5 toggle the checks, d/s
 		// pick an action, esc cancels and restores the prompt to the
@@ -850,6 +907,21 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.rerenderViewport()
 				return m, nil
 			}
+		case "alt+m":
+			// Toggle bubbletea's mouse capture. Off lets the terminal
+			// own the mouse again so users can drag-select carlos's
+			// replies and copy them with Cmd+C / Ctrl+Shift+C — which
+			// Ghostty (and any modern terminal that doesn't pass
+			// Shift+drag through) otherwise blocks while capture is
+			// on. On restores the viewport's mouse-wheel scroll. The
+			// toggle is paired with a footer hint (renderFooter) so
+			// the user knows which state they're in.
+			m.mouseOff = !m.mouseOff
+			m.rerenderViewport()
+			if m.mouseOff {
+				return m, tea.DisableMouse
+			}
+			return m, tea.EnableMouseCellMotion
 		case "up":
 			// Phase U S7: in shell mode, ↑ walks shell history
 			// instead of moving the textarea cursor. Outside shell
@@ -900,7 +972,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// typed. refresh is a no-op when the input doesn't start with
 		// "/", so the cost on the non-slash path is a single prefix
 		// check.
-		m.slashSuggest.refresh(m.ta.Value())
+		m.slashSuggest.refresh(m.ta.Value(), m.argCompleterFn())
 		return m, cmd
 
 	case backfillMsg:
@@ -1007,6 +1079,30 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // repumpCmd re-arms the event pump after each delivered event so the
 // chat keeps draining the subscription channel.
+// hiddenChatToolNames is the curated set of tool names whose
+// invocations carlos suppresses from the chat transcript. Today this
+// is the carlos_about self-introspection shim — the model leans on it
+// before nearly every "what's my frame / vault / model" answer, and
+// the resulting tool-card rows add no information the user actually
+// needs (the answer is in the assistant reply that follows). Keeping
+// this as a single small set means future "silent" tools can opt in
+// without each one writing the same skip branch.
+//
+// Suppression is render-only: the event log still records the call +
+// result, audit replay still works, and the transcript filter applies
+// equally on first paint and on backfill.
+var hiddenChatToolNames = map[string]struct{}{
+	"carlos_about": {},
+}
+
+// isHiddenToolCall reports whether a tool's name is in the suppressed
+// set. Pulled out so chat_test.go can pin the policy without poking
+// at the underlying map.
+func isHiddenToolCall(name string) bool {
+	_, ok := hiddenChatToolNames[name]
+	return ok
+}
+
 // findLatestToolCall returns the index of the most recent
 // entryToolCall for toolName that hasn't yet had its result folded in
 // (hasResult=false). Returns -1 when none exist. Used by the
@@ -1107,6 +1203,17 @@ func (m *Model) applyEvent(ev agent.Event) {
 	case agent.EvtToolCall:
 		var tc agent.ToolCall
 		_ = json.Unmarshal(ev.Payload, &tc)
+		// Some tools (notably carlos_about, the self-introspection
+		// shim the model invokes to remember its own setup) get
+		// called frequently as a sanity check before any "what's my
+		// frame / vault / model" question. Surfacing those cards
+		// reads as noise to the user — they care about WRITE tools
+		// and outbound network calls, not internal getters. Skipping
+		// the entry entirely (here AND in EvtToolResult below) keeps
+		// the event log honest while keeping the transcript clean.
+		if isHiddenToolCall(tc.Name) {
+			break
+		}
 		m.transcript = append(m.transcript, transcriptEntry{
 			kind:      entryToolCall,
 			ts:        ev.TS,
@@ -1120,6 +1227,13 @@ func (m *Model) applyEvent(ev agent.Event) {
 		// (collapsed by default; future slice adds expand toggle).
 		var tr agent.ToolResult
 		_ = json.Unmarshal(ev.Payload, &tr)
+		if isHiddenToolCall(tr.Name) {
+			// Matching tool_call was suppressed; suppress the result
+			// too so the standalone-card fallback below doesn't
+			// resurrect it. The event still exists in the log for
+			// replay / audit; only the transcript is filtered.
+			break
+		}
 		idx := m.findLatestToolCall(tr.Name)
 		if idx == -1 {
 			// Defensive: result without a matching call (e.g. replay
@@ -1492,7 +1606,9 @@ func (m *Model) dispatchSlash(c slash.Command) tea.Cmd {
 		m.rerenderViewport()
 		return nil
 	case "model":
-		return func() tea.Msg { return statusMsg{text: slashModelLine(c.Args), kind: statusInfo} }
+		return m.modelSlash(c.Args)
+	case "resume":
+		return m.openResumePicker()
 	case "agents":
 		// Slice 7g: hand off to the manage TUI. We can't run two
 		// bubbletea Programs simultaneously, so chat quits + the
@@ -1782,28 +1898,90 @@ func slashHelpLine() string {
 	return "available: " + strings.Join(names, " ")
 }
 
-// slashModelLine handles `/model [provider:model]`. Phase 2e scope:
-// with no args, list configured providers + their default models from
-// the user's config. With args, acknowledge - actual mid-session
-// switching needs Phase 3's spawn/provider plumbing in the chat TUI's
-// own loop (which doesn't exist yet; the dev-aid chat view is read-
-// only on the event log, no provider attached). For headless
-// `carlos please`, use the `--provider` / `--model` flags instead.
-func slashModelLine(arg string) string {
-	if arg != "" {
-		return fmt.Sprintf("/model: mid-session switching wires in Phase 3 (chat loop). For now, restart with carlos please --provider <name> --model <id>. (requested: %s)", arg)
+// modelSlash handles `/model [provider:model | model]`. With no args
+// it lists every configured provider + its default model alongside
+// the *currently active* identity (so a user mid-conversation can see
+// which model is answering before deciding to swap). With args it
+// parses the requested target — accepting either the full
+// "<provider>:<model>" form OR a bare "<model>" that keeps the active
+// provider — and hands off to FrameUI.SwitchModel so the runtime can
+// rebuild the chatglue.Loop atomically. Without a wired SwitchModel
+// the slash echoes "not wired in this session" rather than silently
+// dropping the request (the prior behavior, which read as "no-op
+// crash" to the user).
+func (m *Model) modelSlash(arg string) tea.Cmd {
+	arg = strings.TrimSpace(arg)
+	if arg == "" {
+		return statusCmd(m.modelStatusLine(), statusInfo)
 	}
+	provider, model := parseModelArg(arg)
+	if model == "" && provider == "" {
+		return statusCmd("/model: empty target; try /model <provider>:<model>", statusWarn)
+	}
+	if m.frame.SwitchModel == nil {
+		return statusCmd("model switching not wired in this session", statusWarn)
+	}
+	resolvedProv, resolvedModel, err := m.frame.SwitchModel(provider, model)
+	if err != nil {
+		return statusCmd("/model: switch failed: "+err.Error(), statusWarn)
+	}
+	echo := "switched to " + resolvedProv + ":" + resolvedModel
+	return statusCmd(echo, statusInfo)
+}
+
+// parseModelArg splits "<provider>:<model>" into its two parts, or
+// returns ("", model) for a bare "<model>" (so the caller defaults
+// the provider to the currently-active one). The split is on the
+// FIRST ":" so OpenRouter ids like "openrouter:google/gemini-3.5-flash"
+// or even "openai:gpt-5" survive unscathed even though some users
+// might type extra colons inside the model id.
+func parseModelArg(arg string) (provider, model string) {
+	arg = strings.TrimSpace(arg)
+	if arg == "" {
+		return "", ""
+	}
+	idx := strings.IndexByte(arg, ':')
+	if idx < 0 {
+		return "", arg
+	}
+	return strings.TrimSpace(arg[:idx]), strings.TrimSpace(arg[idx+1:])
+}
+
+// modelStatusLine renders the no-args output of /model: the currently
+// active provider:model first (the answer to the most common reason a
+// user runs /model bare), then a horizontally-laid catalog of every
+// configured provider with its default model. A `*` flags the
+// session's currently-active provider. The line is intentionally one
+// row so it fits in the status echo band.
+func (m *Model) modelStatusLine() string {
 	cfg, err := config.Load(config.DefaultPath())
 	if err != nil {
 		return "/model: no config loaded (" + err.Error() + ")"
 	}
+	var head string
+	if m.frame.Identity != nil {
+		if p, mod := m.frame.Identity(); p != "" || mod != "" {
+			head = "active: " + p + ":" + mod
+		}
+	}
 	if len(cfg.Providers) == 0 {
+		if head != "" {
+			return head + "   no providers configured - run `carlos onboard`"
+		}
 		return "/model: no providers configured - run `carlos onboard`"
 	}
 	parts := make([]string, 0, len(cfg.Providers))
-	for name, pc := range cfg.Providers {
+	activeProv := ""
+	if m.frame.Identity != nil {
+		activeProv, _ = m.frame.Identity()
+	}
+	if activeProv == "" {
+		activeProv = cfg.DefaultProvider
+	}
+	for _, name := range sortedProviderNames(cfg.Providers) {
+		pc := cfg.Providers[name]
 		mark := " "
-		if name == cfg.DefaultProvider {
+		if name == activeProv {
 			mark = "*"
 		}
 		model := pc.DefaultModel
@@ -1812,7 +1990,24 @@ func slashModelLine(arg string) string {
 		}
 		parts = append(parts, fmt.Sprintf("%s%s=%s", mark, name, model))
 	}
-	return "configured: " + strings.Join(parts, "  ") + "   (* = default)"
+	tail := "configured: " + strings.Join(parts, "  ") + "   (* = active)"
+	if head == "" {
+		return tail
+	}
+	return head + "   " + tail
+}
+
+// sortedProviderNames returns a stable, ALPHABETICAL list of provider
+// names from a Providers map. Without this the /model echo flickered
+// between renders because map iteration order is randomised, and the
+// caller couldn't grep the line for a known position.
+func sortedProviderNames(provs map[string]config.ProviderConfig) []string {
+	out := make([]string, 0, len(provs))
+	for n := range provs {
+		out = append(out, n)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // chatglueErrorPrefix mirrors chatglue.ErrorEventPrefix verbatim so

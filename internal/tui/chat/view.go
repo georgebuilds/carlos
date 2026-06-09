@@ -114,6 +114,14 @@ func (m *Model) renderInner(innerW, innerH int) string {
 			m.switcherHelp,
 		)
 		approvalH = lipgloss.Height(approval)
+	} else if m.showResume {
+		// /resume picker shares the takeover slot.
+		resumeH := innerH - headerH - footerH - inputH - 1
+		if resumeH < 10 {
+			resumeH = 10
+		}
+		approval = renderResumeOverlay(m, innerW, resumeH)
+		approvalH = lipgloss.Height(approval)
 	} else if m.showHeuristic {
 		approval = renderHeuristicOverlay(
 			m.heuristicPending,
@@ -262,7 +270,7 @@ func (m *Model) renderHeader(w int) string {
 
 	left := idStyle.Render(id) + " " + badge
 	if model != "" {
-		left += " " + modelStyle.Render("("+model+")")
+		left += " " + modelStyle.Render("("+displayModelName(model)+")")
 	}
 	if m.frame.Active != "" {
 		left += " " + framePillSep + " " + framePill(m.frame)
@@ -300,12 +308,42 @@ func isNoColor() bool {
 
 // headerState reads the projection for the active agent. If the agent
 // isn't in the projection yet (no state_change seen), report a placeholder.
+//
+// Model resolution: the projection's Model field reflects what was
+// recorded at agent creation; mid-session /model swaps update the
+// runtime's liveDispatch but never re-emit a state_change event the
+// projection would apply. We therefore prefer FrameUI.Identity() —
+// which the runtime updates in lockstep with the model swap — when
+// it's wired. Falls back to the projection's stored model for the
+// dev-aid / test paths where Identity is nil.
 func (m *Model) headerState() (agent.State, string) {
 	row, ok := m.proj.Get(m.agentID)
 	if !ok {
 		return agent.StateSpawning, ""
 	}
-	return row.State, row.Model
+	model := row.Model
+	if m.frame.Identity != nil {
+		if _, live := m.frame.Identity(); live != "" {
+			model = live
+		}
+	}
+	return row.State, model
+}
+
+// displayModelName trims the OpenRouter vendor prefix off the model id
+// so the chat header shows "gemini-3.5-flash" instead of the noisier
+// "google/gemini-3.5-flash". The bare id ("claude-opus-4-5", "gpt-5",
+// "llama3:latest", …) is left untouched. OpenRouter is the only
+// provider whose model ids carry a "<vendor>/" prefix today, so a
+// single check on "/" presence is enough and stays consistent across
+// the five providers without us having to thread the provider name
+// through the projection. Authoritative model id is kept in the
+// AgentRow / Loop config; this helper is render-only.
+func displayModelName(model string) string {
+	if i := strings.IndexByte(model, '/'); i >= 0 && i < len(model)-1 {
+		return model[i+1:]
+	}
+	return model
 }
 
 // stateBadge formats a state as a colored text label. Color choice

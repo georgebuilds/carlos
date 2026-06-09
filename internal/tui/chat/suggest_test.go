@@ -16,12 +16,12 @@ import (
 func TestSlashSuggest_RefreshTrackingValue(t *testing.T) {
 	var s slashSuggest
 
-	s.refresh("hello")
+	s.refresh("hello", nil)
 	if s.open {
 		t.Errorf("non-slash input should leave the suggest closed; got open=%v", s.open)
 	}
 
-	s.refresh("/")
+	s.refresh("/", nil)
 	if !s.open {
 		t.Fatal("'/' should open the suggest")
 	}
@@ -32,7 +32,7 @@ func TestSlashSuggest_RefreshTrackingValue(t *testing.T) {
 		t.Error("inArgs should be false at '/'")
 	}
 
-	s.refresh("/fr")
+	s.refresh("/fr", nil)
 	if !s.open || s.verb != "fr" || s.inArgs {
 		t.Errorf("'/fr' bad state: %+v", s)
 	}
@@ -40,7 +40,7 @@ func TestSlashSuggest_RefreshTrackingValue(t *testing.T) {
 		t.Fatal("'/fr' should have at least one match")
 	}
 
-	s.refresh("/frame ")
+	s.refresh("/frame ", nil)
 	if !s.inArgs {
 		t.Error("'/frame ' should set inArgs")
 	}
@@ -48,7 +48,7 @@ func TestSlashSuggest_RefreshTrackingValue(t *testing.T) {
 		t.Errorf("'/frame ' should lock to /frame, got %+v", s.matches)
 	}
 
-	s.refresh("howdy")
+	s.refresh("howdy", nil)
 	if s.open {
 		t.Error("returning to non-slash input should close the suggest")
 	}
@@ -59,7 +59,7 @@ func TestSlashSuggest_RefreshTrackingValue(t *testing.T) {
 // but doesn't drop the selected spec.
 func TestSlashSuggest_CursorPreservedAcrossNarrowing(t *testing.T) {
 	var s slashSuggest
-	s.refresh("/fr")
+	s.refresh("/fr", nil)
 	// Find the index of "frame" in the matches.
 	wantIdx := -1
 	for i, m := range s.matches {
@@ -72,7 +72,7 @@ func TestSlashSuggest_CursorPreservedAcrossNarrowing(t *testing.T) {
 		t.Fatal("test premise broken: '/fr' should match /frame")
 	}
 	s.cursor = wantIdx
-	s.refresh("/fra")
+	s.refresh("/fra", nil)
 	spec, ok := s.selected()
 	if !ok || spec.Name != "frame" {
 		t.Errorf("narrowing dropped the /frame selection: %+v ok=%v", spec, ok)
@@ -82,7 +82,7 @@ func TestSlashSuggest_CursorPreservedAcrossNarrowing(t *testing.T) {
 // TestSlashSuggest_NavWraps confirms ↑↓ wrap at the ends.
 func TestSlashSuggest_NavWraps(t *testing.T) {
 	var s slashSuggest
-	s.refresh("/")
+	s.refresh("/", nil)
 	last := len(s.matches) - 1
 
 	s.cursorUp()
@@ -100,7 +100,7 @@ func TestSlashSuggest_NavWraps(t *testing.T) {
 // in arg-entry mode without the user pressing space.
 func TestSlashSuggest_CompletionAddsSpaceWhenSpecHasArgs(t *testing.T) {
 	var s slashSuggest
-	s.refresh("/fra")
+	s.refresh("/fra", nil)
 	// Force selection to /frame.
 	for i, m := range s.matches {
 		if m.Name == "frame" {
@@ -116,7 +116,7 @@ func TestSlashSuggest_CompletionAddsSpaceWhenSpecHasArgs(t *testing.T) {
 
 func TestSlashSuggest_CompletionNoSpaceWhenArglessSpec(t *testing.T) {
 	var s slashSuggest
-	s.refresh("/cl")
+	s.refresh("/cl", nil)
 	// Force selection to /clear (no args).
 	for i, m := range s.matches {
 		if m.Name == "clear" {
@@ -142,7 +142,7 @@ func TestSlashSuggest_TabExpandsTextarea(t *testing.T) {
 	m = drive(t, m, 120, 30)
 
 	m.ta.SetValue("/fra")
-	m.slashSuggest.refresh("/fra")
+	m.slashSuggest.refresh("/fra", nil)
 	// Pin selection on /frame so the assertion isn't sensitive to
 	// the order of matches in slash.Builtins.
 	for i, mm := range m.slashSuggest.matches {
@@ -174,7 +174,7 @@ func TestSlashSuggest_EnterCompletesThenSubmits(t *testing.T) {
 	m = drive(t, m, 120, 30)
 
 	m.ta.SetValue("/fra")
-	m.slashSuggest.refresh("/fra")
+	m.slashSuggest.refresh("/fra", nil)
 	for i, mm := range m.slashSuggest.matches {
 		if mm.Name == "frame" {
 			m.slashSuggest.cursor = i
@@ -209,7 +209,7 @@ func TestSlashSuggest_EscDismisses(t *testing.T) {
 	m = drive(t, m, 120, 30)
 
 	m.ta.SetValue("/fr")
-	m.slashSuggest.refresh("/fr")
+	m.slashSuggest.refresh("/fr", nil)
 	if !m.slashSuggest.open {
 		t.Fatal("test premise broken: '/fr' should open the suggest")
 	}
@@ -223,7 +223,7 @@ func TestSlashSuggest_EscDismisses(t *testing.T) {
 	}
 	// Returning to non-slash input should re-arm the dismissed flag.
 	mm.ta.SetValue("")
-	mm.slashSuggest.refresh("")
+	mm.slashSuggest.refresh("", nil)
 	if mm.slashSuggest.dismissed {
 		t.Error("leaving slash mode should clear the dismissed flag")
 	}
@@ -240,7 +240,7 @@ func TestSlashSuggest_HintRendersIntoView(t *testing.T) {
 	m = drive(t, m, 120, 30)
 
 	m.ta.SetValue("/")
-	m.slashSuggest.refresh("/")
+	m.slashSuggest.refresh("/", nil)
 
 	v := m.View()
 	// The description row prints the selected /clear (first builtin)
@@ -273,7 +273,7 @@ func TestSlashSuggest_NavWhenClosedIsNoOp(t *testing.T) {
 // defensive index guard.
 func TestSlashSuggest_SelectedOutOfBoundsReturnsFalse(t *testing.T) {
 	var s slashSuggest
-	s.refresh("/")
+	s.refresh("/", nil)
 	s.cursor = 9999
 	if _, ok := s.selected(); ok {
 		t.Error("selected with OOB cursor should report ok=false")
@@ -293,9 +293,9 @@ func TestStyleSlashValue_NonSlashPassThrough(t *testing.T) {
 // closed even while the input is still a slash command.
 func TestSlashSuggest_RefreshAfterDismissShowsClosed(t *testing.T) {
 	var s slashSuggest
-	s.refresh("/fr")
+	s.refresh("/fr", nil)
 	s.dismiss()
-	s.refresh("/fra")
+	s.refresh("/fra", nil)
 	if s.open {
 		t.Errorf("dismissed suggest should stay closed across refresh; %+v", s)
 	}
@@ -328,7 +328,7 @@ func TestHandleSlashSuggestKey_MultiMatchArrowKeys(t *testing.T) {
 	m := New(log, agentID, NewMemTextSource())
 	m = drive(t, m, 120, 30)
 	m.ta.SetValue("/")
-	m.slashSuggest.refresh("/")
+	m.slashSuggest.refresh("/", nil)
 	start := m.slashSuggest.cursor
 	if _, handled := m.handleSlashSuggestKey("down"); !handled {
 		t.Error("down should be consumed with multiple matches")
@@ -354,7 +354,7 @@ func TestHandleSlashSuggestKey_UnknownKeyPassThrough(t *testing.T) {
 	m := New(log, agentID, NewMemTextSource())
 	m = drive(t, m, 120, 30)
 	m.ta.SetValue("/")
-	m.slashSuggest.refresh("/")
+	m.slashSuggest.refresh("/", nil)
 	if _, handled := m.handleSlashSuggestKey("a"); handled {
 		t.Error("letter key should pass through to the textarea")
 	}
@@ -407,7 +407,7 @@ func TestHandleSlashSuggestKey_UpDownSingleMatchPassthrough(t *testing.T) {
 	m = drive(t, m, 120, 30)
 	// Force single-match state (in args mode locks to one spec).
 	m.ta.SetValue("/frame ")
-	m.slashSuggest.refresh("/frame ")
+	m.slashSuggest.refresh("/frame ", nil)
 	if _, handled := m.handleSlashSuggestKey("up"); handled {
 		t.Errorf("up should pass through with single match")
 	}
@@ -421,7 +421,7 @@ func TestHandleSlashSuggestKey_UpDownSingleMatchPassthrough(t *testing.T) {
 // something sensible.
 func TestSuggestRender_NarrowViewportClamps(t *testing.T) {
 	var s slashSuggest
-	s.refresh("/")
+	s.refresh("/", nil)
 	out := renderSlashHint(s, 10) // below the contentW floor
 	if out == "" {
 		t.Error("hint should still render on narrow viewport")
@@ -433,7 +433,7 @@ func TestSuggestRender_NarrowViewportClamps(t *testing.T) {
 // exist with a trailing space.
 func TestSuggestRender_UnknownVerbWarning(t *testing.T) {
 	var s slashSuggest
-	s.refresh("/nopecmd ")
+	s.refresh("/nopecmd ", nil)
 	// In args mode the chip row collapses; force back into non-args
 	// mode by clearing inArgs so the renderer takes the warning path.
 	s.inArgs = false
@@ -487,7 +487,7 @@ func TestSlashSuggest_NoBandWhenInputIsPlainText(t *testing.T) {
 	m = drive(t, m, 120, 30)
 
 	m.ta.SetValue("hello carlos")
-	m.slashSuggest.refresh("hello carlos")
+	m.slashSuggest.refresh("hello carlos", nil)
 
 	v := m.View()
 	if strings.Contains(v, "tab complete") {

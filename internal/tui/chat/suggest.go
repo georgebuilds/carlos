@@ -51,6 +51,24 @@ type slashSuggest struct {
 	// inArgs is true once the user has typed past the verb (a space
 	// or further). Triggers the args-hint render mode.
 	inArgs bool
+
+	// argMatches is the live arg autocomplete list, populated when
+	// the user has locked in a verb that has runtime completions
+	// wired (today: /model). Empty when no completer matches the
+	// verb — the band still renders the spec.ArgsHint as ghost text
+	// in that case so users know what to type.
+	argMatches []string
+
+	// argCursor is the index into argMatches under the user's
+	// selection. ↑↓ walks it when len(argMatches)>1; Tab inserts
+	// the focused entry into the textarea in place of the typed
+	// fragment.
+	argCursor int
+
+	// argTyped is the raw arg fragment the user has typed so far,
+	// preserved verbatim (with surrounding whitespace) so the Tab
+	// handler can replace the right slice of the textarea value.
+	argTyped string
 }
 
 // refreshSlashSuggest updates the suggest state from the current
@@ -58,7 +76,11 @@ type slashSuggest struct {
 // Tries to keep the cursor stable across narrowing: when the
 // previous selection still appears in the new matches list, we
 // preserve its position by index-into-matches.
-func (s *slashSuggest) refresh(value string) {
+//
+// argFn is the per-verb runtime arg completer, dispatched on the
+// locked-in verb name. Pass nil to disable arg autocomplete (tests,
+// dev-aid, headless paths) — verb-completion still works.
+func (s *slashSuggest) refresh(value string, argFn func(verb, partial string) []string) {
 	if !looksLikeSlash(value) {
 		s.reset()
 		return
@@ -71,9 +93,13 @@ func (s *slashSuggest) refresh(value string) {
 		s.cursor = 0
 		s.verb = ""
 		s.inArgs = false
+		s.argMatches = nil
+		s.argCursor = 0
+		s.argTyped = ""
 		return
 	}
 	prev, hadPrev := s.selected()
+	prevArg, hadPrevArg := s.selectedArg()
 	matches, verb, inArgs := slash.Filter(value)
 	s.open = true
 	s.matches = matches
@@ -90,6 +116,51 @@ func (s *slashSuggest) refresh(value string) {
 			}
 		}
 	}
+	s.argMatches = nil
+	s.argCursor = 0
+	s.argTyped = ""
+	if inArgs && argFn != nil {
+		typed := extractArgFragment(value)
+		s.argTyped = typed
+		if list := argFn(verb, typed); len(list) > 0 {
+			s.argMatches = list
+			if hadPrevArg {
+				for i, a := range list {
+					if a == prevArg {
+						s.argCursor = i
+						break
+					}
+				}
+			}
+		}
+	}
+}
+
+// selectedArg returns the focused arg suggestion, or ("", false).
+func (s *slashSuggest) selectedArg() (string, bool) {
+	if !s.inArgs || len(s.argMatches) == 0 {
+		return "", false
+	}
+	if s.argCursor < 0 || s.argCursor >= len(s.argMatches) {
+		return "", false
+	}
+	return s.argMatches[s.argCursor], true
+}
+
+// extractArgFragment returns the verbatim text after "/<verb> " from
+// the textarea value. Whitespace either side is preserved so the
+// completion replaces the user's typed arg without trimming.
+func extractArgFragment(value string) string {
+	trimmed := strings.TrimLeft(value, " \t")
+	if !strings.HasPrefix(trimmed, "/") {
+		return ""
+	}
+	body := strings.TrimPrefix(trimmed, "/")
+	_, rest, hasSpace := strings.Cut(body, " ")
+	if !hasSpace {
+		return ""
+	}
+	return rest
 }
 
 // dismiss is the Esc handler: hide the band without erasing the
@@ -135,6 +206,26 @@ func (s *slashSuggest) cursorDown() {
 	}
 }
 
+func (s *slashSuggest) argCursorUp() {
+	if len(s.argMatches) == 0 {
+		return
+	}
+	s.argCursor--
+	if s.argCursor < 0 {
+		s.argCursor = len(s.argMatches) - 1
+	}
+}
+
+func (s *slashSuggest) argCursorDown() {
+	if len(s.argMatches) == 0 {
+		return
+	}
+	s.argCursor++
+	if s.argCursor >= len(s.argMatches) {
+		s.argCursor = 0
+	}
+}
+
 // handleSlashSuggestKey processes a keystroke when slash mode is
 // active. Returns handled=true when the key was consumed by the
 // suggest layer; the caller must NOT then route the key to the
@@ -153,20 +244,40 @@ func (m *Model) handleSlashSuggestKey(key string) (tea.Cmd, bool) {
 	}
 	switch key {
 	case "tab":
+		// In args mode, prefer the arg-suggestion completion: it
+		// replaces the typed arg fragment with the focused suggestion
+		// (e.g. "/model openrouter:" + tab → "/model openrouter:google/gemini-3.5-flash").
+		if m.slashSuggest.inArgs && len(m.slashSuggest.argMatches) > 0 {
+			completed := m.slashSuggest.argCompletion()
+			if completed != "" {
+				m.ta.SetValue(completed)
+				m.ta.CursorEnd()
+				m.slashSuggest.refresh(completed, m.argCompleterFn())
+				return nil, true
+			}
+		}
 		completion := m.slashSuggest.completion()
 		if completion == "" {
 			return nil, true
 		}
 		m.ta.SetValue(completion)
 		m.ta.CursorEnd()
-		m.slashSuggest.refresh(completion)
+		m.slashSuggest.refresh(completion, m.argCompleterFn())
 		return nil, true
 	case "up":
+		if m.slashSuggest.inArgs && len(m.slashSuggest.argMatches) > 1 {
+			m.slashSuggest.argCursorUp()
+			return nil, true
+		}
 		if len(m.slashSuggest.matches) > 1 {
 			m.slashSuggest.cursorUp()
 			return nil, true
 		}
 	case "down":
+		if m.slashSuggest.inArgs && len(m.slashSuggest.argMatches) > 1 {
+			m.slashSuggest.argCursorDown()
+			return nil, true
+		}
 		if len(m.slashSuggest.matches) > 1 {
 			m.slashSuggest.cursorDown()
 			return nil, true
@@ -176,6 +287,35 @@ func (m *Model) handleSlashSuggestKey(key string) (tea.Cmd, bool) {
 		return nil, true
 	}
 	return nil, false
+}
+
+// argCompleterFn returns the verb-dispatcher slashSuggest.refresh
+// uses to populate argMatches. Wired today only for "/model", which
+// taps FrameUI.ModelCompletions. Returns nil when no completer is
+// wired (tests, dev-aid): the suggest layer treats nil as "no arg
+// autocomplete" and falls back to the static ArgsHint ghost text.
+func (m *Model) argCompleterFn() func(verb, partial string) []string {
+	if m.frame.ModelCompletions == nil {
+		return nil
+	}
+	return func(verb, partial string) []string {
+		if verb == "model" {
+			return m.frame.ModelCompletions(partial)
+		}
+		return nil
+	}
+}
+
+// argCompletion returns the textarea value with the typed arg
+// fragment replaced by the focused argMatches entry. The verb
+// portion (and trailing space) is preserved verbatim so the user
+// keeps any leading whitespace they may have typed.
+func (s *slashSuggest) argCompletion() string {
+	arg, ok := s.selectedArg()
+	if !ok {
+		return ""
+	}
+	return "/" + s.verb + " " + arg
 }
 
 // completion returns the textarea replacement value when Tab is
@@ -247,10 +387,12 @@ func renderSlashHint(s slashSuggest, w int) string {
 // window slides so the cursor stays in view, with "+N" markers on
 // either side to advertise the off-screen matches.
 func renderSlashChips(s slashSuggest, w int) string {
-	// In args mode with a single match, the chips row is redundant
-	// with the description row — fold it.
+	// In args mode the chip row pivots to RENDER THE ARG SUGGESTIONS
+	// instead of the verb matches: a single match means the verb is
+	// locked in, so the band's job is to show what fills the args
+	// (e.g. "/model openrouter:" → list the OpenRouter models).
 	if s.inArgs {
-		return ""
+		return renderSlashArgChips(s, w)
 	}
 	if len(s.matches) == 0 {
 		warnStyle := lipgloss.NewStyle().Foreground(colorWarn)
@@ -300,6 +442,55 @@ func renderSlashChips(s slashSuggest, w int) string {
 		// Reserve 6 cells for the right overflow tail.
 		if used+width > w-6 {
 			remaining := len(s.matches) - i
+			parts = append(parts, moreStyle.Render(sep+"+"+itoa(remaining)))
+			return strings.Join(parts, "")
+		}
+		if i > start {
+			parts = append(parts, dimStyle.Render(sep))
+		}
+		parts = append(parts, render)
+		used += width
+	}
+	return strings.Join(parts, "")
+}
+
+// renderSlashArgChips paints the args-mode suggestion list. Layout
+// mirrors renderSlashChips (sliding window with cursor cushion + N/+M
+// overflow markers) so users develop one mental model for the popup.
+// Empty argMatches returns "" — the description row alone carries
+// the args hint in that case.
+func renderSlashArgChips(s slashSuggest, w int) string {
+	if len(s.argMatches) == 0 {
+		return ""
+	}
+	selStyle := lipgloss.NewStyle().Foreground(colorAccent).Bold(true)
+	dimStyle := lipgloss.NewStyle().Foreground(colorMuted)
+	moreStyle := lipgloss.NewStyle().Foreground(colorSubtle)
+	const cushion = 2
+	start := 0
+	if s.argCursor > cushion {
+		start = s.argCursor - cushion
+	}
+	const sep = "  "
+	used := 0
+	parts := make([]string, 0, len(s.argMatches)+2)
+	if start > 0 {
+		left := moreStyle.Render("+" + itoa(start) + " · ")
+		parts = append(parts, left)
+		used += lipgloss.Width(left)
+	}
+	for i := start; i < len(s.argMatches); i++ {
+		chip := s.argMatches[i]
+		render := dimStyle.Render(chip)
+		if i == s.argCursor {
+			render = selStyle.Render(chip)
+		}
+		width := lipgloss.Width(chip)
+		if i > start {
+			width += len(sep)
+		}
+		if used+width > w-6 {
+			remaining := len(s.argMatches) - i
 			parts = append(parts, moreStyle.Render(sep+"+"+itoa(remaining)))
 			return strings.Join(parts, "")
 		}

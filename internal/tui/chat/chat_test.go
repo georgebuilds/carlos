@@ -84,6 +84,24 @@ func seedToolCall(t *testing.T, log *agent.SQLiteEventLog, agentID, toolName str
 	}
 }
 
+// seedToolResult is the result-side mirror of seedToolCall. Output
+// is taken raw and embedded as the ToolResult.Output bytes.
+func seedToolResult(t *testing.T, log *agent.SQLiteEventLog, agentID, toolName, output string, isErr bool) {
+	t.Helper()
+	payload, err := json.Marshal(agent.ToolResult{Name: toolName, Output: []byte(output), IsError: isErr})
+	if err != nil {
+		t.Fatalf("marshal tool result: %v", err)
+	}
+	if _, err := log.Append(context.Background(), agent.Event{
+		AgentID: agentID,
+		TS:      time.Now().UTC(),
+		Type:    agent.EvtToolResult,
+		Payload: payload,
+	}); err != nil {
+		t.Fatalf("append tool result: %v", err)
+	}
+}
+
 // drive synchronously feeds Init's normal sequence to the model without
 // running a bubbletea Program: it manually issues the backfill Read and
 // the WindowSizeMsg, then calls View() once so the viewport sizes itself
@@ -653,5 +671,38 @@ func mustContain(t *testing.T, s, sub string) {
 	t.Helper()
 	if !strings.Contains(s, sub) {
 		t.Errorf("expected to find %q in:\n%s", sub, s)
+	}
+}
+
+// TestApplyEvent_HidesCarlosAboutCall pins the user-facing
+// suppression policy: a carlos_about tool_call + tool_result should
+// NOT land in the rendered transcript even though both events are
+// fully persisted in the SQLite log. A bash call placed alongside
+// continues to render as a baseline sanity check.
+func TestApplyEvent_HidesCarlosAboutCall(t *testing.T) {
+	log := openTempLog(t)
+	const agentID = "01HV0000000000000000000099"
+	seedAgent(t, log, agentID, "test agent", "claude-opus-4-7")
+	seedUserMessage(t, log, agentID, "what frame am I in?")
+	seedToolCall(t, log, agentID, "carlos_about")
+	seedToolResult(t, log, agentID, "carlos_about", `{"frame":"personal"}`, false)
+	seedToolCall(t, log, agentID, "bash")
+	seedToolResult(t, log, agentID, "bash", "(rejected by user) something", true)
+
+	src := NewMemTextSource()
+	m := New(log, agentID, src)
+	m = drive(t, m, 120, 30)
+	view := m.View()
+	if strings.Contains(view, "carlos_about") {
+		t.Errorf("carlos_about should be hidden from the transcript; got:\n%s", view)
+	}
+	if !strings.Contains(view, "bash") {
+		t.Errorf("expected bash tool card to render; got:\n%s", view)
+	}
+	// In-memory transcript shouldn't carry the hidden card either.
+	for _, e := range m.transcript {
+		if e.kind == entryToolCall && e.tool == "carlos_about" {
+			t.Error("carlos_about transcript entry should be suppressed")
+		}
 	}
 }

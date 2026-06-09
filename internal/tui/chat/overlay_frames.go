@@ -581,7 +581,21 @@ func (m *Model) switcherInnerW() int {
 // openFrameSwitcher is the toggle entrypoint called from chat.Update
 // when Ctrl+F lands and frames are wired. Snaps the cursor to the
 // active frame so the user starts where they expect.
+//
+// Refresh-on-open: when FrameUI.RefreshAvailable is wired, the switcher
+// re-reads the frame list from the live config every time it opens.
+// Without this, a frame created in the current session (wizard or
+// `/frame new <name>`) appeared after restart but NOT in the switcher
+// — the FrameUI.Available slice captured at boot stays frozen across
+// `/agents` round-trips (a fresh chat.New() with the same boot-time
+// FrameUI value). Calling the hook here costs ~microseconds and turns
+// the switcher into a true live view.
 func (m *Model) openFrameSwitcher() {
+	if m.frame.RefreshAvailable != nil {
+		if names := m.frame.RefreshAvailable(); names != nil {
+			m.frame.Available = names
+		}
+	}
 	m.showFrameSwitcher = true
 	m.switcherHelp = false
 	m.switcherCursor = 0
