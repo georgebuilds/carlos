@@ -260,10 +260,59 @@ func TestSchedule_Validate(t *testing.T) {
 		{Schedule{Name: "n", Spec: "garbage", Prompt: "x"}, "5 fields"},
 	}
 	for _, c := range cases {
-		err := c.s.Validate()
+		err := c.s.Validate(nil)
 		if err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Fatalf("Validate(%+v): want error containing %q, got %v", c.s, c.want, err)
 		}
+	}
+}
+
+// TestSchedule_Validate_FrameMembership covers the Phase F-14 hardening:
+// the frame catalog gate. Empty known map skips the check (back-compat
+// for callers that legitimately have no catalog, e.g. tests). Non-empty
+// known map: empty Frame stays valid, in-set Frame valid, out-of-set
+// Frame rejected. The error spelling pins the format so the caller can
+// surface it verbatim.
+func TestSchedule_Validate_FrameMembership(t *testing.T) {
+	base := Schedule{Name: "n", Spec: "* * * * *", Prompt: "x"}
+
+	// Empty known: any Frame accepted (back-compat).
+	for _, f := range []string{"", "personal", "ghost"} {
+		s := base
+		s.Frame = f
+		if err := s.Validate(nil); err != nil {
+			t.Errorf("Validate(%q, nil): want nil, got %v", f, err)
+		}
+		if err := s.Validate(map[string]bool{}); err != nil {
+			t.Errorf("Validate(%q, empty): want nil, got %v", f, err)
+		}
+	}
+
+	known := map[string]bool{"personal": true, "work": true}
+
+	// Empty Frame still accepted with a non-empty known set - falls
+	// through to runtime active.
+	s := base
+	s.Frame = ""
+	if err := s.Validate(known); err != nil {
+		t.Errorf("empty Frame with known set: want nil, got %v", err)
+	}
+
+	// In-set Frame accepted.
+	s.Frame = "work"
+	if err := s.Validate(known); err != nil {
+		t.Errorf("work in known: want nil, got %v", err)
+	}
+
+	// Out-of-set Frame rejected, error mentions both schedule name and
+	// the bad frame value so the user can fix it.
+	s.Frame = "ghost"
+	err := s.Validate(known)
+	if err == nil {
+		t.Fatal("ghost frame: want error, got nil")
+	}
+	if !strings.Contains(err.Error(), "ghost") || !strings.Contains(err.Error(), "unknown frame") {
+		t.Errorf("error spelling drifted: %v", err)
 	}
 }
 

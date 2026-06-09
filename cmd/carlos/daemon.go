@@ -294,14 +294,18 @@ func runScheduleAdd(args []string) error {
 	}
 	sch.Prompt = prompt
 	sch.Name = autoScheduleName(prompt)
-	if err := sch.Validate(); err != nil {
-		return fmt.Errorf("schedule add: %w", err)
-	}
 
 	cfgPath := config.DefaultPath()
 	cfg, err := config.Load(cfgPath)
 	if err != nil {
 		return fmt.Errorf("schedule add: load config: %w", err)
+	}
+	known := make(map[string]bool, len(cfg.Frames.List))
+	for _, f := range cfg.Frames.List {
+		known[f.Name] = true
+	}
+	if err := sch.Validate(known); err != nil {
+		return fmt.Errorf("schedule add: %w", err)
 	}
 	for _, existing := range cfg.Schedules {
 		if existing.Name == sch.Name {

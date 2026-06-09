@@ -538,7 +538,13 @@ func TestActiveFrameForDispatch_EnvWins(t *testing.T) {
 	}
 }
 
-func TestActiveFrameForDispatch_UnknownNameReturnsNil(t *testing.T) {
+func TestActiveFrameForDispatch_UnknownFlagFallsThroughToDefault(t *testing.T) {
+	// Phase F-14 hardening: an unknown -f value no longer phantom-resolves
+	// to "ghost"; the resolver drops it and falls through to the persisted
+	// active / default. activeFrameForDispatch therefore returns the
+	// default frame (not nil) so provider creds still resolve correctly.
+	// The user-facing warning about the ignored flag is surfaced at the
+	// caller layer (runtime_*.go) via Resolution.Warning.
 	cfg := &config.Config{
 		Frames: frame.Config{
 			Default: "personal",
@@ -548,10 +554,9 @@ func TestActiveFrameForDispatch_UnknownNameReturnsNil(t *testing.T) {
 		},
 	}
 	t.Setenv("CARLOS_FRAME", "")
-	// Flag picks a frame that doesn't exist in List; Find returns nil.
 	f := activeFrameForDispatch(cfg, "ghost")
-	if f != nil {
-		t.Errorf("expected nil for unknown frame; got %+v", f)
+	if f == nil || f.Name != "personal" {
+		t.Errorf("expected fall-through to personal; got %+v", f)
 	}
 }
 

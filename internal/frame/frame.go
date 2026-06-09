@@ -12,6 +12,8 @@
 // config package can import frame.Config without creating a cycle.
 package frame
 
+import "regexp"
+
 // Frame is one row in the config's `frames.list`.
 //
 // Field tags use JSON because miniyaml marshals via reflect against JSON
@@ -138,6 +140,21 @@ func DefaultGlyphFor(name string) string {
 		return "⛰"
 	}
 	return "+"
+}
+
+// validNameRE gates frame names: lowercase letter first, then up to 30
+// more lowercase letters / digits / underscore / hyphen. Frame names are
+// concatenated into ~/.carlos/frames/<name>/ filesystem paths and used
+// as schedule.Frame keys / CARLOS_FRAME values; treating them as
+// free-text invites path-escape (`../escape`) and unrenderable values.
+var validNameRE = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,30}$`)
+
+// IsValidName reports whether name is a legal frame identifier. Enforced
+// at the new-frame wizard commit AND at config.Load so a hand-edited
+// config.yaml with a bad name fails loudly instead of building paths
+// that escape ~/.carlos/frames/.
+func IsValidName(name string) bool {
+	return validNameRE.MatchString(name)
 }
 
 // IsValidAccent reports whether the accent name is in the curated

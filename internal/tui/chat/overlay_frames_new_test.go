@@ -529,3 +529,57 @@ func TestNewFrame_DefaultCopyFalseWhenNoTemplate(t *testing.T) {
 		t.Errorf("copy-personal should default to false when PersonalTemplate is nil")
 	}
 }
+
+// TestNewFrame_PathInjectionRejected pins the security gate: a name
+// that would escape ~/.carlos/frames/<name>/ via "../" must show an
+// inline error and never call AddFrame. The wizard's old check rejected
+// spaces + duplicates but happily accepted "../escape", which builds
+// ~/.carlos/escape via PathsFor.
+func TestNewFrame_PathInjectionRejected(t *testing.T) {
+	called := false
+	m := newWizardModel(t, []string{"personal"}, func(frame.Frame) error {
+		called = true
+		return nil
+	}, nil)
+	m.openNewFrameWizard("")
+	for _, r := range "../escape" {
+		m.handleNewFrameKey(runeKey(string(r)))
+	}
+	_, _, _ = m.handleNewFrameKey(namedKey(tea.KeyEnter))
+	if called {
+		t.Errorf("AddFrame should not fire on path-escape name")
+	}
+	if m.newFrameError == "" {
+		t.Errorf("expected inline validation error")
+	}
+	if !m.showNewFrame {
+		t.Errorf("wizard should stay open on validation error")
+	}
+}
+
+// TestNewFrame_NonCanonicalNamesRejected walks the gate against the
+// other shapes IsValidName covers (capitals, digit-start, separator,
+// at-sign). Each one must fail at commit time.
+func TestNewFrame_NonCanonicalNamesRejected(t *testing.T) {
+	bad := []string{"Personal", "123foo", "work/x", "foo.bar"}
+	for _, n := range bad {
+		t.Run(n, func(t *testing.T) {
+			called := false
+			m := newWizardModel(t, []string{"personal"}, func(frame.Frame) error {
+				called = true
+				return nil
+			}, nil)
+			m.openNewFrameWizard("")
+			for _, r := range n {
+				m.handleNewFrameKey(runeKey(string(r)))
+			}
+			_, _, _ = m.handleNewFrameKey(namedKey(tea.KeyEnter))
+			if called {
+				t.Errorf("AddFrame fired on bad name %q", n)
+			}
+			if m.newFrameError == "" {
+				t.Errorf("no inline error for bad name %q", n)
+			}
+		})
+	}
+}

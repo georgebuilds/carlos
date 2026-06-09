@@ -288,6 +288,12 @@ func runDefault(cfg *config.Config, sessionID string) error {
 		Env: os.Getenv("CARLOS_FRAME"),
 		Cwd: cwd,
 	})
+	// Surface any "you typed something we couldn't honor" warning at
+	// startup so the user knows their CARLOS_FRAME / -f was ignored
+	// instead of silently booting under the wrong frame.
+	if frameOK && resolution.Warning != "" {
+		fmt.Fprintf(os.Stderr, "carlos: %s; using %s (%s)\n", resolution.Warning, resolution.Frame, resolution.Reason)
+	}
 	// Phase F live-swap state. liveLoop holds the currently-running
 	// chatglue.Loop; liveDispatch mirrors d so /whoami reflects the
 	// currently-active provider + model after a swap. swapLoop is

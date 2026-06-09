@@ -276,6 +276,16 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("config: parse %s: %w", path, err)
 	}
 	cfg.Frames = migrateFrames(cfg)
+	// Frame names build filesystem paths (~/.carlos/frames/<name>/) and
+	// schedule.Frame keys; refuse to boot when any name fails the
+	// identifier gate. Fail loudly over the whole config rather than
+	// silently dropping the offender - the user typed it, the user
+	// deserves the error.
+	for _, f := range cfg.Frames.List {
+		if !frame.IsValidName(f.Name) {
+			return nil, fmt.Errorf("config: invalid frame name %q in %s: must match ^[a-z][a-z0-9_-]{0,30}$", f.Name, path)
+		}
+	}
 	return &cfg, nil
 }
 

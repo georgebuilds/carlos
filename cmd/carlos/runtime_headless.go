@@ -110,6 +110,9 @@ func runHeadless(prompt string, opts pleaseOptions) error {
 			Cwd:  dispatchCwd,
 		}); ok {
 			activeFrameName = res.Frame
+			if res.Warning != "" {
+				fmt.Fprintf(os.Stderr, "carlos: %s; using %s (%s)\n", res.Warning, res.Frame, res.Reason)
+			}
 		}
 	}
 	dbPath := filepath.Join(home, ".carlos", "state.db")
@@ -302,6 +305,9 @@ func runHeadless(prompt string, opts pleaseOptions) error {
 		Flag: opts.frame,
 		Cwd:  hcwd,
 	}); ok {
+		if res.Warning != "" {
+			fmt.Fprintf(os.Stderr, "carlos: %s; using %s (%s)\n", res.Warning, res.Frame, res.Reason)
+		}
 		if f := cfg.Frames.Find(res.Frame); f != nil {
 			pleaseLib := headlessSkillsLib
 			pleaseFrameInfo = agent.FrameInfo{
@@ -569,6 +575,9 @@ func runResearch(args []string) error {
 		Cwd:  rcwd,
 	}); ok {
 		researchFrameName = res.Frame
+		if res.Warning != "" {
+			fmt.Fprintf(os.Stderr, "carlos: %s; using %s (%s)\n", res.Warning, res.Frame, res.Reason)
+		}
 	}
 	d, err := buildDispatchForFrame(cfg, pleaseOptions{}, cfg.Frames.Find(researchFrameName))
 	if err != nil {

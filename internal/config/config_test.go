@@ -466,6 +466,42 @@ func TestLoad_PreservesExistingFramesBlock(t *testing.T) {
 	}
 }
 
+// TestLoad_RejectsInvalidFrameName pins the security gate: a
+// hand-edited (or migrated-then-mutated) YAML carrying a frame name
+// that would escape ~/.carlos/frames/<name>/ via "../" must fail the
+// whole load. We fail loudly rather than skipping the offender so the
+// downstream paths that build filesystem paths from the name never see
+// it.
+func TestLoad_RejectsInvalidFrameName(t *testing.T) {
+	cases := []string{"../escape", "Personal", "work/x", "123foo"}
+	for _, bad := range cases {
+		t.Run(bad, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, "config.yaml")
+			yaml := "user_name: Boss\n" +
+				"providers:\n" +
+				"  anthropic:\n" +
+				"    api_key: sk\n" +
+				"default_provider: anthropic\n" +
+				"frames:\n" +
+				"  default: " + bad + "\n" +
+				"  list:\n" +
+				"    - name: " + bad + "\n" +
+				"      provider: anthropic\n"
+			if err := os.WriteFile(path, []byte(yaml), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			_, err := Load(path)
+			if err == nil {
+				t.Fatalf("Load(%q): want error, got nil", bad)
+			}
+			if !strings.Contains(err.Error(), "invalid frame name") {
+				t.Errorf("error spelling drifted: %v", err)
+			}
+		})
+	}
+}
+
 // TestMCPRoundtrip pins the MCP top-level field's YAML round-trip:
 // servers, args, env, and per-frame gating survive a Save+Load cycle,
 // and a zero-value MCP block stays omitted so older configs without the

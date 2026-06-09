@@ -1810,7 +1810,11 @@ func handleScheduleSlash(args string) string {
 		}
 		sch.Prompt = prompt
 		sch.Name = autoSlugName(prompt)
-		if err := sch.Validate(); err != nil {
+		known := make(map[string]bool, len(cfg.Frames.List))
+		for _, f := range cfg.Frames.List {
+			known[f.Name] = true
+		}
+		if err := sch.Validate(known); err != nil {
 			return "schedule add: " + err.Error()
 		}
 		cfg.Schedules = append(cfg.Schedules, sch)

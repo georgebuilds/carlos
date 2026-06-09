@@ -185,6 +185,10 @@ func (m *Model) newFrameCommit() tea.Cmd {
 		m.newFrameError = "name cannot contain spaces; try kebab-case"
 		m.rerenderViewport()
 		return nil
+	case !frame.IsValidName(name):
+		m.newFrameError = "name must start with a lowercase letter; use a-z 0-9 _ -; max 31 chars"
+		m.rerenderViewport()
+		return nil
 	}
 	for _, existing := range m.frame.Available {
 		if existing == name {

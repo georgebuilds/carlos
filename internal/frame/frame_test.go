@@ -3,6 +3,7 @@ package frame
 import (
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -97,6 +98,42 @@ func TestSpawnCapFor(t *testing.T) {
 	for mode, want := range cases {
 		if got := SpawnCapFor(mode); got != want {
 			t.Errorf("SpawnCapFor(%q) = %d, want %d", mode, got, want)
+		}
+	}
+}
+
+func TestIsValidName(t *testing.T) {
+	// Happy path: lowercase identifiers fit for filesystem paths
+	// (~/.carlos/frames/<name>/...) and YAML keys.
+	for _, ok := range []string{
+		"personal", "work", "work-a", "work_b", "client1", "p",
+		// 31-char boundary - exactly at the cap.
+		"a" + strings.Repeat("b", 30),
+	} {
+		if !IsValidName(ok) {
+			t.Errorf("IsValidName(%q) = false, want true", ok)
+		}
+	}
+	// Rejected: empty, capitals, digit-leading, path escape, separators,
+	// whitespace, and the 32-char over-the-cap case. Each row is the
+	// silent-failure mode we're closing.
+	for _, no := range []string{
+		"",                            // empty
+		"Personal",                    // capital
+		"PERSONAL",                    // upper
+		"123foo",                      // digit start
+		"-foo",                        // hyphen start
+		"_foo",                        // underscore start
+		"../escape",                   // path escape
+		"work/x",                      // separator
+		"foo bar",                     // space
+		"foo.bar",                     // dot
+		"foo:bar",                     // colon
+		"foo@bar",                     // at
+		strings.Repeat("a", 32),       // 32-char over the cap
+	} {
+		if IsValidName(no) {
+			t.Errorf("IsValidName(%q) = true, want false", no)
 		}
 	}
 }
@@ -259,6 +296,101 @@ func TestResolveActive_precedence(t *testing.T) {
 					got.Frame, got.Reason, c.want, c.reason)
 			}
 		})
+	}
+}
+
+// TestResolveActive_unknownEnvFallsThrough confirms that CARLOS_FRAME
+// naming a frame that doesn't exist drops to the next signal AND
+// records a Warning. Without this an unknown env value would boot a
+// phantom frame and explode at the first tool call.
+func TestResolveActive_unknownEnvFallsThrough(t *testing.T) {
+	cfg := &Config{
+		Default: "personal",
+		Active:  "work",
+		List: []Frame{
+			{Name: "personal"},
+			{Name: "work", CwdHints: []string{"/Users/george/Code/ludus"}},
+		},
+	}
+	cases := []struct {
+		name      string
+		in        Input
+		wantFrame string
+		wantReason string
+		warnSub   string
+	}{
+		{
+			name:      "unknown env falls to flag",
+			in:        Input{Env: "ghost", Flag: "personal"},
+			wantFrame: "personal",
+			wantReason: ReasonFlag,
+			warnSub:   "CARLOS_FRAME=ghost",
+		},
+		{
+			name:      "unknown env falls to cwd hint",
+			in:        Input{Env: "ghost", Cwd: "/Users/george/Code/ludus/api"},
+			wantFrame: "work",
+			wantReason: ReasonCwdHintExact,
+			warnSub:   "CARLOS_FRAME=ghost",
+		},
+		{
+			name:      "unknown env falls to persisted active",
+			in:        Input{Env: "ghost"},
+			wantFrame: "work",
+			wantReason: ReasonPersistedActive,
+			warnSub:   "CARLOS_FRAME=ghost",
+		},
+		{
+			name:      "unknown flag falls to persisted",
+			in:        Input{Flag: "phantom"},
+			wantFrame: "work",
+			wantReason: ReasonPersistedActive,
+			warnSub:   "-f phantom",
+		},
+		{
+			name:      "unknown env AND unknown flag both fall through",
+			in:        Input{Env: "ghost", Flag: "phantom"},
+			wantFrame: "work",
+			wantReason: ReasonPersistedActive,
+			warnSub:   "phantom",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			res, ok := ResolveActive(cfg, c.in)
+			if !ok {
+				t.Fatal("ok=false")
+			}
+			if res.Frame != c.wantFrame {
+				t.Errorf("Frame = %q, want %q", res.Frame, c.wantFrame)
+			}
+			if res.Reason != c.wantReason {
+				t.Errorf("Reason = %q, want %q", res.Reason, c.wantReason)
+			}
+			if !strings.Contains(res.Warning, c.warnSub) {
+				t.Errorf("Warning = %q, want substring %q", res.Warning, c.warnSub)
+			}
+		})
+	}
+}
+
+// TestResolveActive_knownEnvNoWarning is the back-compat assertion: an
+// env value that DOES name a real frame still wins with no warning.
+func TestResolveActive_knownEnvNoWarning(t *testing.T) {
+	cfg := &Config{
+		Default: "personal",
+		Active:  "personal",
+		List:    []Frame{{Name: "personal"}, {Name: "work"}},
+	}
+	res, ok := ResolveActive(cfg, Input{Env: "work"})
+	if !ok {
+		t.Fatal("ok=false")
+	}
+	if res.Frame != "work" || res.Reason != ReasonEnv {
+		t.Errorf("got %+v, want work/env", res)
+	}
+	if res.Warning != "" {
+		t.Errorf("Warning = %q, want empty", res.Warning)
 	}
 }
 

@@ -103,7 +103,14 @@ type Schedule struct {
 
 // Validate returns nil iff the schedule is well-formed: a non-empty
 // name, a non-empty prompt, and a parseable Spec.
-func (s Schedule) Validate() error {
+//
+// known is the optional set of frame names recognised by the current
+// config; a non-empty Frame field must appear in this set. An empty
+// known (nil or len 0) skips the membership check so tests and any
+// path that legitimately runs without a frame catalog stay valid.
+// An empty Frame field is always accepted - that falls through to the
+// runtime's active frame at fire time.
+func (s Schedule) Validate(known map[string]bool) error {
 	if strings.TrimSpace(s.Name) == "" {
 		return errors.New("schedule: empty name")
 	}
@@ -112,6 +119,9 @@ func (s Schedule) Validate() error {
 	}
 	if _, err := ParseCron(s.Spec); err != nil {
 		return fmt.Errorf("schedule %q: %w", s.Name, err)
+	}
+	if s.Frame != "" && len(known) > 0 && !known[s.Frame] {
+		return fmt.Errorf("schedule %q: unknown frame %q", s.Name, s.Frame)
 	}
 	return nil
 }

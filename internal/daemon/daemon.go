@@ -420,9 +420,13 @@ func (d *Daemon) loadConfig() error {
 	if err != nil {
 		return fmt.Errorf("daemon: load config: %w", err)
 	}
+	known := make(map[string]bool, len(cfg.Frames.List))
+	for _, f := range cfg.Frames.List {
+		known[f.Name] = true
+	}
 	good := make([]schedule.Schedule, 0, len(cfg.Schedules))
 	for _, s := range cfg.Schedules {
-		if err := s.Validate(); err != nil {
+		if err := s.Validate(known); err != nil {
 			d.slogger().Warn("skipping invalid schedule", "name", s.Name, "err", err)
 			continue
 		}

@@ -18,15 +18,25 @@ type Resolution struct {
 	// cwd. Populated only when Reason is ReasonCwdHintMultiple - the chat
 	// shell uses it to pre-highlight the matching tiles in the takeover.
 	Candidates []string
+	// Warning is a non-fatal advisory the caller should surface to the
+	// user (chat header notice or stderr line at startup). Populated when
+	// CARLOS_FRAME or -f names a frame that doesn't exist - the resolver
+	// falls through to the next signal but the user typed something and
+	// deserves to know it was ignored.
+	Warning string
 }
 
 const (
 	// ReasonEnv means the CARLOS_FRAME env var picked the frame. Highest
 	// precedence - beats everything else, even an explicit -f flag at the
 	// CLI (the CLI checks env first to keep cron + manual invocation
-	// identical).
+	// identical). When CARLOS_FRAME names a frame that doesn't exist the
+	// resolver falls through to the next signal AND records a Warning on
+	// the Resolution; callers surface that in the chat header / stderr.
 	ReasonEnv = "env"
-	// ReasonFlag means an explicit `-f <frame>` flag was passed.
+	// ReasonFlag means an explicit `-f <frame>` flag was passed. Same
+	// unknown-name handling as ReasonEnv: a bad flag value falls through
+	// and emits a Warning rather than booting a phantom frame.
 	ReasonFlag = "flag"
 	// ReasonCwdHintExact means exactly one frame's CwdHints matched the
 	// session's cwd, so we picked that one automatically.
@@ -63,10 +73,13 @@ type Input struct {
 //
 // Precedence (highest first):
 //
-//	1. Env (CARLOS_FRAME) - wins even if the named frame doesn't exist;
-//	   callers see ReasonEnv with the requested name so they can warn.
+//	1. Env (CARLOS_FRAME) - wins when it names a real frame. If the
+//	   named frame is unknown, the env signal is dropped, the resolver
+//	   falls through to the next signal, and the returned Resolution
+//	   carries a Warning the caller should surface to the user.
 //	2. Flag (-f) - same shape as env, slightly lower precedence so
-//	   `CARLOS_FRAME=work carlos -f personal` honors the env.
+//	   `CARLOS_FRAME=work carlos -f personal` honors the env. Same
+//	   unknown-name fall-through with a Warning.
 //	3. Cwd-hint match - exact one match wins; multiple matches fall through
 //	   to persisted-active with the candidates surfaced.
 //	4. Persisted active.
@@ -78,31 +91,46 @@ func ResolveActive(cfg *Config, input Input) (Resolution, bool) {
 	if cfg == nil || len(cfg.List) == 0 {
 		return Resolution{}, false
 	}
+	var warning string
 	if input.Env != "" {
-		return Resolution{Frame: input.Env, Reason: ReasonEnv}, true
+		if cfg.Find(input.Env) != nil {
+			return Resolution{Frame: input.Env, Reason: ReasonEnv}, true
+		}
+		warning = "CARLOS_FRAME=" + input.Env + " unknown; falling through"
 	}
 	if input.Flag != "" {
-		return Resolution{Frame: input.Flag, Reason: ReasonFlag}, true
+		if cfg.Find(input.Flag) != nil {
+			res := Resolution{Frame: input.Flag, Reason: ReasonFlag}
+			res.Warning = warning
+			return res, true
+		}
+		w := "-f " + input.Flag + " unknown; falling through"
+		if warning != "" {
+			warning = warning + "; " + w
+		} else {
+			warning = w
+		}
 	}
 	if input.Cwd != "" {
 		candidates := matchCwdHints(cfg, input.Cwd)
 		switch len(candidates) {
 		case 1:
-			return Resolution{Frame: candidates[0], Reason: ReasonCwdHintExact}, true
+			return Resolution{Frame: candidates[0], Reason: ReasonCwdHintExact, Warning: warning}, true
 		default:
 			if len(candidates) > 1 {
 				return Resolution{
 					Frame:      fallbackActive(cfg),
 					Reason:     ReasonCwdHintMultiple,
 					Candidates: candidates,
+					Warning:    warning,
 				}, true
 			}
 		}
 	}
 	if cfg.Active != "" {
-		return Resolution{Frame: cfg.Active, Reason: ReasonPersistedActive}, true
+		return Resolution{Frame: cfg.Active, Reason: ReasonPersistedActive, Warning: warning}, true
 	}
-	return Resolution{Frame: fallbackDefault(cfg), Reason: ReasonDefault}, true
+	return Resolution{Frame: fallbackDefault(cfg), Reason: ReasonDefault, Warning: warning}, true
 }
 
 // fallbackActive returns cfg.Active when set, else fallbackDefault.
