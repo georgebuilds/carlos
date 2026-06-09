@@ -1,6 +1,6 @@
 # carlos
 
-> Pure-Go TUI agent. Single binary under 30 MB. Local-first, multi-provider, with autonomous skill induction and first-class sub-agent supervision.
+> Pure-Go TUI agent. Single binary around 30 MB. Local-first, multi-provider, with autonomous skill induction and first-class sub-agent supervision.
 
 Carlos is a CLI tool that runs in your terminal. State persists to `~/.carlos/`. It speaks to Anthropic, OpenAI, OpenRouter, Ollama, and Gemini using the Anthropic tool-use schema as the canonical shape; adapters normalize the others. The event log is SQLite (FTS5 over markdown summaries for memory); the trusted-workspaces store, schedules, and user prefs are flat files. No CGO, cross-compiled for darwin + linux on amd64 + arm64.
 
