@@ -13,6 +13,7 @@ import (
 func TestShortPhaseLabel(t *testing.T) {
 	cases := map[string]string{
 		"decompose":  "decomp",
+		"route":      "route",
 		"synthesize": "synth",
 		"search":     "search",
 		"verify":     "verify",

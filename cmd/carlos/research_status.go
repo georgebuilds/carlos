@@ -20,9 +20,9 @@
 // border):
 //
 //	┌─────────────────────────────────────────────────────────────┐
-//	│ ⠋ researching: steak restaurants in tulsa                    │
-//	│   ● search · 12.3s    (web 4 results, fetch queued)          │
-//	│   ✓ decompose  ◐ search  ○ fetch  ○ read  ○ synth  ○ verify  │
+//	│ ⠋ researching: steak restaurants in tulsa                          │
+//	│   ● search · 12.3s    (web 4 results, fetch queued)                │
+//	│   ✓ decomp  ✓ route  ◐ search  ○ fetch  ○ read  ○ synth  ○ verify  │
 //	└─────────────────────────────────────────────────────────────┘
 //
 // On completion the panel clears itself and the rendered report
@@ -60,6 +60,7 @@ const researchBrowserUA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Apple
 // per-phase progress glyph row.
 var researchPhases = []string{
 	"decompose",
+	"route",
 	"search",
 	"fetch",
 	"read",
