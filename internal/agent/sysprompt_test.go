@@ -268,6 +268,111 @@ func TestSystemPromptWithFrame_NoSkillsBlockWhenEmpty(t *testing.T) {
 	}
 }
 
+// TestSystemPrompt_CodingAgentBiasInBase pins the base-level identity
+// language that biases carlos toward code-writing as its primary loop and
+// names research tools as enablers with a concrete exit condition. This
+// lives in chatBaseSystem (not a frame append) so every frame inherits it
+// regardless of solo/tight/orchestrator mode.
+func TestSystemPrompt_CodingAgentBiasInBase(t *testing.T) {
+	out := SystemPrompt("", "", "")
+	for _, want := range []string{
+		"carlos is a coding agent",
+		"default to read, write, and edit",
+		"web_search",
+		"web_fetch",
+		"search_arxiv",
+		"search_wikipedia",
+		"search_github",
+		"3 to 4 research calls",
+		"delegate the research to a sub-agent",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("base sysprompt missing coding-agent bias phrase %q; got:\n%s", want, out)
+		}
+	}
+}
+
+// TestSystemPromptWithFrame_CodingAgentBiasSurvivesAcrossModes ensures the
+// new base language is present regardless of which frame mode is active.
+// If a future edit accidentally moves the language into a mode-specific
+// append, this test flags the regression.
+func TestSystemPromptWithFrame_CodingAgentBiasSurvivesAcrossModes(t *testing.T) {
+	for _, mode := range []string{"solo", "tight", "orchestrator"} {
+		out := SystemPromptWithFrame("", "", "", FrameInfo{Name: "personal", Mode: mode})
+		if !strings.Contains(out, "carlos is a coding agent") {
+			t.Errorf("mode=%q lost the coding-agent identity line; got:\n%s", mode, out)
+		}
+		if !strings.Contains(out, "default to read, write, and edit") {
+			t.Errorf("mode=%q lost the action-bias line; got:\n%s", mode, out)
+		}
+		if !strings.Contains(out, "3 to 4 research calls") {
+			t.Errorf("mode=%q lost the research exit condition; got:\n%s", mode, out)
+		}
+	}
+}
+
+// TestSystemPromptWithFrame_CodingAgentBiasSurvivesAcrossFrames ensures
+// the language is present across both work and personal frames (and any
+// other frame name) since it lives in the base, not the per-frame append.
+func TestSystemPromptWithFrame_CodingAgentBiasSurvivesAcrossFrames(t *testing.T) {
+	for _, name := range []string{"work", "personal", "playground"} {
+		out := SystemPromptWithFrame("", "", "", FrameInfo{
+			Name:   name,
+			Append: "Tone: whatever.",
+		})
+		for _, want := range []string{
+			"carlos is a coding agent",
+			"default to read, write, and edit",
+			"3 to 4 research calls",
+		} {
+			if !strings.Contains(out, want) {
+				t.Errorf("frame=%q missing %q; got:\n%s", name, want, out)
+			}
+		}
+	}
+}
+
+// TestSystemPrompt_CodingAgentBiasLivesInBaseNotFrameAppend proves the
+// language lives in chatBaseSystem (i.e. is present even when no frame is
+// supplied) rather than being duplicated into a frame-mode branch.
+func TestSystemPrompt_CodingAgentBiasLivesInBaseNotFrameAppend(t *testing.T) {
+	bare := SystemPromptWithFrame("", "", "", FrameInfo{})
+	if !strings.Contains(bare, "carlos is a coding agent") {
+		t.Errorf("identity line must be in BASE (visible without a frame); got:\n%s", bare)
+	}
+	// Pin the relative order: identity opener, then coding-agent paragraph,
+	// then tool families. If a future edit hoists this paragraph past the
+	// tool list, the bias loses its framing and the exit condition is
+	// detached from the research tool names it references.
+	identityAt := strings.Index(bare, "You are carlos")
+	biasAt := strings.Index(bare, "carlos is a coding agent")
+	toolsAt := strings.Index(bare, "You have these tool families")
+	if identityAt < 0 || biasAt < 0 || toolsAt < 0 {
+		t.Fatalf("missing markers; out:\n%s", bare)
+	}
+	if !(identityAt < biasAt && biasAt < toolsAt) {
+		t.Errorf("expected order: identity -> coding-agent bias -> tool families; got positions %d, %d, %d", identityAt, biasAt, toolsAt)
+	}
+}
+
+// TestSystemPrompt_CodingAgentBiasHasNoEmDashes guards the project rule
+// against em-dashes in user-visible strings within the new language.
+func TestSystemPrompt_CodingAgentBiasHasNoEmDashes(t *testing.T) {
+	out := SystemPrompt("", "", "")
+	start := strings.Index(out, "carlos is a coding agent")
+	if start < 0 {
+		t.Fatalf("coding-agent paragraph missing; got:\n%s", out)
+	}
+	end := strings.Index(out[start:], "You have these tool families")
+	if end < 0 {
+		t.Fatalf("expected the paragraph to be followed by the tool families header; got:\n%s", out)
+	}
+	paragraph := out[start : start+end]
+	if strings.Contains(paragraph, "—") {
+		t.Errorf("coding-agent paragraph must not contain em-dashes; got:\n%s", paragraph)
+	}
+}
+
 func TestSystemPromptWithFrame_FrameBeforeRuntime(t *testing.T) {
 	// Cache stability: chatBaseSystem → Frame block → Runtime block →
 	// Project context. Reordering invalidates the per-frame cache
