@@ -317,6 +317,27 @@ func runDefault(cfg *config.Config, sessionID string) error {
 		swapLoop     func(name string) error
 		swapModel    func(provider, model string) (string, string, error)
 	)
+	// Point carlos_about at the live dispatch so the introspection
+	// tool's "active" section reports the currently-running provider +
+	// model after a mid-session /model swap. Without this, the tool
+	// reads the frame config's Provider/Model fields - which are never
+	// mutated by swapModel - and the model parrots the original
+	// session-start identity back to the user even though dispatch is
+	// going to the freshly-chosen model. (See the v0.7.7 release notes
+	// for the swap path; the gap was that liveDispatch fed Identity()
+	// for the header but no path fed it to the carlos_about tool.)
+	if tool, ok := baseReg.Get("carlos_about"); ok {
+		if about, ok := tool.(*tools.CarlosAboutTool); ok {
+			about.SetLiveDispatch(func() (string, string) {
+				loopMu.Lock()
+				defer loopMu.Unlock()
+				if liveDispatch == nil {
+					return "", ""
+				}
+				return liveDispatch.name, liveDispatch.model
+			})
+		}
+	}
 	var activeFrame frame.Frame
 	frameInfo := agent.FrameInfo{}
 	frameUI := chat.FrameUI{}
@@ -562,9 +583,7 @@ func runDefault(cfg *config.Config, sessionID string) error {
 		// the prior one (model swaps preserve frame; frame swaps go
 		// through swapLoop).
 		var newInfo agent.FrameInfo
-		curFrameName := ""
 		if af := cfg.Frames.Find(cfg.Frames.Active); af != nil {
-			curFrameName = af.Name
 			newInfo = agent.FrameInfo{
 				Name:         af.Name,
 				Append:       af.SystemPromptAppend,
@@ -576,7 +595,6 @@ func runDefault(cfg *config.Config, sessionID string) error {
 				Skills:       summariseSkills(skillsLib, af.Name),
 			}
 		}
-		_ = curFrameName
 		newSys := agent.SystemPromptWithFrame(cfg.UserName, chatCwd, chatProjectCtx, newInfo)
 		newLoop := chatglue.NewLoop(chatglue.Config{
 			Provider: newDispatch.provider,

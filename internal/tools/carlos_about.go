@@ -30,6 +30,16 @@ type CarlosAboutTool struct {
 	// userName surfaces as the "user" field so the agent knows how to
 	// address the human running it.
 	userName string
+	// liveDispatch returns the runtime-active (provider, model) pair
+	// for the chat session, NOT the values stored in the frame config.
+	// When wired (by cmd/carlos runtime_tui) it lets the active section
+	// of the response track mid-session /model swaps: the frame config's
+	// Provider/Model fields never mutate, so without this override the
+	// tool would always report the original session-start identity even
+	// after the user swapped models. nil means "fall back to frame
+	// config" - the right behavior for tests and headless paths that
+	// don't support mid-session swaps.
+	liveDispatch func() (provider, model string)
 }
 
 // ProviderSummary is the tiny subset of provider config the tool
@@ -58,6 +68,20 @@ func NewCarlosAboutTool(
 		providers: providers,
 		userName:  userName,
 	}
+}
+
+// SetLiveDispatch wires the runtime closure that overrides the active
+// frame's stored Provider/Model with whatever is actually dispatching
+// right now. cmd/carlos calls this after constructing the registry so
+// mid-session /model swaps surface in the "active" section of the
+// response without the frame config needing to be mutated (which we
+// don't want: frame config is template state, the swap is session
+// state).
+//
+// Pass nil to disable the override - the tool falls back to the frame
+// config's Provider/Model fields, matching pre-swap behavior.
+func (t *CarlosAboutTool) SetLiveDispatch(fn func() (provider, model string)) {
+	t.liveDispatch = fn
 }
 
 func (*CarlosAboutTool) Name() string { return "carlos_about" }
@@ -153,11 +177,12 @@ func (t *CarlosAboutTool) Execute(_ context.Context, input []byte) ([]byte, erro
 		if af := t.activeFrame(); af != nil {
 			caps := flattenCapabilities(*af)
 			if all || section == "active" {
+				prov, mdl := t.effectiveActiveIdentity(af)
 				resp.Active = &activeFrameSummary{
 					Name:         af.Name,
 					Mode:         frame.EffectiveMode(*af),
-					Provider:     af.Provider,
-					Model:        af.Model,
+					Provider:     prov,
+					Model:        mdl,
 					VaultSubtree: af.VaultSubtree,
 					CwdHints:     append([]string(nil), af.CwdHints...),
 					Capabilities: caps,
@@ -169,14 +194,33 @@ func (t *CarlosAboutTool) Execute(_ context.Context, input []byte) ([]byte, erro
 		}
 	}
 	if all || section == "frames" {
+		activeName := ""
+		if af := t.activeFrame(); af != nil {
+			activeName = af.Name
+		}
 		for _, f := range t.frames.List {
+			prov, mdl := f.Provider, f.Model
+			// For the ACTIVE frame in the list, surface the effective
+			// runtime identity (override if wired). Non-active frames
+			// keep their stored config because the override is
+			// session-specific to the currently-active frame: a /model
+			// swap in the personal session doesn't reconfigure the
+			// work frame. Without this override the response would
+			// self-contradict on a mid-session /model swap - active
+			// would report the new model but the frames-list entry
+			// for the same frame name would still report the stored
+			// one, giving the assistant a third place to read the
+			// stale slug from.
+			if activeName != "" && f.Name == activeName {
+				prov, mdl = t.effectiveActiveIdentity(&f)
+			}
 			resp.Frames = append(resp.Frames, frameSummary{
 				Name:         f.Name,
 				Glyph:        f.Glyph,
 				Accent:       f.Accent,
 				Mode:         frame.EffectiveMode(f),
-				Provider:     f.Provider,
-				Model:        f.Model,
+				Provider:     prov,
+				Model:        mdl,
 				VaultSubtree: f.VaultSubtree,
 				CwdHints:     append([]string(nil), f.CwdHints...),
 			})
@@ -184,9 +228,56 @@ func (t *CarlosAboutTool) Execute(_ context.Context, input []byte) ([]byte, erro
 	}
 	if all || section == "providers" {
 		resp.Providers = sortedProviders(t.providers)
+		// When a runtime liveDispatch is wired, override the matching
+		// provider's default_model with the live model. Without this the
+		// response would self-contradict on a mid-session /model swap:
+		// active.model would report the freshly-chosen model while
+		// providers.<active>.default_model would still report the
+		// session-start default, and the model has empirically been
+		// observed picking the providers-section value when answering
+		// "what model are you" - producing the v0.7.7 bug report where
+		// /model openrouter:anthropic/claude-fable-5 visibly swapped the
+		// dispatch but the assistant kept saying "running on
+		// google/gemini-3.5-flash via OpenRouter". Mutating the response
+		// copy (not t.providers) keeps the override scoped to this call.
+		if t.liveDispatch != nil {
+			livP, livM := t.liveDispatch()
+			livP = strings.TrimSpace(livP)
+			livM = strings.TrimSpace(livM)
+			if livP != "" && livM != "" {
+				if p, ok := resp.Providers[livP]; ok {
+					p.DefaultModel = livM
+					resp.Providers[livP] = p
+				}
+			}
+		}
 	}
 
 	return json.Marshal(resp)
+}
+
+// effectiveActiveIdentity returns the (provider, model) pair the
+// model should see for the active frame: the runtime liveDispatch
+// override when wired and returning non-empty values, falling back to
+// the frame's stored config otherwise.
+//
+// The override is field-by-field, not all-or-nothing - a closure that
+// returns a fresh provider but an empty model (defensive guard) won't
+// blank out the frame's model. In practice cmd/carlos always returns
+// both together, but the per-field fallback is the safer contract.
+func (t *CarlosAboutTool) effectiveActiveIdentity(af *frame.Frame) (provider, model string) {
+	provider, model = af.Provider, af.Model
+	if t.liveDispatch == nil {
+		return
+	}
+	livP, livM := t.liveDispatch()
+	if strings.TrimSpace(livP) != "" {
+		provider = livP
+	}
+	if strings.TrimSpace(livM) != "" {
+		model = livM
+	}
+	return
 }
 
 // activeFrame is the same resolution rule the notes_* family uses:
