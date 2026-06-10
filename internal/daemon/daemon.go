@@ -227,6 +227,17 @@ func (d *Daemon) Run(ctx context.Context) error {
 			return fmt.Errorf("daemon: open state.db: %w", err)
 		}
 		d.log = log
+		// Boot-time prune: a daemon restart is a natural moment to
+		// sweep empty orphan rows (top-level chats the user never
+		// typed in plus sub-agents that never made a tool call)
+		// older than the grace window. Failure is logged, never
+		// blocks startup - a janitor pass should never stop the
+		// daemon from coming up.
+		if pruned, err := d.log.DeleteEmptyOrphanedAgents(ctx, agent.DefaultOrphanPruneAge); err != nil {
+			d.slogger().Warn("prune empty orphans failed", "err", err)
+		} else if len(pruned) > 0 {
+			d.slogger().Info("pruned empty orphaned agents", "count", len(pruned))
+		}
 	}
 
 	// 2. UDS listener.

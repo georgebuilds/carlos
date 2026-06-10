@@ -22,7 +22,12 @@ func TestEnsureDefaultAgent_PrunesEmptyOrphansOnNewAgent(t *testing.T) {
 	defer func() { _ = agent.CloseStateDB(log) }()
 
 	ctx := context.Background()
-	now := time.Now().UTC().Truncate(time.Millisecond)
+	// Seed timestamp well past the production DefaultOrphanPruneAge
+	// grace window so the age gate inside DeleteEmptyOrphanedAgents
+	// doesn't keep these rows alive. Production callers pass
+	// agent.DefaultOrphanPruneAge (7d); we want a clear-cut "past
+	// grace" timestamp so the test reflects the prune actually firing.
+	old := time.Now().UTC().Add(-30 * 24 * time.Hour).Truncate(time.Millisecond)
 
 	// Seed two orphaned-empty top-level rows — the clutter that
 	// accumulates across crashes.
@@ -34,9 +39,9 @@ func TestEnsureDefaultAgent_PrunesEmptyOrphansOnNewAgent(t *testing.T) {
 			Attempt:         1,
 			Title:           "abandoned",
 			Model:           "m",
-			CreatedAt:       now,
-			UpdatedAt:       now,
-			LastHeartbeatAt: now,
+			CreatedAt:       old,
+			UpdatedAt:       old,
+			LastHeartbeatAt: old,
 		}); err != nil {
 			t.Fatalf("seed %s: %v", id, err)
 		}

@@ -19,6 +19,7 @@ package chat
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -53,6 +54,16 @@ func (m *Model) openResumePicker() tea.Cmd {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
+	// Best-effort prune before listing: a user opening /resume is
+	// exactly the moment they care about a clean picker. The user
+	// can resume from a session that pre-dates the grace window
+	// even if the same row would have been pruned, because the
+	// only candidates are zero-message + zero-tool orphans — there
+	// is nothing in those rows to resume into. Errors are logged
+	// to stderr and never block the picker.
+	if _, err := log.DeleteEmptyOrphanedAgents(ctx, agent.DefaultOrphanPruneAge); err != nil {
+		fmt.Fprintf(os.Stderr, "carlos: prune empty orphans: %v\n", err)
+	}
 	sessions, err := agent.ListUserSessions(ctx, log, m.agentID)
 	if err != nil {
 		return statusCmd("/resume: list failed: "+err.Error(), statusWarn)

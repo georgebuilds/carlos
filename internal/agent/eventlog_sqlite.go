@@ -406,39 +406,72 @@ func (l *SQLiteEventLog) InsertAgent(ctx context.Context, r AgentRow) error {
 	return nil
 }
 
-// DeleteEmptyOrphanedAgents prunes top-level agents that died before
-// the user ever typed in them — heartbeat-lost from a prior process
-// kill, with no user_message events, no children, and no artifacts.
-// These accumulate on every abrupt exit (force-quit, crash, ctrl-c
-// during boot) and clutter the /resume picker with rows the user
-// gets zero information from.
+// DefaultOrphanPruneAge is the production grace period the prune
+// callers (chat startup, /resume picker, daemon boot) pass to
+// DeleteEmptyOrphanedAgents. A week is long enough that a session the
+// user abandoned for the weekend survives until Monday, short enough
+// that crash-litter from a month ago does not pile up in the picker.
+// Tests override with a tighter window (or zero) so they can assert the
+// happy + bad paths without sleeping wall-clock.
+const DefaultOrphanPruneAge = 7 * 24 * time.Hour
+
+// DeleteEmptyOrphanedAgents prunes agents that died without producing
+// any data the user would miss — heartbeat-lost from a prior process
+// kill, no children, no artifacts. Covers both top-level chat sessions
+// (orphans that the user never typed in) and sub-agents (orphans that
+// never made a tool call). Both flavours accumulate across abrupt
+// exits: top-level rows clutter the /resume picker, sub-agent rows
+// clutter /agents with dead `[spawning]` cards.
 //
-// Defensive criteria — we never want a janitor pass to drop a row
-// that holds data:
+// Common predicates — applied to every candidate, top-level or sub:
 //
-//   - state = 'orphaned'           (terminal; nothing is going to revive it)
-//   - parent_id IS NULL            (top-level chat sessions only; sub-agents
-//     may legitimately orphan with their parent
-//     still around)
-//   - 0 EvtUserMessage events      (the user never typed)
-//   - 0 child agents               (nothing depends on this row's id)
-//   - 0 artifact rows              (no file output recorded)
+//   - state = 'orphaned'         (terminal; nothing is going to revive it)
+//   - 0 child agents             (nothing depends on this row's id)
+//   - 0 artifact rows            (no file output recorded)
+//   - updated_at <= now - olderThan  (age-gate: a brief lunch break
+//     should not nuke a session)
 //
-// Wrapped in a single transaction so a partial failure can't leave
-// dangling events behind. Returns the deleted ids so the caller can
-// log them.
-func (l *SQLiteEventLog) DeleteEmptyOrphanedAgents(ctx context.Context) ([]string, error) {
+// Top-level branch (parent_id IS NULL):
+//
+//   - 0 EvtUserMessage events    (the user never typed)
+//
+// Sub-agent branch (parent_id IS NOT NULL):
+//
+//   - 0 EvtToolCall events       (no work was dispatched)
+//   - 0 EvtToolResult events     (no work came back)
+//
+// Sub-agents do not receive EvtUserMessage so that gate would always
+// pass; tool events are the equivalent "the row did real work" signal.
+//
+// Pass olderThan = 0 to disable the age gate (handy in tests). Wrapped
+// in a single transaction so a partial failure can't leave dangling
+// events behind. Returns the deleted ids so the caller can log them.
+func (l *SQLiteEventLog) DeleteEmptyOrphanedAgents(ctx context.Context, olderThan time.Duration) ([]string, error) {
 	tx, err := l.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("eventlog: prune orphans: begin: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	// Compute the cutoff once. olderThan <= 0 means "no age gate" —
+	// pass math.MaxInt64 so the SQL comparison is vacuously true.
+	var cutoffMs int64
+	if olderThan <= 0 {
+		cutoffMs = 1<<62 - 1 // far-future ms; effectively disables the gate
+	} else {
+		cutoffMs = time.Now().UTC().Add(-olderThan).UnixMilli()
+	}
+
+	// Single SELECT covers both scopes via a UNION ALL so the caller
+	// gets one transaction's worth of work. Top-level rows match the
+	// EvtUserMessage predicate; sub-agent rows match the tool-event
+	// pair. The shared predicates (state + children + artifacts +
+	// age) sit on each branch.
 	rows, err := tx.QueryContext(ctx, `
-		SELECT a.id
-		FROM agents a
+		SELECT a.id FROM agents a
 		WHERE a.state = 'orphaned'
 		  AND a.parent_id IS NULL
+		  AND a.updated_at <= ?
 		  AND NOT EXISTS (
 		    SELECT 1 FROM events e
 		     WHERE e.agent_id = a.id AND e.type = ?
@@ -449,7 +482,29 @@ func (l *SQLiteEventLog) DeleteEmptyOrphanedAgents(ctx context.Context) ([]strin
 		  AND NOT EXISTS (
 		    SELECT 1 FROM artifacts r WHERE r.agent_id = a.id
 		  )
-	`, string(EvtUserMessage))
+		UNION ALL
+		SELECT a.id FROM agents a
+		WHERE a.state = 'orphaned'
+		  AND a.parent_id IS NOT NULL
+		  AND a.updated_at <= ?
+		  AND NOT EXISTS (
+		    SELECT 1 FROM events e
+		     WHERE e.agent_id = a.id AND e.type = ?
+		  )
+		  AND NOT EXISTS (
+		    SELECT 1 FROM events e
+		     WHERE e.agent_id = a.id AND e.type = ?
+		  )
+		  AND NOT EXISTS (
+		    SELECT 1 FROM agents c WHERE c.parent_id = a.id
+		  )
+		  AND NOT EXISTS (
+		    SELECT 1 FROM artifacts r WHERE r.agent_id = a.id
+		  )
+	`,
+		cutoffMs, string(EvtUserMessage),
+		cutoffMs, string(EvtToolCall), string(EvtToolResult),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("eventlog: prune orphans: select: %w", err)
 	}

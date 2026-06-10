@@ -855,12 +855,13 @@ func ensureDefaultAgent(ctx context.Context, log *agent.SQLiteEventLog, id, prov
 	}); err != nil {
 		return err
 	}
-	// Brand-new thread: prune top-level orphans the user never typed
-	// in. These accumulate on every abrupt exit and bury the /resume
-	// picker under "(no messages yet)" rows. Failure here is logged,
-	// never blocks startup — a janitor pass should never stop the
-	// user from getting a working chat.
-	if pruned, err := log.DeleteEmptyOrphanedAgents(ctx); err != nil {
+	// Brand-new thread: prune empty orphans (top-level the user never
+	// typed in, plus sub-agents that never made a tool call) older
+	// than the grace window. These accumulate on every abrupt exit
+	// and bury the /resume picker and /agents under stale rows.
+	// Failure here is logged, never blocks startup - a janitor pass
+	// should never stop the user from getting a working chat.
+	if pruned, err := log.DeleteEmptyOrphanedAgents(ctx, agent.DefaultOrphanPruneAge); err != nil {
 		fmt.Fprintf(os.Stderr, "carlos: prune empty orphans: %v\n", err)
 	} else if len(pruned) > 0 {
 		fmt.Fprintf(os.Stderr, "carlos: pruned %d empty orphaned session(s)\n", len(pruned))
