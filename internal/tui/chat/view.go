@@ -2,6 +2,7 @@ package chat
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -873,9 +874,20 @@ func renderHelpBox(innerW int) string {
 	// Compute the widest "/<name> <args>" so descriptions align in
 	// a column. Cap at 1/3 of contentW so a future verbose verb
 	// can't push descriptions off-screen.
+	//
+	// Display order: alphabetical by verb. slash.Builtins is the
+	// curated reading order used elsewhere (autocomplete priority,
+	// status hint), but for an at-a-glance vocabulary lookup users
+	// scan A→Z faster than they scan a curated list. Sort a local
+	// copy so the package-level slice isn't mutated.
+	sorted := make([]slash.Spec, len(slash.Builtins))
+	copy(sorted, slash.Builtins)
+	sort.Slice(sorted, func(i, j int) bool {
+		return sorted[i].Name < sorted[j].Name
+	})
 	maxLeft := 0
-	rows := make([][2]string, 0, len(slash.Builtins))
-	for _, b := range slash.Builtins {
+	rows := make([][2]string, 0, len(sorted))
+	for _, b := range sorted {
 		left := "/" + b.Name
 		if b.ArgsHint != "" {
 			left += " " + b.ArgsHint
