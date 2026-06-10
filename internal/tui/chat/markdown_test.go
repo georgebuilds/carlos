@@ -186,3 +186,162 @@ func TestTrimPerLineRight(t *testing.T) {
 		t.Errorf("trimPerLineRight = %q, want %q", got, want)
 	}
 }
+
+// TestStripVisibleLeadingMargin_PlainTwoSpaces is the baseline:
+// a line that starts with raw "  content" gets the 2-space margin
+// removed cleanly.
+func TestStripVisibleLeadingMargin_PlainTwoSpaces(t *testing.T) {
+	got := stripVisibleLeadingMargin("  hello", 2)
+	if got != "hello" {
+		t.Errorf("plain 2-space strip: got %q, want %q", got, "hello")
+	}
+}
+
+// TestStripVisibleLeadingMargin_AnsiBeforeMargin is the regression
+// test for the alignment field report. Glamour emits each row as
+// "\x1b[...m\x1b[...m  <content>" — the visible 2-space margin sits
+// AFTER the ANSI escape codes, not at the start of the raw line. A
+// naive strings.TrimPrefix(ln, "  ") matches nothing and the body
+// ends up double-indented (col 6, matching the bordered tool-card
+// emojis, instead of col 4 matching the user-message body). The
+// fix walks past leading CSI escapes and removes the 2 visible
+// space cells.
+func TestStripVisibleLeadingMargin_AnsiBeforeMargin(t *testing.T) {
+	in := "\x1b[38;5;252m\x1b[0m\x1b[38;5;252m\x1b[0m  Yo! I'm carlos."
+	got := stripVisibleLeadingMargin(in, 2)
+	// The escape codes survive; the 2 visible margin spaces don't.
+	want := "\x1b[38;5;252m\x1b[0m\x1b[38;5;252m\x1b[0mYo! I'm carlos."
+	if got != want {
+		t.Errorf("ansi-prefix strip:\n got %q\nwant %q", got, want)
+	}
+}
+
+// TestStripVisibleLeadingMargin_NoMarginNoChange guards content
+// that already starts flush-left (e.g. fenced code blocks where
+// glamour drops the standard margin). Leave it alone.
+func TestStripVisibleLeadingMargin_NoMarginNoChange(t *testing.T) {
+	in := "no leading spaces here"
+	if got := stripVisibleLeadingMargin(in, 2); got != in {
+		t.Errorf("no-margin line should be unchanged: got %q", got)
+	}
+}
+
+// TestStripVisibleLeadingMargin_TabIsNotConsumed pins that we only
+// strip space bytes. A tab in the leading position is content and
+// must survive (otherwise we'd silently eat indentation inside code
+// blocks).
+func TestStripVisibleLeadingMargin_TabIsNotConsumed(t *testing.T) {
+	in := "\tcode line"
+	if got := stripVisibleLeadingMargin(in, 2); got != in {
+		t.Errorf("tab should not be consumed: got %q", got)
+	}
+}
+
+// TestStripVisibleLeadingMargin_FewerSpacesThanMax handles the
+// short-margin case: a line with only 1 leading visible space gets
+// that one space removed but doesn't reach into content.
+func TestStripVisibleLeadingMargin_FewerSpacesThanMax(t *testing.T) {
+	got := stripVisibleLeadingMargin(" x", 2)
+	if got != "x" {
+		t.Errorf("1-space line: got %q, want %q", got, "x")
+	}
+}
+
+// TestStripVisibleLeadingMargin_MalformedEscapeBails covers a
+// truncated CSI sequence (no terminating 'm'). The helper must
+// return the input untouched rather than silently truncating
+// content past the bad escape.
+func TestStripVisibleLeadingMargin_MalformedEscapeBails(t *testing.T) {
+	in := "\x1b[38;5"
+	if got := stripVisibleLeadingMargin(in, 2); got != in {
+		t.Errorf("malformed escape: got %q, want %q (unchanged)", got, in)
+	}
+}
+
+// TestFoldAvatarOntoMarkdown_ContinuationAlignsWithFirstLineBody is
+// the end-to-end regression for the alignment bug. Before the fix
+// the continuation rows landed two cells to the right of the first
+// row's body (because the un-trimmed glamour margin stacked on top
+// of our continuationPad). Assert that the visible column of the
+// first body character on line 1 matches the visible column of the
+// first body character on the wrapped second line.
+func TestFoldAvatarOntoMarkdown_ContinuationAlignsWithFirstLineBody(t *testing.T) {
+	r, err := glamour.NewTermRenderer(
+		glamour.WithStandardStyle("dark"),
+		glamour.WithWordWrap(40),
+		glamour.WithPreservedNewLines(),
+	)
+	if err != nil {
+		t.Fatalf("renderer: %v", err)
+	}
+	// Long paragraph that glamour will wrap to ≥2 lines.
+	out := renderAssistantMarkdown(
+		"This is a sufficiently long paragraph that glamour will be forced to wrap it across multiple visible lines so the test can compare indent columns.",
+		80, r,
+	)
+	lines := strings.Split(out, "\n")
+	if len(lines) < 2 {
+		t.Fatalf("expected ≥2 rendered lines for wrapped paragraph; got %d:\n%s", len(lines), out)
+	}
+	// First-line body starts AFTER the avatar + ": " prefix (4 cells).
+	first := visibleString(lines[0])
+	if !strings.HasPrefix(first, "🧢: ") {
+		t.Fatalf("line 1 should start with 🧢:\n%q", first)
+	}
+	firstBody := strings.TrimPrefix(first, "🧢: ")
+	// Find the first wrapped continuation line that has visible text.
+	var contBody string
+	for _, ln := range lines[1:] {
+		v := visibleString(ln)
+		if strings.TrimSpace(v) == "" {
+			continue
+		}
+		contBody = v
+		break
+	}
+	if contBody == "" {
+		t.Fatalf("no non-blank continuation line found in:\n%s", out)
+	}
+	// The continuation line's leading-space count must equal the
+	// avatar-prefix width (4 cells). Anything more means the
+	// un-trimmed glamour margin is leaking through and the body
+	// has slid right by 2 cells.
+	if got := leadingSpaceCount(contBody); got != 4 {
+		t.Errorf("continuation indent = %d cells, want 4 (avatar-prefix width). Bodies misalign:\nline1 body %q\ncont body  %q",
+			got, firstBody, contBody)
+	}
+}
+
+// visibleString strips CSI escape codes from s so leading-space
+// arithmetic counts visible cells, not raw bytes. Mirrors the
+// stripper used by stripVisibleLeadingMargin's tests.
+func visibleString(s string) string {
+	var out strings.Builder
+	i := 0
+	for i < len(s) {
+		if s[i] == 0x1b && i+1 < len(s) && s[i+1] == '[' {
+			j := i + 2
+			for j < len(s) && s[j] != 'm' {
+				j++
+			}
+			if j < len(s) {
+				i = j + 1
+				continue
+			}
+		}
+		out.WriteByte(s[i])
+		i++
+	}
+	return out.String()
+}
+
+func leadingSpaceCount(s string) int {
+	n := 0
+	for _, r := range s {
+		if r != ' ' {
+			break
+		}
+		n++
+	}
+	return n
+}

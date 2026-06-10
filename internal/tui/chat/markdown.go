@@ -81,13 +81,22 @@ func renderAssistantMarkdown(text string, width int, md *glamour.TermRenderer) s
 // avatar gutter (4 cells = avatar width + ": ") instead of glamour's
 // default 2-space margin.
 //
-// Glamour always indents each row by 2 spaces; we trim those uniformly
-// and then either substitute the avatar prefix (line 1) or pad with 4
-// spaces (lines 2+). Lines that don't start with the 2-space margin
+// Margin handling: glamour emits each row as
+// `\x1b[…m\x1b[…m  <content>` — the visible 2-space left margin sits
+// BETWEEN ANSI escape codes, not at the start of the raw string. A
+// naive strings.TrimPrefix(ln, "  ") therefore matches nothing, and
+// the prepended pad stacks ON TOP of glamour's untrimmed 2 spaces.
+// That used to land the body at column 6 — exactly where the
+// bordered tool-card emojis sit (sideMargin 4 + border 1 + padding
+// 1) — which is why user reports surfaced "carlos's responses
+// align with the tool-call emojis, not with my messages." The
+// stripVisibleLeadingMargin helper walks past leading ANSI escapes
+// and removes the visible margin in cell terms.
+//
+// Lines whose visible content doesn't start with a 2-space margin
 // (rare; mostly happens inside fenced code blocks that glamour styles
 // differently) keep their existing leading whitespace.
 func foldAvatarOntoMarkdown(body string) string {
-	const glamourMargin = "  "
 	const avatarPrefix = "🧢: "
 	const continuationPad = "    " // 4 cells, same width as avatar+": "
 
@@ -99,7 +108,7 @@ func foldAvatarOntoMarkdown(body string) string {
 	out := make([]string, 0, len(lines))
 	headPlaced := false
 	for _, ln := range lines {
-		trimmed := strings.TrimPrefix(ln, glamourMargin)
+		trimmed := stripVisibleLeadingMargin(ln, 2)
 		// Avatar lands on the first non-blank row; earlier blank
 		// rows (rare after our TrimLeft above, but defensive) stay
 		// blank to preserve glamour's vertical rhythm.
@@ -121,6 +130,49 @@ func foldAvatarOntoMarkdown(body string) string {
 	}
 	_ = avatarPrefix // referenced in the doc comment above for clarity
 	return strings.Join(out, "\n")
+}
+
+// stripVisibleLeadingMargin removes up to maxCells of visible-leading
+// space cells from a glamour-styled line. Walks past any leading
+// CSI escape sequences (\x1b[...m) without consuming their bytes,
+// then drops the next maxCells space bytes if present. Stops as
+// soon as a non-space, non-escape byte is encountered so any
+// content beyond the margin is preserved verbatim.
+//
+// Tab and other whitespace are NOT consumed — glamour's margin is
+// always spaces, and we don't want to silently eat indentation
+// inside code blocks. Returns the input unchanged when no margin
+// is present.
+func stripVisibleLeadingMargin(line string, maxCells int) string {
+	i := 0
+	cells := 0
+	for i < len(line) && cells < maxCells {
+		switch {
+		case line[i] == 0x1b:
+			j := i + 1
+			if j >= len(line) || line[j] != '[' {
+				// Not a CSI escape we know how to skip; bail.
+				return line[:i] + line[i:]
+			}
+			for j < len(line) && line[j] != 'm' {
+				j++
+			}
+			if j >= len(line) {
+				// Malformed/truncated escape; bail without trimming.
+				return line
+			}
+			i = j + 1
+		case line[i] == ' ':
+			// Drop this visible space; advance past it WITHOUT
+			// copying.
+			cells++
+			line = line[:i] + line[i+1:]
+		default:
+			// First non-space, non-escape byte — margin done.
+			return line
+		}
+	}
+	return line
 }
 
 // renderAvatarBlockPlain is the fallback used when glamour is
