@@ -93,6 +93,7 @@ func providerModels(provider string) []ModelSuggestion {
 			{Slug: "google/gemini-3.1-flash-lite", Label: "Gemini 3.1 Flash Lite", Note: "cheapest", PromptUSDPerM: 0.05, CompletionUSDPerM: 0.20, CtxLen: 1_000_000},
 			{Slug: "anthropic/claude-sonnet-4-6", Label: "Claude Sonnet 4.6", Note: "Claude workhorse", PromptUSDPerM: 3, CompletionUSDPerM: 15, CtxLen: 200_000},
 			{Slug: "anthropic/claude-opus-4.8", Label: "Claude Opus 4.8", Note: "Claude flagship", PromptUSDPerM: 15, CompletionUSDPerM: 75, CtxLen: 200_000},
+			{Slug: "anthropic/claude-fable-5", Label: "Claude Fable 5", Note: "Claude creative", PromptUSDPerM: 3, CompletionUSDPerM: 15, CtxLen: 200_000},
 			{Slug: "openai/gpt-5.5", Label: "GPT-5.5", Note: "OpenAI flagship", PromptUSDPerM: 5, CompletionUSDPerM: 25, CtxLen: 400_000},
 			{Slug: "openai/gpt-5.4-mini", Label: "GPT-5.4 Mini", Note: "fast OpenAI", PromptUSDPerM: 0.30, CompletionUSDPerM: 2.40, CtxLen: 400_000},
 			{Slug: "deepseek/deepseek-v4-pro", Label: "DeepSeek V4 Pro", Note: "open-weights flagship", PromptUSDPerM: 0.55, CompletionUSDPerM: 2.20, CtxLen: 128_000},

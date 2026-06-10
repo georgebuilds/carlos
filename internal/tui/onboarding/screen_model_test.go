@@ -85,6 +85,31 @@ func TestProviderModels_AllPopulated(t *testing.T) {
 	}
 }
 
+// TestProviderModels_OpenRouterIncludesClaudeFable pins the curated
+// openrouter list contains anthropic/claude-fable-5 so it surfaces
+// in both the onboarding picker and (via CuratedModelSlugs) the
+// /model slash autocomplete on a fresh install with no cached
+// catalog yet.
+func TestProviderModels_OpenRouterIncludesClaudeFable(t *testing.T) {
+	const slug = "anthropic/claude-fable-5"
+	for _, m := range providerModels("openrouter") {
+		if m.Slug == slug {
+			return
+		}
+	}
+	t.Errorf("%q missing from curated openrouter list", slug)
+
+	// Belt-and-braces: the autocomplete view (CuratedModelSlugs)
+	// must also surface it, since /model openrouter:<tab> reads
+	// through there.
+	for _, s := range CuratedModelSlugs("openrouter") {
+		if s == slug {
+			return
+		}
+	}
+	t.Errorf("%q missing from CuratedModelSlugs(\"openrouter\")", slug)
+}
+
 func TestFilterModels_Substring(t *testing.T) {
 	got := filterModels("openrouter", "qwen")
 	if len(got) == 0 {
