@@ -169,3 +169,92 @@ func TestIsReadOnly_DeniesEmptyAndBlank(t *testing.T) {
 		t.Error("whitespace-only cmd should deny")
 	}
 }
+
+func TestIsReadOnly_DeniesNewlineBypass(t *testing.T) {
+	// strings.Fields treats \n and \r as whitespace - without an
+	// explicit metachar block, `git status\nrm -rf /tmp/x` would
+	// tokenize back to `git status` and slip through.
+	cases := []string{
+		"git status\nrm -rf /tmp/x",
+		"git status\r\nrm -rf /tmp/x",
+		"git status\rrm -rf /tmp/x",
+		"ls\necho pwned",
+	}
+	for _, c := range cases {
+		if IsReadOnly(c) {
+			t.Errorf("IsReadOnly(%q) = true; newline/CR must deny", c)
+		}
+	}
+}
+
+func TestIsReadOnly_DeniesBackgroundAmpersand(t *testing.T) {
+	// `cat foo & rm` is a plain `&` (shell backgrounding), not `&&`,
+	// so the substring metachar check misses it. Token-level reject.
+	cases := []string{
+		"cat foo & rm",
+		"ls & pwd",
+		"git status & whoami",
+	}
+	for _, c := range cases {
+		if IsReadOnly(c) {
+			t.Errorf("IsReadOnly(%q) = true; bare & must deny", c)
+		}
+	}
+}
+
+func TestIsReadOnly_DeniesGitOutputFlag(t *testing.T) {
+	// `git log --output=PATH` and `git blame --output=PATH` write
+	// arbitrary files. Must catch both `--output=PATH` (one token
+	// with =) and `--output PATH` (two tokens).
+	cases := []string{
+		"git log --output=/tmp/x",
+		"git log --output /tmp/x",
+		"git blame --output=/tmp/x file",
+	}
+	for _, c := range cases {
+		if IsReadOnly(c) {
+			t.Errorf("IsReadOnly(%q) = true; --output flag must deny", c)
+		}
+	}
+}
+
+func TestIsReadOnly_DeniesGitPositionalWrites(t *testing.T) {
+	// Positional write forms that the verb/subcommand allowlist
+	// would otherwise pass through.
+	cases := []string{
+		"git remote add origin git@x:y/z",
+		"git remote remove origin",
+		"git remote rm origin",
+		"git remote set-url origin URL",
+		"git remote rename a b",
+		"git branch newbranch",
+		"git config user.email a@b.com",
+	}
+	for _, c := range cases {
+		if IsReadOnly(c) {
+			t.Errorf("IsReadOnly(%q) = true; positional write form must deny", c)
+		}
+	}
+}
+
+func TestIsReadOnly_AllowsGitReadFormsAfterPositionalRejector(t *testing.T) {
+	// Sanity: the positional gate must not over-reject legitimate
+	// read forms.
+	cases := []string{
+		"git remote",
+		"git remote -v",
+		"git remote show origin",
+		"git branch",
+		"git branch -a",
+		"git branch --list",
+		"git branch --show-current",
+		"git branch --contains HEAD",
+		"git config user.email",
+		"git log --oneline -5",
+	}
+	for _, c := range cases {
+		if !IsReadOnly(c) {
+			t.Errorf("IsReadOnly(%q) = false; legitimate read form must allow", c)
+		}
+	}
+}
