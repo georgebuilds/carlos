@@ -77,13 +77,12 @@ func (m *Model) renderInner(innerW, innerH int) string {
 		inputH = lipgloss.Height(input)
 	}
 
-	// Approval prompt OR frame switcher OR heuristic OR jobs overlay
-	// OR help overlay is a bordered panel above the input. Compute
-	// height first so we can reserve it from the transcript area.
-	// They're mutually exclusive - approval is modal (model is
-	// waiting), jobs / perms / help / switcher / heuristic are
-	// dismiss-on-keypress; precedence: approval > switcher >
-	// heuristic > jobs > perms > help.
+	// Approval prompt OR frame switcher OR jobs overlay OR help
+	// overlay is a bordered panel above the input. Compute height
+	// first so we can reserve it from the transcript area. They're
+	// mutually exclusive - approval is modal (model is waiting),
+	// jobs / perms / help / switcher are dismiss-on-keypress;
+	// precedence: approval > switcher > jobs > perms > help.
 	var approval string
 	approvalH := 0
 	if m.pendingApproval != nil {
@@ -137,14 +136,6 @@ func (m *Model) renderInner(innerW, innerH int) string {
 			resumeH = 10
 		}
 		approval = renderResumeOverlay(m, innerW, resumeH)
-		approvalH = lipgloss.Height(approval)
-	} else if m.showHeuristic {
-		approval = renderHeuristicOverlay(
-			m.heuristicPending,
-			m.heuristicChecks,
-			m.heuristicHelp,
-			innerW,
-		)
 		approvalH = lipgloss.Height(approval)
 	} else if m.showJobs && m.usershell != nil {
 		approval = renderJobsOverlay(
@@ -273,11 +264,24 @@ func (m *Model) renderInput(w int) string {
 	return sep + "\n" + m.ta.View()
 }
 
-// renderHeader shows the agent ID + state badge + model name + (Phase F)
-// frame pill + mode pill. State comes from the projection - single
-// source of truth. Pills suppressed when no frame is wired (legacy
-// single-shelf mode) so the header stays compatible with tests built
-// before Phase F.
+// renderHeader composes the four-item chat-header row:
+//
+//	<glyph> <id> · 🧠 <model> · <frame-pill> · ⬥ <mode>     carlos chat
+//
+// The leading glyph is the agent state glyph from theme.StateGlyph,
+// colored by state - the prior bracketed "[● running]" label was
+// retired because the glyph alone already encodes state and the
+// "running" word doubled the cell footprint without adding signal.
+// The model gets a 🧠 prefix and loses its parentheses so it reads as
+// a labeled chip, not a parenthetical aside. The mode gets a colored
+// diamond (⬥) whose color tracks modeCardAccent so the at-a-glance
+// posture matches the mode switcher overlay (tight=warn, solo=accent,
+// orchestrator=ok).
+//
+// Items 2-4 are emitted only when their backing fields are non-empty,
+// and a `·` separator is inserted only BETWEEN two emitted items - no
+// leading or trailing separator, no double separator when an item
+// drops out.
 //
 // Side effect: records the terminal-cell columns of the frame and mode
 // pills onto the model so tea.MouseMsg can route header clicks to the
@@ -288,9 +292,7 @@ func (m *Model) renderInput(w int) string {
 func (m *Model) renderHeader(w int) string {
 	id := shortID(m.agentID)
 	state, model := m.headerState()
-	badge := stateBadge(state)
 	idStyle := lipgloss.NewStyle().Bold(true).Foreground(colorAccent)
-	modelStyle := lipgloss.NewStyle().Foreground(colorMuted)
 
 	// Reset hitboxes each frame; the writers below populate them when
 	// the matching pill renders. headerContentX0 mirrors View()'s outer
@@ -299,36 +301,42 @@ func (m *Model) renderHeader(w int) string {
 	m.framePillColStart, m.framePillColEnd = 0, 0
 	m.modePillColStart, m.modePillColEnd = 0, 0
 
-	left := idStyle.Render(id) + " " + badge
+	sep := " " + framePillSep() + " "
+
+	// Item 1: colored state glyph + id (always emitted).
+	glyphR := lipgloss.NewStyle().Foreground(stateBadgeColor(state)).Bold(true).Render(theme.StateGlyph(state))
+	left := glyphR + " " + idStyle.Render(id)
+
+	// Item 2: 🧠 + model (only when a model is wired).
 	if model != "" {
-		left += " " + modelStyle.Render("("+displayModelName(model)+")")
+		brain := lipgloss.NewStyle().Foreground(colorMuted).Render("🧠")
+		modelStyle := lipgloss.NewStyle().Foreground(colorMuted)
+		left += sep + brain + " " + modelStyle.Render(displayModelName(model))
 	}
+
+	// Items 3 + 4: frame pill and mode pill (both gated on a wired
+	// frame so the legacy single-shelf paths still render cleanly).
 	if m.frame.Active != "" {
-		left += " " + framePillSep + " "
-		pill := framePill(m.frame)
-		// Frame pill hitbox: the glyph + name string the user sees.
-		// lipgloss.Width strips ANSI for the cell count we want.
+		left += sep
 		m.framePillColStart = headerContentX0 + lipgloss.Width(left)
-		left += pill
+		left += framePill(m.frame)
 		m.framePillColEnd = headerContentX0 + lipgloss.Width(left)
 
-		// Always render the mode pill (even for solo) so it has a
-		// stable click target. Solo stays subtle so the visual
-		// weight matches the prior "hide solo" behaviour.
 		mode := m.frame.Mode
 		if mode == "" {
 			mode = frame.ModeSolo
 		}
-		left += " " + framePillSep + " "
+		left += sep
+		m.modePillColStart = headerContentX0 + lipgloss.Width(left)
+		diamond := lipgloss.NewStyle().Foreground(modeCardAccent(mode)).Bold(true).Render(modeDiamondGlyph)
 		modeStyle := lipgloss.NewStyle().Foreground(colorSubtle)
 		if mode != frame.ModeSolo {
-			// Non-solo modes get the muted color so they read as
-			// "this frame is in a non-default posture" without
-			// fighting the frame pill's accent.
+			// Non-solo modes get the muted color so the label reads as
+			// "non-default posture" without fighting the diamond's
+			// accent.
 			modeStyle = lipgloss.NewStyle().Foreground(colorMuted)
 		}
-		m.modePillColStart = headerContentX0 + lipgloss.Width(left)
-		left += modeStyle.Render(mode)
+		left += diamond + " " + modeStyle.Render(mode)
 		m.modePillColEnd = headerContentX0 + lipgloss.Width(left)
 	}
 	right := lipgloss.NewStyle().Foreground(colorMuted).Render("carlos chat")
@@ -340,14 +348,40 @@ func (m *Model) renderHeader(w int) string {
 	return left + strings.Repeat(" ", gap) + right
 }
 
-// framePillSep is the dim middle-dot we use everywhere else in the
-// chrome (footer, status echo) so the header stays visually consistent.
-var framePillSep = lipgloss.NewStyle().Foreground(colorSubtle).Render("·")
+// modeDiamondGlyph is the black-medium-diamond (U+2B25) that precedes
+// the mode label in the header. Picked over ◆ (BLACK DIAMOND) because
+// it renders at single-cell width across the terminals we support
+// (lipgloss / runewidth tags U+2B25 as narrow); the larger ◆ trips
+// some terminals into emitting 2 cells which would drift the mode
+// pill's hitbox start out from under the user's cursor.
+const modeDiamondGlyph = "⬥"
 
-// framePill renders the active frame's glyph + name. Color comes from
-// the curated palette in internal/frame.AccentColor.
+// framePillSep returns the dim middle-dot used between items in the
+// header row (and other chrome surfaces). Rendered fresh on every
+// call so it tracks the live palette: an earlier var-at-init-time
+// version cached the rendering when `colorSubtle` was still the
+// zero-value lipgloss.Color, which meant the dot shipped to the
+// terminal without ANSI styling for the entire process lifetime
+// regardless of what ApplyPalette later set the subtle slot to.
+func framePillSep() string {
+	return lipgloss.NewStyle().Foreground(colorSubtle).Render("·")
+}
+
+// framePill renders the active frame as "<accent-glyph> <muted-name>"
+// for the chat header. The frame's accent stays on the glyph (which
+// is what tells the user at a glance "which frame am I in") while the
+// name itself is rendered in the same muted grey as the model and
+// mode labels so the four header items share one typographic
+// register. The inline picker (in onboarding) still calls
+// frame.Pill directly when it wants the accent on the name too.
 func framePill(f FrameUI) string {
-	return frame.Pill(f.Glyph, f.Active, f.Accent, isNoColor())
+	glyph := f.Glyph
+	if glyph == "" {
+		glyph = frame.DefaultGlyphFor(f.Active)
+	}
+	accentGlyph := lipgloss.NewStyle().Foreground(frame.AccentColor(f.Accent)).Render(glyph)
+	nameMuted := lipgloss.NewStyle().Foreground(colorMuted).Render(f.Active)
+	return accentGlyph + " " + nameMuted
 }
 
 // isNoColor returns true when the lipgloss color profile is the empty
@@ -370,17 +404,23 @@ func isNoColor() bool {
 // it's wired. Falls back to the projection's stored model for the
 // dev-aid / test paths where Identity is nil.
 func (m *Model) headerState() (agent.State, string) {
-	row, ok := m.proj.Get(m.agentID)
-	if !ok {
-		return agent.StateSpawning, ""
+	state := agent.StateSpawning
+	var model string
+	if row, ok := m.proj.Get(m.agentID); ok {
+		state = row.State
+		model = row.Model
 	}
-	model := row.Model
+	// Identity wins over the projection's stored model even when the
+	// projection has no row yet (e.g. pre-backfill). This lets the
+	// runtime surface the freshly-chosen model in the header on the
+	// very first render after construction without waiting for a
+	// state_change event to land first.
 	if m.frame.Identity != nil {
 		if _, live := m.frame.Identity(); live != "" {
 			model = live
 		}
 	}
-	return row.State, model
+	return state, model
 }
 
 // displayModelName trims the OpenRouter vendor prefix off the model id
@@ -399,29 +439,37 @@ func displayModelName(model string) string {
 	return model
 }
 
-// stateBadge formats a state as a colored text label. Color choice
-// signals priority per SPEC § "what the user monitors for".
-//
-// Slice 9c: the brackets now wrap a unicode glyph (theme.StateGlyph)
-// plus the label. Color encodes priority; shape encodes identity. When
-// NO_COLOR strips the foreground, the glyph alone still distinguishes
-// states - same accessibility win as manage's roster badges.
-func stateBadge(s agent.State) string {
-	var color lipgloss.Color
+// stateBadgeColor maps an agent state to the foreground color the
+// header glyph paints with. Same priority encoding as the legacy
+// bracketed badge (warn for blocked / failed / awaiting / orphaned,
+// agent neutral-light for the active running path, ok for done,
+// muted for anything else). Color carries priority; the theme glyph
+// itself carries identity, so a NO_COLOR terminal still distinguishes
+// states by shape - the same accessibility win the previous design
+// got from its label.
+func stateBadgeColor(s agent.State) lipgloss.Color {
 	switch s {
 	case agent.StateAwaitingInput, agent.StateBlocked, agent.StateOrphaned:
-		color = colorWarn
+		return colorWarn
 	case agent.StateRunning, agent.StateCompacting:
-		color = colorAgent
+		return colorAgent
 	case agent.StateDone:
-		color = colorOK
+		return colorOK
 	case agent.StateFailed:
-		color = colorWarn
+		return colorWarn
 	default:
-		color = colorMuted
+		return colorMuted
 	}
+}
+
+// stateBadge renders the legacy "[<glyph> <label>]" badge that the
+// resume overlay's session cards still use. The chat header dropped
+// it in favor of a bare colored glyph (the label was redundant once
+// the glyph alone carried the state), but the session card has more
+// vertical room and benefits from the explicit word.
+func stateBadge(s agent.State) string {
 	return lipgloss.NewStyle().
-		Foreground(color).
+		Foreground(stateBadgeColor(s)).
 		Bold(true).
 		Render("[" + theme.StateGlyph(s) + " " + s.String() + "]")
 }
@@ -644,168 +692,11 @@ func splitErrorHead(text string) (label, detail string) {
 	return label, detail
 }
 
-// renderToolCard is the bordered tool-call card. Single header row
-// inside a rounded box, in the tool's accent color (warn if errored):
-//
-//	┌────────────────────────────────────────────────┐
-//	│ 🔧 bash · ls -la ~/Desktop · 20 lines          │
-//	└────────────────────────────────────────────────┘
-//
-// Composition: glyph + tool name + middle-dot + one-line input
-// preview + right-aligned status suffix (line count / "error" /
-// "running…"). The actual output is intentionally hidden - the model
-// already saw it; the user gets a summary. An expand keybind is a
-// future slice.
-func renderToolCard(e transcriptEntry, width int) string {
-	return renderToolCardGroup([]transcriptEntry{e}, width)
-}
-
-// toolCardGroupBorderColor returns the outer border color for a
-// tool-card group. The rule is "all-or-nothing": the border flips to
-// colorWarn only when EVERY entry errored. A mixed group (one or
-// more successes alongside one or more errors) keeps the neutral
-// colorTool border because the per-row glyph (🔧 vs ✗) already
-// identifies the failed call — painting the whole box red misreads
-// as "the whole run failed", both to the user and to the model when
-// it reads its own transcript back. An empty group is treated as
-// neutral, matching the early-return in renderToolCardGroup.
-func toolCardGroupBorderColor(es []transcriptEntry) lipgloss.Color {
-	if len(es) == 0 {
-		return colorTool
-	}
-	for _, e := range es {
-		if !e.isError {
-			return colorTool
-		}
-	}
-	return colorWarn
-}
-
-// renderToolCardGroup renders one or more tool-call entries inside a
-// single rounded-border box, separating consecutive rows with a thin
-// horizontal rule (similar to a Bootstrap list-group). A single-entry
-// group is visually identical to the pre-grouping renderToolCard
-// output — the border style, color, glyph, and content composition
-// are unchanged.
-//
-// Border color rule: the outer border flips to colorWarn ONLY when
-// EVERY entry in the group errored. A mixed group (any successes mixed
-// with any errors) keeps the neutral colorTool border, because the
-// per-row glyph (🔧 vs ✗) already identifies which row failed and a
-// red box around two successes + one failure misreads as "this whole
-// run was a failure" — both to the user and to the model when it
-// reads its own transcript back.
-func renderToolCardGroup(es []transcriptEntry, width int) string {
-	if len(es) == 0 {
-		return ""
-	}
-	borderColor := toolCardGroupBorderColor(es)
-
-	const sideMargin = 4
-	totalW := width - sideMargin*2
-	if totalW < 30 {
-		totalW = 30
-	}
-	boxW := totalW - 2
-	contentW := boxW - 2
-	if contentW < 20 {
-		contentW = 20
-	}
-
-	lines := make([]string, 0, len(es)*2-1)
-	for i, e := range es {
-		if i > 0 {
-			lines = append(lines, toolCardSeparator(contentW))
-		}
-		lines = append(lines, toolCardInnerLine(e, contentW))
-	}
-	body := strings.Join(lines, "\n")
-
-	rendered := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(borderColor).
-		Padding(0, 1).
-		Width(boxW).
-		Render(body)
-
-	pad := strings.Repeat(" ", sideMargin)
-	rows := strings.Split(rendered, "\n")
-	for i := range rows {
-		rows[i] = pad + rows[i]
-	}
-	return strings.Join(rows, "\n")
-}
-
-// toolCardInnerLine composes one content row of a tool card — glyph
-// + tool name + optional " · input preview" + right-aligned status.
-// Width-budgeted so the caller can pack it into a multi-row group.
-func toolCardInnerLine(e transcriptEntry, contentW int) string {
-	glyph := "🔧"
-	rowColor := colorTool
-	if e.isError {
-		glyph = "✗"
-		rowColor = colorWarn
-	}
-	gear := lipgloss.NewStyle().Foreground(rowColor).Render(glyph)
-	name := lipgloss.NewStyle().Foreground(rowColor).Bold(true).Render(e.tool)
-	sepStyle := lipgloss.NewStyle().Foreground(colorMuted)
-	mutedStyle := lipgloss.NewStyle().Foreground(colorMuted)
-
-	head := gear + " " + name
-	status := toolCardStatus(e)
-	statusRender := mutedStyle.Render(status)
-	statusW := lipgloss.Width(statusRender)
-
-	var preview string
-	if e.toolInput != "" {
-		maxInputW := contentW - lipgloss.Width(head) - statusW - 6
-		if maxInputW >= 10 {
-			preview = sepStyle.Render(" · ") + mutedStyle.Render(oneLine(e.toolInput, maxInputW))
-		}
-	}
-
-	headSection := head + preview
-	gap := contentW - lipgloss.Width(headSection) - statusW
-	if gap < 1 {
-		gap = 1
-	}
-	return headSection + strings.Repeat(" ", gap) + statusRender
-}
-
-// toolCardSeparator paints the thin horizontal rule between two
-// grouped tool rows. Muted color so the divider doesn't compete with
-// the per-row content or the outer border color.
-func toolCardSeparator(contentW int) string {
-	if contentW < 1 {
-		contentW = 1
-	}
-	return lipgloss.NewStyle().Foreground(colorMuted).Render(strings.Repeat("─", contentW))
-}
-
-// toolCardStatus derives the right-aligned status suffix from the
-// entry's result state:
-//
-//	hasResult=false           → "running…"   (event log mid-replay)
-//	hasResult=true, isError   → "error"
-//	hasResult=true, empty     → "no output"
-//	hasResult=true, !empty    → "<N> lines"
-func toolCardStatus(e transcriptEntry) string {
-	if !e.hasResult {
-		return "running…"
-	}
-	if e.isError {
-		return "error"
-	}
-	trimmed := strings.TrimRight(e.toolResult, "\n")
-	if trimmed == "" {
-		return "no output"
-	}
-	n := strings.Count(trimmed, "\n") + 1
-	if n == 1 {
-		return "1 line"
-	}
-	return fmt.Sprintf("%d lines", n)
-}
+// Tool-call entries — single or grouped runs — render via
+// renderToolStrip in activity_strip.go. The bordered tool card was
+// retired in favor of a single-line indented "activity strip" so a
+// six-call context-load preamble no longer eats fifteen vertical
+// lines of transcript. See activity_strip.go for the rendering rules.
 
 func renderApprovalBox(req *ApprovalRequest, innerW int) string {
 	if req == nil {
@@ -1220,6 +1111,13 @@ func composeTranscript(entries []transcriptEntry, liveText, thinkingRow string, 
 	// group with internal separators — Bootstrap list-group style.
 	// Solo entries take the existing single-card path so the visual
 	// language for one tool / one error is unchanged.
+	//
+	// Conversational turns (👤 and 🧢 avatar rows) get an extra leading
+	// blank line so the transcript reads as a paced exchange instead of
+	// a single dense block. The rule applies to the very first message
+	// as well: the transcript opens with one blank line before the
+	// first user/assistant entry to give it breathing room from the
+	// surrounding chat chrome.
 	wrote := false
 	for i := 0; i < len(entries); {
 		kind := entries[i].kind
@@ -1229,12 +1127,10 @@ func composeTranscript(entries []transcriptEntry, liveText, thinkingRow string, 
 				runEnd++
 			}
 		}
-		if wrote {
-			sb.WriteString("\n")
-		}
+		sb.WriteString(transcriptSeparator(wrote, wantsLeadingBlankLine(kind)))
 		switch {
 		case runEnd-i >= 2 && kind == entryToolCall:
-			sb.WriteString(renderToolCardGroup(entries[i:runEnd], width))
+			sb.WriteString(renderToolStrip(entries[i:runEnd], width))
 		case runEnd-i >= 2 && kind == entryError:
 			sb.WriteString(renderErrorCardGroup(entries[i:runEnd], width))
 		default:
@@ -1245,19 +1141,60 @@ func composeTranscript(entries []transcriptEntry, liveText, thinkingRow string, 
 		i = runEnd
 	}
 	if liveText != "" {
-		if wrote {
-			sb.WriteString("\n")
-		}
+		// Live streaming assistant text surfaces a 🧢 avatar too, so it
+		// gets the same conversational-turn breathing room as a
+		// committed assistant message.
+		sb.WriteString(transcriptSeparator(wrote, true))
 		sb.WriteString(renderAssistantLive(liveText, width))
 		wrote = true
 	}
 	if thinkingRow != "" {
-		if wrote {
-			sb.WriteString("\n")
-		}
+		// The thinking row is the agent's "I'm working on it" pulse -
+		// visually a sibling of an assistant turn (same conversational
+		// slot, same speaker). Give it the same blank-line breathing
+		// room so it doesn't crowd whatever the user just sent.
+		sb.WriteString(transcriptSeparator(wrote, true))
 		sb.WriteString(thinkingRow)
 	}
 	return sb.String()
+}
+
+// wantsLeadingBlankLine reports whether an entry of this kind should
+// be preceded by a blank line. Today that's just the two
+// avatar-bearing turn types (user + assistant); tool strips, error
+// cards, state notes, slash echoes, and shell rows all chain back-to-
+// back with a single-line separator so the transcript stays compact
+// when the agent is doing a long run of internal work.
+func wantsLeadingBlankLine(k entryKind) bool {
+	switch k {
+	case entryUserMessage, entryAssistantMessage:
+		return true
+	}
+	return false
+}
+
+// transcriptSeparator returns the right separator string for the next
+// chunk in composeTranscript. The four states form a 2×2 matrix on
+// (priorContentWritten, nextChunkWantsBlankLine):
+//
+//	prior=false  blank=false  →  ""        (first entry, no leading newline)
+//	prior=false  blank=true   →  "\n"      (first entry is a turn, open with blank line)
+//	prior=true   blank=false  →  "\n"      (normal one-line separator)
+//	prior=true   blank=true   →  "\n\n"    (next turn after prior content gets breathing room)
+//
+// Centralising the logic here keeps composeTranscript readable and
+// gives a single test target for the spacing contract.
+func transcriptSeparator(priorContent, wantsBlank bool) string {
+	if !priorContent {
+		if wantsBlank {
+			return "\n"
+		}
+		return ""
+	}
+	if wantsBlank {
+		return "\n\n"
+	}
+	return "\n"
 }
 
 // isGroupableKind reports whether consecutive entries of the given
@@ -1294,19 +1231,11 @@ func renderEntry(e transcriptEntry, md *glamour.TermRenderer, width int) string 
 		// Renderer is in internal/tui/chat/usershell_render.go.
 		return body.Render(renderUserShellEntry(e, width))
 	case entryToolCall:
-		// Bordered tool card (collapsed-by-default). Combines the
-		// preceding tool_call + the folded-in tool_result into a
-		// single insertion. Format:
-		//
-		//   ┌─────────────────────────────────────────────┐
-		//   │ 🔧 bash · ls -la ~/Desktop · 20 lines       │
-		//   └─────────────────────────────────────────────┘
-		//
-		// The output stays off-screen by default - the model already
-		// saw the full bytes; the user gets the summary. Expand
-		// keybind is a future slice; for now the card is the whole
-		// surface.
-		return renderToolCard(e, width)
+		// Activity strip (Concept A): single indented line in place of
+		// the legacy bordered card. Composition lives in
+		// activity_strip.go; a solo entry is just a 1-entry "group" so
+		// the layout code stays in one place.
+		return renderToolStrip([]transcriptEntry{e}, width)
 	case entryToolResult:
 		// Legacy entry kind. Pre-tool-card transcripts replayed from
 		// disk may still hit this path. Render as an inline preview

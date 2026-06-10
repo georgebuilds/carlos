@@ -17,31 +17,34 @@ import (
 // child loop, waits for SpawnResult, and returns the child's typed
 // deliverable as the tool_result.
 //
-// # When the model should call this (and when it should NOT)
+// # When the model should call this
 //
-// CarlOS's stance, per SPEC § Goals and § Manage mode, is **single-
-// agent by default**. The tool description below hammers this - the
-// model is told to delegate ONLY when:
+// When-to-delegate is **mode-driven**, not baked into this tool's
+// description. The active frame's mode is rendered into the system
+// prompt's Frame block by internal/agent/sysprompt.go:
 //
-//   - The task is parallel-read-heavy (research, exploration, multi-
-//     source summarization). Multi-agent coordination wins here per
-//     DeepMind arXiv:2512.08296 and Anthropic's research-system writeup.
-//   - The aggregate context exceeds one window.
-//   - The sub-task is decoupled enough that a child can finish without
-//     coordinating with siblings mid-flight.
+//   - solo: model defaults to doing the work itself; spawning is opt-in
+//     to user request. SpawnCapFor returns 0, so the supervisor refuses
+//     every Spawn anyway.
+//   - tight: model can delegate, but the supervisor caps in-flight
+//     children at 1. Use it for sequential delegation.
+//   - orchestrator: model is told to delegate by default for anything
+//     beyond a trivial single-line edit, in parallel where the work has
+//     independent parts. SpawnCapFor returns 5. The user opted in to
+//     this mode; no per-turn confirmation overlay.
 //
-// It explicitly steers AWAY from delegation for sequential reasoning,
-// coding, writing, and tightly-coupled decisions. SPEC § Goals goal #4
-// is "single-agent by default" - this tool's description is the wire
-// where that decision is enforced.
+// This tool's Description() therefore stays policy-neutral: it documents
+// the tool's mechanics (inputs, output shape, atomic return) and points
+// the model at the Frame block for the when-to-delegate decision.
 //
 // # Caps + safety
 //
 // Supervisor.Spawn enforces depth (default 1; leaves can't spawn),
-// per-parent concurrency (default 5), and restart intensity. Sub-agents
-// auto-approve their own tool calls (AutoApprover; Phase 4 surfaces
-// per-child tool prompts in the manage roster). All of these are
-// transparent to the model - it just sees a tool that delegates.
+// per-parent concurrency (mode-gated via SpawnCapFor: solo=0, tight=1,
+// orchestrator=5), and restart intensity. Sub-agents auto-approve their
+// own tool calls (AutoApprover; Phase 4 surfaces per-child tool prompts
+// in the manage roster). All of these are transparent to the model -
+// it just sees a tool that delegates.
 //
 // # Output shape
 //
@@ -74,19 +77,15 @@ func NewAgentTool(s *Supervisor) *AgentTool {
 func (*AgentTool) Name() string { return "agent" }
 
 func (*AgentTool) Description() string {
-	return `Delegate a focused sub-task to a child agent. The child runs in its own context, with its own restricted tool set, and returns a single typed deliverable. Use ONLY when ALL of the following hold:
+	return `Delegate a focused sub-task to a child agent. The child runs in its own context, with its own restricted tool set, and returns a single typed deliverable.
 
-  - The sub-task is read-heavy or parallelizable (research, search, summarize many sources, fan-out exploration).
-  - The aggregate context the sub-task needs would exceed your own window.
-  - The sub-task is decoupled - the child can finish without coordinating with siblings mid-flight.
-
-Do NOT delegate for: coding/editing (sequential, decision-dense - single-agent wins on SWE-bench-style tasks), writing/composition (multi-agent produces inconsistent voice), single-source lookups (just do it yourself), anything you could finish in 1-2 of your own turns. The evidence is unambiguous: above ~45% single-agent baseline accuracy, multi-agent coordination NETS NEGATIVE on a task class. Default to doing it yourself.
+When to call this is set by the active frame's mode (shown in the Frame block of the system prompt): solo discourages delegation, tight allows one child at a time, orchestrator encourages parallel delegation for anything beyond a trivial single-line edit. Follow the Frame block; do not override it from this tool description.
 
 Inputs:
   - objective (required): one-paragraph description of what the child must accomplish.
   - output_format (required): exact shape the child should return - be specific about fields, not just "a summary".
   - tool_allowlist (required): subset of your tool names the child may call. EMPTY allowlist = pure reasoning child, no tools. Restrict aggressively - give the child only what it needs.
-  - max_turns (optional, default 25): hard cap on child's agent-loop iterations. For research, 10-15 is usually plenty.
+  - max_turns (optional, default 25): hard cap on child's agent-loop iterations.
   - success_criteria (optional): how the child knows it's done; surfaced in the child's initial prompt.
 
 The child returns its final assistant turn as JSON, plus an artifact_ref to the persisted full turn. You'll get the deliverable atomically - there's no streaming or mid-flight communication.`

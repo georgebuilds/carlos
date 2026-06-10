@@ -148,7 +148,7 @@ func SystemPromptWithFrame(userName, cwd, projectCtx string, fi FrameInfo) strin
 		b.WriteString(".")
 		switch strings.TrimSpace(fi.Mode) {
 		case "orchestrator":
-			b.WriteString("\nDelegate aggressively: split large problems across sub-agents (Agent tool) and synthesize the results. Prefer parallel sub-agents over sequential self-work when the task has independent parts.")
+			b.WriteString("\nDelegate by default. Anything more involved than a single-line edit, a one-shot lookup, or a trivial fix goes to a sub-agent (Agent tool); split the work across parallel sub-agents when the parts are independent, and synthesize their results. The user opted into this mode, so do not pause for confirmation; just spawn. Supervisor cap is 5 in-flight children.")
 		case "tight":
 			b.WriteString("\nSingle-task focus: do not chase tangents. Surface side-quests as notes for the user instead of pursuing them.")
 		case "solo":

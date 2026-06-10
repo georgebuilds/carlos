@@ -125,6 +125,8 @@ type transcriptEntry struct {
 	toolResult string // captured output; set when the matching EvtToolResult lands
 	hasResult  bool   // true once the EvtToolResult has been folded in (distinguishes "no output" from "still running")
 	isError    bool   // tool_result was an error (rejection or tool err)
+	isSkill    bool   // call invokes a skill (tool=="skill_use"); strip renders with 📚 chip instead of the generic 🔧
+	skillName  string // skill name parsed from the skill_use input JSON; empty when isSkill=false or input is malformed
 	subAgentID string // collapse key for entryResearchProgress (slice 11e)
 
 	// User-shell (Phase U S5) fields. Active when kind == entryUserShell.
@@ -424,13 +426,6 @@ type Model struct {
 	// pops one entry per assistant-idle tick so each queued message
 	// gets its own turn.
 	queuedUserMessages []string
-
-	// Phase O five-checkbox heuristic.
-	showHeuristic     bool
-	heuristicChecks   [heuristicQuestionCount]bool
-	heuristicPending  string
-	heuristicHelp     bool
-	heuristicDisabled bool
 
 	// Inline sub-agent panel: childrenView is the supervisor-scoped
 	// reader, nil disables the panel entirely; childrenSnap is the
@@ -860,16 +855,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// without the composer eating keystrokes.
 		if m.showResume {
 			next, cmd, handled := m.handleResumeKey(msg)
-			if handled {
-				return next, cmd
-			}
-		}
-		// Phase O five-checkbox heuristic. The overlay sits in the same
-		// modal slot as jobs / perms; keys 1-5 toggle the checks, d/s
-		// pick an action, esc cancels and restores the prompt to the
-		// composer. ctrl+c falls through to the quit handler.
-		if m.showHeuristic {
-			next, cmd, handled := m.handleHeuristicKey(msg)
 			if handled {
 				return next, cmd
 			}
@@ -1361,12 +1346,17 @@ func (m *Model) applyEvent(ev agent.Event) {
 		if isHiddenToolCall(tc.Name) {
 			break
 		}
-		m.transcript = append(m.transcript, transcriptEntry{
+		entry := transcriptEntry{
 			kind:      entryToolCall,
 			ts:        ev.TS,
 			tool:      tc.Name,
 			toolInput: string(tc.Input),
-		})
+		}
+		if tc.Name == skillUseToolName {
+			entry.isSkill = true
+			entry.skillName = parseSkillName(tc.Input)
+		}
+		m.transcript = append(m.transcript, entry)
 	case agent.EvtToolResult:
 		// Fold the result back into the most recent matching
 		// entryToolCall instead of creating a separate row. The
@@ -1386,14 +1376,18 @@ func (m *Model) applyEvent(ev agent.Event) {
 			// Defensive: result without a matching call (e.g. replay
 			// of an event log truncated mid-turn). Fall back to a
 			// standalone card so the result isn't silently dropped.
-			m.transcript = append(m.transcript, transcriptEntry{
+			entry := transcriptEntry{
 				kind:       entryToolCall,
 				ts:         ev.TS,
 				tool:       tr.Name,
 				toolResult: string(tr.Output),
 				hasResult:  true,
 				isError:    tr.IsError,
-			})
+			}
+			if tr.Name == skillUseToolName {
+				entry.isSkill = true
+			}
+			m.transcript = append(m.transcript, entry)
 			break
 		}
 		m.transcript[idx].toolResult = string(tr.Output)
@@ -1605,20 +1599,10 @@ func (m *Model) submit() tea.Cmd {
 	// this, the message gets swallowed — submit() would have to wait
 	// on the same goroutine the agent loop is serializing on, which
 	// in practice means the user sees nothing happen until they
-	// re-type after the turn finishes. Heuristic check is skipped on
-	// the queued path: the user has already decided to send this and
-	// a confirmation modal popping up minutes later (when the queue
-	// flushes) would feel disconnected from the keystroke.
+	// re-type after the turn finishes.
 	if m.assistantBusy() {
 		m.queuedUserMessages = append(m.queuedUserMessages, raw)
 		m.status = m.queuedHintLine()
-		return nil
-	}
-	// Phase O: when the active frame runs in orchestrator mode and the
-	// prompt is non-trivial, pause and ask the user to evaluate the
-	// five-checkbox heuristic before dispatching to the model.
-	if shouldShowHeuristic(m.frame.Mode, raw, m.heuristicDisabled) {
-		m.openHeuristic(raw)
 		return nil
 	}
 	return m.appendUserMessage(raw)

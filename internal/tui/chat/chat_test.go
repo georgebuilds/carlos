@@ -144,12 +144,13 @@ func TestReadOnlyViewer_RendersSeededTranscript(t *testing.T) {
 
 	mustContain(t, view, "hello carlos") // user message
 	mustContain(t, view, "👤")          // user avatar
-	mustContain(t, view, "🔧")          // tool-call icon (slice: tool visibility)
+	mustContain(t, view, stripGlyphTool) // tool-call leading chevron (activity strip)
 	mustContain(t, view, "bash")         // tool name
 	mustContain(t, view, "🧢")          // live assistant avatar
 	mustContain(t, view, "Hi! I'll take a look.")
-	mustContain(t, view, "spawning")   // state badge label from projection (slice 9c: glyph + label inside brackets)
-	mustContain(t, view, "◐")          // slice 9c: spawning glyph from theme.StateGlyph
+	// Header retired the "[<glyph> <label>]" bracketed badge; the bare
+	// state glyph alone now carries the spawning signal.
+	mustContain(t, view, "◐")          // spawning glyph from theme.StateGlyph
 	mustContain(t, view, "claude-4.7") // model id in header
 }
 
@@ -570,29 +571,6 @@ func TestComposeTranscript_StableOutput(t *testing.T) {
 	}
 }
 
-// TestToolCardStatus_DerivedFromResult pins the status-suffix logic
-// across the four observable states (running, error, no-output,
-// multi-line). The status text is what gives the user the "did
-// anything come back?" cue without expanding the card.
-func TestToolCardStatus_DerivedFromResult(t *testing.T) {
-	cases := []struct {
-		name string
-		e    transcriptEntry
-		want string
-	}{
-		{"running", transcriptEntry{}, "running…"},
-		{"error", transcriptEntry{hasResult: true, isError: true, toolResult: "tool error: x"}, "error"},
-		{"empty", transcriptEntry{hasResult: true}, "no output"},
-		{"single line", transcriptEntry{hasResult: true, toolResult: "ok"}, "1 line"},
-		{"multi line", transcriptEntry{hasResult: true, toolResult: "a\nb\nc\n"}, "3 lines"},
-	}
-	for _, c := range cases {
-		if got := toolCardStatus(c.e); got != c.want {
-			t.Errorf("%s: status = %q, want %q", c.name, got, c.want)
-		}
-	}
-}
-
 // TestFindLatestToolCall_FoldsResultIntoCall proves the
 // applyEvent→findLatestToolCall→merge pipeline collapses a
 // tool_call + tool_result pair into one entry rather than two rows.
@@ -624,9 +602,10 @@ func TestApplyEvent_StateChangeBadgeFollowsProjection(t *testing.T) {
 
 	m := New(log, agentID, NewMemTextSource())
 	m = drive(t, m, 120, 30)
-	// Slice 9c: badge is `[<glyph> <label>]`, glyph from theme.StateGlyph.
-	if got := m.View(); !strings.Contains(got, "spawning") || !strings.Contains(got, "◐") {
-		t.Fatalf("initial badge missing spawning glyph/label: %s", got)
+	// Header retired the bracketed "[<glyph> <label>]" badge; the
+	// bare state glyph alone now carries the signal. Spawning = ◐.
+	if got := m.View(); !strings.Contains(got, "◐") {
+		t.Fatalf("initial header missing spawning glyph ◐: %s", got)
 	}
 
 	// Append a transition: spawning → running. Replay through Update.
@@ -643,8 +622,8 @@ func TestApplyEvent_StateChangeBadgeFollowsProjection(t *testing.T) {
 	}
 	updated, _ := m.Update(eventMsg{ev: ev})
 	m = updated.(*Model)
-	if got := m.View(); !strings.Contains(got, "running") || !strings.Contains(got, "●") {
-		t.Fatalf("badge did not update to running glyph/label: %s", got)
+	if got := m.View(); !strings.Contains(got, "●") {
+		t.Fatalf("header did not update to running glyph ●: %s", got)
 	}
 }
 

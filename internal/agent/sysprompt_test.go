@@ -84,6 +84,44 @@ func TestSystemPromptWithFrame_OmitsBlockWhenNameEmpty(t *testing.T) {
 	}
 }
 
+// TestSystemPromptWithFrame_ModeLines pins the per-mode policy lines.
+// The orchestrator line is the load-bearing one: it tells the model to
+// delegate by default without per-turn user confirmation. If a future
+// edit weakens "delegate by default" or reintroduces a confirmation
+// step, this test flags the regression.
+func TestSystemPromptWithFrame_ModeLines(t *testing.T) {
+	cases := []struct {
+		mode string
+		must []string
+	}{
+		{
+			mode: "orchestrator",
+			must: []string{
+				"Delegate by default",            // the policy
+				"single-line edit",               // the boundary
+				"do not pause for confirmation",  // explicit no-overlay stance
+				"split the work across parallel", // parallel preference
+			},
+		},
+		{
+			mode: "tight",
+			must: []string{"Single-task focus"},
+		},
+		{
+			mode: "solo",
+			must: []string{"Do the work yourself", "opt-in"},
+		},
+	}
+	for _, c := range cases {
+		out := SystemPromptWithFrame("", "", "", FrameInfo{Name: "x", Mode: c.mode})
+		for _, want := range c.must {
+			if !strings.Contains(out, want) {
+				t.Errorf("mode=%q missing required phrase %q; got:\n%s", c.mode, want, out)
+			}
+		}
+	}
+}
+
 func TestSystemPromptWithFrame_IncludesVaultPathAndSubtree(t *testing.T) {
 	out := SystemPromptWithFrame("", "", "", FrameInfo{
 		Name:         "personal",

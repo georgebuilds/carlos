@@ -124,20 +124,35 @@ func TestAgentTool_SchemaWellFormed(t *testing.T) {
 	}
 }
 
-// TestAgentTool_DescriptionStressesSingleAgentDefault ensures the
-// description carries the load-bearing "single-agent by default"
-// guidance the SPEC commits to. If a future edit drops it, this test
-// flags the regression.
-func TestAgentTool_DescriptionStressesSingleAgentDefault(t *testing.T) {
+// TestAgentTool_DescriptionIsPolicyNeutral verifies the description
+// documents the tool's mechanics but does NOT lock in a fixed
+// when-to-delegate policy. Policy lives in the frame-mode block of the
+// system prompt (internal/agent/sysprompt.go) so the same tool surface
+// works for solo / tight / orchestrator without re-registering. Earlier
+// revisions hammered "single-agent by default" into this description;
+// that fought the orchestrator mode's "delegate by default" sysprompt
+// line and is the regression this test guards against.
+func TestAgentTool_DescriptionIsPolicyNeutral(t *testing.T) {
 	d := (&agent.AgentTool{}).Description()
+	// The description must describe what the tool does.
 	for _, must := range []string{
-		"ONLY",       // gating language
-		"read-heavy", // when-to-delegate criterion
-		"NETS NEGATIVE", // the empirical anti-recommendation
-		"Default to doing it yourself",
+		"objective",      // required input
+		"output_format",  // required input
+		"tool_allowlist", // required input
+		"Frame block",    // pointer at where mode-aware policy lives
 	} {
 		if !strings.Contains(d, must) {
-			t.Errorf("description missing required guidance phrase: %q", must)
+			t.Errorf("description missing mechanic phrase: %q", must)
+		}
+	}
+	// The description must NOT carry hard-coded delegation policy text;
+	// mode selection drives that from the sysprompt.
+	for _, mustNot := range []string{
+		"NETS NEGATIVE",
+		"Default to doing it yourself",
+	} {
+		if strings.Contains(d, mustNot) {
+			t.Errorf("description still carries policy text that should live in sysprompt: %q", mustNot)
 		}
 	}
 }
