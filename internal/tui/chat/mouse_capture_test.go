@@ -42,44 +42,36 @@ func TestMouseCapture_AltMTogglesState(t *testing.T) {
 	}
 }
 
-// TestRenderFooter_AltMHintAlwaysPresent is the discoverability
-// regression test: the keybind row always carries an "alt+m" hint
-// (with a label that tracks the current state) so users discover
-// the toggle without having to read docs or stumble onto it.
-func TestRenderFooter_AltMHintAlwaysPresent(t *testing.T) {
+// TestRenderFooter_ShiftDragHintAlwaysPresent is the
+// discoverability regression test: the keybind row always carries
+// a "shift+drag select" hint so users learn the universal terminal
+// override (Ghostty, iTerm2, WezTerm, macOS Terminal all pass
+// Shift+drag through any mouse-capture mode as a force-selection
+// gesture). No state-tracking trailer — the hint is the same
+// regardless of whether capture is on or off, because shift+drag
+// works in both directions.
+func TestRenderFooter_ShiftDragHintAlwaysPresent(t *testing.T) {
 	log := openTempLog(t)
 	const agentID = "01HV0000000000000000MOUSE1"
 	seedAgent(t, log, agentID, "mouse hint", "fake")
 	m := New(log, agentID, NewMemTextSource())
 	m = drive(t, m, 120, 30)
 
-	for _, state := range []struct {
-		mouseOff bool
-		want     string
-	}{
-		{mouseOff: false, want: "select"}, // capture on → press alt+m to select
-		{mouseOff: true, want: "scroll"},  // capture off → press alt+m to scroll
-	} {
-		m.mouseOff = state.mouseOff
+	for _, mouseOff := range []bool{false, true} {
+		m.mouseOff = mouseOff
 		out := m.renderFooter(120)
-		if !strings.Contains(out, "alt+m") {
-			t.Errorf("mouseOff=%v: footer missing alt+m hint:\n%s", state.mouseOff, out)
+		if !strings.Contains(out, "shift+drag") {
+			t.Errorf("mouseOff=%v: footer missing shift+drag hint:\n%s", mouseOff, out)
 		}
-		if !strings.Contains(out, state.want) {
-			t.Errorf("mouseOff=%v: footer hint label should mention %q:\n%s",
-				state.mouseOff, state.want, out)
+		if !strings.Contains(out, "select") {
+			t.Errorf("mouseOff=%v: footer should label the shift+drag affordance:\n%s", mouseOff, out)
 		}
-	}
-}
-
-// TestMouseHintLabel_LabelTracksState pins the pure label helper so
-// the keymap and the visible label can't drift apart in a future
-// refactor.
-func TestMouseHintLabel_LabelTracksState(t *testing.T) {
-	if got := mouseHintLabel(false); !strings.Contains(got, "select") {
-		t.Errorf("capture on (mouseOff=false) → hint should say 'select'; got %q", got)
-	}
-	if got := mouseHintLabel(true); !strings.Contains(got, "scroll") {
-		t.Errorf("capture off (mouseOff=true) → hint should say 'scroll'; got %q", got)
+		// alt+m is intentionally NOT advertised in the footer — it
+		// stays a working keybinding (the universal fallback for any
+		// terminal that doesn't pass shift+drag through) but the
+		// surface area is the shift+drag tip.
+		if strings.Contains(out, "alt+m") {
+			t.Errorf("mouseOff=%v: footer should no longer mention alt+m:\n%s", mouseOff, out)
+		}
 	}
 }

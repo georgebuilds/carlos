@@ -445,13 +445,13 @@ func (m *Model) renderFooter(w int) string {
 	var hints string
 	if m.readOnly {
 		hints = keyStyle.Render("pgup/pgdn") + hintStyle.Render(" scroll  ") +
-			keyStyle.Render("alt+m") + hintStyle.Render(mouseHintLabel(m.mouseOff)) +
+			keyStyle.Render("shift+drag") + hintStyle.Render(" select  ") +
 			keyStyle.Render("ctrl-c") + hintStyle.Render(" quit")
 	} else {
 		hints = keyStyle.Render("enter") + hintStyle.Render(" send  ") +
 			keyStyle.Render("shift-enter") + hintStyle.Render(" newline  ") +
 			keyStyle.Render("pgup/pgdn") + hintStyle.Render(" scroll  ") +
-			keyStyle.Render("alt+m") + hintStyle.Render(mouseHintLabel(m.mouseOff)) +
+			keyStyle.Render("shift+drag") + hintStyle.Render(" select  ") +
 			keyStyle.Render("ctrl-c") + hintStyle.Render(" quit")
 	}
 
@@ -495,20 +495,6 @@ func (m *Model) renderFooter(w int) string {
 		return hintLine + "\n" + row
 	}
 	return row
-}
-
-// mouseHintLabel returns the dim trailer that follows the bolded
-// "alt+m" key in the footer. The verb tracks the current mouse-
-// capture state so a single keystroke description tells the user
-// what pressing it WILL do: " select " when capture is on (press
-// alt+m to release for selection), " scroll " when capture is off
-// (press alt+m to restore wheel/trackpad scroll). Two-space pad on
-// each side matches the other hint trailers in renderFooter.
-func mouseHintLabel(mouseOff bool) string {
-	if mouseOff {
-		return " scroll  "
-	}
-	return " select  "
 }
 
 // renderApprovalBox returns a bordered, accent-colored panel for a
