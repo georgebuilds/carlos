@@ -28,6 +28,23 @@ type Engine struct {
 	MaxSubQueries   int // default DefaultMaxSubQueries
 	SourcesPerQuery int // default DefaultSourcesPerQuery
 
+	// RoutingEnabled toggles the route phase. When nil, the engine
+	// defaults to true if Search is a *tools.MultiBackend (routing has
+	// something to choose from) and false otherwise (single backend, no
+	// routing payoff). A non-nil *bool lets callers force on/off.
+	RoutingEnabled *bool
+
+	// PerSubQueryCap is the hard ceiling on TOTAL results across all
+	// backends for one sub-query. Default DefaultPerSubQueryCap. The
+	// model can propose more; the engine truncates and records a
+	// concern.
+	PerSubQueryCap int
+
+	// PerBackendCap is the hard ceiling on results from ANY ONE backend
+	// per sub-query. Default DefaultPerBackendCap. Prevents the model
+	// from over-weighting a single source.
+	PerBackendCap int
+
 	// OnPhaseStart is invoked at the start of each phase. If nil,
 	// no-op. Used by SpawnResearch (slice 11d) to emit
 	// EvtResearchPhase events without coupling the engine to the
@@ -181,6 +198,12 @@ func (e *Engine) Run(ctx context.Context, question string) (*Report, error) {
 	if e.Budget.MaxWallClock <= 0 {
 		e.Budget.MaxWallClock = DefaultMaxWallClock
 	}
+	if e.PerSubQueryCap <= 0 {
+		e.PerSubQueryCap = DefaultPerSubQueryCap
+	}
+	if e.PerBackendCap <= 0 {
+		e.PerBackendCap = DefaultPerBackendCap
+	}
 
 	report := &Report{
 		Question: question,
@@ -203,6 +226,7 @@ func (e *Engine) Run(ctx context.Context, question string) (*Report, error) {
 	}
 	phases := []phase{
 		{"decompose", e.runDecompose},
+		{"route", e.runRoute},
 		{"search", e.runSearch},
 		{"fetch", e.runFetch},
 		{"read", e.runRead},

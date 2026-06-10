@@ -66,6 +66,7 @@ type Passage struct {
 type Report struct {
 	Question     string                      // the input question, echoed
 	Query        Query                       // includes Sub after decompose
+	Routing      []SubQueryRoute             // model-picked backends + tailored queries (route phase)
 	Sources      []Source                    // every source the engine fetched
 	Passages     []Passage                   // every passage the read phase extracted
 	Synthesis    string                      // markdown body with inline [pN] citations
@@ -73,6 +74,26 @@ type Report struct {
 	Citations    *agent.Audit                // citation coverage audit (if synthesis ran)
 	Concerns     []string                    // free-form issues surfaced during the run
 	Budget       BudgetUsage                 // what we spent
+}
+
+// SubQueryRoute is the model's plan for ONE sub-query: which backends
+// to hit, and a tailored query string for each. Populated by the route
+// phase; consumed by the search phase. When the route phase falls back
+// (LLM failure, malformed output), the engine fills this with a
+// default plan (every backend, verbatim sub-query) so search has
+// something to consume — never crashes the run.
+type SubQueryRoute struct {
+	SubQuery string           // the original sub-query text, for traceability
+	Searches []PlannedSearch  // 1..N planned backend calls; empty means fallback for this row
+}
+
+// PlannedSearch is one (backend, tailored query, result cap) tuple
+// inside a SubQueryRoute. The engine clamps MaxResults to PerBackendCap
+// before issuing the call.
+type PlannedSearch struct {
+	Backend    string // backend Name() — must match one MultiBackend exposes; unknown silently dropped
+	Query      string // query string tailored to this backend's strengths
+	MaxResults int    // per-call result cap; clamped to PerBackendCap by the engine
 }
 
 // BudgetUsage tracks the running spend against ResearchBudget. The
@@ -105,4 +126,11 @@ const (
 
 	DefaultMaxSubQueries    = 5
 	DefaultSourcesPerQuery  = 3
+
+	// Caps the route phase enforces over whatever the model proposes.
+	// PerSubQueryCap is the total result ceiling across all backends for
+	// one sub-query; PerBackendCap is the per-(backend, sub-query) cap.
+	// Both are HARD: the engine truncates and records a concern.
+	DefaultPerSubQueryCap = 8
+	DefaultPerBackendCap  = 5
 )

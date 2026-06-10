@@ -204,7 +204,7 @@ func TestSpawnResearch_HappyPath(t *testing.T) {
 			starts = append(starts, pl.Phase)
 		}
 	}
-	want := []string{"decompose", "search", "fetch", "read", "synthesize", "verify"}
+	want := []string{"decompose", "route", "search", "fetch", "read", "synthesize", "verify"}
 	if !equalStringSlice(starts, want) {
 		t.Errorf("phase starts = %v want %v", starts, want)
 	}
@@ -429,8 +429,9 @@ func TestSpawnResearch_ConcurrentSpawns_Independent(t *testing.T) {
 			counts[ev.AgentID]++
 		}
 	}
-	if counts[id1] != 12 || counts[id2] != 12 {
-		t.Errorf("phase event counts = %v want both 12", counts)
+	// 7 phases × 2 (start+done) = 14 events per agent
+	if counts[id1] != 14 || counts[id2] != 14 {
+		t.Errorf("phase event counts = %v want both 14", counts)
 	}
 }
 

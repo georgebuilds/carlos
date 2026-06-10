@@ -279,14 +279,15 @@ func TestWebSearchTool_NoBackend(t *testing.T) {
 }
 
 // TestNewWebSearchTool_PicksBackendFromEnv pins the primary backend
-// selection. Specialty backends (arxiv, wikipedia) are disabled here
-// so we can read the primary name off tool.Backend directly — when
+// selection. Specialty backends (arxiv, wikipedia, github) are disabled
+// here so we can read the primary name off tool.Backend directly — when
 // they're enabled the default factory wraps everything in MultiBackend
 // and Backend.Name() returns "multi". A separate test below covers
 // that wrap.
 func TestNewWebSearchTool_PicksBackendFromEnv(t *testing.T) {
 	t.Setenv("CARLOS_DISABLE_ARXIV", "1")
 	t.Setenv("CARLOS_DISABLE_WIKIPEDIA", "1")
+	t.Setenv("CARLOS_DISABLE_GITHUB", "1")
 
 	t.Setenv("BRAVE_API_KEY", "k")
 	t.Setenv("SEARXNG_URL", "https://searx")
@@ -310,12 +311,16 @@ func TestNewWebSearchTool_PicksBackendFromEnv(t *testing.T) {
 
 // TestNewWebSearchTool_WrapsWithMultiByDefault confirms that with no
 // env vars set, the factory wraps the primary in MultiBackend with
-// arxiv + wikipedia layered on. This is the default UX out of the box.
+// arxiv + wikipedia (and optionally github if the gh CLI is on PATH)
+// layered on. This is the default UX out of the box.
 func TestNewWebSearchTool_WrapsWithMultiByDefault(t *testing.T) {
 	t.Setenv("BRAVE_API_KEY", "")
 	t.Setenv("SEARXNG_URL", "")
 	t.Setenv("CARLOS_DISABLE_ARXIV", "")
 	t.Setenv("CARLOS_DISABLE_WIKIPEDIA", "")
+	// Force github off so the test outcome doesn't depend on whether
+	// the test machine has `gh` installed.
+	t.Setenv("CARLOS_DISABLE_GITHUB", "1")
 	tool := NewWebSearchTool()
 	multi, ok := tool.Backend.(*MultiBackend)
 	if !ok {
@@ -329,16 +334,17 @@ func TestNewWebSearchTool_WrapsWithMultiByDefault(t *testing.T) {
 
 // TestNewWebSearchTool_DisableAuxRestoresSingleBackend is the byte-
 // identical-to-v0.7.x escape hatch: power users who want only the
-// primary backend can disable both specialties and the factory returns
+// primary backend can disable every specialty and the factory returns
 // the bare backend (no Multi wrapper).
 func TestNewWebSearchTool_DisableAuxRestoresSingleBackend(t *testing.T) {
 	t.Setenv("BRAVE_API_KEY", "")
 	t.Setenv("SEARXNG_URL", "")
 	t.Setenv("CARLOS_DISABLE_ARXIV", "1")
 	t.Setenv("CARLOS_DISABLE_WIKIPEDIA", "1")
+	t.Setenv("CARLOS_DISABLE_GITHUB", "1")
 	tool := NewWebSearchTool()
 	if _, isMulti := tool.Backend.(*MultiBackend); isMulti {
-		t.Fatal("both aux disabled → factory must return primary directly, no Multi wrapper")
+		t.Fatal("all aux disabled → factory must return primary directly, no Multi wrapper")
 	}
 	if tool.Backend.Name() != "duckduckgo" {
 		t.Errorf("primary = %q, want duckduckgo", tool.Backend.Name())
@@ -352,6 +358,7 @@ func TestNewWebSearchTool_PartialAuxOptOut(t *testing.T) {
 	t.Setenv("SEARXNG_URL", "")
 	t.Setenv("CARLOS_DISABLE_ARXIV", "1")
 	t.Setenv("CARLOS_DISABLE_WIKIPEDIA", "")
+	t.Setenv("CARLOS_DISABLE_GITHUB", "1")
 	tool := NewWebSearchTool()
 	multi, ok := tool.Backend.(*MultiBackend)
 	if !ok {

@@ -111,9 +111,9 @@ func TestSpawnResearch_Concurrent_NoCallbackRace(t *testing.T) {
 		t.Fatalf("collected %d ids, want %d", len(ids), N)
 	}
 
-	want := []string{"decompose", "search", "fetch", "read", "synthesize", "verify"}
+	want := []string{"decompose", "route", "search", "fetch", "read", "synthesize", "verify"}
 
-	// 1. Each engine's pre-existing callback saw exactly the six
+	// 1. Each engine's pre-existing callback saw exactly the seven
 	//    phases (one start + one done each) - no cross-engine
 	//    leakage, no missing fires from clobbering.
 	for i, c := range caps {
@@ -152,8 +152,9 @@ func TestSpawnResearch_Concurrent_NoCallbackRace(t *testing.T) {
 		phaseCounts[ev.AgentID]++
 	}
 	for id := range expectIDs {
-		if phaseCounts[id] != 12 {
-			t.Errorf("agent %s: %d phase events, want 12", id, phaseCounts[id])
+		// 7 phases × 2 (start+done) = 14 events
+		if phaseCounts[id] != 14 {
+			t.Errorf("agent %s: %d phase events, want 14", id, phaseCounts[id])
 		}
 	}
 

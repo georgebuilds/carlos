@@ -48,11 +48,12 @@ func TestSpawnResearch_ExistingPhaseCallbacksAreComposed(t *testing.T) {
 	gotDones := append([]string(nil), preDones...)
 	mu.Unlock()
 
-	if len(gotStarts) != 6 {
-		t.Errorf("pre-existing OnPhaseStart fired %d times, want 6", len(gotStarts))
+	// 7 phases since the route phase was added between decompose and search.
+	if len(gotStarts) != 7 {
+		t.Errorf("pre-existing OnPhaseStart fired %d times, want 7", len(gotStarts))
 	}
-	if len(gotDones) != 6 {
-		t.Errorf("pre-existing OnPhaseDone fired %d times, want 6", len(gotDones))
+	if len(gotDones) != 7 {
+		t.Errorf("pre-existing OnPhaseDone fired %d times, want 7", len(gotDones))
 	}
 }
 

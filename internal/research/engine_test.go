@@ -267,7 +267,7 @@ func TestEngine_OnPhaseStart_FiresOncePerPhase(t *testing.T) {
 	if _, err := eng.Run(context.Background(), "q"); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	want := []string{"decompose", "search", "fetch", "read", "synthesize", "verify"}
+	want := []string{"decompose", "route", "search", "fetch", "read", "synthesize", "verify"}
 	startMu.Lock()
 	got := append([]string(nil), starts...)
 	startMu.Unlock()
@@ -305,8 +305,8 @@ func TestEngine_OnPhaseDone_FiresWithNilErrOnSuccess(t *testing.T) {
 	}
 	mu.Lock()
 	defer mu.Unlock()
-	if len(dones) != 6 {
-		t.Fatalf("OnPhaseDone fired %d times want 6: %+v", len(dones), dones)
+	if len(dones) != 7 {
+		t.Fatalf("OnPhaseDone fired %d times want 7: %+v", len(dones), dones)
 	}
 	for _, d := range dones {
 		if d.err != nil {
@@ -352,18 +352,24 @@ func TestEngine_OnPhaseDone_FiresWithErrOnFailure(t *testing.T) {
 	mu.Lock()
 	defer mu.Unlock()
 	// decompose ran to completion (one start, one done with err=nil).
+	// route ran to completion (one start, one done with err=nil; soft-fails
+	//   to default plan when there's no MultiBackend to consult).
 	// search ran and failed (one start, one done with err!=nil).
 	// fetch and beyond never started.
-	if len(starts) != 2 || starts[0] != "decompose" || starts[1] != "search" {
-		t.Errorf("starts = %v want [decompose search]", starts)
+	want := []string{"decompose", "route", "search"}
+	if !equalStringSlice(starts, want) {
+		t.Errorf("starts = %v want %v", starts, want)
 	}
-	if len(dones) != 2 {
-		t.Fatalf("dones = %d want 2: %+v", len(dones), dones)
+	if len(dones) != 3 {
+		t.Fatalf("dones = %d want 3: %+v", len(dones), dones)
 	}
 	if dones[0].err != nil {
 		t.Errorf("decompose done err = %v want nil", dones[0].err)
 	}
-	if dones[1].err == nil {
+	if dones[1].err != nil {
+		t.Errorf("route done err = %v want nil (route soft-fails to default)", dones[1].err)
+	}
+	if dones[2].err == nil {
 		t.Errorf("search done err = nil want non-nil")
 	}
 }

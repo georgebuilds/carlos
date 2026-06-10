@@ -33,6 +33,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"strings"
 	"sync"
 	"time"
@@ -92,6 +93,8 @@ var (
 	sharedArxivInstance *ArxivBackend
 	sharedWikipediaOnce sync.Once
 	sharedWikipediaIns  *WikipediaBackend
+	sharedGHOnce        sync.Once
+	sharedGHInstance    *GHSearchBackend
 )
 
 func sharedArxivBackend() *ArxivBackend {
@@ -104,6 +107,11 @@ func sharedWikipediaBackend() *WikipediaBackend {
 	return sharedWikipediaIns
 }
 
+func sharedGHBackend() *GHSearchBackend {
+	sharedGHOnce.Do(func() { sharedGHInstance = NewGHSearchBackend() })
+	return sharedGHInstance
+}
+
 // NewWebSearchTool builds the tool's backend tree. The factory picks
 // the primary general-web backend by env precedence (Brave > SearXNG >
 // DuckDuckGo), then layers in optional specialty backends on top:
@@ -112,9 +120,13 @@ func sharedWikipediaBackend() *WikipediaBackend {
 // in a MultiBackend that fans out concurrently and merges by
 // interleaved rank with URL dedup.
 //
-// Opt-outs: CARLOS_DISABLE_ARXIV=1, CARLOS_DISABLE_WIKIPEDIA=1. With
-// both set, the factory returns the bare primary as before — byte
-// identical to the pre-multi behavior.
+// Opt-outs: CARLOS_DISABLE_ARXIV=1, CARLOS_DISABLE_WIKIPEDIA=1,
+// CARLOS_DISABLE_GITHUB=1. With all three set, the factory returns the
+// bare primary — byte identical to the pre-multi behavior.
+//
+// GitHub auto-skips when the `gh` CLI isn't on $PATH: the model can't
+// reach a backend whose CLI isn't installed, and silently dropping it
+// is friendlier than wiring a backend that will 100% error.
 func NewWebSearchTool() *WebSearchTool {
 	primary := selectPrimaryBackend()
 	var aux []SearchBackend
@@ -124,11 +136,31 @@ func NewWebSearchTool() *WebSearchTool {
 	if os.Getenv("CARLOS_DISABLE_WIKIPEDIA") != "1" {
 		aux = append(aux, sharedWikipediaBackend())
 	}
+	if os.Getenv("CARLOS_DISABLE_GITHUB") != "1" && ghCLIAvailable() {
+		aux = append(aux, sharedGHBackend())
+	}
 	var backend SearchBackend = primary
 	if len(aux) > 0 {
 		backend = NewMultiBackend(primary, aux...)
 	}
 	return &WebSearchTool{Backend: backend}
+}
+
+// ghCLIAvailable returns true when `gh` is on $PATH. Result is cached
+// for the process lifetime — the user isn't going to install/uninstall
+// the CLI mid-session, and re-running exec.LookPath on every factory
+// call is wasteful.
+var (
+	ghAvailableOnce sync.Once
+	ghAvailableSet  bool
+)
+
+func ghCLIAvailable() bool {
+	ghAvailableOnce.Do(func() {
+		_, err := exec.LookPath("gh")
+		ghAvailableSet = err == nil
+	})
+	return ghAvailableSet
 }
 
 // selectPrimaryBackend resolves the general-web backend per the
