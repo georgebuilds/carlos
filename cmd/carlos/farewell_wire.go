@@ -112,12 +112,12 @@ func runBrewCheck(panel *farewell.Panel, currentVersion string) {
 	defer cancel()
 	if newer, ok := farewell.CheckTapUpdate(ctx, currentVersion, ""); ok {
 		panel.AddWithDetail("⬆️", "carlos "+newer+" is available",
-			"run `brew update && brew upgrade carlos` (restart the daemon to pick it up)")
+			"run `brew update && brew upgrade carlos`")
 		return
 	}
 	if farewell.CheckBrewUpdate(ctx, "carlos") {
 		panel.AddWithDetail("⬆️", "update available",
-			"run `brew update && brew upgrade carlos` (restart the daemon to pick it up)")
+			"run `brew update && brew upgrade carlos`")
 	}
 }
 
