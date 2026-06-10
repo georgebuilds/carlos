@@ -34,6 +34,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"golang.org/x/net/html"
@@ -265,6 +266,15 @@ func (t *WebFetchTool) Execute(ctx context.Context, input []byte) ([]byte, error
 // client returns the HTTP client to use, building a default if none
 // has been injected. The default follows up to MaxRedirects redirects
 // and enforces Timeout per request.
+//
+// The dialer carries a Control hook that re-checks every resolved IP at
+// dial time. That closes the DNS-rebinding TOCTOU between
+// isPrivateHost's pre-flight lookup and the stdlib's own dial-time
+// lookup: a hostile resolver that returns a public IP for the pre-check
+// and a private IP for the connect now trips the Control reject. The
+// hook is bypassed when AllowPrivate is set so opted-in intranet calls
+// still work. CheckRedirect re-validates every hop's host so a public
+// origin can't bounce us into a private target via 30x.
 func (t *WebFetchTool) client() *http.Client {
 	if t.Client != nil {
 		return t.Client
@@ -277,11 +287,51 @@ func (t *WebFetchTool) client() *http.Client {
 	if maxRedirects <= 0 {
 		maxRedirects = defaultWebFetchMaxRedirects
 	}
+	allowPrivate := t.AllowPrivate
+	dialer := &net.Dialer{
+		Timeout:   timeout,
+		KeepAlive: 30 * time.Second,
+		Control: func(network, address string, c syscall.RawConn) error {
+			if allowPrivate {
+				return nil
+			}
+			host, _, err := net.SplitHostPort(address)
+			if err != nil {
+				host = address
+			}
+			if ip := net.ParseIP(host); ip != nil {
+				if priv, why := isPrivateIP(ip); priv {
+					return fmt.Errorf("dial to private address %s blocked (%s)", address, why)
+				}
+			}
+			return nil
+		},
+	}
+	transport := &http.Transport{
+		Proxy:                 http.ProxyFromEnvironment,
+		DialContext:           dialer.DialContext,
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          100,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+	}
 	return &http.Client{
-		Timeout: timeout,
+		Timeout:   timeout,
+		Transport: transport,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if len(via) >= maxRedirects {
 				return fmt.Errorf("web_fetch: too many redirects (max %d)", maxRedirects)
+			}
+			// Re-check redirect destinations against the private-host
+			// guard. AllowPrivate authorizes both the initial hop and
+			// any redirect — the user explicitly opted in. Closes the
+			// SSRF case where an attacker server replies
+			// `Location: http://169.254.169.254/...`.
+			if !allowPrivate {
+				if priv, why := isPrivateHost(req.URL.Host); priv {
+					return fmt.Errorf("web_fetch: redirect to private host %q blocked (%s)", req.URL.Host, why)
+				}
 			}
 			return nil
 		},

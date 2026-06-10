@@ -34,9 +34,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
+	"syscall"
 	"time"
 	"unicode/utf8"
 )
@@ -199,7 +201,7 @@ func (t *HTTPRequestTool) Execute(ctx context.Context, input []byte) ([]byte, er
 		maxBody = defaultHTTPRequestMaxBodyBytes
 	}
 
-	client := t.client(timeout)
+	client := t.client(timeout, allowPrivate)
 
 	reqBody := io.Reader(nil)
 	if in.Body != "" {
@@ -253,7 +255,19 @@ func (t *HTTPRequestTool) Execute(ctx context.Context, input []byte) ([]byte, er
 
 // client returns the configured *http.Client or builds a default one
 // honoring Timeout + MaxRedirects.
-func (t *HTTPRequestTool) client(timeout time.Duration) *http.Client {
+//
+// CheckRedirect re-validates every hop's host against the private-host
+// guard so an attacker can't bounce us through a public 30x into a
+// loopback / link-local / RFC1918 target. It also strips sensitive
+// headers (Authorization, Cookie, Proxy-Authorization) on any
+// cross-host hop so credentials don't leak to a redirected origin.
+//
+// Dialer.Control closes the DNS-rebinding TOCTOU: the pre-flight
+// isPrivateHost lookup and the stdlib's dial-time lookup are not the
+// same query, so a hostile resolver could pin a public IP for the
+// check and a private IP for the connect. The Control hook inspects
+// the actual resolved IP at dial time and rejects it there.
+func (t *HTTPRequestTool) client(timeout time.Duration, allowPrivate bool) *http.Client {
 	if t.Client != nil {
 		return t.Client
 	}
@@ -261,11 +275,62 @@ func (t *HTTPRequestTool) client(timeout time.Duration) *http.Client {
 	if maxRedir <= 0 {
 		maxRedir = defaultHTTPRequestMaxRedirects
 	}
+	dialer := &net.Dialer{
+		Timeout:   timeout,
+		KeepAlive: 30 * time.Second,
+		Control: func(network, address string, c syscall.RawConn) error {
+			if allowPrivate {
+				return nil
+			}
+			host, _, err := net.SplitHostPort(address)
+			if err != nil {
+				host = address
+			}
+			if ip := net.ParseIP(host); ip != nil {
+				if priv, why := isPrivateIP(ip); priv {
+					return fmt.Errorf("dial to private address %s blocked (%s)", address, why)
+				}
+			}
+			return nil
+		},
+	}
+	transport := &http.Transport{
+		Proxy:                 http.ProxyFromEnvironment,
+		DialContext:           dialer.DialContext,
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          100,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+	}
 	return &http.Client{
-		Timeout: timeout,
+		Timeout:   timeout,
+		Transport: transport,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if len(via) >= maxRedir {
 				return fmt.Errorf("stopped after %d redirects", maxRedir)
+			}
+			// Strip sensitive headers whenever the redirect changes host.
+			// Go's stdlib already strips Authorization on host change but
+			// leaves Cookie/Proxy-Authorization in place; we are stricter
+			// because model-supplied Authorization headers are the common
+			// case and accidental cross-origin leaks are worse than a
+			// failed redirect.
+			if len(via) > 0 && !strings.EqualFold(req.URL.Host, via[0].URL.Host) {
+				req.Header.Del("Authorization")
+				req.Header.Del("Cookie")
+				req.Header.Del("Proxy-Authorization")
+			}
+			// Re-check redirect destinations against the private-host
+			// guard. allowPrivate authorizes both the initial hop and
+			// any redirect — the user explicitly opted in. The default
+			// (allow_private=false) path now refuses any 30x bounce to
+			// a private target, closing the SSRF case where an attacker
+			// server replies `Location: http://169.254.169.254/...`.
+			if !allowPrivate {
+				if priv, why := isPrivateHost(req.URL.Host); priv {
+					return fmt.Errorf("redirect to private host %q blocked (%s)", req.URL.Host, why)
+				}
 			}
 			return nil
 		},
