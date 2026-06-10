@@ -39,7 +39,7 @@ func eightFrames(active string) *frame.Config {
 	}
 }
 
-func TestInlinePicker_RenderThreeFrames_SingleLineRow(t *testing.T) {
+func TestInlinePicker_RenderThreeFrames_CardLayout(t *testing.T) {
 	m := newInlinePickerModel("carlos research", "what's on my calendar tomorrow?", threeFrames(), theme.Palette{})
 	m.width = 80
 	out := m.View()
@@ -54,15 +54,26 @@ func TestInlinePicker_RenderThreeFrames_SingleLineRow(t *testing.T) {
 	if !strings.Contains(out, "what's on my calendar tomorrow?") {
 		t.Errorf("missing prompt in view:\n%s", out)
 	}
-	// Footer mentions the 1-N hint.
-	if !strings.Contains(out, "1-3") {
-		t.Errorf("missing footer hint in view:\n%s", out)
+	// Footer mentions the new ←/→ hint + the 1-N range.
+	if !strings.Contains(out, "←/→") {
+		t.Errorf("footer should mention ←/→ navigation in view:\n%s", out)
 	}
-	// One frame per line would mean N+ lines of frames; the inline
-	// layout puts all three on one row. Total render shouldn't exceed
-	// a small number of lines (header + row + footer + edge newlines).
-	if got := strings.Count(out, "\n"); got > 6 {
-		t.Errorf("inline layout exceeded expected line count: got %d lines:\n%s", got, out)
+	if !strings.Contains(out, "1-3") {
+		t.Errorf("missing 1-N pick hint in view:\n%s", out)
+	}
+	// Card layout: one row of three cards at 80 cols. Each card is
+	// five rows tall (rounded border + 3 content rows). With header
+	// + blank + card-block + blank + footer + edge newlines we
+	// expect around 11 lines; pin a generous upper bound that still
+	// catches "every frame stacked vertically" regressions (that
+	// would be ~15+ for three frames).
+	if got := strings.Count(out, "\n"); got > 14 {
+		t.Errorf("card layout exceeded expected line count: got %d lines:\n%s", got, out)
+	}
+	// Three cards on the same row means the rounded top-border glyph
+	// appears three times on the same line.
+	if got := strings.Count(out, "╭"); got != len(threeFrames().List) {
+		t.Errorf("expected %d card top corners, got %d:\n%s", len(threeFrames().List), got, out)
 	}
 }
 
@@ -268,6 +279,137 @@ func TestInlinePicker_ActiveNameForFallbacks(t *testing.T) {
 	cfg = &frame.Config{}
 	if got := activeNameFor(cfg); got != "" {
 		t.Errorf("empty config: got %q want empty", got)
+	}
+}
+
+// TestInlinePicker_LeftRightNavigatesCards is the regression test
+// for the redesign: ←/→ must move the cursor through the cards in
+// reading order, mirroring how a sighted user reads a row of tiles.
+// This used to be ↑/↓ which felt jarring against a horizontal row.
+func TestInlinePicker_LeftRightNavigatesCards(t *testing.T) {
+	m := newInlinePickerModel("carlos research", "q", threeFrames(), theme.Palette{})
+	m.width = 80
+
+	// → from cursor 0 lands on cursor 1.
+	upd, _ := m.Update(tea.KeyMsg{Type: tea.KeyRight})
+	m = upd.(inlinePickerModel)
+	if m.cursor != 1 {
+		t.Errorf("→ from 0: got cursor=%d, want 1", m.cursor)
+	}
+	// → again → 2.
+	upd, _ = m.Update(tea.KeyMsg{Type: tea.KeyRight})
+	m = upd.(inlinePickerModel)
+	if m.cursor != 2 {
+		t.Errorf("→ from 1: got cursor=%d, want 2", m.cursor)
+	}
+	// → past end clamps.
+	upd, _ = m.Update(tea.KeyMsg{Type: tea.KeyRight})
+	m = upd.(inlinePickerModel)
+	if m.cursor != 2 {
+		t.Errorf("→ past end should clamp; got cursor=%d, want 2", m.cursor)
+	}
+	// ← walks back.
+	upd, _ = m.Update(tea.KeyMsg{Type: tea.KeyLeft})
+	m = upd.(inlinePickerModel)
+	if m.cursor != 1 {
+		t.Errorf("← from 2: got cursor=%d, want 1", m.cursor)
+	}
+	upd, _ = m.Update(tea.KeyMsg{Type: tea.KeyLeft})
+	m = upd.(inlinePickerModel)
+	if m.cursor != 0 {
+		t.Errorf("← from 1: got cursor=%d, want 0", m.cursor)
+	}
+	// ← past start clamps.
+	upd, _ = m.Update(tea.KeyMsg{Type: tea.KeyLeft})
+	m = upd.(inlinePickerModel)
+	if m.cursor != 0 {
+		t.Errorf("← past start should clamp; got cursor=%d, want 0", m.cursor)
+	}
+}
+
+// TestInlinePicker_VimHLBindingsMirror ←/→ — h/l are the vim-style
+// aliases users with that muscle memory expect on a horizontal row.
+func TestInlinePicker_VimHLBindingsMirror(t *testing.T) {
+	m := newInlinePickerModel("carlos", "q", threeFrames(), theme.Palette{})
+	m.width = 80
+	upd, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'l'}})
+	m = upd.(inlinePickerModel)
+	if m.cursor != 1 {
+		t.Errorf("l from 0: got cursor=%d, want 1", m.cursor)
+	}
+	upd, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'h'}})
+	m = upd.(inlinePickerModel)
+	if m.cursor != 0 {
+		t.Errorf("h from 1: got cursor=%d, want 0", m.cursor)
+	}
+}
+
+// TestInlinePicker_UpDownFallsBackToLeftRightOnSingleRow keeps the
+// arrow-key muscle memory working when there's only one row — ↑/↓
+// would otherwise be no-ops, leaving "I pressed an arrow and
+// nothing happened" as the experience for a user reaching for the
+// old binding. Falls back to ← / → respectively.
+func TestInlinePicker_UpDownFallsBackToLeftRightOnSingleRow(t *testing.T) {
+	m := newInlinePickerModel("carlos", "q", threeFrames(), theme.Palette{})
+	m.width = 80 // 3 frames fit one row
+	// ↓ behaves like →
+	upd, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m = upd.(inlinePickerModel)
+	if m.cursor != 1 {
+		t.Errorf("↓ single-row fallback: got cursor=%d, want 1", m.cursor)
+	}
+	upd, _ = m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	m = upd.(inlinePickerModel)
+	if m.cursor != 0 {
+		t.Errorf("↑ single-row fallback: got cursor=%d, want 0", m.cursor)
+	}
+}
+
+// TestInlinePicker_UpDownJumpsRowsOnMultiRow pins the multi-row
+// behavior: ↑/↓ jumps a full row at a time so eight frames laid out
+// 4-and-4 can be navigated by row in a single keystroke. The
+// perRow() helper is what the renderer uses, so the keymap and the
+// visible layout stay in lockstep.
+func TestInlinePicker_UpDownJumpsRowsOnMultiRow(t *testing.T) {
+	m := newInlinePickerModel("carlos", "q", eightFrames("personal"), theme.Palette{})
+	m.width = 80
+	per := m.perRow()
+	if per < 1 || per >= len(m.frames) {
+		t.Fatalf("test setup expected wrap-inducing perRow; got %d for %d frames", per, len(m.frames))
+	}
+	// ↓ from 0 lands on first card of the second row.
+	upd, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m = upd.(inlinePickerModel)
+	if m.cursor != per {
+		t.Errorf("↓ should jump %d cards (perRow); got cursor=%d", per, m.cursor)
+	}
+	// ↑ returns to row 0.
+	upd, _ = m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	m = upd.(inlinePickerModel)
+	if m.cursor != 0 {
+		t.Errorf("↑ should return to row 0; got cursor=%d", m.cursor)
+	}
+}
+
+// TestInlinePicker_RenderManyFramesWrapsToMultipleRows ensures a
+// frame count that overflows a single row produces a multi-row
+// card grid rather than spilling off the right edge. Pins by
+// counting the rounded top-border corners (one per card) and
+// verifying we got >1 row worth of newlines between them.
+func TestInlinePicker_RenderManyFramesWrapsToMultipleRows(t *testing.T) {
+	m := newInlinePickerModel("carlos please", "q", eightFrames("personal"), theme.Palette{})
+	m.width = 80
+	out := m.View()
+	corners := strings.Count(out, "╭")
+	if corners != 8 {
+		t.Errorf("expected 8 cards, got %d top-corner glyphs", corners)
+	}
+	// More than one row → at least one blank line between rows of
+	// cards inside the grid block. Easiest signal: more than 14
+	// total lines (a single row of 8 cards plus header/footer would
+	// be ~10 lines; a wrapped grid adds ~5 more).
+	if got := strings.Count(out, "\n"); got < 14 {
+		t.Errorf("8-frame grid should wrap to multiple rows; got %d lines:\n%s", got, out)
 	}
 }
 

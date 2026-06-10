@@ -3,18 +3,35 @@
 // so it scrolls into the user's terminal history once a selection is
 // made, matching the inline-status feel of research_status.go.
 //
-// Visual shape at 80x24 with 5 frames:
+// Visual shape at 80x24 with 3 frames:
 //
-//	  carlos research · "what's on my calendar tomorrow?"
-//	   ◉ 1 personal     ▣ 2 work     ⛰ 3 ludus     ◈ 4 research     ✦ 5 writing
-//	  pick a frame · 1-5 or ↑/↓/enter · esc cancel
+//	carlos research · "what's on my calendar tomorrow?"
 //
-// Narrow-terminal fallback (< 60 cols) collapses the inline row to a
-// vertical column, capped at 7 visible frames with a "…" sentinel.
+//	╭───────────╮  ╭───────────╮  ╭───────────╮
+//	│     ◉     │  │     ▣     │  │     ⛰     │
+//	│  personal │  │   work    │  │   ludus   │
+//	│    [1]    │  │    [2]    │  │    [3]    │
+//	╰───────────╯  ╰───────────╯  ╰───────────╯
+//
+//	←/→ navigate · 1-3 pick · enter confirm · esc cancel
+//
+// The selected card carries an accent-colored border and bold name;
+// non-selected cards use a muted border with dim names. Frames wrap
+// to additional rows when they exceed the per-row capacity at the
+// current terminal width.
+//
+// Narrow-terminal fallback (< 60 cols) collapses to a vertical
+// column, capped at 7 visible frames with a "…" sentinel — the
+// horizontal-card layout is sized for room and the vertical column
+// stays readable when cards would crush.
 //
 // Selection input:
 //   - 1-9: jump-pick the Nth frame.
-//   - ↑/↓ or j/k: move the cursor.
+//   - ←/→ or h/l: move the cursor between cards. Wraps across rows
+//     so reading left-to-right always advances by one frame.
+//   - ↑/↓ or j/k: jump by one row in the multi-row case; degenerate
+//     to ←/→ when there's only one row (so users who reach for the
+//     old binding still land on a useful action).
 //   - enter: confirm the cursor position.
 //   - esc / ctrl+c: cancel (returns errFramePickerCancelled).
 //
@@ -207,13 +224,35 @@ func (m inlinePickerModel) handleKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	case "enter":
 		return m, tea.Quit
-	case "up", "k":
+	case "left", "h":
 		if m.cursor > 0 {
 			m.cursor--
 		}
 		return m, nil
-	case "down", "j":
+	case "right", "l":
 		if m.cursor < len(m.frames)-1 {
+			m.cursor++
+		}
+		return m, nil
+	case "up", "k":
+		// In a multi-row layout ↑ jumps one row at a time so a
+		// user with 8 frames laid out 4-and-4 can land on the
+		// "other row" in one keystroke. When only one row exists
+		// (the common case for 3-5 frames at 80 cols), fall back
+		// to ←-equivalent so the muscle-memory keystroke still
+		// does something useful instead of being a no-op.
+		perRow := m.perRow()
+		if perRow > 0 && m.cursor >= perRow {
+			m.cursor -= perRow
+		} else if m.cursor > 0 {
+			m.cursor--
+		}
+		return m, nil
+	case "down", "j":
+		perRow := m.perRow()
+		if perRow > 0 && m.cursor+perRow < len(m.frames) {
+			m.cursor += perRow
+		} else if m.cursor < len(m.frames)-1 {
 			m.cursor++
 		}
 		return m, nil
@@ -230,6 +269,18 @@ func (m inlinePickerModel) handleKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// perRow reports the number of cards the current width fits per row.
+// Called by the ↑/↓ key handler to translate a row-jump into a
+// cursor delta. The renderer uses cardsPerRow with the same
+// arithmetic so the visible layout and the keymap stay in lockstep.
+func (m inlinePickerModel) perRow() int {
+	w := m.width
+	if w <= 0 {
+		w = 80
+	}
+	return cardsPerRow(w, len(m.frames))
+}
+
 func (m inlinePickerModel) View() string {
 	w := m.width
 	if w <= 0 {
@@ -241,8 +292,43 @@ func (m inlinePickerModel) View() string {
 	return m.renderInline(w)
 }
 
-// renderInline is the standard 3-line layout. Bold command name, italic
-// quoted prompt, frame row with accented glyphs, dim footer.
+// Card-layout constants. cardInnerW is the content width inside the
+// border; cardW is the outer width. cardGap is the horizontal spacing
+// between adjacent cards.
+const (
+	cardInnerW = 11
+	cardW      = cardInnerW + 2 // +2 for the left/right border columns
+	cardGap    = 2
+)
+
+// cardsPerRow reports how many cards fit at the supplied terminal
+// width, capped at the actual frame count so a single-frame picker
+// doesn't compute "fits 5 per row, render 1, cursor is off by 4."
+// Always returns at least 1 so the layout never goes degenerate.
+func cardsPerRow(w, total int) int {
+	if total <= 0 {
+		return 0
+	}
+	avail := w - 2 // leave a 1-col gutter on each side
+	if avail < cardW {
+		return 1
+	}
+	// First card costs cardW; each additional costs cardW + cardGap.
+	n := 1 + (avail-cardW)/(cardW+cardGap)
+	if n < 1 {
+		n = 1
+	}
+	if n > total {
+		n = total
+	}
+	return n
+}
+
+// renderInline is the card-grid layout: header, one or more rows of
+// horizontal cards, footer. The selected card carries an
+// accent-colored rounded border; non-selected cards carry a muted
+// border. Wraps to additional rows when the frame count exceeds the
+// per-row capacity at the current width.
 func (m inlinePickerModel) renderInline(w int) string {
 	bold := lipgloss.NewStyle().Bold(true).Foreground(m.pal.Accent)
 	italic := lipgloss.NewStyle().Italic(true).Foreground(m.pal.Muted)
@@ -251,42 +337,97 @@ func (m inlinePickerModel) renderInline(w int) string {
 	header := bold.Render(m.cmdName) + " " + dim.Render("·") + " " +
 		italic.Render(quoteForHeader(m.prompt, w-len(m.cmdName)-6))
 
-	row := m.renderFrameRow()
-	footer := dim.Render(fmt.Sprintf("pick a frame · 1-%d or ↑/↓/enter · esc cancel", len(m.frames)))
+	grid := m.renderCardGrid(w)
+	footer := dim.Render(fmt.Sprintf("←/→ navigate · 1-%d pick · enter confirm · esc cancel", len(m.frames)))
 
-	return "\n" + header + "\n" + row + "\n" + footer + "\n"
+	return "\n" + header + "\n\n" + grid + "\n\n" + footer + "\n"
 }
 
-// renderFrameRow paints the inline frames as
-// "<glyph> <num> <name>" separated by three spaces. The cursor frame
-// gets a bold name; non-cursor frames render dim. The glyph keeps its
-// frame-accent color in both states so the colour-coded glance still
-// works even when the cursor moves off.
-func (m inlinePickerModel) renderFrameRow() string {
-	dim := lipgloss.NewStyle().Foreground(m.pal.Subtle)
-	cells := make([]string, 0, len(m.frames))
-	for i, f := range m.frames {
-		glyph := f.Glyph
-		if glyph == "" {
-			glyph = frame.DefaultGlyphFor(f.Name)
-		}
-		col := frame.AccentColor(f.Accent)
-		glyphStyle := lipgloss.NewStyle()
-		if col != "" {
-			glyphStyle = glyphStyle.Foreground(col)
-		}
-		nameStyle := dim
-		if i == m.cursor {
-			nameStyle = lipgloss.NewStyle().Bold(true).Foreground(m.pal.Accent)
-		}
-		num := fmt.Sprintf("%d", i+1)
-		if i >= 9 {
-			num = "·"
-		}
-		cells = append(cells, glyphStyle.Render(glyph)+" "+dim.Render(num)+" "+nameStyle.Render(f.Name))
+// renderCardGrid composes the cards into rows sized by cardsPerRow.
+// Within a row, cards join horizontally with cardGap spaces between;
+// rows themselves stack vertically with a single blank-line gap so
+// multi-row layouts breathe.
+func (m inlinePickerModel) renderCardGrid(w int) string {
+	perRow := cardsPerRow(w, len(m.frames))
+	if perRow == 0 {
+		return ""
 	}
-	sep := strings.Repeat(" ", 3)
-	return " " + strings.Join(cells, sep)
+	gap := strings.Repeat(" ", cardGap)
+	rows := make([]string, 0, (len(m.frames)+perRow-1)/perRow)
+	for start := 0; start < len(m.frames); start += perRow {
+		end := start + perRow
+		if end > len(m.frames) {
+			end = len(m.frames)
+		}
+		cards := make([]string, 0, (end-start)*2-1)
+		for i := start; i < end; i++ {
+			if i > start {
+				cards = append(cards, gap)
+			}
+			cards = append(cards, m.renderCard(i))
+		}
+		rows = append(rows, lipgloss.JoinHorizontal(lipgloss.Top, cards...))
+	}
+	return strings.Join(rows, "\n\n")
+}
+
+// renderCard paints one frame as a bordered 3-line tile: glyph, name,
+// numeric badge. Selected: accent-colored rounded border, bold name,
+// bracketed badge. Non-selected: muted border, dim name, plain
+// numeric badge. Glyph always carries its frame-accent colour so the
+// colour-coded glance still works at rest.
+func (m inlinePickerModel) renderCard(i int) string {
+	f := m.frames[i]
+	isCursor := i == m.cursor
+
+	glyph := f.Glyph
+	if glyph == "" {
+		glyph = frame.DefaultGlyphFor(f.Name)
+	}
+	glyphStyle := lipgloss.NewStyle()
+	if col := frame.AccentColor(f.Accent); col != "" {
+		glyphStyle = glyphStyle.Foreground(col)
+	}
+	glyphStyle = glyphStyle.Bold(true)
+
+	nameStyle := lipgloss.NewStyle().Foreground(m.pal.Subtle)
+	if isCursor {
+		nameStyle = lipgloss.NewStyle().Foreground(m.pal.Accent).Bold(true)
+	}
+	name := f.Name
+	if lipgloss.Width(name) > cardInnerW-2 {
+		name = name[:cardInnerW-3] + "…"
+	}
+
+	num := fmt.Sprintf("%d", i+1)
+	if i >= 9 {
+		num = "·"
+	}
+	if isCursor {
+		num = "[" + num + "]"
+	}
+	numStyle := lipgloss.NewStyle().Foreground(m.pal.Muted)
+	if isCursor {
+		numStyle = lipgloss.NewStyle().Foreground(m.pal.Accent).Bold(true)
+	}
+
+	body := lipgloss.JoinVertical(
+		lipgloss.Center,
+		glyphStyle.Render(glyph),
+		nameStyle.Render(name),
+		numStyle.Render(num),
+	)
+
+	borderColor := m.pal.Subtle
+	if isCursor {
+		borderColor = m.pal.Accent
+	}
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(borderColor).
+		Width(cardInnerW).
+		Align(lipgloss.Center).
+		Render(body)
 }
 
 // renderVertical is the < 60-col fallback. One frame per line, cursor
