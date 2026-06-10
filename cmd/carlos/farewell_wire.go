@@ -90,14 +90,34 @@ func printFarewell(panel *farewell.Panel, userName string) {
 // drag.
 const brewProbeTimeout = 2 * time.Second
 
-// runBrewCheck is the production check-runner: bounded ctx + brew
-// outdated lookup + queue the ⬆️ message when carlos is named.
-func runBrewCheck(panel *farewell.Panel) {
+// runBrewCheck is the production check-runner: bounded ctx, then
+//
+//  1. Probe the homebrew tap directly via raw.githubusercontent.com
+//     and compare the live formula version against the running
+//     binary's version. This is authoritative — independent of
+//     brew's local cache — so it surfaces updates even when the
+//     user hasn't run `brew update` recently or has
+//     HOMEBREW_NO_AUTO_UPDATE set.
+//  2. If the remote probe fails (offline, GitHub raw flaky), fall
+//     back to `brew outdated` which reads brew's local cache.
+//     Better to surface a stale notice than no notice.
+//
+// The message advises `brew update && brew upgrade carlos` — the
+// `brew update` half is important because most users hit this
+// notice in the "I never run `brew update` manually" mode where
+// `brew upgrade` alone would resolve against the same stale local
+// cache that produced the notice.
+func runBrewCheck(panel *farewell.Panel, currentVersion string) {
 	ctx, cancel := context.WithTimeout(context.Background(), brewProbeTimeout)
 	defer cancel()
+	if newer, ok := farewell.CheckTapUpdate(ctx, currentVersion, ""); ok {
+		panel.AddWithDetail("⬆️", "carlos "+newer+" is available",
+			"run `brew update && brew upgrade carlos` (restart the daemon to pick it up)")
+		return
+	}
 	if farewell.CheckBrewUpdate(ctx, "carlos") {
 		panel.AddWithDetail("⬆️", "update available",
-			"run `brew upgrade carlos` (restart the daemon to pick it up)")
+			"run `brew update && brew upgrade carlos` (restart the daemon to pick it up)")
 	}
 }
 
@@ -113,7 +133,10 @@ func runBrewCheck(panel *farewell.Panel) {
 // so unit tests can inject the detector + check function without
 // shelling out to a real brew.
 func checkBrewAtExit(panel *farewell.Panel) {
-	checkBrewAtExitWith(panel, farewell.IsBrewInstall, runBrewCheck)
+	current := versionString()
+	checkBrewAtExitWith(panel, farewell.IsBrewInstall, func(p *farewell.Panel) {
+		runBrewCheck(p, current)
+	})
 }
 
 // checkBrewAtExitWith is the testable seam behind checkBrewAtExit.

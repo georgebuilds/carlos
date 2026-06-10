@@ -239,15 +239,17 @@ func TestCheckBrewAtExitWith_NilPanelIsNoOp(t *testing.T) {
 }
 
 // TestRunBrewCheck_NoUpdateSkipsQueue is the negative-case wiring:
-// the production check function quietly returns when brew reports
-// nothing outdated. Forcing brew to be absent (via PATH manipulation)
-// gives us a deterministic "no update" reply.
+// the production check function quietly returns when both the tap
+// probe and brew report nothing outdated. Forcing brew to be absent
+// (via PATH manipulation) handles the local-cache leg; passing a
+// "dev" current version disables the remote tap probe (it bails on
+// non-semver builds) so the test is fully offline-safe.
 func TestRunBrewCheck_NoUpdateSkipsQueue(t *testing.T) {
 	t.Setenv("PATH", "/nonexistent-dir-for-test")
 	panel := farewell.New()
-	runBrewCheck(panel)
+	runBrewCheck(panel, "dev")
 	if panel.Len() != 0 {
-		t.Errorf("no-brew env should not queue a message; got %d", panel.Len())
+		t.Errorf("no-brew env + dev build should not queue a message; got %d", panel.Len())
 	}
 }
 
