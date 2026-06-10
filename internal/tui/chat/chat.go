@@ -1093,6 +1093,18 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		var cmd tea.Cmd
 		m.ta, cmd = m.ta.Update(msg)
+		// Scrub SGR mouse-report escapes that intermittently leak
+		// into the textarea when the terminal flushes a buffered
+		// mouse event during a bubbletea state transition (e.g.
+		// right after an alt+m toggle or while the alt-screen is
+		// tearing down). The leaked bytes look like "[<64;96;7M"
+		// in the input — visible-but-unwanted text the user has to
+		// backspace out by hand. Strip them in-place so the
+		// composer just shows whatever the user actually typed.
+		if cleaned := scrubMouseReportEscapes(m.ta.Value()); cleaned != m.ta.Value() {
+			m.ta.SetValue(cleaned)
+			m.ta.CursorEnd()
+		}
 		// Refresh the slash-mode suggest state after every textarea
 		// edit so the ghost text + hint band track what the user just
 		// typed. refresh is a no-op when the input doesn't start with
