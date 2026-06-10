@@ -107,6 +107,19 @@ type Options struct {
 	Logger *slog.Logger
 }
 
+// fireLogger is the subset of *schedule.FireLog the tick path consumes.
+// Exists as an interface (rather than holding the concrete pointer
+// directly) so tests can stub Append failures without touching the file
+// system. Production wires the *schedule.FireLog returned by
+// schedule.OpenFireLog; the tick path treats a nil fireLogger as "no
+// suppression journal" and falls back to plain Due() behaviour.
+type fireLogger interface {
+	Has(name string, slot time.Time) bool
+	Append(name string, slot time.Time) error
+	Close() error
+	Path() string
+}
+
 // Daemon is one running carlos daemon process: it owns the UDS listener,
 // the per-process supervisor, the schedule list, and the main loop.
 //
@@ -136,6 +149,14 @@ type Daemon struct {
 	// spawner is what the tick loop calls. Either supervisor (cast to
 	// Spawner) in production or opts.Spawner in tests.
 	spawner Spawner
+
+	// fireLog is the crash-window double-fire suppression journal. The
+	// tick path writes (schedule name, slot) to it BEFORE invoking the
+	// scheduled action so a process restart that replays the log skips
+	// the recorded slot rather than re-running it. nil when the journal
+	// could not be opened at boot; the tick path falls back to plain
+	// Due() in that case (loud-warn at boot, never refuses to start).
+	fireLog fireLogger
 
 	listener net.Listener
 
@@ -259,6 +280,23 @@ func (d *Daemon) Run(ctx context.Context) error {
 		return err
 	}
 
+	// 3a. Open the fire-log journal. Sits next to state.db in production
+	// and next to the test config in Spawner-mode tests. A failure here
+	// is non-fatal: the daemon falls back to nil-fireLog (plain Due()
+	// behaviour) and loud-warns so the operator can see the journal is
+	// off. We refuse to make the journal a startup gate; better to run
+	// without crash-window suppression than to refuse to schedule.
+	if path := d.fireLogPath(); path != "" {
+		fl, err := schedule.OpenFireLog(path)
+		if err != nil {
+			d.slogger().Warn("firelog open failed, falling back to plain Due() (crash-window suppression off)", "path", path, "err", err)
+		} else {
+			d.mu.Lock()
+			d.fireLog = fl
+			d.mu.Unlock()
+		}
+	}
+
 	// 4. Signal handlers - derive a cancellable ctx so SIGTERM and
 	//    the IPC stop verb both unwind through the same path.
 	runCtx, cancel := context.WithCancel(ctx)
@@ -345,6 +383,12 @@ func (d *Daemon) Run(ctx context.Context) error {
 		select {
 		case <-runCtx.Done():
 			_ = d.listener.Close()
+			d.mu.Lock()
+			fl := d.fireLog
+			d.mu.Unlock()
+			if fl != nil {
+				_ = fl.Close()
+			}
 			if d.log != nil {
 				_ = d.log.Close()
 			}
@@ -474,11 +518,40 @@ func (d *Daemon) tick(ctx context.Context) {
 	d.mu.Lock()
 	snapshot := make([]schedule.Schedule, len(d.schedules))
 	copy(snapshot, d.schedules)
+	fireLog := d.fireLog
 	d.mu.Unlock()
 
 	for _, s := range snapshot {
 		if !s.Due(now) {
 			continue
+		}
+		// Crash-window double-fire suppression: consult the fire-log
+		// journal before invoking the action, and durably record the
+		// (name, slot) pair BEFORE invoking it. A restart mid-action
+		// then replays the log and skips re-firing the same slot.
+		//
+		// When fireLog is nil (open failed at boot) the journal is
+		// disabled and we run with plain Due() semantics. The slot
+		// computation still happens but is not persisted, so a crash
+		// during the action will double-fire on restart - that's the
+		// legacy behaviour and matches what the boot-time warning
+		// already told the operator.
+		slot := s.SlotFor(now)
+		if fireLog != nil {
+			if !slot.IsZero() && fireLog.Has(s.Name, slot) {
+				// Already fired this slot in a previous process
+				// instance (likely the one that crashed). Stay quiet.
+				continue
+			}
+			if !slot.IsZero() {
+				if err := fireLog.Append(s.Name, slot); err != nil {
+					// Append must be durable before the action runs.
+					// If we can't get a durable record, skip the fire
+					// rather than risk a double-fire on restart.
+					d.slogger().Warn("firelog append failed, skipping fire to preserve at-most-once", "name", s.Name, "err", err)
+					continue
+				}
+			}
 		}
 		ok := d.fire(ctx, s)
 		// Persist the update - both in-memory and on-disk.
@@ -882,6 +955,35 @@ func timePtr(t time.Time) *time.Time {
 		return nil
 	}
 	return &t
+}
+
+// fireLogPath picks the on-disk path for the fire-log journal. In
+// production this is next to state.db (both live under ~/.carlos by
+// convention). In Spawner-mode tests StateDBPath is empty, so we fall
+// back to the config directory so the journal still has somewhere
+// stable to live. An empty return means we found no usable directory
+// and the journal stays disabled.
+func (d *Daemon) fireLogPath() string {
+	if d.opts.StateDBPath != "" {
+		return filepath.Join(filepath.Dir(d.opts.StateDBPath), "fire.log")
+	}
+	if d.opts.ConfigPath != "" {
+		return filepath.Join(filepath.Dir(d.opts.ConfigPath), "fire.log")
+	}
+	return ""
+}
+
+// firelogPathLocked returns the open fire-log's path under d.mu. Used by
+// tests to assert the journal landed where the boot path intended
+// without racing the assignment in Run. Returns "" when no journal is
+// open.
+func (d *Daemon) firelogPathLocked() string {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.fireLog == nil {
+		return ""
+	}
+	return d.fireLog.Path()
 }
 
 // EnsureCarlosDir creates ~/.carlos with mode 0700 if it does not
