@@ -42,6 +42,9 @@ type ArxivBackend struct {
 	Endpoint    string        // default https://export.arxiv.org/api/query
 	UserAgent   string        // default "carlos/web_search (https://github.com/georgebuilds/carlos)"
 	MinInterval time.Duration // default 3*time.Second, the arxiv guideline
+	// RetryPolicy overrides the shared default. Zero value uses
+	// defaultRetryPolicy(); tests inject a zero-jitter policy.
+	RetryPolicy *retryPolicy
 
 	mu         sync.Mutex
 	lastCallAt time.Time
@@ -118,19 +121,27 @@ func (a *ArxivBackend) Search(ctx context.Context, query string, max int) ([]Sea
 	q.Set("sortOrder", "descending")
 	u.RawQuery = q.Encode()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
-	if err != nil {
-		return nil, fmt.Errorf("build request: %w", err)
-	}
-	req.Header.Set("Accept", "application/atom+xml")
-	req.Header.Set("User-Agent", ua)
-
 	cli := a.Client
 	if cli == nil {
 		cli = http.DefaultClient
 	}
-	resp, err := cli.Do(req)
+	policy := defaultRetryPolicy()
+	if a.RetryPolicy != nil {
+		policy = *a.RetryPolicy
+	}
+	resp, err := doWithRetry(ctx, policy, func(rctx context.Context) (*http.Response, error) {
+		req, err := http.NewRequestWithContext(rctx, http.MethodGet, u.String(), nil)
+		if err != nil {
+			return nil, fmt.Errorf("build request: %w", err)
+		}
+		req.Header.Set("Accept", "application/atom+xml")
+		req.Header.Set("User-Agent", ua)
+		return cli.Do(req)
+	})
 	if err != nil {
+		if resp != nil {
+			_ = resp.Body.Close()
+		}
 		return nil, fmt.Errorf("http: %w", err)
 	}
 	defer resp.Body.Close()
@@ -228,7 +239,7 @@ func NewArxivSearchTool() *ArxivSearchTool {
 func (*ArxivSearchTool) Name() string { return "arxiv_search" }
 
 func (*ArxivSearchTool) Description() string {
-	return "Search arxiv.org for scientific papers / preprints. Returns ranked title + arxiv URL + abstract snippet results. Use for ML/CS/physics/math research and preprint hunts. Slow (~3s/call due to arxiv's rate limit). Follow up with web_fetch to read the PDF or HTML version."
+	return "Search arxiv.org for scientific papers / preprints. Returns ranked title + arxiv URL + abstract snippet results. Use for ML/CS/physics/math research and preprint hunts. Slow (~3s/call due to arxiv's rate limit). Prefer batched queries (`queries: [\"a\", \"b\", \"c\"]`) when researching multiple terms - they are serialized internally with the required 3s spacing so the wall time is roughly N*3s. Follow up with web_fetch to read the PDF or HTML version."
 }
 
 func (*ArxivSearchTool) Schema() []byte {
@@ -237,20 +248,25 @@ func (*ArxivSearchTool) Schema() []byte {
 		"properties": {
 			"query": {
 				"type": "string",
-				"description": "arxiv search query. Use natural language or arxiv field prefixes (e.g. 'ti:transformer', 'au:hinton'). Plain queries match across all fields."
+				"description": "Single arxiv search query. Use natural language or arxiv field prefixes (e.g. 'ti:transformer', 'au:hinton'). Plain queries match across all fields. Pass either query or queries, not both."
+			},
+			"queries": {
+				"type": "array",
+				"items": {"type": "string"},
+				"description": "Batch of arxiv search queries. Each runs sequentially with arxiv's required 3s spacing between calls and results come back keyed by query. Prefer this when researching multiple terms."
 			},
 			"max_results": {
 				"type": "integer",
-				"description": "1-20, default 10. Each call is rate-limited to 1 request per 3 seconds against arxiv."
+				"description": "1-20 per query, default 10. Each call is rate-limited to 1 request per 3 seconds against arxiv."
 			}
-		},
-		"required": ["query"]
+		}
 	}`)
 }
 
 type arxivSearchInput struct {
-	Query      string `json:"query"`
-	MaxResults int    `json:"max_results"`
+	Query      string   `json:"query"`
+	Queries    []string `json:"queries"`
+	MaxResults int      `json:"max_results"`
 }
 
 type arxivSearchOutput struct {
@@ -259,21 +275,29 @@ type arxivSearchOutput struct {
 	Results []SearchResult `json:"results"`
 }
 
+// arxivBatchedOutput is the response shape when `queries` is used.
+type arxivBatchedOutput struct {
+	Backend string                     `json:"backend"`
+	Queries []string                   `json:"queries"`
+	Blocks  []batchedSearchResultBlock `json:"blocks"`
+}
+
 // Execute validates input, calls the backend under a generous ctx
-// timeout (the rate limit alone can eat ~3s), wraps results into the
-// JSON the model sees.
+// timeout (the rate limit alone can eat ~3s per call), wraps results
+// into the JSON the model sees. Batched mode runs queries serially
+// because the backend's own rate-limit gate would serialize them
+// anyway - making that visible at this layer documents the
+// constraint.
 func (t *ArxivSearchTool) Execute(ctx context.Context, input []byte) ([]byte, error) {
 	if t.Backend == nil {
 		return nil, errors.New("arxiv_search: no backend configured")
 	}
+	queries, isBatch, err := parseQueries("arxiv_search", input)
+	if err != nil {
+		return nil, err
+	}
 	var in arxivSearchInput
-	if err := json.Unmarshal(input, &in); err != nil {
-		return nil, fmt.Errorf("arxiv_search: parse input: %w", err)
-	}
-	q := strings.TrimSpace(in.Query)
-	if q == "" {
-		return nil, errors.New("arxiv_search: empty query")
-	}
+	_ = json.Unmarshal(input, &in) // already validated; this just pulls max_results
 	max := in.MaxResults
 	if max <= 0 {
 		max = defaultArxivSearchMaxResults
@@ -286,18 +310,38 @@ func (t *ArxivSearchTool) Execute(ctx context.Context, input []byte) ([]byte, er
 	if timeout == 0 {
 		timeout = defaultArxivSearchTimeout
 	}
+	// In batch mode, scale the budget with the number of queries plus
+	// the per-call 3s gate so a long batch doesn't trip the timeout
+	// before the gate releases.
+	if isBatch && len(queries) > 1 {
+		timeout = timeout + time.Duration(len(queries))*defaultArxivMinInterval
+	}
 	cctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	results, err := t.Backend.Search(cctx, q, max)
-	if err != nil {
-		return nil, fmt.Errorf("arxiv_search/%s: %w", t.Backend.Name(), err)
+	if !isBatch {
+		q := queries[0]
+		results, err := t.Backend.Search(cctx, q, max)
+		if err != nil {
+			return nil, fmt.Errorf("arxiv_search/%s: %w", t.Backend.Name(), err)
+		}
+		out := arxivSearchOutput{
+			Backend: t.Backend.Name(),
+			Query:   q,
+			Results: results,
+		}
+		return json.Marshal(out)
 	}
 
-	out := arxivSearchOutput{
+	// Serial batch. The backend's own MinInterval gate enforces the
+	// 3s spacing internally; the helper just sequences the calls.
+	blocks := runSerialBatch(cctx, queries, func(rctx context.Context, q string) ([]SearchResult, error) {
+		return t.Backend.Search(rctx, q, max)
+	})
+	out := arxivBatchedOutput{
 		Backend: t.Backend.Name(),
-		Query:   q,
-		Results: results,
+		Queries: queries,
+		Blocks:  blocks,
 	}
 	return json.Marshal(out)
 }

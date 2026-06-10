@@ -180,7 +180,7 @@ func selectPrimaryBackend() SearchBackend {
 func (*WebSearchTool) Name() string { return "web_search" }
 
 func (*WebSearchTool) Description() string {
-	return "Search the web across multiple sources (general web + arxiv + wikipedia by default) and return ranked title + URL + snippet results. Each result includes a `source` field naming the backend that produced it. Use for current events, fact-checking claims, finding documentation, locating canonical sources. Pass `backends: [\"arxiv\"]` (or similar subset) to restrict the query when you know which source you want — saves time and avoids noise. The actual content of pages requires a follow-up web_fetch."
+	return "Search the web across multiple sources (general web + arxiv + wikipedia by default) and return ranked title + URL + snippet results. Each result includes a `source` field naming the backend that produced it. Use for current events, fact-checking claims, finding documentation, locating canonical sources. Prefer batched queries (`queries: [\"a\", \"b\", \"c\"]`) when researching multiple terms in one call: each query fans out across the configured backends and results are returned keyed by query, so one tool call covers several searches. Pass `backends: [\"arxiv\"]` (or similar subset) to restrict the query when you know which source you want, which saves time and avoids noise. The actual content of pages requires a follow-up web_fetch."
 }
 
 func (*WebSearchTool) Schema() []byte {
@@ -189,11 +189,16 @@ func (*WebSearchTool) Schema() []byte {
 		"properties": {
 			"query": {
 				"type": "string",
-				"description": "The search query. Be specific; phrase as you'd type it into Google."
+				"description": "Single search query. Be specific; phrase as you'd type it into Google. Pass either query or queries, not both."
+			},
+			"queries": {
+				"type": "array",
+				"items": {"type": "string"},
+				"description": "Batch of search queries. Each one fans out across the configured backends and results come back keyed by query in a blocks envelope. Prefer this when researching multiple terms - one tool call replaces N."
 			},
 			"max_results": {
 				"type": "integer",
-				"description": "1-20, default 10. Smaller is usually better - pick the top few and follow up with web_fetch."
+				"description": "1-20 per query, default 10. Smaller is usually better - pick the top few and follow up with web_fetch."
 			},
 			"backends": {
 				"type": "array",
@@ -204,13 +209,13 @@ func (*WebSearchTool) Schema() []byte {
 				"type": "integer",
 				"description": "Optional per-backend result cap. 0 or absent uses max_results for each backend (then interleave-merges and trims). Set lower to keep any one backend from dominating."
 			}
-		},
-		"required": ["query"]
+		}
 	}`)
 }
 
 type webSearchInput struct {
 	Query         string   `json:"query"`
+	Queries       []string `json:"queries"`
 	MaxResults    int      `json:"max_results"`
 	Backends      []string `json:"backends,omitempty"`
 	PerBackendMax int      `json:"per_backend_max,omitempty"`
@@ -224,22 +229,49 @@ type webSearchOutput struct {
 	PartialFailures map[string]string `json:"partial_failures,omitempty"`
 }
 
+// webSearchBatchedBlock is one entry in the batched output envelope.
+// Mirrors the single-query webSearchOutput but per-query: each block
+// carries its own PartialFailures map so the model can tell which
+// query had which backend hiccup.
+type webSearchBatchedBlock struct {
+	Query           string            `json:"query"`
+	Results         []SearchResult    `json:"results"`
+	PartialFailures map[string]string `json:"partial_failures,omitempty"`
+	Error           string            `json:"error,omitempty"`
+}
+
+// webSearchBatchedOutput is the response shape when `queries` is used.
+type webSearchBatchedOutput struct {
+	Backend  string                  `json:"backend"`
+	Backends []string                `json:"backends,omitempty"`
+	Queries  []string                `json:"queries"`
+	Blocks   []webSearchBatchedBlock `json:"blocks"`
+}
+
+// webSearchBatchConcurrency is the in-flight cap for batched
+// web_search. Each query already fans out across N backends inside
+// MultiBackend, so we keep the outer batch cap small (2) to avoid
+// hammering any one backend with concurrent queries. arxiv's internal
+// rate-limit gate is the real bottleneck for batches that include the
+// arxiv backend; the outer cap shapes only the non-arxiv backends.
+const webSearchBatchConcurrency = 2
+
 // Execute validates input, calls the backend, returns the JSON the
 // model sees. Backend errors propagate with the backend name in the
 // wrapped error so a "brave: rate limited" or "duckduckgo: parse
-// failure" reads at a glance.
+// failure" reads at a glance. Batched mode runs each query through
+// the same backend tree under a small concurrency cap; one query's
+// failure does not abort the others.
 func (t *WebSearchTool) Execute(ctx context.Context, input []byte) ([]byte, error) {
 	if t.Backend == nil {
 		return nil, errors.New("web_search: no backend configured (set BRAVE_API_KEY, SEARXNG_URL, or accept the DuckDuckGo fallback)")
 	}
+	queries, isBatch, err := parseQueries("web_search", input)
+	if err != nil {
+		return nil, err
+	}
 	var in webSearchInput
-	if err := json.Unmarshal(input, &in); err != nil {
-		return nil, fmt.Errorf("web_search: parse input: %w", err)
-	}
-	q := strings.TrimSpace(in.Query)
-	if q == "" {
-		return nil, errors.New("web_search: empty query")
-	}
+	_ = json.Unmarshal(input, &in) // already validated; this pulls the side fields
 	max := in.MaxResults
 	if max <= 0 {
 		max = defaultWebSearchMaxResults
@@ -252,39 +284,111 @@ func (t *WebSearchTool) Execute(ctx context.Context, input []byte) ([]byte, erro
 	if timeout == 0 {
 		timeout = defaultWebSearchTimeout
 	}
+	// In batch mode scale the budget with the number of queries so a
+	// slow run doesn't starve the later ones.
+	if isBatch && len(queries) > 1 {
+		timeout = timeout * time.Duration(len(queries))
+	}
 	cctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	var (
-		results []SearchResult
-		err     error
-	)
-	// Multi backend honors the `backends` subset + `per_backend_max`
-	// fields. A single non-multi backend silently ignores them — the
-	// model can still pass them when it doesn't know which shape the
-	// install ended up with, and the call still works.
-	if multi, ok := t.Backend.(*MultiBackend); ok {
-		results, err = multi.SearchSubset(cctx, q, max, in.Backends, in.PerBackendMax)
-	} else {
-		results, err = t.Backend.Search(cctx, q, max)
-	}
-	if err != nil {
-		return nil, fmt.Errorf("web_search/%s: %w", t.Backend.Name(), err)
+	runOne := func(rctx context.Context, q string) ([]SearchResult, map[string]string, error) {
+		var (
+			results []SearchResult
+			err     error
+		)
+		if multi, ok := t.Backend.(*MultiBackend); ok {
+			results, err = multi.SearchSubset(rctx, q, max, in.Backends, in.PerBackendMax)
+			if err != nil {
+				return nil, nil, err
+			}
+			var fails map[string]string
+			if errs := multi.LastErrors(); len(errs) > 0 {
+				fails = make(map[string]string, len(errs))
+				for name, e := range errs {
+					fails[name] = e.Error()
+				}
+			}
+			return results, fails, nil
+		}
+		results, err = t.Backend.Search(rctx, q, max)
+		return results, nil, err
 	}
 
-	out := webSearchOutput{
+	if !isBatch {
+		q := queries[0]
+		results, fails, err := runOne(cctx, q)
+		if err != nil {
+			return nil, fmt.Errorf("web_search/%s: %w", t.Backend.Name(), err)
+		}
+		out := webSearchOutput{
+			Backend: t.Backend.Name(),
+			Query:   q,
+			Results: results,
+		}
+		if multi, ok := t.Backend.(*MultiBackend); ok {
+			out.Backends = multi.Names()
+		}
+		if len(fails) > 0 {
+			out.PartialFailures = fails
+		}
+		return json.Marshal(out)
+	}
+
+	// Batched mode. MultiBackend stashes errors in a process-shared
+	// map keyed by backend name; if two queries run concurrently they
+	// race on it. Cap concurrency at webSearchBatchConcurrency to
+	// reduce overlap, and snapshot LastErrors immediately after each
+	// call so the per-query map captures that query's failures even
+	// when a later query overwrites the shared slot.
+	//
+	// Because LastErrors is reset at the start of every Search call,
+	// concurrent batch entries can still collide. To keep behavior
+	// observable we serialize batch entries when the backend is a
+	// MultiBackend; for plain single backends we let the runner fan
+	// them out concurrently.
+	concurrency := webSearchBatchConcurrency
+	if _, ok := t.Backend.(*MultiBackend); ok {
+		concurrency = 1
+	}
+
+	blocks := make([]webSearchBatchedBlock, len(queries))
+	if concurrency == 1 {
+		for i, q := range queries {
+			results, fails, err := runOne(cctx, q)
+			blk := webSearchBatchedBlock{Query: q, Results: results, PartialFailures: fails}
+			if err != nil {
+				blk.Error = err.Error()
+			}
+			blocks[i] = blk
+		}
+	} else {
+		sem := make(chan struct{}, concurrency)
+		var wg sync.WaitGroup
+		for i, q := range queries {
+			wg.Add(1)
+			go func(i int, q string) {
+				defer wg.Done()
+				sem <- struct{}{}
+				defer func() { <-sem }()
+				results, fails, err := runOne(cctx, q)
+				blk := webSearchBatchedBlock{Query: q, Results: results, PartialFailures: fails}
+				if err != nil {
+					blk.Error = err.Error()
+				}
+				blocks[i] = blk
+			}(i, q)
+		}
+		wg.Wait()
+	}
+
+	out := webSearchBatchedOutput{
 		Backend: t.Backend.Name(),
-		Query:   q,
-		Results: results,
+		Queries: queries,
+		Blocks:  blocks,
 	}
 	if multi, ok := t.Backend.(*MultiBackend); ok {
 		out.Backends = multi.Names()
-		if errs := multi.LastErrors(); len(errs) > 0 {
-			out.PartialFailures = make(map[string]string, len(errs))
-			for name, e := range errs {
-				out.PartialFailures[name] = e.Error()
-			}
-		}
 	}
 	return json.Marshal(out)
 }

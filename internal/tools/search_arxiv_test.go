@@ -58,12 +58,16 @@ func arxivAtomN(n int) string {
 
 // newTestBackend wires an ArxivBackend whose Endpoint points at srv and
 // whose rate-limit interval is essentially zero so the per-test
-// scheduling isn't slowed by the 3s production guideline.
+// scheduling isn't slowed by the 3s production guideline. Retry is
+// disabled (MaxAttempts=1) so 429/503 surface immediately - tests that
+// want retry behavior build their own policy.
 func newTestBackend(srv *httptest.Server) *ArxivBackend {
+	noRetry := retryPolicy{MaxAttempts: 1}
 	return &ArxivBackend{
 		Endpoint:    srv.URL,
 		UserAgent:   "carlos-test",
 		MinInterval: 0, // disable inter-call wait for non-rate-limit tests
+		RetryPolicy: &noRetry,
 	}
 }
 

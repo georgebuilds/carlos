@@ -109,7 +109,7 @@ func NewGHSearchTool() *GHSearchTool {
 func (*GHSearchTool) Name() string { return "gh_search" }
 
 func (*GHSearchTool) Description() string {
-	return "Search GitHub via the local gh CLI. Use for: finding example implementations across public repos (kind=code), discovering libraries by topic or keyword (kind=repos), locating issues or pull requests by text (kind=issues / kind=prs). Filters: language (e.g. \"go\") and owner (a user or org) narrow the index. Auth comes from the locally-authenticated gh - no token plumbing. Limitation: GitHub's code search index only covers public repositories with sufficient activity, so a small or new repo may be invisible to kind=code; in that case web_search or a direct web_fetch on github.com is a better fallback."
+	return "Search GitHub via the local gh CLI. Use for: finding example implementations across public repos (kind=code), discovering libraries by topic or keyword (kind=repos), locating issues or pull requests by text (kind=issues / kind=prs). Filters: language (e.g. \"go\") and owner (a user or org) narrow the index. Auth comes from the locally-authenticated gh - no token plumbing. Prefer batched queries (`queries: [\"a\", \"b\", \"c\"]`) when researching multiple terms in one call: each query runs serially against the authenticated 30-req/min budget. Limitation: GitHub's code search index only covers public repositories with sufficient activity, so a small or new repo may be invisible to kind=code; in that case web_search or a direct web_fetch on github.com is a better fallback."
 }
 
 func (*GHSearchTool) Schema() []byte {
@@ -118,7 +118,12 @@ func (*GHSearchTool) Schema() []byte {
 		"properties": {
 			"query": {
 				"type": "string",
-				"description": "The search query. Required. Plain keywords work; gh handles quoting in argv so spaces are safe."
+				"description": "Single search query. Plain keywords work; gh handles quoting in argv so spaces are safe. Pass either query or queries, not both."
+			},
+			"queries": {
+				"type": "array",
+				"items": {"type": "string"},
+				"description": "Batch of search queries. Each runs through gh serially with backoff on rate-limit hits and results come back keyed by query. Prefer this when researching multiple terms."
 			},
 			"kind": {
 				"type": "string",
@@ -137,18 +142,18 @@ func (*GHSearchTool) Schema() []byte {
 				"type": "integer",
 				"description": "Max results, 1-30. Default 10. Values >30 are clamped, <=0 falls back to the default."
 			}
-		},
-		"required": ["query"]
+		}
 	}`)
 }
 
 // ghSearchInput is the JSON the model passes to gh_search.
 type ghSearchInput struct {
-	Query    string `json:"query"`
-	Kind     string `json:"kind"`
-	Language string `json:"language"`
-	Owner    string `json:"owner"`
-	Limit    int    `json:"limit"`
+	Query    string   `json:"query"`
+	Queries  []string `json:"queries"`
+	Kind     string   `json:"kind"`
+	Language string   `json:"language"`
+	Owner    string   `json:"owner"`
+	Limit    int      `json:"limit"`
 }
 
 // ghSearchResult is one normalized entry in the output envelope -
@@ -174,21 +179,47 @@ type ghSearchOutput struct {
 	Backend string           `json:"backend"`
 }
 
+// ghSearchBatchedBlock is one entry in the batched output envelope.
+// Mirrors batchedSearchResultBlock but carries ghSearchResult rows so
+// the model gets the same shape (rank/title/url/snippet/repo/extra)
+// it sees in single-query mode.
+type ghSearchBatchedBlock struct {
+	Query   string           `json:"query"`
+	Count   int              `json:"count"`
+	Results []ghSearchResult `json:"results"`
+	Error   string           `json:"error,omitempty"`
+}
+
+// ghSearchBatchedOutput is the response shape when `queries` is used.
+type ghSearchBatchedOutput struct {
+	Backend string                 `json:"backend"`
+	Kind    string                 `json:"kind"`
+	Queries []string               `json:"queries"`
+	Blocks  []ghSearchBatchedBlock `json:"blocks"`
+}
+
+// ghSearchBatchCourtesyDelay is the inter-call pause inserted between
+// batched gh search calls. GitHub's authenticated search budget is 30
+// req/min (~2s per request); 1s is conservative and well under any
+// realistic ceiling for a single-user agent. gh's own backoff handles
+// the rare case where we still hit a 429.
+const ghSearchBatchCourtesyDelay = 1 * time.Second
+
 // Execute validates the input, builds the gh args, runs the binary
 // via the Runner seam, parses kind-specific JSON, and normalizes
-// into a uniform envelope.
+// into a uniform envelope. Batched mode runs queries serially with a
+// short courtesy delay between calls to stay well within GitHub's
+// authenticated 30 req/min search budget.
 func (t *GHSearchTool) Execute(ctx context.Context, input []byte) ([]byte, error) {
 	if t.Runner == nil {
 		return nil, errors.New("gh_search: no runner configured")
 	}
+	queries, isBatch, err := parseQueries("gh_search", input)
+	if err != nil {
+		return nil, err
+	}
 	var in ghSearchInput
-	if err := json.Unmarshal(input, &in); err != nil {
-		return nil, fmt.Errorf("gh_search: parse input: %w", err)
-	}
-	q := strings.TrimSpace(in.Query)
-	if q == "" {
-		return nil, errors.New("gh_search: empty query")
-	}
+	_ = json.Unmarshal(input, &in) // already validated; this just pulls the side fields
 	kind := in.Kind
 	if kind == "" {
 		kind = "code"
@@ -204,41 +235,77 @@ func (t *GHSearchTool) Execute(ctx context.Context, input []byte) ([]byte, error
 		limit = ghSearchMaxLimit
 	}
 
-	args := []string{
-		"search", kind, ghEscapeQuery(q),
-		"--json", fieldsForKind[kind],
-		"--limit", strconv.Itoa(limit),
-	}
-	if lang := strings.TrimSpace(in.Language); lang != "" {
-		args = append(args, "--language", lang)
-	}
-	if owner := strings.TrimSpace(in.Owner); owner != "" {
-		args = append(args, "--owner", owner)
-	}
+	language := strings.TrimSpace(in.Language)
+	owner := strings.TrimSpace(in.Owner)
 
 	timeout := t.Timeout
 	if timeout == 0 {
 		timeout = ghSearchDefaultTimeout
 	}
+	// In batch mode the budget scales with the number of queries plus
+	// the courtesy delay between calls.
+	if isBatch && len(queries) > 1 {
+		timeout = timeout*time.Duration(len(queries)) + time.Duration(len(queries)-1)*ghSearchBatchCourtesyDelay
+	}
 	cctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	raw, err := t.Runner.Run(cctx, args)
-	if err != nil {
-		return nil, fmt.Errorf("gh_search/%s: %w", kind, err)
+	runOne := func(rctx context.Context, q string) ([]ghSearchResult, error) {
+		args := []string{
+			"search", kind, ghEscapeQuery(q),
+			"--json", fieldsForKind[kind],
+			"--limit", strconv.Itoa(limit),
+		}
+		if language != "" {
+			args = append(args, "--language", language)
+		}
+		if owner != "" {
+			args = append(args, "--owner", owner)
+		}
+		raw, err := t.Runner.Run(rctx, args)
+		if err != nil {
+			return nil, err
+		}
+		return parseGHResults(kind, raw)
 	}
 
-	results, err := parseGHResults(kind, raw)
-	if err != nil {
-		return nil, fmt.Errorf("gh_search/%s: %w", kind, err)
+	if !isBatch {
+		q := queries[0]
+		results, err := runOne(cctx, q)
+		if err != nil {
+			return nil, fmt.Errorf("gh_search/%s: %w", kind, err)
+		}
+		out := ghSearchOutput{
+			Kind:    kind,
+			Query:   q,
+			Count:   len(results),
+			Results: results,
+			Backend: "github",
+		}
+		return json.Marshal(out)
 	}
 
-	out := ghSearchOutput{
-		Kind:    kind,
-		Query:   q,
-		Count:   len(results),
-		Results: results,
+	// Serial batch with courtesy pause between calls.
+	blocks := make([]ghSearchBatchedBlock, 0, len(queries))
+	for i, q := range queries {
+		if i > 0 {
+			if err := sleepWithCtx(cctx, ghSearchBatchCourtesyDelay); err != nil {
+				blocks = append(blocks, ghSearchBatchedBlock{Query: q, Error: err.Error()})
+				continue
+			}
+		}
+		results, err := runOne(cctx, q)
+		blk := ghSearchBatchedBlock{Query: q, Count: len(results), Results: results}
+		if err != nil {
+			blk.Error = err.Error()
+		}
+		blocks = append(blocks, blk)
+	}
+	out := ghSearchBatchedOutput{
 		Backend: "github",
+		Kind:    kind,
+		Queries: queries,
+		Blocks:  blocks,
 	}
 	return json.Marshal(out)
 }

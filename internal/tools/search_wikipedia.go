@@ -26,6 +26,13 @@ import (
 // WikipediaBackend implements SearchBackend against Wikipedia's REST
 // search API. Zero configuration required - the zero value is a
 // usable English Wikipedia client.
+//
+// Throttling note: Wikipedia's REST search API has no formal rate
+// limit. Their etiquette guidance (mediawiki.org "API:Etiquette") asks
+// callers to identify themselves with a descriptive UA and avoid
+// hammering the cluster. The standalone tool caps batched calls at
+// three concurrent in-flight requests, which is well within the
+// implicit budget for a single-user agent.
 type WikipediaBackend struct {
 	// Client is the HTTP client. Nil → http.DefaultClient.
 	Client *http.Client
@@ -37,6 +44,10 @@ type WikipediaBackend struct {
 	// UserAgent is sent with each request. Wikipedia's user-agent
 	// policy asks identifiable apps to send a descriptive UA.
 	UserAgent string
+	// RetryPolicy overrides the shared default. Zero value uses
+	// defaultRetryPolicy(); tests inject a zero-jitter policy with an
+	// injectable sleeper.
+	RetryPolicy *retryPolicy
 }
 
 const (
@@ -83,19 +94,27 @@ func (w *WikipediaBackend) Search(ctx context.Context, query string, max int) ([
 	q.Set("limit", fmt.Sprintf("%d", max))
 	u.RawQuery = q.Encode()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
-	if err != nil {
-		return nil, fmt.Errorf("build request: %w", err)
-	}
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", ua)
-
 	cli := w.Client
 	if cli == nil {
 		cli = http.DefaultClient
 	}
-	resp, err := cli.Do(req)
+	policy := defaultRetryPolicy()
+	if w.RetryPolicy != nil {
+		policy = *w.RetryPolicy
+	}
+	resp, err := doWithRetry(ctx, policy, func(rctx context.Context) (*http.Response, error) {
+		req, err := http.NewRequestWithContext(rctx, http.MethodGet, u.String(), nil)
+		if err != nil {
+			return nil, fmt.Errorf("build request: %w", err)
+		}
+		req.Header.Set("Accept", "application/json")
+		req.Header.Set("User-Agent", ua)
+		return cli.Do(req)
+	})
 	if err != nil {
+		if resp != nil {
+			_ = resp.Body.Close()
+		}
 		return nil, fmt.Errorf("http: %w", err)
 	}
 	defer resp.Body.Close()
@@ -181,7 +200,7 @@ func NewWikipediaSearchTool() *WikipediaSearchTool {
 func (*WikipediaSearchTool) Name() string { return "wikipedia_search" }
 
 func (*WikipediaSearchTool) Description() string {
-	return "Search Wikipedia for encyclopedia articles. Returns ranked title + Wikipedia URL + excerpt snippet. Use for definitions, biographies, historical events, topic overviews. Follow up with web_fetch to read the full article. (lang param reserved for future; uses English Wikipedia today.)"
+	return "Search Wikipedia for encyclopedia articles. Returns ranked title + Wikipedia URL + excerpt snippet. Use for definitions, biographies, historical events, topic overviews. Prefer batched queries (`queries: [\"a\", \"b\", \"c\"]`) when researching multiple terms in one call: the tool fans them out concurrently within a courtesy cap. Follow up with web_fetch to read the full article. (lang param reserved for future; uses English Wikipedia today.)"
 }
 
 func (*WikipediaSearchTool) Schema() []byte {
@@ -190,25 +209,30 @@ func (*WikipediaSearchTool) Schema() []byte {
 		"properties": {
 			"query": {
 				"type": "string",
-				"description": "The search query. Wikipedia matches on titles + article text."
+				"description": "Single search query. Wikipedia matches on titles + article text. Pass either query or queries, not both."
+			},
+			"queries": {
+				"type": "array",
+				"items": {"type": "string"},
+				"description": "Batch of search queries. Each runs against the same backend and results are returned keyed by query. Prefer this when researching multiple terms."
 			},
 			"max_results": {
 				"type": "integer",
-				"description": "1-20, default 10."
+				"description": "1-20 per query, default 10."
 			},
 			"lang": {
 				"type": "string",
 				"description": "Wikipedia language code (e.g. 'en', 'fr', 'de'). Reserved for future; currently ignored - defaults to English."
 			}
-		},
-		"required": ["query"]
+		}
 	}`)
 }
 
 type wikipediaSearchInput struct {
-	Query      string `json:"query"`
-	MaxResults int    `json:"max_results"`
-	Lang       string `json:"lang"`
+	Query      string   `json:"query"`
+	Queries    []string `json:"queries"`
+	MaxResults int      `json:"max_results"`
+	Lang       string   `json:"lang"`
 }
 
 type wikipediaSearchOutput struct {
@@ -217,18 +241,34 @@ type wikipediaSearchOutput struct {
 	Results []SearchResult `json:"results"`
 }
 
+// wikipediaBatchedOutput is the response shape when `queries` is used.
+// Backend is shared; per-query results live in Blocks. Empty
+// Blocks is impossible (validation rejects an empty queries list).
+type wikipediaBatchedOutput struct {
+	Backend string                     `json:"backend"`
+	Queries []string                   `json:"queries"`
+	Blocks  []batchedSearchResultBlock `json:"blocks"`
+}
+
+// wikipediaBatchConcurrency is the in-flight cap for batched
+// wikipedia_search. Wikipedia has no formal rate limit; 3 keeps us
+// well below any reasonable courtesy budget while still cutting batch
+// wall time roughly to 1/N for N queries.
+const wikipediaBatchConcurrency = 3
+
 // Execute validates input, runs the backend, returns the JSON the
-// model sees. The lang input field is parsed but currently ignored
-// (the backend's configured Lang wins) - documented in Description.
+// model sees. Single-query and batched paths share the same backend
+// call shape; the response envelope differs (flat vs blocks) so the
+// model can route on the input shape it used. The lang input field
+// is parsed but currently ignored (the backend's configured Lang
+// wins) - documented in Description.
 func (t *WikipediaSearchTool) Execute(ctx context.Context, input []byte) ([]byte, error) {
+	queries, isBatch, err := parseQueries("wikipedia_search", input)
+	if err != nil {
+		return nil, err
+	}
 	var in wikipediaSearchInput
-	if err := json.Unmarshal(input, &in); err != nil {
-		return nil, fmt.Errorf("wikipedia_search: parse input: %w", err)
-	}
-	q := strings.TrimSpace(in.Query)
-	if q == "" {
-		return nil, fmt.Errorf("wikipedia_search: empty query")
-	}
+	_ = json.Unmarshal(input, &in) // already validated; this just pulls max_results / lang
 	max := in.MaxResults
 	if max <= 0 {
 		max = defaultWikipediaSearchMaxResults
@@ -246,18 +286,35 @@ func (t *WikipediaSearchTool) Execute(ctx context.Context, input []byte) ([]byte
 	if timeout == 0 {
 		timeout = defaultWikipediaSearchTimeout
 	}
+	// In batch mode the overall budget scales with the number of
+	// queries so a slow single query doesn't doom the whole batch.
+	if isBatch && len(queries) > 1 {
+		timeout = timeout * time.Duration(len(queries))
+	}
 	cctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	results, err := backend.Search(cctx, q, max)
-	if err != nil {
-		return nil, fmt.Errorf("wikipedia_search: %w", err)
+	if !isBatch {
+		q := queries[0]
+		results, err := backend.Search(cctx, q, max)
+		if err != nil {
+			return nil, fmt.Errorf("wikipedia_search: %w", err)
+		}
+		out := wikipediaSearchOutput{
+			Backend: backend.Name(),
+			Query:   q,
+			Results: results,
+		}
+		return json.Marshal(out)
 	}
 
-	out := wikipediaSearchOutput{
+	blocks := runConcurrentBatch(cctx, queries, wikipediaBatchConcurrency, func(rctx context.Context, q string) ([]SearchResult, error) {
+		return backend.Search(rctx, q, max)
+	})
+	out := wikipediaBatchedOutput{
 		Backend: backend.Name(),
-		Query:   q,
-		Results: results,
+		Queries: queries,
+		Blocks:  blocks,
 	}
 	return json.Marshal(out)
 }

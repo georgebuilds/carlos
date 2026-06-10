@@ -67,6 +67,12 @@ type WebFetchTool struct {
 	// empty so the model's fetches stay transparently labelled.
 	UserAgent string
 
+	// RetryPolicy overrides the shared default for transient-error
+	// retries. nil → defaultRetryPolicy(). Tests inject a zero-jitter
+	// policy with a tiny BaseDelay so they don't sleep through real
+	// backoff windows.
+	RetryPolicy *retryPolicy
+
 	// robotsCache is an in-process robots.txt cache (5-min TTL).
 	robotsCache sync.Map // host → robotsEntry
 }
@@ -84,12 +90,29 @@ const (
 	defaultWebFetchMaxRedirects = 5
 	webFetchUserAgent           = "carlos-web_fetch/1.0 (+phase11a)"
 	robotsCacheTTL              = 5 * time.Minute
+
+	// Batched-mode per-URL cap. Picked so a full 3-URL batch stays at
+	// or under the single-URL extracted-text cap (3 * 64 KiB == 192 KiB,
+	// safely under defaultWebFetchMaxTextBytes == 256 KiB).
+	defaultWebFetchBatchedMaxTextBytes = 64 * 1024
+
+	// Hard cap on URLs per batched call. Surfaced in the schema and the
+	// validation error so the model adjusts its tool-call shape rather
+	// than retrying blindly.
+	maxWebFetchBatchURLs = 3
+
+	// Cross-host concurrency cap on a batched call.
+	maxWebFetchBatchConcurrency = 3
+
+	// Politeness delay between successive requests to the same host
+	// inside one batched call.
+	webFetchSameHostDelay = 250 * time.Millisecond
 )
 
 func (*WebFetchTool) Name() string { return "web_fetch" }
 
 func (*WebFetchTool) Description() string {
-	return "Fetch an absolute http(s) URL and return its extracted text. Honors robots.txt by default; refuses non-text content (images/binaries) and private-network addresses. Body capped at 5 MiB, extracted text capped at 256 KiB. Use when the model needs to read a page's content; for images/binaries the model should use `read` on a locally-downloaded file instead."
+	return "Fetch one or more absolute http(s) URLs and return extracted text. You can fetch multiple URLs in one call (up to 3) by passing `urls` instead of `url`; this is the preferred shape when a search just handed you several promising hits because it compresses N fetches into one tool iteration. Honors robots.txt by default; refuses non-text content (images/binaries) and private-network addresses. Single-URL mode: body capped at 5 MiB, extracted text capped at 256 KiB. Batched mode: extracted text capped at 64 KiB per URL so the combined response stays small. Transient errors (HTTP 429 / 502 / 503 / 504 / network) are retried with backoff; same-host URLs in one batch are issued serially with a brief courtesy delay, cross-host URLs run in parallel. Use when the model needs to read a page's content; for images/binaries the model should use `read` on a locally-downloaded file instead."
 }
 
 func (*WebFetchTool) Schema() []byte {
@@ -98,23 +121,30 @@ func (*WebFetchTool) Schema() []byte {
 		"properties": {
 			"url": {
 				"type": "string",
-				"description": "Absolute http:// or https:// URL to fetch."
+				"description": "Single absolute http:// or https:// URL to fetch. Mutually exclusive with 'urls'."
+			},
+			"urls": {
+				"type": "array",
+				"items": {"type": "string"},
+				"minItems": 1,
+				"maxItems": 3,
+				"description": "Batch of up to 3 absolute http(s) URLs to fetch in one call. Use this shape after a search returns several promising hits. Mutually exclusive with 'url'."
 			},
 			"respect_robots": {
 				"type": "boolean",
-				"description": "Honor robots.txt (default true). Set false only when the user has explicitly authorized fetching despite robots."
+				"description": "Honor robots.txt (default true). Set false only when the user has explicitly authorized fetching despite robots. Applies to every URL in a batch."
 			}
-		},
-		"required": ["url"]
+		}
 	}`)
 }
 
 type webFetchInput struct {
-	URL           string `json:"url"`
-	RespectRobots *bool  `json:"respect_robots,omitempty"`
+	URL           string   `json:"url"`
+	URLs          []string `json:"urls,omitempty"`
+	RespectRobots *bool    `json:"respect_robots,omitempty"`
 }
 
-// webFetchResult is the JSON returned to the model.
+// webFetchResult is the JSON returned to the model in single-URL mode.
 type webFetchResult struct {
 	URL       string `json:"url"`
 	FinalURL  string `json:"final_url"`
@@ -123,15 +153,59 @@ type webFetchResult struct {
 	FetchedAt string `json:"fetched_at"`
 }
 
-// Execute parses input, validates the URL, optionally checks robots.txt,
+// webFetchBatchEntry is one URL's slot inside a batched response.
+// `Error`, when non-empty, marks a per-URL failure; the rest of the
+// batch still returns its successful blocks.
+type webFetchBatchEntry struct {
+	URL       string `json:"url"`
+	FinalURL  string `json:"final_url,omitempty"`
+	Title     string `json:"title,omitempty"`
+	Content   string `json:"content,omitempty"`
+	FetchedAt string `json:"fetched_at,omitempty"`
+	Error     string `json:"error,omitempty"`
+}
+
+// webFetchBatchResult is the JSON returned to the model when `urls` is
+// used. `Results` is keyed by URL in the input order so the model can
+// correlate hits without rescanning a flat list.
+type webFetchBatchResult struct {
+	Results []webFetchBatchEntry `json:"results"`
+}
+
+// Execute parses input, validates the URL(s), optionally checks robots.txt,
 // fetches with HEAD+GET, extracts text, and returns the JSON payload.
+//
+// Two input shapes are accepted, mutually exclusive:
+//   - `url: string`   - single-URL mode (legacy shape)
+//   - `urls: []string` - batched mode (up to 3 URLs, smaller per-URL cap)
+//
+// Batched mode runs same-host URLs serially (with a small courtesy
+// delay) and cross-host URLs in parallel (bounded by
+// maxWebFetchBatchConcurrency). Per-URL failures are reported in their
+// slot rather than aborting the whole batch.
 func (t *WebFetchTool) Execute(ctx context.Context, input []byte) ([]byte, error) {
 	var in webFetchInput
 	if err := json.Unmarshal(input, &in); err != nil {
 		return nil, fmt.Errorf("web_fetch: parse input: %w", err)
 	}
-	if strings.TrimSpace(in.URL) == "" {
-		return nil, errors.New("web_fetch: empty url")
+
+	hasURL := strings.TrimSpace(in.URL) != ""
+	hasURLs := len(in.URLs) > 0
+	if hasURL && hasURLs {
+		return nil, errors.New("web_fetch: pass either `url` (single) or `urls` (batch), not both")
+	}
+	if !hasURL && !hasURLs {
+		return nil, errors.New("web_fetch: missing url(s); pass `url` or `urls`")
+	}
+	if hasURLs {
+		if len(in.URLs) > maxWebFetchBatchURLs {
+			return nil, fmt.Errorf("web_fetch: batched `urls` accepts at most %d entries, got %d", maxWebFetchBatchURLs, len(in.URLs))
+		}
+		for i, u := range in.URLs {
+			if strings.TrimSpace(u) == "" {
+				return nil, fmt.Errorf("web_fetch: urls[%d] is empty", i)
+			}
+		}
 	}
 
 	respectRobots := true
@@ -139,15 +213,51 @@ func (t *WebFetchTool) Execute(ctx context.Context, input []byte) ([]byte, error
 		respectRobots = *in.RespectRobots
 	}
 
-	parsed, err := url.Parse(in.URL)
+	if hasURL {
+		res, err := t.fetchOne(ctx, in.URL, respectRobots, t.singleModeMaxText())
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(res)
+	}
+
+	return t.executeBatch(ctx, in.URLs, respectRobots)
+}
+
+// singleModeMaxText returns the configured extracted-text cap for
+// single-URL calls, defaulting to defaultWebFetchMaxTextBytes.
+func (t *WebFetchTool) singleModeMaxText() int {
+	if t.MaxTextBytes > 0 {
+		return t.MaxTextBytes
+	}
+	return defaultWebFetchMaxTextBytes
+}
+
+// batchedModeMaxText returns the extracted-text cap to apply to each
+// URL inside a batched call. A configured MaxTextBytes still wins (used
+// by tests to exercise truncation behaviour); otherwise the smaller
+// batched default applies so a 3-URL batch stays under the single-URL
+// budget.
+func (t *WebFetchTool) batchedModeMaxText() int {
+	if t.MaxTextBytes > 0 {
+		return t.MaxTextBytes
+	}
+	return defaultWebFetchBatchedMaxTextBytes
+}
+
+// fetchOne runs the full HEAD+GET+extract pipeline for a single URL.
+// maxText is the extracted-text cap (single vs batched callers pick the
+// right value). Returns a populated webFetchResult or a wrapped error.
+func (t *WebFetchTool) fetchOne(ctx context.Context, rawURL string, respectRobots bool, maxText int) (*webFetchResult, error) {
+	parsed, err := url.Parse(rawURL)
 	if err != nil {
-		return nil, fmt.Errorf("web_fetch: parse url %q: %w", in.URL, err)
+		return nil, fmt.Errorf("web_fetch: parse url %q: %w", rawURL, err)
 	}
 	if parsed.Scheme != "http" && parsed.Scheme != "https" {
 		return nil, fmt.Errorf("web_fetch: refused scheme %q (only http/https allowed)", parsed.Scheme)
 	}
 	if parsed.Host == "" {
-		return nil, fmt.Errorf("web_fetch: url has no host: %q", in.URL)
+		return nil, fmt.Errorf("web_fetch: url has no host: %q", rawURL)
 	}
 	if !t.AllowPrivate {
 		if private, why := isPrivateHost(parsed.Host); private {
@@ -174,7 +284,6 @@ func (t *WebFetchTool) Execute(ctx context.Context, input []byte) ([]byte, error
 	if maxBody <= 0 {
 		maxBody = defaultWebFetchMaxBodyBytes
 	}
-	maxText := t.MaxTextBytes
 	if maxText <= 0 {
 		maxText = defaultWebFetchMaxTextBytes
 	}
@@ -198,7 +307,7 @@ func (t *WebFetchTool) Execute(ctx context.Context, input []byte) ([]byte, error
 		}
 	}
 
-	resp, err := t.do(ctx, client, http.MethodGet, parsed.String())
+	resp, err := t.doWithRetry(ctx, client, http.MethodGet, parsed.String())
 	if err != nil {
 		return nil, fmt.Errorf("web_fetch: GET %s: %w", parsed.String(), err)
 	}
@@ -253,14 +362,92 @@ func (t *WebFetchTool) Execute(ctx context.Context, input []byte) ([]byte, error
 		finalURL = resp.Request.URL.String()
 	}
 
-	out := webFetchResult{
-		URL:       in.URL,
+	return &webFetchResult{
+		URL:       rawURL,
 		FinalURL:  finalURL,
 		Title:     title,
 		Content:   text,
 		FetchedAt: time.Now().UTC().Format(time.RFC3339),
+	}, nil
+}
+
+// executeBatch runs the batched fetch path. URLs sharing a host run
+// serially (with a small courtesy delay between them); URLs on
+// different hosts run in parallel bounded by maxWebFetchBatchConcurrency.
+// Per-URL failures are recorded in the response rather than aborting
+// the whole batch.
+func (t *WebFetchTool) executeBatch(ctx context.Context, urls []string, respectRobots bool) ([]byte, error) {
+	maxText := t.batchedModeMaxText()
+
+	// Bucket inputs by host so we can preserve same-host ordering while
+	// fanning out across distinct hosts. Indices into the original slice
+	// travel along so we can reassemble results in the model's order.
+	type slot struct {
+		idx int
+		url string
 	}
-	return json.Marshal(out)
+	hostBuckets := make(map[string][]slot)
+	hostOrder := make([]string, 0)
+	for i, u := range urls {
+		host := hostKey(u)
+		if _, seen := hostBuckets[host]; !seen {
+			hostOrder = append(hostOrder, host)
+		}
+		hostBuckets[host] = append(hostBuckets[host], slot{idx: i, url: u})
+	}
+
+	results := make([]webFetchBatchEntry, len(urls))
+
+	sem := make(chan struct{}, maxWebFetchBatchConcurrency)
+	var wg sync.WaitGroup
+
+	for _, host := range hostOrder {
+		bucket := hostBuckets[host]
+		wg.Add(1)
+		go func(bucket []slot) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			for i, s := range bucket {
+				if i > 0 {
+					// Polite per-host delay. Respect cancellation so a
+					// long batch can be aborted promptly.
+					select {
+					case <-time.After(webFetchSameHostDelay):
+					case <-ctx.Done():
+						results[s.idx] = webFetchBatchEntry{URL: s.url, Error: ctx.Err().Error()}
+						continue
+					}
+				}
+				res, err := t.fetchOne(ctx, s.url, respectRobots, maxText)
+				if err != nil {
+					results[s.idx] = webFetchBatchEntry{URL: s.url, Error: err.Error()}
+					continue
+				}
+				results[s.idx] = webFetchBatchEntry{
+					URL:       res.URL,
+					FinalURL:  res.FinalURL,
+					Title:     res.Title,
+					Content:   res.Content,
+					FetchedAt: res.FetchedAt,
+				}
+			}
+		}(bucket)
+	}
+	wg.Wait()
+
+	return json.Marshal(webFetchBatchResult{Results: results})
+}
+
+// hostKey returns a normalised host key for batching decisions. Parse
+// failures collapse onto a sentinel bucket so they at least stay
+// grouped (and fail uniformly in fetchOne).
+func hostKey(rawURL string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil || u.Host == "" {
+		return "__invalid__:" + rawURL
+	}
+	return strings.ToLower(u.Host)
 }
 
 // client returns the HTTP client to use, building a default if none
@@ -351,6 +538,21 @@ func (t *WebFetchTool) do(ctx context.Context, client *http.Client, method, u st
 	req.Header.Set("User-Agent", ua)
 	req.Header.Set("Accept", "text/html,text/plain,text/markdown,text/*;q=0.9,*/*;q=0.1")
 	return client.Do(req)
+}
+
+// doWithRetry delegates to the shared retry helper in retry.go,
+// reusing the same policy the search backends use (429 / 502 / 503 /
+// 504 / network errors with capped exponential backoff and Retry-After
+// honouring). t.RetryPolicy overrides the shared default; tests pin a
+// zero-jitter, tiny-delay policy to keep retry assertions snappy.
+func (t *WebFetchTool) doWithRetry(ctx context.Context, client *http.Client, method, u string) (*http.Response, error) {
+	policy := defaultRetryPolicy()
+	if t.RetryPolicy != nil {
+		policy = *t.RetryPolicy
+	}
+	return doWithRetry(ctx, policy, func(ctx context.Context) (*http.Response, error) {
+		return t.do(ctx, client, method, u)
+	})
 }
 
 // closeBody drains and closes resp.Body. Safe with nil resp.
