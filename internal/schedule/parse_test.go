@@ -6,10 +6,12 @@ import (
 	"time"
 )
 
-// TestParseNatural_KnownForms exercises every documented natural-language
-// form and asserts the resulting cron spec matches the form's promise.
-// Each row's "wantSpec" doubles as documentation for what the user
-// should expect.
+// TestParseNatural_KnownForms exercises every documented cron-emitting
+// natural-language form and asserts the resulting cron spec matches the
+// form's promise. Each row's "wantSpec" doubles as documentation for
+// what the user should expect. Interval-kind forms ("every N minutes"
+// / "every N hours") are covered by TestParseNatural_IntervalForms
+// since they no longer emit a 5-field cron string.
 func TestParseNatural_KnownForms(t *testing.T) {
 	cases := []struct {
 		in       string
@@ -22,11 +24,8 @@ func TestParseNatural_KnownForms(t *testing.T) {
 		{"every monday at noon", "0 12 * * 1", false},
 		{"every Friday at 5pm", "0 17 * * 5", false},
 		{"every sunday at midnight", "0 0 * * 0", false},
-		{"every 30 minutes", "*/30 * * * *", false},
-		{"every 5 minutes", "*/5 * * * *", false},
 		{"every hour", "0 * * * *", false},
 		{"hourly", "0 * * * *", false},
-		{"every 2 hours", "0 */2 * * *", false},
 		{"daily at 7am", "0 7 * * *", false},
 		{"daily at 7:30am", "30 7 * * *", false},
 		{"daily at 17:00", "0 17 * * *", false},
@@ -44,6 +43,9 @@ func TestParseNatural_KnownForms(t *testing.T) {
 			}
 			if got.Once != c.wantOnce {
 				t.Fatalf("Once mismatch: got %v want %v", got.Once, c.wantOnce)
+			}
+			if got.Kind.Effective() != KindCron {
+				t.Fatalf("expected KindCron, got %q", got.Kind)
 			}
 			// Round-trip: the resulting Spec must be parseable.
 			if _, err := ParseCron(got.Spec); err != nil {
@@ -84,17 +86,20 @@ func TestParseNatural_FallbackCron(t *testing.T) {
 }
 
 // TestParseNatural_Invalid asserts a handful of inputs that should
-// surface a clear error rather than silently misparse.
+// surface a clear error rather than silently misparse. "every 100
+// minutes" is no longer in this list: with the KindInterval primitive
+// the cron-minute-range limit no longer applies, so the form is
+// accepted (and tested in TestParseNatural_IntervalForms).
 func TestParseNatural_Invalid(t *testing.T) {
 	bad := []string{
 		"",
 		"  ",
-		"every 100 minutes",     // out of cron's minute range
 		"every monday at 25:00", // invalid hour
 		"every monday at 9zz",   // not a time
 		"every blursday at 9am", // not a day
 		"random garbage",        // doesn't match any form, doesn't parse as cron
 		"0 9 * *",               // wrong field count for fallback
+		"every 0 minutes",       // zero interval still rejected
 	}
 	for _, in := range bad {
 		t.Run(in, func(t *testing.T) {

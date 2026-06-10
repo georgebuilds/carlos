@@ -57,13 +57,62 @@ import (
 // Optional fields (BudgetTokens, BudgetCents) cap the per-run cost the
 // daemon hands the supervisor's SpawnContract so a misfiring cron can't
 // burn the user's API balance unsupervised.
+// Kind names the firing model behind a Schedule. The empty string is
+// treated as KindCron so older YAML configs (which have no `kind:` key)
+// keep loading without a migration step.
+type Kind string
+
+const (
+	// KindCron evaluates a 5-field cron expression against wall clock.
+	// Empty Kind is equivalent to KindCron on load.
+	KindCron Kind = "cron"
+	// KindInterval fires every Interval starting from CreatedAt + Interval,
+	// then exactly Interval apart regardless of wall-clock alignment.
+	// Introduced to fix the "every N minutes" cron-step lie: */7 fires at
+	// {0,7,14,...,56} so the :56 -> :00 wrap is only 4 minutes, not 7.
+	KindInterval Kind = "interval"
+)
+
+// Effective returns k or KindCron if k is the empty Kind. Centralised so
+// every dispatch site agrees on the default.
+func (k Kind) Effective() Kind {
+	if k == "" {
+		return KindCron
+	}
+	return k
+}
+
 type Schedule struct {
 	// Name is the user-supplied handle ("morning-slack"). Required and
 	// unique within a config. /schedule rm uses this as the key.
 	Name string `json:"name"`
 
+	// Kind selects the firing model: KindCron (default; empty == cron) or
+	// KindInterval. ParseNatural emits KindInterval for "every N
+	// minutes/hours"; literal five-field cron strings stay KindCron.
+	Kind Kind `json:"kind,omitempty"`
+
+	// Interval is the firing period for KindInterval schedules. Ignored
+	// for KindCron. Wire format mirrors the other time.Duration fields
+	// in the project (internal/agent/eventlog.go, internal/usershell/
+	// events.go): the JSON encoder emits an int64 of nanoseconds, so
+	// the YAML on disk reads `interval: 420000000000` rather than `7m`.
+	// Cosmetic only; the daemon never displays Interval directly.
+	Interval time.Duration `json:"interval,omitempty"`
+
+	// CreatedAt anchors KindInterval schedules: the first fire happens
+	// at CreatedAt + Interval, the Nth fire at CreatedAt + N*Interval.
+	// ParseNatural stamps this from the package clock for new interval
+	// schedules; pre-existing configs (no CreatedAt on disk) fall back
+	// to LastRunAt as the anchor and, when both are zero, to the first
+	// Due() call's `now` as a one-time anchor (the schedule will then
+	// fire one Interval later).
+	CreatedAt time.Time `json:"created_at,omitempty"`
+
 	// Spec is the 5-field cron expression. ParseNatural emits this from
-	// English phrases; users can also paste cron directly.
+	// English phrases; users can also paste cron directly. For KindInterval
+	// schedules Spec carries a human-readable label ("every 7 minutes")
+	// rather than a cron expression and is not parsed.
 	Spec string `json:"spec"`
 
 	// Prompt is the user-bound text fed to the supervisor as the
@@ -117,8 +166,15 @@ func (s Schedule) Validate(known map[string]bool) error {
 	if strings.TrimSpace(s.Prompt) == "" {
 		return errors.New("schedule: empty prompt")
 	}
-	if _, err := ParseCron(s.Spec); err != nil {
-		return fmt.Errorf("schedule %q: %w", s.Name, err)
+	switch s.Kind.Effective() {
+	case KindInterval:
+		if s.Interval <= 0 {
+			return fmt.Errorf("schedule %q: interval kind requires positive interval, got %s", s.Name, s.Interval)
+		}
+	default:
+		if _, err := ParseCron(s.Spec); err != nil {
+			return fmt.Errorf("schedule %q: %w", s.Name, err)
+		}
 	}
 	if s.Frame != "" && len(known) > 0 && !known[s.Frame] {
 		return fmt.Errorf("schedule %q: unknown frame %q", s.Name, s.Frame)
@@ -129,7 +185,24 @@ func (s Schedule) Validate(known map[string]bool) error {
 // Next returns the next firing time strictly after `after`, in local
 // time. If no future time matches within 4 years (effectively never -
 // a malformed cron) it returns the zero time.
+//
+// For KindInterval the anchor is intervalAnchor(s): Next walks the
+// arithmetic progression anchor + N*Interval and returns the first
+// instant strictly after `after`. A zero Interval returns the zero time.
 func (s Schedule) Next(after time.Time) time.Time {
+	if s.Kind.Effective() == KindInterval {
+		if s.Interval <= 0 {
+			return time.Time{}
+		}
+		anchor := s.intervalAnchor(after)
+		// First firing slot is anchor + Interval; subsequent slots step by Interval.
+		// Walk forward until we land strictly after `after`.
+		diff := after.Sub(anchor)
+		// Number of full intervals already elapsed since the anchor.
+		n := int64(diff / s.Interval)
+		next := anchor.Add(time.Duration(n+1) * s.Interval)
+		return next
+	}
 	c, err := ParseCron(s.Spec)
 	if err != nil {
 		return time.Time{}
@@ -137,14 +210,39 @@ func (s Schedule) Next(after time.Time) time.Time {
 	return c.Next(after)
 }
 
-// Due reports whether this schedule should fire at `now`. The check is
-// minute-granular (so the tick loop's 30s cadence catches every minute
-// without double-firing): Next(LastRunAt) <= now.
+// intervalAnchor picks the reference time for KindInterval arithmetic.
+// CreatedAt wins when set (the canonical anchor the parser stamps);
+// LastRunAt covers configs that pre-date the CreatedAt field; falling
+// back to `now` lets a stale-zero schedule still fire one Interval
+// later instead of misbehaving. Caller-provided `now` is only used
+// for that last-ditch fallback so the function stays deterministic
+// when at least one anchor is set on disk.
+func (s Schedule) intervalAnchor(now time.Time) time.Time {
+	switch {
+	case !s.CreatedAt.IsZero():
+		return s.CreatedAt
+	case !s.LastRunAt.IsZero():
+		return s.LastRunAt
+	default:
+		return now
+	}
+}
+
+// Due reports whether this schedule should fire at `now`.
 //
-// On first ever run (LastRunAt zero), uses now.Add(-time.Minute) as the
-// "after" anchor so a schedule that should have fired exactly at startup
-// time still gets picked up.
+// For KindCron the check is minute-granular (so the tick loop's 30s
+// cadence catches every minute without double-firing): Next(LastRunAt)
+// <= now. On first ever run (LastRunAt zero), uses now.Add(-time.Minute)
+// as the "after" anchor so a schedule that should have fired exactly at
+// startup time still gets picked up.
+//
+// For KindInterval, due iff `now.Sub(LastRunAt) >= Interval`. When
+// LastRunAt is zero, CreatedAt + Interval is the gate, so an interval
+// schedule never fires immediately at registration time.
 func (s Schedule) Due(now time.Time) bool {
+	if s.Kind.Effective() == KindInterval {
+		return s.dueInterval(now)
+	}
 	anchor := s.LastRunAt
 	if anchor.IsZero() {
 		anchor = now.Add(-time.Minute)
@@ -154,6 +252,100 @@ func (s Schedule) Due(now time.Time) bool {
 		return false
 	}
 	return !next.After(now)
+}
+
+// dueInterval handles the KindInterval branch of Due. Centralised so
+// DueSlot can share the gate expression without duplicating the
+// anchor-selection rules.
+func (s Schedule) dueInterval(now time.Time) bool {
+	if s.Interval <= 0 {
+		return false
+	}
+	if !s.LastRunAt.IsZero() {
+		return now.Sub(s.LastRunAt) >= s.Interval
+	}
+	if !s.CreatedAt.IsZero() {
+		return now.Sub(s.CreatedAt) >= s.Interval
+	}
+	// Both zero: treat the first observation as the anchor (caller's
+	// `now` is the only reference we have). Never fires on this call;
+	// the daemon's next persistSchedules will stamp LastRunAt forward.
+	return false
+}
+
+// SlotFor returns the canonical timestamp identifying the firing slot
+// the schedule would land on at `now`. The slot is the (schedule_name,
+// slot_time) key the fire log uses to suppress duplicates after a
+// crash-window restart.
+//
+// For KindCron the slot is the cron tick the schedule is about to fire
+// for (the matching minute, truncated to whole minutes). For
+// KindInterval the slot is the most recent anchor+N*Interval boundary
+// at or before `now` (truncated to interval).
+//
+// SlotFor does NOT gate on whether the schedule is currently due; pair
+// it with Due (or use DueSlot) to get both signals together.
+func (s Schedule) SlotFor(now time.Time) time.Time {
+	if s.Kind.Effective() == KindInterval {
+		if s.Interval <= 0 {
+			return time.Time{}
+		}
+		anchor := s.intervalAnchor(now)
+		diff := now.Sub(anchor)
+		if diff < 0 {
+			// `now` precedes the anchor (synthetic clock in a test): the
+			// schedule hasn't reached its first slot yet.
+			return anchor
+		}
+		n := int64(diff / s.Interval)
+		return anchor.Add(time.Duration(n) * s.Interval)
+	}
+	c, err := ParseCron(s.Spec)
+	if err != nil {
+		return time.Time{}
+	}
+	// For cron, the slot is the most recent matching minute at or
+	// before `now`. Walk backward from `now` minute-by-minute up to
+	// the configured deadline so a sparse schedule still resolves.
+	t := now.In(time.Local).Truncate(time.Minute)
+	// 4 years backwards mirrors CronExpr.Next's forward search bound;
+	// guards against a malformed expression making this loop unbounded.
+	floor := t.Add(-4 * 365 * 24 * time.Hour)
+	for t.After(floor) || t.Equal(floor) {
+		if c.match(t) {
+			return t
+		}
+		t = t.Add(-time.Minute)
+	}
+	return time.Time{}
+}
+
+// DueSlot reports whether the schedule should fire at `now` and returns
+// the slot timestamp the firing maps to. When log is non-nil, a slot
+// already present in the log forces due=false (this is the crash-window
+// suppression path: the daemon writes the slot to the log BEFORE
+// invoking the action, so a restart mid-action sees the recorded slot
+// and skips re-firing).
+//
+// Callers should:
+//  1. call DueSlot(now, log)
+//  2. if due, log.Append(name, slot) BEFORE invoking the action
+//  3. invoke the action
+//
+// That ordering preserves "fire at most once per slot" across crashes.
+// The returned slot is the zero time when due=false.
+func (s Schedule) DueSlot(now time.Time, log *FireLog) (time.Time, bool) {
+	if !s.Due(now) {
+		return time.Time{}, false
+	}
+	slot := s.SlotFor(now)
+	if slot.IsZero() {
+		return time.Time{}, false
+	}
+	if log != nil && log.Has(s.Name, slot) {
+		return time.Time{}, false
+	}
+	return slot, true
 }
 
 // CronExpr is the parsed form of a 5-field cron expression. The parser

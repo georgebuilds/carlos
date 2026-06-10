@@ -8,6 +8,12 @@ import (
 	"time"
 )
 
+// clockNow returns the current wall time used to stamp CreatedAt on
+// interval-kind schedules. Tests override it to pin the anchor
+// deterministically. Mirrors the tryTomorrow time-injection pattern
+// without changing the public ParseNatural signature.
+var clockNow = func() time.Time { return time.Now() }
+
 // ParseNatural converts an English schedule phrase into a Schedule.
 // The supported grammar (case-insensitive, whitespace-tolerant) is:
 //
@@ -15,14 +21,21 @@ import (
 //   - "every weekday morning"         → 0 9 * * 1-5  (morning := 9am)
 //   - "every monday at noon"          → 0 12 * * 1
 //   - "every <day> at <time>"         → 0 H * * D
-//   - "every 30 minutes"              → */30 * * * *
-//   - "every N minutes"               → */N * * * *
+//   - "every 30 minutes"              → Kind=Interval, Interval=30m
+//   - "every N minutes"               → Kind=Interval, Interval=N minutes
 //   - "every hour"                    → 0 * * * *
-//   - "every N hours"                 → 0 */N * * *
+//   - "every N hours"                 → Kind=Interval, Interval=N hours
 //   - "daily at <time>"               → M H * * *
 //   - "every day at <time>"           → M H * * *
 //   - "every <day> at <time>"         → M H * * D
 //   - "tomorrow at <time>"            → M H D Mo *  + Once=true
+//
+// "every N minutes" and "every N hours" emit KindInterval rather than a
+// `*/N` cron expression: cron-step semantics would fire at
+// {0, N, 2N, ...} so the wrap from 56 -> 00 for "every 7 minutes" is
+// only 4 minutes apart, lying about the cadence. Interval anchors the
+// first fire at CreatedAt + N and then fires exactly every N regardless
+// of wall-clock alignment.
 //
 // `<time>` accepts:
 //   - "9am" / "9pm"
@@ -90,10 +103,15 @@ func tryEveryNMinutes(s string) (Schedule, bool, error) {
 		return Schedule{}, false, nil
 	}
 	n, err := atoi(m[1])
-	if err != nil || n <= 0 || n > 59 {
-		return Schedule{}, true, fmt.Errorf("every N minutes: N must be 1..59, got %q", m[1])
+	if err != nil || n <= 0 {
+		return Schedule{}, true, fmt.Errorf("every N minutes: N must be a positive integer, got %q", m[1])
 	}
-	return Schedule{Spec: fmt.Sprintf("*/%d * * * *", n)}, true, nil
+	return Schedule{
+		Kind:      KindInterval,
+		Interval:  time.Duration(n) * time.Minute,
+		CreatedAt: clockNow().UTC(),
+		Spec:      fmt.Sprintf("every %d minutes", n),
+	}, true, nil
 }
 
 var reEveryNHours = regexp.MustCompile(`^every\s+(\d+)\s*(hour|hours|hr|hrs)$`)
@@ -104,10 +122,15 @@ func tryEveryNHours(s string) (Schedule, bool, error) {
 		return Schedule{}, false, nil
 	}
 	n, err := atoi(m[1])
-	if err != nil || n <= 0 || n > 23 {
-		return Schedule{}, true, fmt.Errorf("every N hours: N must be 1..23, got %q", m[1])
+	if err != nil || n <= 0 {
+		return Schedule{}, true, fmt.Errorf("every N hours: N must be a positive integer, got %q", m[1])
 	}
-	return Schedule{Spec: fmt.Sprintf("0 */%d * * *", n)}, true, nil
+	return Schedule{
+		Kind:      KindInterval,
+		Interval:  time.Duration(n) * time.Hour,
+		CreatedAt: clockNow().UTC(),
+		Spec:      fmt.Sprintf("every %d hours", n),
+	}, true, nil
 }
 
 func tryEveryHour(s string) (Schedule, bool, error) {
