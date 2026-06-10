@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>carlos · skills · author, install, induce</title>
   <meta name="description" content="How carlos's skills work: SKILL.md packaging, where they live on disk, how to author one, and how carlos proposes new skills from your transcripts." />
+  <meta name="theme-color" content="#f4ecd8" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#11131a" media="(prefers-color-scheme: dark)" />
   <link rel="icon" type="image/png" href="./branding/carlos-portrait.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -12,280 +14,11 @@
     rel="stylesheet"
     href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
   />
+  <link rel="stylesheet" href="./theme.css" />
   <style>
-    :root {
-      --paper:    #f4ecd8;
-      --paper-hi: #fdf7e6;
-      --paper-lo: #ece4d2;
-      --card:     #fdf7e6;
-      --sky:      #d8e2ee;
-      --sky-soft: rgba(216, 226, 238, 0.65);
-      --navy:      #2c4a78;
-      --navy-soft: rgba(44, 74, 120, 0.14);
-      --navy-deep: #1f3658;
-      --clay:      #c64a2c;
-      --clay-soft: rgba(198, 74, 44, 0.14);
-      --sage:      #7a9676;
-      --sage-soft: rgba(122, 150, 118, 0.20);
-      --sun:       #e8a635;
-      --sun-soft:  rgba(232, 166, 53, 0.18);
-      --ink:      #1b1812;
-      --ink-soft: #3a342a;
-      --muted:    #6b6357;
-      --rule:     rgba(27, 24, 18, 0.18);
-      --rule-soft:rgba(27, 24, 18, 0.10);
-      --shadow:   rgba(20, 22, 30, 0.10);
-    }
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --paper:#15171c; --paper-hi:#1c1f27; --paper-lo:#0b0d12; --card:#1a1d27;
-        --sky:#1f2a3c; --sky-soft:rgba(31,42,60,0.5);
-        --navy:#7aa0d4; --navy-soft:rgba(122,160,212,0.18); --navy-deep:#a8c3e8;
-        --clay:#e87a55; --clay-soft:rgba(232,122,85,0.18);
-        --sage:#a3c0a0; --sage-soft:rgba(163,192,160,0.18);
-        --sun:#f3c886;  --sun-soft:rgba(243,200,134,0.18);
-        --ink:#ece4d2; --ink-soft:#c9c1ad; --muted:#8a8170;
-        --rule:rgba(236,228,210,0.18); --rule-soft:rgba(236,228,210,0.08);
-        --shadow:rgba(0,0,0,0.5);
-      }
-    }
-    *, *::before, *::after { box-sizing: border-box; }
-    html, body { margin: 0; padding: 0; min-height: 100%; }
-    body {
-      background:
-        radial-gradient(ellipse 60% 40% at 25% 0%, var(--sky-soft), transparent 65%),
-        radial-gradient(ellipse 70% 50% at 80% 30%, var(--sage-soft), transparent 60%),
-        radial-gradient(ellipse 90% 60% at 50% 100%, var(--paper-lo), transparent 70%),
-        var(--paper);
-      background-attachment: fixed;
-      color: var(--ink);
-      font-family: 'Inter', system-ui, -apple-system, sans-serif;
-      -webkit-font-smoothing: antialiased;
-      min-height: 100vh; line-height: 1.55;
-    }
-    body::before {
-      content: ''; position: fixed; inset: 0;
-      pointer-events: none; z-index: 1;
-      opacity: 0.5; mix-blend-mode: multiply;
-      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.06 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
-    }
-    @media (prefers-color-scheme: dark) { body::before { mix-blend-mode: screen; opacity: 0.3; } }
+    /* skills · page-specific overrides not in theme.css */
 
-    .doodle { position: fixed; pointer-events: none; z-index: 1; opacity: 0.55; }
-    .doodle path { fill: none; stroke: var(--navy); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
-    .doodle.sage path { stroke: var(--sage); }
-    .doodle.ink path { stroke: var(--ink); }
-    .doodle-cloud-1 { top: 100px; right: -10px; width: 220px; }
-    .doodle-cloud-2 { top: 620px; left: -30px; width: 180px; opacity: 0.45; }
-    .doodle-cloud-3 { top: 1280px; right: -20px; width: 200px; opacity: 0.42; }
-    .doodle-loop    { top: 460px; right: 10%; width: 70px; opacity: 0.5; }
-    @media (max-width: 800px) {
-      .doodle-cloud-1, .doodle-cloud-3 { display: none; }
-    }
-
-    header, footer {
-      position: relative; z-index: 3;
-      padding: 26px 36px;
-      display: flex; align-items: center; justify-content: space-between;
-      font-size: 11px; letter-spacing: 0.26em;
-      text-transform: uppercase;
-      color: var(--muted); font-weight: 500;
-    }
-    header nav { display: flex; gap: 22px; align-items: center; }
-    header .mark {
-      color: var(--ink); letter-spacing: 0.18em; font-weight: 600;
-      text-decoration: none;
-      display: inline-flex; align-items: center; gap: 10px;
-      transition: color 0.15s;
-      border: 0; padding-bottom: 0;
-    }
-    header .mark:hover { color: var(--navy); border: 0; }
-    header .mark::before {
-      content: '🧢';
-      font-size: 18px;
-      line-height: 1;
-      letter-spacing: normal;
-      transform: translateY(-1px);
-    }
-    header a {
-      color: var(--muted); text-decoration: none; letter-spacing: 0.24em;
-      padding-bottom: 2px; border-bottom: 1px dotted transparent;
-      transition: color 0.15s, border-color 0.15s;
-    }
-    header a:hover { color: var(--ink); border-bottom-color: var(--navy); }
-
-    main {
-      position: relative; z-index: 2;
-      max-width: 920px;
-      margin: 0 auto;
-      padding: 32px 36px 80px;
-    }
-
-    .hero { margin-bottom: 50px; }
-    .hero .eyebrow {
-      font-family: 'Caveat', cursive; font-weight: 500;
-      font-size: 22px; color: var(--clay);
-      transform: rotate(-1deg); display: inline-block;
-      margin-bottom: 4px;
-    }
-    h1 {
-      font-family: 'Caveat', cursive; font-weight: 700;
-      font-size: clamp(48px, 7vw, 86px);
-      line-height: 0.98; letter-spacing: 0;
-      color: var(--ink); margin: 0 0 18px;
-    }
-    h1 .accent { color: var(--navy); position: relative; }
-    h1 .accent::after {
-      content: '';
-      position: absolute; left: -1%; right: -1%; bottom: -10px;
-      height: 12px;
-      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 12' preserveAspectRatio='none'><path d='M2 7 Q 28 2, 60 6 T 120 6 T 178 5 T 198 7' fill='none' stroke='%232c4a78' stroke-width='2.4' stroke-linecap='round'/></svg>");
-      background-repeat: no-repeat; background-size: 100% 100%;
-    }
-    .subhead {
-      max-width: 64ch; font-size: 17px; line-height: 1.55;
-      color: var(--ink-soft); margin: 0;
-    }
-
-    h2 {
-      font-family: 'Caveat', cursive; font-weight: 700;
-      font-size: 38px; line-height: 1; letter-spacing: 0;
-      margin: 56px 0 18px; color: var(--ink);
-    }
-    h2 .accent { color: var(--navy); }
-    h2 .num {
-      font-family: 'Caveat', cursive; font-size: 22px;
-      color: var(--clay); margin-right: 14px;
-      vertical-align: 4px;
-    }
-
-    h3 {
-      font-family: 'Inter', sans-serif; font-weight: 600;
-      font-size: 16px; letter-spacing: 0.02em;
-      margin: 28px 0 10px; color: var(--ink);
-    }
-    p { font-size: 16px; line-height: 1.65; color: var(--ink-soft); margin: 0 0 14px; }
-    p code, li code {
-      font-family: 'JetBrains Mono', monospace; font-size: 13px;
-      background: var(--paper-hi); padding: 1px 6px; border-radius: 4px;
-      color: var(--ink); border: 1px solid var(--rule-soft);
-    }
-    ul, ol { padding-left: 22px; margin: 0 0 16px; }
-    ul li, ol li { margin-bottom: 8px; color: var(--ink-soft); }
-
-    /* card */
-    .card {
-      background: var(--card);
-      border-radius: 14px;
-      padding: 22px 24px;
-      box-shadow: 0 1px 0 var(--rule-soft) inset, 0 14px 28px var(--shadow);
-      position: relative;
-      margin: 16px 0 24px;
-      transform: rotate(-0.2deg);
-    }
-    .card::before {
-      content: ''; position: absolute; inset: 0;
-      border-radius: 14px; padding: 1.5px;
-      background: var(--ink);
-      -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-      -webkit-mask-composite: xor; mask-composite: exclude;
-      opacity: 0.28; pointer-events: none;
-    }
-    .card h3 { margin-top: 0; }
-
-    /* code blocks — deep cap-navy ground, warm cream type */
-    .code-block {
-      position: relative;
-      background: #14253f;
-      color: #f3ecda;
-      border-radius: 10px;
-      padding: 18px 20px;
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 13px;
-      line-height: 1.6;
-      overflow-x: auto;
-      margin: 12px 0 20px;
-      box-shadow: 0 12px 26px var(--shadow);
-      border: 1px solid rgba(243, 236, 218, 0.08);
-    }
-    .code-block .fname {
-      display: block;
-      color: #b8c8e0;
-      font-family: 'Inter', sans-serif;
-      font-size: 11px;
-      letter-spacing: 0.14em;
-      text-transform: uppercase;
-      font-weight: 600;
-      margin-bottom: 12px;
-      padding-bottom: 10px;
-      border-bottom: 1px solid rgba(243, 236, 218, 0.10);
-    }
-    .code-block .kw  { color: #dcc5f4; }         /* lavender */
-    .code-block .str { color: #f7d496; }         /* amber */
-    .code-block .com { color: #a8b6c8; font-style: italic; }   /* slate, readable */
-    .code-block .key { color: #9ec0ef; font-weight: 500; }     /* sky */
-    .code-block .val { color: #f3ecda; }                       /* cream */
-    .code-block .h1  { color: #f49274; font-weight: 700; }     /* coral */
-
-    /* file tree / search paths.
-       Category is communicated by colouring the ordinal Caveat number and the
-       right-side note in the kind's tone. No left-edge stripe. */
-    .paths {
-      list-style: none; padding: 0; margin: 12px 0 20px;
-      font-family: 'JetBrains Mono', monospace; font-size: 13px;
-    }
-    .paths li {
-      display: flex; gap: 12px; align-items: baseline;
-      padding: 10px 14px;
-      border: 1px solid var(--rule-soft);
-      border-radius: 8px;
-      background: var(--paper-hi);
-      margin-bottom: 6px;
-    }
-    .paths li .ord {
-      font-family: 'Caveat', cursive;
-      font-weight: 700;
-      font-size: 22px;
-      line-height: 1;
-      min-width: 20px;
-      transform: rotate(-3deg);
-      transform-origin: left center;
-      display: inline-block;
-      color: var(--navy);
-    }
-    .paths li .path { color: var(--ink); }
-    .paths li .note {
-      color: var(--muted);
-      font-family: 'Caveat', cursive;
-      font-size: 17px;
-      letter-spacing: 0;
-      margin-left: auto;
-      transform: rotate(-1deg);
-      display: inline-block;
-    }
-    .paths li.user .ord,  .paths li.user .note  { color: var(--navy); }
-    .paths li.proj .ord,  .paths li.proj .note  { color: #4f7a4d; }
-
-    /* skill chooser (mini tabs) */
-    .tabs {
-      display: flex; gap: 8px; flex-wrap: wrap;
-      margin: 12px 0 0;
-    }
-    .tab {
-      font-family: 'Inter', sans-serif; font-size: 12px;
-      padding: 6px 14px; border-radius: 999px;
-      border: 1.5px solid var(--rule);
-      background: var(--paper-hi);
-      color: var(--ink-soft);
-      cursor: pointer;
-      transition: background 0.12s, border-color 0.12s, color 0.12s, transform 0.12s;
-    }
-    .tab:hover { transform: translateY(-1px); color: var(--ink); border-color: var(--navy); }
-    .tab[aria-selected="true"] {
-      background: var(--navy); color: var(--paper-hi); border-color: var(--navy);
-    }
-    .tab-panel { display: none; }
-    .tab-panel.is-active { display: block; }
+    main { max-width: 920px; }
 
     /* induction flow */
     .induction {
@@ -302,14 +35,13 @@
       background: var(--paper-hi);
       border: 1px solid var(--rule-soft);
       position: relative;
+      padding-right: 64px;
     }
     .ind-node strong {
       font-family: 'Inter', sans-serif; font-weight: 600; font-size: 12.5px;
       color: var(--ink);
     }
     .ind-node .desc { font-size: 11.5px; color: var(--muted); margin-top: 4px; line-height: 1.5; }
-    /* Category cue is the glyph prefix on the title (no stripe).
-       Plus a small Caveat margin tag in the corner naming the step kind. */
     .ind-node::after {
       content: 'step';
       position: absolute; top: 8px; right: 14px;
@@ -352,7 +84,7 @@
       line-height: 1; position: relative; display: inline-block;
       padding-bottom: 6px;
     }
-    /* hand-drawn underline under the h3 in the card's tone color */
+    /* hand-drawn underline in the card's tone color (replaces the banned left-stripe pattern) */
     .scope-card h3::after {
       content: '';
       position: absolute; left: -2%; right: -2%; bottom: -2px;
@@ -371,19 +103,33 @@
     .scope-card ul { margin-top: 6px; }
     .scope-card li { font-size: 14px; }
 
-    /* rule */
-    .rule-sketch {
-      margin: 48px auto 16px; width: 100%; max-width: 480px;
-      display: flex; justify-content: center;
+    /* skill chooser (mini tabs) */
+    .tabs {
+      display: flex; gap: 8px; flex-wrap: wrap;
+      margin: 12px 0 0;
     }
-    .rule-sketch svg { width: 100%; height: 14px; }
-    .rule-sketch svg path { fill: none; stroke: var(--navy); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; opacity: 0.6; }
+    .tab {
+      font-family: 'Inter', sans-serif; font-size: 12px;
+      padding: 6px 14px; border-radius: 999px;
+      border: 1.5px solid var(--rule);
+      background: var(--paper-hi);
+      color: var(--ink-soft);
+      cursor: pointer;
+      transition: background 0.12s, border-color 0.12s, color 0.12s, transform 0.12s;
+    }
+    .tab:hover { transform: translateY(-1px); color: var(--ink); border-color: var(--navy); }
+    .tab[aria-selected="true"] {
+      background: var(--navy); color: var(--paper-hi); border-color: var(--navy);
+    }
+    .tab-panel { display: none; }
+    .tab-panel.is-active { display: block; }
 
     /* footnote */
     .footnote {
       margin-top: 56px; padding-top: 22px;
       border-top: 1px solid var(--rule);
       color: var(--muted); font-size: 13px;
+      max-width: 70ch;
     }
     .footnote code { font-family: 'JetBrains Mono', monospace; font-size: 12px; }
     .footnote a {
@@ -393,15 +139,13 @@
     .footnote a:hover { border-bottom-color: var(--navy); }
 
     @media (max-width: 700px) {
-      h1 { font-size: 44px; }
-      h2 { font-size: 30px; }
-      header, footer { padding: 20px 22px; }
-      main { padding: 20px 22px 60px; }
       .card { transform: none; }
     }
   </style>
 </head>
 <body>
+  <a class="skip-link" href="#main">skip to content</a>
+
   <svg class="doodle doodle-cloud-1" viewBox="0 0 240 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
     <path d="M30 70 Q 10 70, 12 50 Q 14 30, 40 32 Q 48 14, 80 18 Q 110 6, 130 24 Q 160 16, 170 42 Q 200 38, 200 60 Q 210 78, 184 80 L 50 80 Q 30 82, 30 70 Z"/>
   </svg>
@@ -415,15 +159,17 @@
     <path d="M10 30 Q 20 8, 40 14 Q 64 22, 56 42 Q 46 58, 28 50 Q 14 44, 18 30 Q 22 18, 36 22"/>
   </svg>
 
-  <header>
+  <header class="site">
     <a class="mark" href="./" aria-label="carlos home">carlos</a>
     <nav>
+      <a href="./docs/">docs</a>
       <a href="./agent-loop.html">agent loop</a>
-      <a href="./">home</a>
+      <a href="./skills.html" aria-current="page">skills</a>
+      <a href="https://github.com/georgebuilds/carlos">github</a>
     </nav>
   </header>
 
-  <main>
+  <main id="main">
     <section class="hero">
       <span class="eyebrow">a small library you grow</span>
       <h1>Skills, <span class="accent">explained.</span></h1>
@@ -656,9 +402,14 @@ chars and a body built from the diff summary…</pre>
     </div>
   </main>
 
-  <footer>
-    <span>carlos · skills · 2026</span>
-    <a href="./">← home</a>
+  <footer class="site">
+    <span>carlos · skills · 2026 · gpl-3.0</span>
+    <nav>
+      <a href="./docs/">docs</a>
+      <a href="./agent-loop.html">agent loop</a>
+      <a href="./">home</a>
+      <a href="https://github.com/georgebuilds/carlos">github</a>
+    </nav>
   </footer>
 
   <script>

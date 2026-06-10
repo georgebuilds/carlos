@@ -3,13 +3,14 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <title>carlos · download &amp; get started</title>
-  <meta name="description" content="carlos. A single-binary, pure-Go TUI coding agent. Frames, memory in plain markdown, deep research, sub-agent supervision." />
-  <meta name="theme-color" content="#f1eadc" media="(prefers-color-scheme: light)" />
+  <title>carlos · pure-Go TUI agent</title>
+  <meta name="description" content="carlos is a pure-Go TUI agent. Single binary around 30 MB, multi-provider, with autonomous skill induction and first-class sub-agent supervision." />
+  <meta name="theme-color" content="#f4ecd8" media="(prefers-color-scheme: light)" />
   <meta name="theme-color" content="#11131a" media="(prefers-color-scheme: dark)" />
   <meta property="og:title" content="carlos" />
-  <meta property="og:description" content="The most committed coding agent. Download &amp; getting started." />
+  <meta property="og:description" content="Pure-Go TUI agent. Single binary, multi-provider, autonomous skill induction, first-class sub-agent supervision." />
   <meta property="og:image" content="./branding/carlos-portrait.png" />
+  <meta property="og:type" content="website" />
   <link rel="icon" type="image/png" href="./branding/carlos-portrait.png" />
   <link rel="alternate" hreflang="en" href="./?lang=en" />
   <link rel="alternate" hreflang="es" href="./?lang=es" />
@@ -18,2129 +19,597 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
     rel="stylesheet"
-    href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&family=Rubik+Spray+Paint&display=swap"
+    href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
   />
+  <link rel="stylesheet" href="./theme.css" />
   <style>
-    :root {
-      /* paper layer — slightly warmer cream for the sandlot direction */
-      --paper: #f4ecd8;
-      --paper-hi: #fdf7e6;
-      --paper-lo: #ece4d2;
-      --card: #fdf7e6;
-      --ink: #1b1812;
-      --ink-soft: #3a342a;
-      --muted: #6b6357;
-      --subtle: #8a8170;
-      --brace: #b3a791;
-      --rule: rgba(27, 24, 18, 0.16);
-      --rule-soft: rgba(27, 24, 18, 0.08);
+    /* landing · page-specific */
 
-      /* sandlot palette additions */
-      --navy:      #2c4a78;
-      --navy-soft: rgba(44, 74, 120, 0.14);
-      --navy-deep: #1f3658;
-      --sky:       #d8e2ee;
-      --sky-soft:  rgba(216, 226, 238, 0.65);
-      --sage:      #7a9676;
-      --sage-soft: rgba(122, 150, 118, 0.20);
-      --sun:       #e8a635;
-      --sun-soft:  rgba(232, 166, 53, 0.18);
+    main { padding-top: 14px; }
 
-      /* keep clay/accent for backward compat with existing rules */
-      --accent: #c64a2c;
-      --accent-soft: rgba(198, 74, 44, 0.14);
-      --clay: #c64a2c;
-      --clay-soft: rgba(198, 74, 44, 0.14);
-
-      --ok: #2f7d3a;
-      --warn: #b15010;
-      --shadow: rgba(20, 22, 30, 0.16);
-      --shadow-soft: rgba(20, 22, 30, 0.08);
-
-      --frame-rust: #c14a3a;
-      --frame-slate: #6a7a8b;
-      --frame-olive: #8b8f5a;
-      --frame-teal: #4a9090;
-      --frame-plum: #8a5a8b;
-      --frame-cream: #c4a374;
-      --frame-sand: #b89868;
-      --frame-navy: #4a6a9a;
-    }
-
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --paper: #11131a;
-        --paper-hi: #181b24;
-        --paper-lo: #0b0d12;
-        --card: #1a1d27;
-        --ink: #ece4d2;
-        --ink-soft: #c9c1ad;
-        --muted: #8a8170;
-        --subtle: #6b6357;
-        --brace: #4d4738;
-        --rule: rgba(236, 228, 210, 0.12);
-        --rule-soft: rgba(236, 228, 210, 0.06);
-        --navy:      #7aa0d4;
-        --navy-soft: rgba(122, 160, 212, 0.18);
-        --navy-deep: #a8c3e8;
-        --sky:       #1f2a3c;
-        --sky-soft:  rgba(31, 42, 60, 0.5);
-        --sage:      #a3c0a0;
-        --sage-soft: rgba(163, 192, 160, 0.18);
-        --sun:       #f3c886;
-        --sun-soft:  rgba(243, 200, 134, 0.18);
-        --accent: #e16a4a;
-        --accent-soft: rgba(225, 106, 74, 0.18);
-        --clay: #e16a4a;
-        --clay-soft: rgba(225, 106, 74, 0.18);
-        --ok: #5cb86f;
-        --warn: #e3a06b;
-        --shadow: rgba(0, 0, 0, 0.5);
-        --shadow-soft: rgba(0, 0, 0, 0.3);
-      }
-    }
-
-    *, *::before, *::after { box-sizing: border-box; }
-    html, body { margin: 0; padding: 0; }
-    html { scroll-behavior: smooth; }
-    @media (prefers-reduced-motion: reduce) {
-      html { scroll-behavior: auto; }
-      *, *::before, *::after { animation: none !important; transition: none !important; }
-    }
-
-    body {
-      background:
-        radial-gradient(ellipse 60% 40% at 20% 0%, var(--sky-soft), transparent 65%),
-        radial-gradient(ellipse 70% 50% at 80% 20%, var(--sky-soft), transparent 60%),
-        radial-gradient(ellipse 90% 60% at 50% 0%, var(--paper-hi), transparent 70%),
-        radial-gradient(ellipse 90% 60% at 50% 100%, var(--paper-lo), transparent 70%),
-        var(--paper);
-      background-attachment: fixed;
-      color: var(--ink);
-      font-family: 'Inter', system-ui, -apple-system, sans-serif;
-      -webkit-font-smoothing: antialiased;
-      text-rendering: optimizeLegibility;
-      line-height: 1.55;
-      min-height: 100vh;
-    }
-
-    /* paper grain - keeps the brand texture */
-    body::before {
-      content: '';
-      position: fixed; inset: 0;
-      pointer-events: none;
-      z-index: 1;
-      opacity: 0.45;
-      mix-blend-mode: multiply;
-      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.05 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
-    }
-    @media (prefers-color-scheme: dark) {
-      body::before { mix-blend-mode: screen; opacity: 0.3; }
-    }
-
-    /* Accessibility primitives */
-    .sr-only {
-      position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
-      overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
-    }
-    .skip-link {
-      position: absolute; top: -100px; left: 12px;
-      background: var(--ink); color: var(--paper);
-      padding: 10px 14px; border-radius: 6px;
-      font-weight: 600; text-decoration: none; z-index: 100;
-    }
-    .skip-link:focus {
-      top: 12px;
-      outline: 2px solid var(--accent); outline-offset: 2px;
-    }
-    :focus-visible {
-      outline: 2px solid var(--accent);
-      outline-offset: 3px;
-      border-radius: 4px;
-    }
-
-    /* Header */
-    header.top {
-      position: relative;
-      z-index: 3;
-      padding: 22px clamp(20px, 4vw, 44px);
-      display: flex; align-items: center; justify-content: space-between;
-      gap: 16px;
-      flex-wrap: wrap;
-    }
-    .brand {
-      font-family: 'Inter', sans-serif;
-      font-size: 12px; letter-spacing: 0.22em; text-transform: uppercase;
-      color: var(--ink); text-decoration: none; font-weight: 500;
-      display: inline-flex; align-items: center; gap: 8px;
-      border: 0; padding-bottom: 0;
-      transition: color 0.15s;
-    }
-    .brand:hover { color: var(--navy); text-decoration: none; border: 0; }
-    .brand::before {
-      content: '🧢';
-      font-size: 16px;
-      line-height: 1;
-      letter-spacing: normal;
-      transform: translateY(-1px);
-    }
-    header.top nav {
-      display: flex; align-items: center; gap: 8px;
-      font-size: 12px; letter-spacing: 0.18em; text-transform: uppercase;
-    }
-    header.top nav a {
-      color: var(--muted); text-decoration: none;
-      padding: 8px 12px; border-radius: 6px;
-      font-weight: 500;
-      transition: color 0.2s ease, background 0.2s ease;
-    }
-    header.top nav a:hover { color: var(--ink); background: var(--accent-soft); }
-    .lang-switcher {
-      display: inline-flex; gap: 0;
-      border: 1px solid var(--rule); border-radius: 8px;
-      overflow: hidden;
-    }
-    .lang-switcher button {
-      background: transparent; border: 0;
-      color: var(--muted); font: inherit;
-      font-size: 11px; letter-spacing: 0.16em; font-weight: 600;
-      padding: 8px 12px; cursor: pointer;
-      text-transform: uppercase;
-      transition: color 0.2s ease, background 0.2s ease;
-    }
-    .lang-switcher button[aria-pressed="true"] {
-      background: var(--accent); color: var(--paper-hi);
-    }
-    .lang-switcher button:hover:not([aria-pressed="true"]) {
-      color: var(--ink); background: var(--accent-soft);
-    }
-
-    /* Main wrapper */
-    main {
-      position: relative; z-index: 2;
-      max-width: 1180px;
-      margin: 0 auto;
-      padding: 8px clamp(20px, 4vw, 44px) 64px;
-    }
-    section { padding: 56px 0; scroll-margin-top: 20px; }
-    section + section { border-top: 1px solid var(--rule); }
-    @media (max-width: 720px) { section { padding: 40px 0; } }
-
-    h1, h2, h3 { font-family: 'Instrument Serif', 'Times New Roman', serif; font-weight: 400; }
-    h2 {
-      font-family: 'Caveat', cursive;
-      font-weight: 700;
-      font-size: clamp(34px, 4.2vw, 50px);
-      letter-spacing: 0;
-      line-height: 1;
-      margin: 0 0 8px;
-      color: var(--ink);
-    }
-    h2 .accent { color: var(--navy); }
-    .section-sub {
-      color: var(--muted); font-size: 14.5px;
-      margin: 0 0 32px;
-      max-width: 60ch;
-    }
-
-    /* Hero */
-    .hero {
-      padding: 56px 0 40px;
-      text-align: center;
-      display: flex; flex-direction: column; align-items: center;
-    }
-    .portrait-text {
-      font-family: 'Rubik Spray Paint', 'Instrument Serif', serif;
-      font-size: clamp(64px, 11vw, 124px);
-      line-height: 1;
-      color: var(--ink);
-      letter-spacing: 0.01em;
-      display: block;
-      filter: drop-shadow(0 18px 22px var(--shadow));
-      user-select: none;
-      animation: float 6.4s ease-in-out infinite;
-      margin-bottom: 24px;
-    }
-    @keyframes float {
-      0%, 100% { transform: translateY(0); }
-      50%      { transform: translateY(-8px); }
-    }
-    h1.hero-title {
-      font-family: 'Caveat', cursive;
-      font-weight: 700;
-      font-size: clamp(36px, 5.6vw, 72px);
-      line-height: 1;
-      letter-spacing: 0;
-      margin: 8px 0 10px;
-      color: var(--ink);
-    }
-    h1.hero-title .variable-slot { color: var(--navy); }
-    .variable-slot {
-      display: inline-flex; align-items: baseline; gap: 0.16em;
-      white-space: nowrap;
-    }
-    .brace {
-      color: var(--brace);
-      font-family: 'Instrument Serif', serif;
-      font-style: normal; font-weight: 400;
-    }
-    .variable-mask {
-      position: relative; display: inline-block;
-      overflow: hidden; vertical-align: baseline; line-height: 1.06;
-    }
-    .ghost { visibility: hidden; font-style: italic; white-space: nowrap; }
-    .variable {
-      position: absolute; left: 0; right: 0; top: 0;
-      text-align: center; font-style: italic; white-space: nowrap;
-      color: var(--ink);
-    }
-    .letter {
-      display: inline-block;
-      transition: filter 0.18s ease, opacity 0.18s ease, color 0.18s ease;
-    }
-    .letter[data-state='scramble'] {
-      filter: blur(0.5px); opacity: 0.75; color: var(--ink-soft);
-    }
-    .letter[data-state='hidden'] { opacity: 0; }
-
-    .hero-tagline {
-      font-family: 'Inter', sans-serif;
-      color: var(--muted);
-      font-size: clamp(15px, 1.7vw, 17px);
-      max-width: 56ch;
-      margin: 14px auto 32px;
-      line-height: 1.55;
-    }
-
-    /* Download CTA */
-    .download-cta {
-      display: flex; flex-wrap: wrap; justify-content: center;
-      gap: 14px;
-    }
-    .btn {
-      display: inline-flex; align-items: center; gap: 14px;
-      padding: 16px 22px;
-      border-radius: 12px;
-      font: inherit; font-weight: 500;
-      text-decoration: none;
-      cursor: pointer; border: 1px solid transparent;
-      transition: transform 0.15s ease, box-shadow 0.2s ease, background 0.2s ease;
-      line-height: 1.2;
-    }
-    .btn-primary {
-      background: var(--accent);
-      color: var(--paper-hi);
-      box-shadow: 0 14px 28px var(--shadow-soft);
-    }
-    .btn-primary:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 18px 32px var(--shadow);
-    }
-    .btn-primary .btn-prefix {
-      font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase;
-      opacity: 0.92; font-weight: 600;
-    }
-    .btn-primary .btn-target {
-      font-size: 16px; font-weight: 600; letter-spacing: -0.005em;
-    }
-    .btn-primary .btn-version {
-      font-family: 'JetBrains Mono', ui-monospace, monospace;
-      font-size: 11px; opacity: 0.92;
-      padding: 3px 8px; border-radius: 5px;
-      background: rgba(255,255,255,0.18);
-    }
-
-    /* btn-copy: two-row brew install primary CTA */
-    .btn-copy {
-      flex-direction: column;
-      align-items: stretch;
-      gap: 8px;
-      padding: 14px 18px;
-      font-family: inherit;
-      min-width: min(560px, 100%);
-      text-align: left;
-    }
-    .btn-copy .btn-row {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-    .btn-copy .btn-row-top {
-      justify-content: space-between;
-    }
-    .btn-copy .btn-row-cmd {
-      background: rgba(0, 0, 0, 0.22);
-      border-radius: 8px;
-      padding: 6px 6px 6px 12px;
-      gap: 10px;
-    }
-    .btn-copy .btn-prompt {
-      font-family: 'JetBrains Mono', ui-monospace, monospace;
-      opacity: 0.7; font-size: 13px; font-weight: 600;
-    }
-    .btn-copy .btn-cmd {
-      font-family: 'JetBrains Mono', ui-monospace, monospace;
-      font-size: 14px; font-weight: 500;
-      flex: 1 1 auto;
-      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-      color: var(--paper-hi);
-    }
-    .btn-copy .btn-copy-hint {
-      display: inline-flex; align-items: center; gap: 6px;
-      flex-shrink: 0;
-      font-size: 10.5px; letter-spacing: 0.18em; text-transform: uppercase;
-      font-weight: 700; white-space: nowrap;
-      padding: 6px 10px;
-      border-radius: 6px;
-      background: rgba(255, 255, 255, 0.15);
-      color: var(--paper-hi);
-      transition: background 0.2s ease, transform 0.15s ease;
-    }
-    .btn-copy .btn-copy-hint svg {
-      width: 12px; height: 12px; display: block;
-    }
-    .btn-copy:hover .btn-copy-hint { background: rgba(255, 255, 255, 0.24); }
-    .btn-copy:active .btn-copy-hint { transform: scale(0.96); }
-    .btn-copy.copied .btn-copy-hint {
-      background: rgba(255, 255, 255, 0.32);
-      color: var(--paper-hi);
-    }
-    .btn-copy.copied { background: var(--ok, #2f7d3a); }
-    .btn-secondary {
-      background: transparent;
-      color: var(--ink);
-      border: 1px solid var(--rule);
-    }
-    .btn-secondary:hover {
-      background: var(--accent-soft);
-      border-color: var(--accent-soft);
-    }
-    .btn-secondary .btn-target {
-      font-size: 15px; font-weight: 500;
-    }
-
-    .quick-meta {
-      margin-top: 22px;
-      font-size: 12px; letter-spacing: 0.18em; text-transform: uppercase;
-      color: var(--subtle); font-weight: 500;
-      display: inline-flex; align-items: center; gap: 12px; flex-wrap: wrap;
-      justify-content: center;
-    }
-    .quick-meta .dot {
-      width: 4px; height: 4px; border-radius: 50%; background: var(--brace);
-    }
-
-    /* Install grid */
-    .install-grid {
+    /* hero stack: portrait + copy side by side at desktop */
+    .hero-stack {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-      gap: 18px;
-      margin-top: 24px;
+      grid-template-columns: 1fr;
+      gap: 32px;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    @media (min-width: 820px) {
+      .hero-stack { grid-template-columns: 200px 1fr; gap: 44px; }
+    }
+    .hero-portrait {
+      max-width: 200px;
+      width: 100%;
+      height: auto;
+      margin: 0 auto;
+      filter: drop-shadow(0 10px 22px var(--shadow));
+      transform: rotate(-2deg);
+      align-self: start;
+    }
+    .hero h1 { margin-top: 0; }
+
+    /* install panel */
+    .install-row {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 14px;
+      margin: 36px 0 16px;
+    }
+    @media (min-width: 760px) {
+      .install-row { grid-template-columns: 1fr 1fr; }
     }
     .install-card {
       background: var(--card);
-      border: 1px solid var(--rule);
-      border-radius: 14px;
-      padding: 22px;
-      box-shadow: 0 10px 22px var(--shadow-soft);
-    }
-    .install-card h3 {
-      font-family: 'Inter', sans-serif;
-      font-size: 12px; letter-spacing: 0.18em; text-transform: uppercase;
-      font-weight: 600;
-      color: var(--muted);
-      margin: 0 0 14px;
-    }
-    .cmd {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      background: var(--paper-lo);
-      border: 1px solid var(--rule);
-      border-radius: 10px;
-      padding: 8px 8px 8px 14px;
-      margin: 0;
-      font-family: 'JetBrains Mono', ui-monospace, monospace;
-      font-size: 13px;
-      color: var(--ink);
-      line-height: 1.55;
-      overflow: hidden;
-    }
-    @media (prefers-color-scheme: dark) {
-      .cmd { background: rgba(0,0,0,0.25); }
-    }
-    .cmd code {
-      font-family: inherit;
-      flex: 1 1 auto;
-      min-width: 0;
-      overflow-x: auto;
-      white-space: pre;
-      padding: 4px 0;
-      scrollbar-width: thin;
-    }
-    .cmd code::-webkit-scrollbar { height: 4px; }
-    .cmd code::-webkit-scrollbar-thumb { background: var(--rule); border-radius: 2px; }
-    .cmd .prompt { color: var(--accent); user-select: none; margin-right: 8px; }
-    .copy-btn {
-      flex: 0 0 auto;
-      align-self: stretch;
-      display: inline-flex; align-items: center; gap: 5px;
-      background: var(--card);
-      color: var(--muted);
-      border: 1px solid var(--rule);
-      border-radius: 6px;
-      padding: 0 10px;
-      font: inherit; font-size: 10.5px;
-      font-weight: 700;
-      letter-spacing: 0.16em; text-transform: uppercase;
-      cursor: pointer;
-      white-space: nowrap;
-      transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
-    }
-    .copy-btn svg { width: 11px; height: 11px; }
-    .copy-btn:hover { background: var(--accent-soft); color: var(--ink); border-color: var(--accent); }
-    .copy-btn.copied { color: var(--ok); border-color: var(--ok); background: rgba(47,125,58,0.08); }
-
-    .platform-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-    }
-    @media (max-width: 480px) { .platform-grid { grid-template-columns: 1fr; } }
-    .platform-link {
-      display: flex; flex-direction: column;
-      padding: 12px 14px;
-      background: var(--paper-lo);
-      border: 1px solid var(--rule);
-      border-radius: 8px;
-      text-decoration: none; color: var(--ink);
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 12px;
-      transition: background 0.2s ease, border-color 0.2s ease;
-    }
-    @media (prefers-color-scheme: dark) {
-      .platform-link { background: rgba(0,0,0,0.25); }
-    }
-    .platform-link:hover {
-      background: var(--accent-soft);
-      border-color: var(--accent);
-    }
-    .platform-link .os { font-weight: 600; }
-    .platform-link .arch { color: var(--muted); font-size: 11px; margin-top: 2px; }
-
-    .install-foot {
-      margin-top: 18px; font-size: 13px; color: var(--muted);
-    }
-    .install-foot a { color: var(--accent); text-decoration: none; border-bottom: 1px solid var(--accent-soft); }
-    .install-foot a:hover { border-bottom-color: var(--accent); }
-
-    /* Getting started */
-    .steps {
-      list-style: none;
-      counter-reset: step;
-      padding: 0; margin: 24px 0 0;
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-      gap: 18px;
-    }
-    .steps li {
-      background: var(--card);
-      border: 1px solid var(--rule);
-      border-radius: 14px;
-      padding: 24px 22px 22px;
-      box-shadow: 0 10px 22px var(--shadow-soft);
-    }
-    .steps h3 {
-      font-family: 'Inter', sans-serif;
-      font-size: 13.5px; letter-spacing: 0.04em;
-      font-weight: 600; margin: 0 0 10px;
-      color: var(--ink);
-    }
-    .steps p {
-      margin: 0 0 12px;
-      color: var(--ink-soft);
-      font-size: 14.5px;
-    }
-
-    /* Demos */
-    .demos h2 { margin-bottom: 8px; }
-    .demo {
-      margin: 0;
-      background: var(--card);
-      border: 1px solid var(--rule);
-      border-radius: 14px;
-      padding: 14px;
-      box-shadow: 0 12px 26px var(--shadow-soft);
-    }
-    .demo figcaption {
-      margin-top: 14px; padding: 0 6px;
-      display: flex; flex-direction: column; gap: 4px;
-    }
-    .demo figcaption strong {
-      font-family: 'Inter', sans-serif;
-      font-size: 14px; font-weight: 600; color: var(--ink);
-    }
-    .demo figcaption span {
-      color: var(--muted); font-size: 13.5px; line-height: 1.5;
-    }
-
-    /* keys table */
-    .keys-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-      gap: 12px 28px;
-      margin: 24px 0 0; padding: 0;
-    }
-    .keys-grid div {
-      display: grid;
-      grid-template-columns: max-content 1fr;
-      align-items: baseline;
-      gap: 14px;
-      padding: 10px 0;
-      border-bottom: 1px dashed var(--rule);
-    }
-    .keys-grid dt { margin: 0; }
-    .keys-grid kbd {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 12px;
-      background: var(--paper-lo);
-      border: 1px solid var(--rule);
-      border-radius: 5px;
-      padding: 3px 10px;
-      color: var(--ink);
-      font-weight: 600;
-      text-align: center;
-      white-space: nowrap;
-      display: inline-block;
-    }
-    @media (prefers-color-scheme: dark) {
-      .keys-grid kbd { background: rgba(0,0,0,0.25); }
-    }
-    .keys-grid dd { margin: 0; }
-    .keys-grid span { color: var(--ink-soft); font-size: 14px; }
-
-    /* Footer */
-    footer.bottom {
-      position: relative; z-index: 3;
-      max-width: 1180px;
-      margin: 0 auto;
-      padding: 32px clamp(20px, 4vw, 44px);
-      border-top: 1px solid var(--rule);
-      display: flex; align-items: center; justify-content: space-between;
-      font-size: 11px; letter-spacing: 0.24em; text-transform: uppercase;
-      color: var(--muted); font-weight: 500;
-      gap: 16px; flex-wrap: wrap;
-    }
-    footer.bottom a {
-      color: var(--muted); text-decoration: none;
-      transition: color 0.2s ease;
-    }
-    footer.bottom a:hover { color: var(--ink); }
-    footer.bottom nav { display: flex; gap: 22px; }
-
-    /* mobile */
-    @media (max-width: 640px) {
-      header.top { padding: 16px 18px; gap: 12px; }
-      header.top nav { gap: 4px; font-size: 11px; }
-      header.top nav a { padding: 6px 8px; }
-      .hero { padding: 32px 0 24px; }
-      .hero-tagline { margin: 14px 12px 24px; }
-      .btn { padding: 14px 18px; }
-      .btn-primary .btn-target { font-size: 14.5px; }
-      .keys-grid kbd { font-size: 11px; }
-    }
-
-    /* Skeleton + loading states for dynamic content */
-    .loading { color: var(--muted); font-style: italic; }
-
-    /* ─── Carlos TUI reproductions ───────────────────────────────────── */
-    /* Break the demos section out of main's 1180px so half-column TUIs
-       have room to display the full status line without wrapping. */
-    @media (min-width: 1280px) {
-      section.demos {
-        width: min(calc(100vw - 32px), 1520px);
-        position: relative;
-        left: 50%;
-        transform: translateX(-50%);
-        padding-left: clamp(20px, 4vw, 44px);
-        padding-right: clamp(20px, 4vw, 44px);
-      }
-    }
-
-    .app-grid {
-      display: grid;
-      grid-template-columns: 1fr;
-      gap: 28px;
-      margin-top: 24px;
-    }
-    /* Stay single-column until each col would have ~560px of headroom —
-       below that the TUI status bars wrap awkwardly. */
-    @media (min-width: 1180px) {
-      .app-grid { grid-template-columns: 1fr 1fr; }
-      .app-grid .demo-wide { grid-column: 1 / -1; }
-    }
-
-    .app-window {
-      --c-bg:     #08090f;
-      --c-blue:   #6f81f5;
-      --c-blue-d: #4d5fcf;
-      --c-text:   #e8e3d4;
-      --c-mute:   #7a7669;
-      --c-sub:    #4f4a3c;
-      --c-orange: #d97757;
-      --c-orange-b: #ee9a55;
-      --c-green:  #46c265;
-
+      border-radius: 12px;
+      padding: 16px 18px;
       position: relative;
-      border-radius: 14px;
-      background: var(--c-bg);
-      overflow: hidden;
-      box-shadow:
-        0 22px 44px var(--shadow),
-        inset 0 0 0 1px rgba(255,255,255,0.05);
+      box-shadow: 0 1px 0 var(--rule-soft) inset, 0 10px 22px var(--shadow);
     }
-    .app-titlebar {
-      display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
-      align-items: center;
-      padding: 10px 14px;
-    }
-    .app-titlebar .lights { display: inline-flex; gap: 7px; }
-    .app-titlebar .lights span {
-      width: 12px; height: 12px; border-radius: 50%;
-      display: inline-block;
-      box-shadow: inset 0 0 0 0.5px rgba(0,0,0,0.25);
-    }
-    .app-titlebar .l-r { background: #ff5f57; }
-    .app-titlebar .l-y { background: #febc2e; }
-    .app-titlebar .l-g { background: #28c840; }
-    .app-titlebar .app-title {
-      text-align: center;
-      font-family: 'Inter', sans-serif;
-      font-size: 12.5px; font-weight: 500;
-      color: #d2ccba;
-      letter-spacing: 0.01em;
-    }
-    .app-titlebar .ph { /* spacer for right column */ }
-
-    .app-inner {
-      margin: 0 14px 14px;
-      border: 1px solid var(--c-blue);
-      border-radius: 8px;
-      padding: 14px 18px 16px;
-      font-family: 'JetBrains Mono', ui-monospace, monospace;
-      font-size: 12.2px;
-      line-height: 1.55;
-      color: var(--c-text);
-      min-height: 280px;
-      display: flex; flex-direction: column;
-    }
-    /* Plain-shell variant (e.g. zsh running `carlos research`):
-       no carlos-TUI inner border, just the macOS window chrome. */
-    .app-inner.shell {
-      border: 0;
-      border-radius: 0;
-      margin: 0;
-      padding: 18px 22px 22px;
-    }
-    @media (max-width: 720px) {
-      .app-inner { font-size: 11px; padding: 12px 14px; min-height: 240px; }
-      .app-inner.shell { padding: 14px 16px 18px; }
-    }
-
-    /* Inline carlos cap glyph */
-    .cap-icon {
-      display: inline-block;
-      vertical-align: -3px;
-      flex-shrink: 0;
-    }
-    .cap-icon-lg { vertical-align: -5px; }
-
-    /* Chat status bar (top of TUI) — single line, truncate, never wrap. */
-    .cstat {
-      display: flex;
-      justify-content: space-between;
-      align-items: baseline;
-      gap: 14px;
-      margin-bottom: 14px;
-      flex-wrap: nowrap;
-      min-width: 0;
-    }
-    .cstat-l {
-      display: inline-flex;
-      gap: 12px;
-      align-items: baseline;
-      flex: 1 1 auto;
-      min-width: 0;
-      overflow: hidden;
-      white-space: nowrap;
-    }
-    .cstat-l > * { white-space: nowrap; }
-    .cstat .ses-id { color: var(--c-blue); font-weight: 700; letter-spacing: 0.02em; flex-shrink: 0; }
-    .cstat .ses-running { color: var(--c-text); flex-shrink: 0; }
-    .cstat .ses-running .dot { color: var(--c-green); }
-    .cstat .ses-model {
-      color: var(--c-mute);
-      overflow: hidden;
-      text-overflow: ellipsis;
-      min-width: 0;
-    }
-    .cstat .ses-sep { color: var(--c-mute); flex-shrink: 0; }
-    .cstat .ses-frame { flex-shrink: 0; }
-    .cstat .ses-frame .glyph { color: var(--c-orange); }
-    .cstat .ses-tag { color: var(--c-mute); flex-shrink: 0; }
-
-    /* Conversation rows */
-    .crow { display: flex; gap: 12px; align-items: flex-start; padding: 4px 0; }
-    .crow .gutter {
-      flex: 0 0 auto;
-      display: inline-flex; align-items: center; gap: 4px;
-      line-height: 1.55;
-      white-space: nowrap;
-    }
-    .crow .body { flex: 1 1 auto; min-width: 0; }
-    .crow.user .gutter { color: var(--c-blue); }
-    .crow.user .body { color: #c8d1ff; }
-    .crow.agent .body { color: var(--c-text); }
-    .crow.agent .body p { margin: 0; }
-    .crow.agent .body p + p { margin-top: 8px; }
-    .crow.agent .body code {
-      font-family: inherit;
-      background: rgba(255,255,255,0.04);
-      padding: 1px 4px; border-radius: 3px;
-      color: #d8cfb5;
-    }
-    .crow.agent .body strong { color: var(--c-text); font-weight: 700; }
-    .crow.agent .body ol { margin: 6px 0 0; padding-left: 22px; color: var(--c-text); }
-    .crow.agent .body ol li { padding-left: 3px; }
-
-    /* Tool call card (write/bash/etc) */
-    .tool-card {
-      border: 1px solid var(--c-orange);
-      border-radius: 5px;
-      padding: 6px 12px;
-      margin: 6px 0;
-      display: flex; align-items: center; gap: 12px;
-      background: transparent;
-    }
-    .tool-card .wrench { color: var(--c-orange); font-size: 13px; }
-    .tool-card .name { color: var(--c-orange-b); font-weight: 700; }
-    .tool-card .dot-sep { color: var(--c-mute); margin: 0 -4px; }
-    .tool-card .args {
-      color: var(--c-mute);
-      flex: 1 1 auto; min-width: 0;
-      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-      font-family: inherit;
-    }
-    .tool-card .meta { color: var(--c-mute); font-weight: 500; flex: 0 0 auto; }
-
-    /* Chat tail: input box + key hints */
-    .chat-tail { margin-top: auto; padding-top: 14px; }
-    .chat-input-line {
-      border-top: 1px solid rgba(255,255,255,0.06);
-      padding: 10px 0 6px;
-      position: relative;
-    }
-    .chat-input-line .vbar {
-      position: absolute;
-      left: -4px; top: 12px; bottom: 8px; width: 1px;
-      background: rgba(255,255,255,0.18);
-    }
-    .chat-input-line .ph {
-      display: inline; color: var(--c-mute);
-    }
-    .chat-input-line .ph .first {
-      background: rgba(255,255,255,0.22);
-      color: #efeae0;
-      padding: 0 1px;
-      border-radius: 2px;
-    }
-    .chat-keys {
-      display: flex; justify-content: space-between; gap: 14px; flex-wrap: wrap;
-      font-size: 11.5px; color: var(--c-mute);
-      padding-top: 10px;
-    }
-    .chat-keys .grp { display: inline-flex; gap: 18px; align-items: baseline; flex-wrap: wrap; }
-    .chat-keys .pair { display: inline-flex; gap: 6px; align-items: baseline; }
-    .chat-keys .key { color: var(--c-blue); font-weight: 700; }
-
-    /* Welcome / empty chat state */
-    .welcome {
-      flex: 1 1 auto;
-      display: flex; flex-direction: column;
-      align-items: center; justify-content: center;
-      text-align: center;
-      gap: 10px;
-      padding: 28px 12px 22px;
-    }
-    .welcome .greet {
-      color: var(--c-blue); font-weight: 700;
-      display: inline-flex; align-items: center; gap: 12px;
-      font-size: 13.5px;
-    }
-    .welcome .hint { color: var(--c-mute); font-size: 12px; margin-top: 2px; }
-    .welcome ul {
-      list-style: none; margin: 22px 0 0; padding: 0;
-      color: var(--c-mute); font-style: italic; font-size: 12px;
-      text-align: left;
-    }
-    .welcome ul li { padding: 1px 0; position: relative; padding-left: 14px; }
-    .welcome ul li::before {
-      content: '•'; position: absolute; left: 0; color: var(--c-sub);
-    }
-    .welcome ul li.indent { padding-left: 36px; }
-    .welcome ul li.indent::before { left: 22px; }
-
-    /* Shell-style command prompt — used by carlos research and carlos please */
-    .rcmd {
-      padding: 2px 0 6px;
-      background: transparent;
-      border: 0;
-      border-radius: 0;
-      font-family: 'JetBrains Mono', ui-monospace, monospace;
-      color: var(--c-text);
-    }
-    .rcmd .arrow { color: var(--c-green); font-weight: 700; margin-right: 8px; }
-    .rcmd .home  { color: var(--c-blue);  margin-right: 10px; }
-    .rcmd .txt   { color: var(--c-text); }
-    .research .meta-line {
-      color: var(--c-mute); padding: 2px 0;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .research .meta-line .lbl { color: var(--c-text); }
-    .research-box {
-      border: 1px solid var(--c-blue);
-      border-radius: 6px;
-      padding: 12px 16px;
-      margin: 20px 0;
-    }
-    .research-box .header {
-      display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
-    }
-    .research-box .header .spinner {
-      color: var(--c-blue);
-      display: inline-block; width: 1em; text-align: center;
-      font-weight: 700;
-    }
-    .research-box .header .spinner.done { color: var(--c-blue); }
-    .research-box .header .title { color: var(--c-blue); font-weight: 700; }
-    .research-box .header .query { color: var(--c-mute); }
-    .research-box .header .elapsed {
-      margin-left: auto; color: var(--c-mute);
-    }
-    .research-box .header .elapsed::before { content: ' · '; color: var(--c-sub); margin-right: 4px; }
-    .research-box .current {
-      color: var(--c-text);
-      padding: 6px 0 0;
-    }
-    .research-box .current.done-line { font-style: italic; color: var(--c-mute); }
-    .research-box .current.done-line .label { color: var(--c-text); font-style: normal; font-weight: 700; }
-    .research-box .current .dot-cur { color: var(--c-blue); }
-    .research-box .current .label { color: var(--c-text); font-weight: 700; }
-    .research-box .current .ms { color: var(--c-mute); margin-left: 8px; }
-    .research-box .phases {
-      display: flex; gap: 18px;
-      padding-top: 10px;
-      color: var(--c-mute);
-      flex-wrap: wrap;
-    }
-    .research-box .ph { display: inline-flex; gap: 6px; align-items: baseline; }
-    .research-box .ph .glyph { width: 1em; display: inline-block; text-align: center; }
-    .research-box .ph.done .glyph { color: var(--c-blue-d); }
-    .research-box .ph.cur  .glyph { color: var(--c-blue); animation: glyphPulse 1.2s ease-in-out infinite; }
-    .research-box .ph.todo .glyph { color: var(--c-sub); }
-    .research-box .ph.done .lbl   { color: var(--c-mute); }
-    .research-box .ph.cur  .lbl   { color: var(--c-text); font-weight: 700; }
-    .research-box .ph.todo .lbl   { color: var(--c-mute); }
-    @keyframes glyphPulse {
-      0%, 100% { opacity: 1; }
-      50%      { opacity: 0.55; }
-    }
-    .research .saved {
-      color: var(--c-text); padding-top: 14px;
-      opacity: 0; visibility: hidden;
-      transition: opacity 0.35s ease;
-    }
-    .research .saved.show { opacity: 1; visibility: visible; }
-    .research .saved .path { color: var(--c-mute); }
-
-    /* Onboarding two-column layout */
-    .onboard {
-      display: grid;
-      grid-template-columns: minmax(150px, 32%) 1fr;
-      gap: 18px;
-      flex: 1 1 auto;
-    }
-    .onboard .left {
-      display: flex; flex-direction: column;
-      align-items: center; justify-content: center;
-      gap: 10px;
-      padding: 14px 6px;
-      border-right: 1px solid var(--c-blue);
-    }
-    .onboard .left .avatar {
-      width: 122px; height: 122px;
-      background-image: url('./branding/carlos-portrait.png');
-      background-size: cover; background-position: center 42%;
-      border-radius: 14px;
-      filter: drop-shadow(0 6px 12px rgba(0,0,0,0.4));
-    }
-    .onboard .left .name { color: var(--c-blue); font-weight: 700; font-size: 13.5px; }
-    .onboard .left .step { color: var(--c-mute); font-size: 11.5px; }
-    .onboard .left .dots { display: inline-flex; gap: 9px; margin-top: 8px; }
-    .onboard .left .dots span {
-      width: 7px; height: 7px; border-radius: 50%; background: var(--c-sub);
-      display: inline-block;
-    }
-    .onboard .left .dots .done { background: var(--c-blue-d); }
-    .onboard .left .dots .active {
-      background: transparent;
-      box-shadow: inset 0 0 0 1.5px var(--c-blue);
-    }
-    .onboard .right {
-      padding: 8px 0 0 6px;
-      display: flex; flex-direction: column; gap: 14px;
-    }
-    .onboard .right .h { color: var(--c-blue); font-weight: 700; font-size: 13px; }
-    .onboard .right .p { color: var(--c-mute); }
-    .onboard .ob-input {
-      font-size: 13px;
-      display: inline-flex; align-items: baseline;
-    }
-    .onboard .ob-input .gt { color: var(--c-text); margin-right: 8px; }
-    .onboard .ob-input .val { color: var(--c-text); font-weight: 600; }
-    .onboard .ob-input .caret {
-      display: inline-block;
-      width: 0.55em; height: 1.15em;
-      background: rgba(255,255,255,0.7);
-      vertical-align: -0.18em;
-      margin-left: 1px;
-      animation: caret-blink 1.05s steps(2) infinite;
-    }
-    @keyframes caret-blink { 50% { opacity: 0; } }
-    .onboard .help { color: var(--c-mute); margin-top: 4px; }
-    .onboard .help .key { color: var(--c-text); font-weight: 700; }
-
-    .ob-options { display: flex; flex-direction: column; gap: 14px; margin-top: 6px; }
-    .ob-option {
-      display: grid; grid-template-columns: max-content 1fr;
-      gap: 14px; align-items: baseline;
-    }
-    .ob-option .marker { color: var(--c-mute); font-weight: 700; }
-    .ob-option.selected .marker { color: var(--c-blue); }
-    .ob-option .label { color: var(--c-text); font-weight: 700; }
-    .ob-option .desc { grid-column: 2 / 3; color: var(--c-mute); font-size: 11.5px; margin-top: -2px; }
-
-    .onboard-foot {
-      padding-top: 14px; color: var(--c-mute); font-size: 11.5px;
-      display: flex; gap: 18px; flex-wrap: wrap; align-items: baseline;
-    }
-    .onboard-foot .pair { display: inline-flex; gap: 6px; align-items: baseline; }
-    .onboard-foot .key { color: var(--c-blue); font-weight: 700; }
-
-    /* carlos please — shell-style, sibling to the research demo */
-    .please .meta-line { color: var(--c-mute); padding: 2px 0; }
-    .please .meta-line .lbl { color: var(--c-text); }
-
-    .please-prompt {
-      margin: 14px 0 6px;
-      padding: 10px 14px;
-      border-left: 2px solid var(--c-orange);
-      background: rgba(217,119,87,0.06);
-      border-radius: 0 6px 6px 0;
-    }
-    .please-prompt .warn { color: var(--c-orange-b); font-weight: 600; }
-    .please-prompt .args {
-      color: var(--c-mute); padding: 4px 0 6px 12px;
-      font-family: inherit;
-      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    }
-    .please-prompt .approve { color: var(--c-text); }
-    .please-prompt .approve .hint { color: var(--c-mute); margin: 0 6px; }
-    .please-prompt .approve .answer { color: var(--c-green); font-weight: 700; }
-
-    .please-result { color: var(--c-mute); padding: 6px 0 10px; }
-    .please-result .ok { color: var(--c-green); font-weight: 700; margin-right: 6px; }
-
-    .please-reply { display: flex; gap: 12px; align-items: flex-start; padding: 4px 0; }
-    .please-reply .gutter { color: var(--c-blue); flex: 0 0 auto; display: inline-flex; gap: 4px; align-items: center; }
-    .please-reply .body { flex: 1 1 auto; min-width: 0; }
-    .please-reply .body .first { color: var(--c-text); font-weight: 700; }
-    .please-reply ul { list-style: none; margin: 6px 0 0; padding: 0; }
-    .please-reply ul li { padding: 1px 0; color: var(--c-text); padding-left: 14px; position: relative; }
-    .please-reply ul li::before { content: '•'; position: absolute; left: 0; color: var(--c-sub); }
-    .please-reply ul li .hash { color: var(--c-blue); font-weight: 700; margin-right: 6px; }
-    .please-reply ul li .msg { color: var(--c-text); }
-
-    .please-stats { color: var(--c-sub); font-size: 11.5px; padding-top: 14px; }
-    .please-end {
-      padding-top: 8px;
-      display: inline-flex; align-items: baseline; gap: 8px;
-    }
-    .please-end .caret {
-      display: inline-block; width: 0.55em; height: 1em;
-      background: rgba(255,255,255,0.7);
-      vertical-align: -0.12em;
-      animation: caret-blink 1.05s steps(2) infinite;
-    }
-
-    /* Frame switcher — TUI overlay, real grid of tiles */
-    .switcher-head {
-      display: flex; justify-content: space-between; align-items: baseline;
-      gap: 12px; margin-bottom: 14px;
-      color: var(--c-mute);
-    }
-    .switcher-head .title { color: var(--c-blue); font-weight: 700; }
-    .switcher-head .active-frame { color: var(--c-orange); font-weight: 700; }
-    .switcher-head .page { color: var(--c-sub); font-size: 11.5px; }
-
-    .frame-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 12px;
-      flex: 1 1 auto;
-      align-content: center;
-      margin: 6px 0;
-    }
-    @media (max-width: 720px) {
-      .frame-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
-    }
-    .frame-tile {
-      border: 1px solid var(--c-sub);
-      border-radius: 8px;
-      padding: 16px 8px 14px;
-      display: flex; flex-direction: column;
-      align-items: center; justify-content: center;
-      gap: 10px;
-      min-height: 84px;
-      text-align: center;
-      color: var(--c-mute);
-    }
-    .frame-tile .glyph { font-size: 18px; line-height: 1; font-weight: 700; }
-    .frame-tile .name { font-weight: 700; font-size: 12.5px; }
-    .frame-tile.active {
-      border-color: var(--c-orange);
-      box-shadow: inset 0 0 0 1px var(--c-orange), 0 0 12px rgba(217,119,87,0.18);
-    }
-    .frame-tile.new { border-style: dashed; }
-    .frame-tile.new .name { font-style: italic; font-weight: 500; }
-
-    .frame-tile.rust  .glyph, .frame-tile.rust  .name { color: var(--c-orange); }
-    .frame-tile.slate .glyph, .frame-tile.slate .name { color: #8693a3; }
-    .frame-tile.olive .glyph, .frame-tile.olive .name { color: #adb86e; }
-    .frame-tile.teal  .glyph, .frame-tile.teal  .name { color: #5fb5b5; }
-    .frame-tile.plum  .glyph, .frame-tile.plum  .name { color: #b388c2; }
-
-    .switcher-foot {
-      margin-top: auto;
-      display: flex; gap: 22px; justify-content: center; flex-wrap: wrap;
-      padding-top: 14px;
-      color: var(--c-mute);
-      font-size: 11.5px;
-    }
-    .switcher-foot .pair { display: inline-flex; gap: 6px; align-items: baseline; }
-    .switcher-foot .key { color: var(--c-blue); font-weight: 700; }
-
-    /* ───────── sandlot additions ───────── */
-    .doodle { position: fixed; pointer-events: none; z-index: 1; opacity: 0.45; }
-    .doodle path { fill: none; stroke: var(--navy); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
-    .doodle.ink path  { stroke: var(--ink); }
-    .doodle.sage path { stroke: var(--sage); }
-    .doodle-cloud-1 { top: 120px; right: -10px;  width: 220px; }
-    .doodle-cloud-2 { top: 880px; left: -30px;   width: 180px; opacity: 0.38; }
-    .doodle-cloud-3 { top: 2200px; right: -20px; width: 200px; opacity: 0.38; }
-    @media (max-width: 800px) {
-      .doodle-cloud-1, .doodle-cloud-3 { display: none; }
-    }
-
-    /* hero h1 — give the variable phrase a hand-drawn underline */
-    h1.hero-title .variable-mask::after {
-      content: '';
-      position: absolute; left: -2%; right: -2%; bottom: -8px;
-      height: 11px;
-      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 11' preserveAspectRatio='none'><path d='M2 6 Q 28 1, 60 5 T 120 5 T 178 4 T 198 6' fill='none' stroke='%232c4a78' stroke-width='2.2' stroke-linecap='round'/></svg>");
-      background-repeat: no-repeat; background-size: 100% 100%;
-      pointer-events: none;
-    }
-    h1.hero-title .variable-mask { position: relative; }
-    .brace { color: var(--navy) !important; opacity: 0.55; }
-
-    /* "deeper dives" link cards section */
-    section.deeper {
-      padding: 56px 0;
-    }
-    .deeper-grid {
-      display: grid;
-      grid-template-columns: 1fr;
-      gap: 18px;
-      margin-top: 28px;
-    }
-    @media (min-width: 820px) {
-      .deeper-grid { grid-template-columns: 1fr 1fr; }
-    }
-    a.deeper-card {
-      display: block;
-      background: var(--card);
-      border-radius: 14px;
-      padding: 26px 28px;
-      text-decoration: none;
-      color: var(--ink);
-      position: relative;
-      box-shadow: 0 1px 0 var(--rule-soft) inset, 0 14px 28px var(--shadow-soft);
-      transition: transform 0.18s ease, box-shadow 0.18s ease;
-    }
-    a.deeper-card::before {
+    .install-card::before {
       content: ''; position: absolute; inset: 0;
-      border-radius: 14px; padding: 1.5px;
+      border-radius: 12px; padding: 1.5px;
       background: var(--ink);
       -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
       -webkit-mask-composite: xor; mask-composite: exclude;
-      opacity: 0.25; pointer-events: none;
+      opacity: 0.22; pointer-events: none;
     }
-    a.deeper-card.loop  { transform: rotate(-0.3deg); }
-    a.deeper-card.skill { transform: rotate(0.2deg); }
-    a.deeper-card:hover { transform: rotate(0deg) translateY(-3px); box-shadow: 0 1px 0 var(--rule-soft) inset, 0 22px 38px var(--shadow); }
-    a.deeper-card .eyebrow {
+    .install-card .label {
+      display: block;
+      font-family: 'Inter', sans-serif;
+      font-size: 11px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+    .install-card .cmd {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      color: var(--ink);
+      background: var(--paper-hi);
+      border: 1px solid var(--rule);
+      border-radius: 8px;
+      padding: 10px 12px;
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 10px;
+      word-break: break-all;
+    }
+    .install-card .cmd .prompt { color: var(--muted); margin-right: 6px; }
+    .install-card .cmd .copy {
+      font-family: 'Caveat', cursive;
+      font-size: 16px;
+      color: var(--navy);
+      background: transparent;
+      border: 0;
+      cursor: pointer;
+      padding: 0 4px;
+      flex-shrink: 0;
+    }
+    .install-card .cmd .copy:hover, .install-card .cmd .copy:focus-visible { color: var(--navy-deep); outline: none; }
+    .install-card p {
+      font-size: 13px;
+      color: var(--muted);
+      margin: 10px 0 0;
+      max-width: none;
+    }
+
+    /* hero CTA bar */
+    .cta-row {
+      display: flex; gap: 14px; flex-wrap: wrap;
+      margin: 8px 0 4px;
+    }
+    .cta {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 18px;
+      border-radius: 10px;
+      font-family: 'Inter', sans-serif;
+      font-weight: 600;
+      font-size: 14px;
+      text-decoration: none;
+      border: 0;
+      transition: transform 0.15s, box-shadow 0.15s;
+      box-shadow: 0 6px 14px var(--shadow);
+    }
+    .cta.primary {
+      background: var(--navy);
+      color: var(--paper-hi);
+    }
+    .cta.primary:hover, .cta.primary:focus-visible {
+      background: var(--navy-deep);
+      transform: translateY(-1px);
+      box-shadow: 0 10px 20px var(--shadow);
+      outline: none;
+    }
+    .cta.secondary {
+      background: transparent;
+      color: var(--ink);
+      border: 1.5px solid var(--rule);
+      box-shadow: none;
+    }
+    .cta.secondary:hover, .cta.secondary:focus-visible {
+      border-color: var(--navy);
+      color: var(--navy-deep);
+      transform: translateY(-1px);
+      outline: none;
+    }
+
+    /* value props strip */
+    .values {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 16px;
+      margin: 32px 0 0;
+    }
+    @media (min-width: 760px) {
+      .values { grid-template-columns: 1fr 1fr; }
+    }
+    @media (min-width: 1040px) {
+      .values { grid-template-columns: repeat(4, 1fr); }
+    }
+    .value {
+      background: var(--card);
+      border-radius: 12px;
+      padding: 18px 20px;
+      position: relative;
+      box-shadow: 0 1px 0 var(--rule-soft) inset, 0 8px 18px var(--shadow);
+    }
+    .value::before {
+      content: ''; position: absolute; inset: 0;
+      border-radius: 12px; padding: 1.5px;
+      background: var(--ink);
+      -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+      -webkit-mask-composite: xor; mask-composite: exclude;
+      opacity: 0.22; pointer-events: none;
+    }
+    .value:nth-child(1) { transform: rotate(-0.3deg); }
+    .value:nth-child(2) { transform: rotate(0.4deg); }
+    .value:nth-child(3) { transform: rotate(-0.2deg); }
+    .value:nth-child(4) { transform: rotate(0.3deg); }
+    .value .icon {
       font-family: 'Caveat', cursive;
       font-size: 22px;
       color: var(--clay);
-      transform: rotate(-1deg);
-      display: inline-block;
-      margin-bottom: 2px;
+      display: block;
+      margin-bottom: 4px;
     }
-    a.deeper-card .ttl {
-      font-family: 'Caveat', cursive;
-      font-weight: 700;
-      font-size: 38px;
-      line-height: 1;
+    .value h3 {
+      font-family: 'Caveat', cursive; font-weight: 700;
+      font-size: 24px; line-height: 1;
+      margin: 0 0 8px;
+      color: var(--navy-deep);
+    }
+    .value p { font-size: 14px; color: var(--ink-soft); margin: 0; max-width: none; }
+
+    /* language toggle (in header) */
+    .lang-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 0;
+      padding: 0;
+      border: 1px solid var(--rule);
+      border-radius: 999px;
+      background: var(--paper-hi);
+      margin-left: 6px;
+      overflow: hidden;
+    }
+    .lang-toggle button {
+      font-family: 'Inter', sans-serif;
+      font-size: 10.5px;
+      letter-spacing: 0.18em;
+      color: var(--muted);
+      background: transparent;
+      border: 0;
+      padding: 4px 10px;
+      cursor: pointer;
+      transition: background 0.12s, color 0.12s;
+    }
+    .lang-toggle button:hover, .lang-toggle button:focus-visible {
       color: var(--ink);
-      margin: 4px 0 8px;
+      background: var(--navy-soft);
+      outline: none;
     }
-    a.deeper-card.loop  .ttl span.accent { color: var(--navy); }
-    a.deeper-card.skill .ttl span.accent { color: var(--sage); }
-    a.deeper-card p {
-      font-size: 15px; line-height: 1.55;
-      color: var(--ink-soft); margin: 0 0 14px;
+    .lang-toggle button[aria-pressed="true"] {
+      color: var(--paper-hi);
+      background: var(--navy);
     }
-    a.deeper-card .go {
-      display: inline-flex; gap: 8px; align-items: center;
-      font-family: 'Inter', sans-serif; font-weight: 600; font-size: 13px;
-      letter-spacing: 0.04em;
-      color: var(--navy);
+
+    @media (prefers-reduced-motion: reduce) {
+      .value, .hero-portrait { transform: none !important; }
     }
-    a.deeper-card .go::after {
-      content: '→'; transition: transform 0.18s ease;
-    }
-    a.deeper-card:hover .go::after { transform: translateX(4px); }
   </style>
 </head>
 <body>
-  <a class="skip-link" href="#main" data-i18n="a11y.skip">Skip to content</a>
+  <a class="skip-link" href="#main" data-i18n="a11y.skip">skip to content</a>
 
-  <!-- ambient sandlot doodles -->
+  <!-- ambient doodles -->
   <svg class="doodle doodle-cloud-1" viewBox="0 0 240 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
     <path d="M30 70 Q 10 70, 12 50 Q 14 30, 40 32 Q 48 14, 80 18 Q 110 6, 130 24 Q 160 16, 170 42 Q 200 38, 200 60 Q 210 78, 184 80 L 50 80 Q 30 82, 30 70 Z"/>
   </svg>
-  <svg class="doodle doodle-cloud-2 sage" viewBox="0 0 240 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+  <svg class="doodle doodle-cloud-2 ink" viewBox="0 0 240 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
     <path d="M30 70 Q 10 70, 12 50 Q 14 30, 40 32 Q 48 14, 80 18 Q 110 6, 130 24 Q 160 16, 170 42 Q 200 38, 200 60 Q 210 78, 184 80 L 50 80 Q 30 82, 30 70 Z"/>
   </svg>
-  <svg class="doodle doodle-cloud-3 ink" viewBox="0 0 240 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+  <svg class="doodle doodle-cloud-3 sage" viewBox="0 0 240 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
     <path d="M30 70 Q 10 70, 12 50 Q 14 30, 40 32 Q 48 14, 80 18 Q 110 6, 130 24 Q 160 16, 170 42 Q 200 38, 200 60 Q 210 78, 184 80 L 50 80 Q 30 82, 30 70 Z"/>
+  </svg>
+  <svg class="doodle doodle-star" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path d="M20 4 L 22 16 L 36 18 L 24 26 L 28 38 L 20 30 L 12 38 L 16 26 L 4 18 L 18 16 Z" stroke="#c64a2c"/>
   </svg>
 
-  <header class="top" role="banner">
-    <a class="brand" href="./" aria-label="carlos home">carlos</a>
-    <nav aria-label="Site">
-      <div
-        class="lang-switcher"
-        role="group"
-        aria-label="Language"
-        data-i18n-aria-label="nav.langLabel"
-      >
-        <button type="button" data-lang="en" aria-pressed="true" lang="en" title="English">EN</button>
-        <button type="button" data-lang="es" aria-pressed="false" lang="es" title="Español">ES</button>
-      </div>
-      <a href="https://github.com/georgebuilds/carlos" rel="noopener" data-i18n="nav.github">GitHub</a>
-      <a href="./agent-loop.html" data-i18n="nav.agentLoop">Agent loop</a>
-      <a href="./skills.html" data-i18n="nav.skills">Skills</a>
+  <header class="site">
+    <a class="mark" href="./" aria-label="carlos home">carlos</a>
+    <nav>
+      <a href="./docs/" data-i18n="nav.docs">docs</a>
+      <a href="./agent-loop.html" data-i18n="nav.agentLoop">agent loop</a>
+      <a href="./skills.html" data-i18n="nav.skills">skills</a>
+      <a href="https://github.com/georgebuilds/carlos" data-i18n="nav.github">github</a>
+      <span class="lang-toggle" role="group" data-i18n-aria-label="nav.langLabel" aria-label="Language">
+        <button type="button" data-lang="en" lang="en" aria-pressed="true" title="English">EN</button>
+        <button type="button" data-lang="es" lang="es" aria-pressed="false" title="Español">ES</button>
+      </span>
     </nav>
   </header>
 
-  <main id="main">
+  <main id="main" class="wide">
 
-    <!-- ─── HERO ────────────────────────────────────────────────── -->
-    <section class="hero" aria-labelledby="hero-title">
-      <span class="portrait-text" aria-label="Carlos">Carlos</span>
+    <section class="hero">
+      <div class="hero-stack">
+        <img class="hero-portrait" src="./branding/carlos-portrait.png" alt="" />
+        <div>
+          <span class="eyebrow" data-i18n="hero.eyebrow">pure-Go TUI agent · single binary</span>
+          <h1>
+            <span data-i18n="hero.t1">The most</span>
+            <span class="accent" data-i18n="hero.accent">committed</span><span data-i18n="hero.t2"> coding agent.</span>
+          </h1>
+          <p class="subhead" data-i18n="hero.tagline">
+            carlos is a single static binary around 30 MB. No CGO, cross-compiled for darwin and linux on amd64 and arm64. Multi-provider (Anthropic, OpenAI, OpenRouter, Ollama, Gemini), with autonomous skill induction, first-class sub-agent supervision, and an event log that survives crashes.
+          </p>
 
-      <h1 class="hero-title" id="hero-title">
-        <span data-i18n="hero.t1">The most</span>
-        <span class="variable-slot">
-          <span class="brace" aria-hidden="true">{</span>
-          <span class="variable-mask" id="mask">
-            <span class="ghost" id="ghost">hard-working</span>
-            <span class="variable" id="variable" aria-hidden="true"></span>
-          </span>
-          <span class="brace" aria-hidden="true">}</span>
-        </span>
-        <span data-i18n="hero.t2">coding agent.</span>
-        <span class="sr-only" id="srVar">committed</span>
-      </h1>
-
-      <p class="hero-tagline" data-i18n="hero.tagline">
-        Switch between personal, work, and side-project frames with Ctrl+F. Each frame
-        has its own provider, rules, and plain-markdown memory you can grep from your
-        shell or open in Obsidian. carlos stays inside the frame you're in unless you
-        ask him to cross. One Go binary, no setup ritual.
-      </p>
-
-      <div class="download-cta">
-        <button
-          type="button"
-          id="primary-dl"
-          class="btn btn-primary btn-copy"
-          aria-label="Copy the Homebrew install command to your clipboard"
-          data-i18n-aria-label="hero.brewAria"
-          data-copy="brew install georgebuilds/tap/carlos"
-        >
-          <span class="btn-row btn-row-top">
-            <span class="btn-prefix" data-i18n="hero.installWith">Install with Homebrew</span>
-            <span class="btn-version" id="primary-dl-version" aria-live="polite">latest</span>
-          </span>
-          <span class="btn-row btn-row-cmd">
-            <span class="btn-prompt" aria-hidden="true">$</span>
-            <code class="btn-cmd">brew install georgebuilds/tap/carlos</code>
-            <span class="btn-copy-hint" id="primary-dl-hint">
-              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
-                <rect x="4" y="4" width="9" height="10" rx="1.5"/>
-                <path d="M3 11 V3 a1.5 1.5 0 0 1 1.5 -1.5 H10"/>
-              </svg>
-              <span id="primary-dl-hint-label" data-i18n="hero.copyHint">copy</span>
-            </span>
-          </span>
-        </button>
-        <a
-          class="btn btn-secondary"
-          href="#install"
-        >
-          <strong class="btn-target" data-i18n="hero.directDownload">Direct download</strong>
-        </a>
+          <div class="cta-row">
+            <a class="cta primary" href="./docs/getting-started/install.html" data-i18n="cta.install">Install carlos →</a>
+            <a class="cta secondary" href="./docs/" data-i18n="cta.docs">Read the docs</a>
+            <a class="cta secondary" href="./agent-loop.html" data-i18n="cta.compare">Compare loops</a>
+          </div>
+        </div>
       </div>
 
-      <p class="quick-meta">
-        <span data-i18n="hero.meta.size">around 30 MB binary</span>
-        <span class="dot" aria-hidden="true"></span>
-        <span data-i18n="hero.meta.deps">no Python, no Docker</span>
-        <span class="dot" aria-hidden="true"></span>
-        <span data-i18n="hero.meta.license">GPL-3.0</span>
-      </p>
-    </section>
-
-    <!-- ─── INSTALL ─────────────────────────────────────────────── -->
-    <section id="install" class="install" aria-labelledby="install-title">
-      <h2 id="install-title" data-i18n="install.title">Install</h2>
-      <p class="section-sub" data-i18n="install.sub">
-        Three ways in. Pick one. They all land the same binary under <code>/usr/local/bin/carlos</code> or the path you choose.
-      </p>
-
-      <div class="install-grid">
-        <article class="install-card">
-          <h3 data-i18n="install.brewLabel">Homebrew (macOS / Linux)</h3>
-          <pre class="cmd"><code><span class="prompt">$</span>brew install georgebuilds/tap/carlos</code><button type="button" class="copy-btn" data-copy="brew install georgebuilds/tap/carlos" aria-label="Copy command"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="4" y="4" width="9" height="10" rx="1.5"/><path d="M3 11 V3 a1.5 1.5 0 0 1 1.5 -1.5 H10"/></svg><span data-i18n="install.copy">Copy</span></button></pre>
-          <p class="install-foot" data-i18n="install.brewHint">
-            The tap pushes a fresh formula on every stable release.
-          </p>
-        </article>
-
-        <article class="install-card">
-          <h3 data-i18n="install.tarballLabel">Tarball</h3>
-          <div class="platform-grid">
-            <a class="platform-link" id="dl-darwin-arm64" href="https://github.com/georgebuilds/carlos/releases/latest" rel="noopener">
-              <span class="os">macOS</span>
-              <span class="arch">Apple Silicon · arm64</span>
-            </a>
-            <a class="platform-link" id="dl-darwin-amd64" href="https://github.com/georgebuilds/carlos/releases/latest" rel="noopener">
-              <span class="os">macOS</span>
-              <span class="arch">Intel · x86_64</span>
-            </a>
-            <a class="platform-link" id="dl-linux-arm64" href="https://github.com/georgebuilds/carlos/releases/latest" rel="noopener">
-              <span class="os">Linux</span>
-              <span class="arch">arm64</span>
-            </a>
-            <a class="platform-link" id="dl-linux-amd64" href="https://github.com/georgebuilds/carlos/releases/latest" rel="noopener">
-              <span class="os">Linux</span>
-              <span class="arch">x86_64</span>
-            </a>
+      <div class="install-row">
+        <div class="install-card">
+          <span class="label" data-i18n="install.brewLabel">Homebrew (macOS / Linux)</span>
+          <div class="cmd">
+            <span><span class="prompt">$</span>brew install georgebuilds/tap/carlos</span>
+            <button class="copy" type="button" data-copy="brew install georgebuilds/tap/carlos" data-i18n="install.copy" data-i18n-aria-label="install.copyAria" aria-label="copy command">~ copy ~</button>
           </div>
-          <p class="install-foot" data-i18n="install.tarballHint">
-            Extract and drop <code>carlos</code> into your <code>$PATH</code>.
-            <a href="https://github.com/georgebuilds/carlos/releases" rel="noopener" data-i18n="install.allPlatforms">All releases &amp; checksums →</a>
+          <p>
+            <span data-i18n="install.brewHint">Or grab a tarball from</span>
+            <a href="https://github.com/georgebuilds/carlos/releases" data-i18n="install.releases">Releases</a>.
           </p>
-        </article>
-
-        <article class="install-card">
-          <h3 data-i18n="install.verify">Verify</h3>
-          <pre class="cmd"><code><span class="prompt">$</span>carlos version</code><button type="button" class="copy-btn" data-copy="carlos version" aria-label="Copy command"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="4" y="4" width="9" height="10" rx="1.5"/><path d="M3 11 V3 a1.5 1.5 0 0 1 1.5 -1.5 H10"/></svg><span data-i18n="install.copy">Copy</span></button></pre>
-          <p class="install-foot" data-i18n="install.verifyHint">
-            Should print a tagged version. If not, your <code>$PATH</code> isn't seeing the binary.
+        </div>
+        <div class="install-card">
+          <span class="label" data-i18n="install.launchLabel">First launch</span>
+          <div class="cmd">
+            <span><span class="prompt">$</span>carlos</span>
+            <button class="copy" type="button" data-copy="carlos" data-i18n="install.copy" data-i18n-aria-label="install.copyAria" aria-label="copy command">~ copy ~</button>
+          </div>
+          <p>
+            <span data-i18n="install.launchHint">Eight-screen onboarding takes about 30 seconds.</span>
+            <a href="./docs/getting-started/quickstart.html" data-i18n="install.quickstartLink">Quickstart →</a>
           </p>
-        </article>
+        </div>
       </div>
     </section>
 
-    <!-- ─── GETTING STARTED ─────────────────────────────────────── -->
-    <section id="getstart" aria-labelledby="getstart-title">
-      <h2 id="getstart-title" data-i18n="getstart.title">Getting started</h2>
-      <p class="section-sub" data-i18n="getstart.sub">
-        Four steps. The TUI runs onboarding the first time you launch it.
-      </p>
+    <div class="rule-sketch">
+      <svg viewBox="0 0 480 14" preserveAspectRatio="none"><path d="M4 8 Q 60 2, 130 7 T 260 7 T 380 8 T 476 6"/></svg>
+    </div>
 
-      <ol class="steps">
-        <li>
-          <h3 data-i18n="getstart.step1.t">1 · Run onboarding</h3>
-          <p data-i18n="getstart.step1.d">
-            ~30 seconds. Your name, a provider (Anthropic, OpenAI, OpenRouter, Ollama, or Gemini), a model, the daemon yes/no, an optional Obsidian vault path. Everything lands in <code>~/.carlos/config.yaml</code> at mode 0600.
-          </p>
-          <pre class="cmd"><code><span class="prompt">$</span>carlos</code></pre>
-        </li>
-        <li>
-          <h3 data-i18n="getstart.step2.t">2 · Chat with carlos</h3>
-          <p data-i18n="getstart.step2.d">
-            Type a question. carlos answers, calls tools when needed (prompting on the risky ones), and keeps the transcript in a SQLite event log at <code>~/.carlos/state.db</code>. <kbd>Ctrl+F</kbd> opens the frame switcher; <code>/help</code> lists slash commands.
-          </p>
-        </li>
-        <li>
-          <h3 data-i18n="getstart.step3.t">3 · Or skip the TUI</h3>
-          <p data-i18n="getstart.step3.d">
-            <code>carlos please &quot;&lt;prompt&gt;&quot;</code> is a one-shot tool-use loop that stays in your scrollback (with a live 3-row status panel while it runs). <code>carlos research &quot;&lt;question&gt;&quot;</code> runs a six-phase pipeline and saves a cited report under <code>~/.carlos/research/</code>.
-          </p>
-          <pre class="cmd"><code><span class="prompt">$</span>carlos please "summarize the last 5 commits"</code></pre>
-        </li>
-        <li>
-          <h3 data-i18n="getstart.step4.t">4 · Background work</h3>
-          <p data-i18n="getstart.step4.d">
-            <code>carlos daemon enable</code> installs a per-user launchd / systemd unit. <code>carlos schedule add "every weekday at 9am ..."</code> queues a recurring run. The daemon notifies on completion.
-          </p>
-          <pre class="cmd"><code><span class="prompt">$</span>carlos schedule add "every weekday at 9am summarize my inbox"</code></pre>
-        </li>
-      </ol>
-    </section>
+    <section aria-labelledby="why-title">
+      <h2 id="why-title">
+        <span data-i18n="why.t1">Why</span>
+        <span class="accent" data-i18n="why.accent">carlos</span><span data-i18n="why.t2">.</span>
+      </h2>
+      <p class="lede" data-i18n="why.lede">Four bets baked into the architecture.</p>
 
-    <!-- ─── DEMOS ────────────────────────────────────────────────── -->
-    <section id="demos" class="demos" aria-labelledby="demos-title">
-      <h2 id="demos-title" data-i18n="demos.title">What you'll see</h2>
-      <p class="section-sub" data-i18n="demos.sub">
-        Five surfaces, faithfully reproduced from the real TUI. The research panel runs live in your browser.
-      </p>
-
-      <!-- Reusable inline carlos cap (small, blue). Hidden, referenced by <use>. -->
-      <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
-        <symbol id="carlos-cap" viewBox="0 0 24 16">
-          <path d="M2.5 13.5 Q 2.5 4 12 4 Q 21.5 4 21.5 13.5 L 23.5 14.5 L 0.5 14.5 Z" fill="#6f81f5"/>
-          <circle cx="12" cy="9" r="3.2" fill="#fff"/>
-          <text x="12" y="11" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-weight="700" font-size="5" fill="#4d5fcf">C</text>
-        </symbol>
-      </svg>
-
-      <div class="app-grid">
-
-        <!-- ───── 1 · Chat with a tool call (full width anchor demo) ───── -->
-        <figure
-          class="demo demo-wide"
-          role="img"
-          aria-label="The carlos chat TUI mid-conversation: a user asks carlos to create an index.html file, an orange write tool-call card is visible, and carlos describes what it built."
-          data-i18n-aria-label="demo.chat.alt"
-        >
-          <div class="app-window">
-            <div class="app-titlebar">
-              <span class="lights" aria-hidden="true">
-                <span class="l-r"></span><span class="l-y"></span><span class="l-g"></span>
-              </span>
-              <span class="app-title">carlos</span>
-              <span class="ph" aria-hidden="true"></span>
-            </div>
-            <div class="app-inner">
-              <div class="cstat">
-                <span class="cstat-l">
-                  <span class="ses-id">01KTKMVF</span>
-                  <span class="ses-running">[<span class="dot">●</span> running]</span>
-                  <span class="ses-model">(google/gemini-3.5-flash)</span>
-                  <span class="ses-sep">·</span>
-                  <span class="ses-frame"><span class="glyph">◉</span> personal</span>
-                </span>
-                <span class="ses-tag">carlos chat</span>
-              </div>
-
-              <div class="crow user">
-                <span class="gutter" aria-hidden="true">
-                  <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><circle cx="8" cy="5" r="2.6"/><path d="M3 14 a5 5 0 0 1 10 0"/></svg>:
-                </span>
-                <span class="body">create a file index.html on my desktop with basic info about mac os. make it look good</span>
-              </div>
-
-              <div class="tool-card">
-                <span class="wrench" aria-hidden="true">🔧</span>
-                <span class="name">write</span>
-                <span class="dot-sep">·</span>
-                <span class="args">{"mode":"create","content":"&lt;!DOCTYPE html&gt;\n&lt;html lang=\"en\"&gt;\n&lt;head&gt;\…</span>
-                <span class="meta">1 line</span>
-              </div>
-
-              <div class="crow agent">
-                <span class="gutter" aria-hidden="true">
-                  <svg class="cap-icon" width="20" height="14"><use href="#carlos-cap"/></svg>:
-                </span>
-                <span class="body">
-                  <p>I have created the <code>index.html</code> file on your Desktop.</p>
-                  <p>It features an elegant, responsive design styled after Apple's aesthetic (using modern CSS, system fonts, subtle blurring/backdrop-filters, light/dark mode pairing, and hover effects). It includes sections on:</p>
-                  <ol>
-                    <li><strong>Introduction and Architecture</strong> (Unix, Apple Silicon Integration, Continuity)</li>
-                    <li><strong>Key Interface Elements</strong> (Finder, Spotlight, Stage Manager)</li>
-                    <li><strong>Essential Keyboard Shortcuts</strong> (formatted nicely with simulated keys)</li>
-                    <li><strong>Recent Releases</strong> (macOS Sequoia, Sonoma, and Ventura)</li>
-                  </ol>
-                </span>
-              </div>
-
-              <div class="chat-tail">
-                <div class="chat-input-line">
-                  <span class="vbar" aria-hidden="true"></span>
-                  <span class="ph"><span class="first">t</span>ype a message - enter to send, shift-enter for newline</span>
-                </div>
-                <div class="chat-keys">
-                  <span class="grp">
-                    <span class="pair"><span class="key">enter</span> send</span>
-                    <span class="pair"><span class="key">shift-enter</span> newline</span>
-                    <span class="pair"><span class="key">pgup/pgdn</span> scroll</span>
-                    <span class="pair"><span class="key">ctrl-c</span> quit</span>
-                  </span>
-                  <span class="grp">type <span class="key">/help</span> for commands</span>
-                </div>
-              </div>
-            </div>
-          </div>
-          <figcaption>
-            <strong data-i18n="demo.chat.t">The chat TUI</strong>
-            <span data-i18n="demo.chat.d">Status line at the top, conversation in the middle, key hints at the bottom. Tool calls render as orange-bordered cards; carlos's replies are styled markdown.</span>
-          </figcaption>
-        </figure>
-
-        <!-- ───── 2 · Welcome / clean state ───── -->
-        <figure
-          class="demo"
-          role="img"
-          aria-label="The carlos chat TUI on first open, showing the greeting Hey Boss - what are we working on with example prompts below."
-          data-i18n-aria-label="demo.welcome.alt"
-        >
-          <div class="app-window">
-            <div class="app-titlebar">
-              <span class="lights" aria-hidden="true">
-                <span class="l-r"></span><span class="l-y"></span><span class="l-g"></span>
-              </span>
-              <span class="app-title">carlos</span>
-              <span class="ph" aria-hidden="true"></span>
-            </div>
-            <div class="app-inner">
-              <div class="cstat">
-                <span class="cstat-l">
-                  <span class="ses-id">01KTKMC9</span>
-                  <span class="ses-running">[<span class="dot">●</span> running]</span>
-                  <span class="ses-model">(google/gemini-3.5-flash)</span>
-                  <span class="ses-sep">·</span>
-                  <span class="ses-frame"><span class="glyph">◉</span> personal</span>
-                </span>
-                <span class="ses-tag">carlos chat</span>
-              </div>
-
-              <div class="welcome">
-                <div class="greet">
-                  <svg class="cap-icon cap-icon-lg" width="26" height="18"><use href="#carlos-cap"/></svg>
-                  Hey Boss &mdash; what are we working on?
-                </div>
-                <div class="hint">type a message below and hit enter</div>
-                <ul>
-                  <li>what's on my calendar today?</li>
-                  <li>summarize the last 5 commits</li>
-                  <li>find every TODO in this repo</li>
-                  <li class="indent">/help for slash commands</li>
-                </ul>
-              </div>
-
-              <div class="chat-tail">
-                <div class="chat-input-line">
-                  <span class="vbar" aria-hidden="true"></span>
-                  <span class="ph"><span class="first">t</span>ype a message - enter to send, shift-enter for newline</span>
-                </div>
-                <div class="chat-keys">
-                  <span class="grp">
-                    <span class="pair"><span class="key">enter</span> send</span>
-                    <span class="pair"><span class="key">shift-enter</span> newline</span>
-                    <span class="pair"><span class="key">ctrl-c</span> quit</span>
-                  </span>
-                  <span class="grp">type <span class="key">/help</span> for commands</span>
-                </div>
-              </div>
-            </div>
-          </div>
-          <figcaption>
-            <strong data-i18n="demo.welcome.t">The empty state</strong>
-            <span data-i18n="demo.welcome.d">First launch in your personal frame. The greeting uses the name you picked in onboarding and seeds three prompts you can try right away.</span>
-          </figcaption>
-        </figure>
-
-        <!-- ───── 3 · Research (live-animated) ───── -->
-        <figure
-          class="demo"
-          role="img"
-          aria-label="A carlos research run in flight: spinner, elapsed counter, current phase, and a row of six phase glyphs that fill in as each step completes."
-          data-i18n-aria-label="demo.research.alt"
-        >
-          <div class="app-window">
-            <div class="app-titlebar">
-              <span class="lights" aria-hidden="true">
-                <span class="l-r"></span><span class="l-y"></span><span class="l-g"></span>
-              </span>
-              <span class="app-title">~ · zsh</span>
-              <span class="ph" aria-hidden="true"></span>
-            </div>
-            <div class="app-inner shell">
-              <div class="research" id="research-demo">
-                <div class="rcmd">
-                  <span class="arrow">→</span>
-                  <span class="home">~</span>
-                  <span class="txt">carlos research "best barber shops in tulsa, ok"</span>
-                </div>
-                <div class="meta-line"><span class="lbl">carlos:</span> running in personal frame</div>
-                <div class="meta-line"><span class="lbl">carlos:</span> provider=openrouter model=google/gemini-3.5-flash search=duckduckgo</div>
-
-                <div class="research-box">
-                  <div class="header">
-                    <span class="spinner" data-spinner="⠋">⠋</span>
-                    <span class="title">researching:</span>
-                    <span class="query">best barber shops in tulsa, ok</span>
-                    <span class="elapsed">0.0s elapsed</span>
-                  </div>
-                  <div class="current">
-                    <span class="dot-cur">●</span> <span class="label">decomp</span> <span class="ms">· 0.1s</span>
-                  </div>
-                  <div class="phases">
-                    <span class="ph todo" data-ph="decomp"><span class="glyph">○</span><span class="lbl">decomp</span></span>
-                    <span class="ph todo" data-ph="search"><span class="glyph">○</span><span class="lbl">search</span></span>
-                    <span class="ph todo" data-ph="fetch"><span class="glyph">○</span><span class="lbl">fetch</span></span>
-                    <span class="ph todo" data-ph="read"><span class="glyph">○</span><span class="lbl">read</span></span>
-                    <span class="ph todo" data-ph="synth"><span class="glyph">○</span><span class="lbl">synth</span></span>
-                    <span class="ph todo" data-ph="verify"><span class="glyph">○</span><span class="lbl">verify</span></span>
-                  </div>
-                </div>
-
-                <div class="saved">saved to <span class="path">~/.carlos/frames/personal/research/best-barber-shops-in-tulsa-ok-1780923605.md</span></div>
-              </div>
-            </div>
-          </div>
-          <figcaption>
-            <strong data-i18n="demo.research.t">carlos research</strong>
-            <span data-i18n="demo.research.d">Decompose → search → fetch → read → synthesize → verify. Live phase glyphs while it works; the final cited report saves under <code>~/.carlos/frames/&lt;frame&gt;/research/</code>.</span>
-          </figcaption>
-        </figure>
-
-        <!-- ───── 4 · carlos please (shell, sibling to research) ───── -->
-        <figure
-          class="demo"
-          role="img"
-          aria-label="carlos please command output: provider banner, an orange-flagged tool approval for git log, the bash result, carlos's reply listing five commits, and a token/cost stats footer."
-          data-i18n-aria-label="demo.please.alt"
-        >
-          <div class="app-window">
-            <div class="app-titlebar">
-              <span class="lights" aria-hidden="true">
-                <span class="l-r"></span><span class="l-y"></span><span class="l-g"></span>
-              </span>
-              <span class="app-title">~ · zsh</span>
-              <span class="ph" aria-hidden="true"></span>
-            </div>
-            <div class="app-inner shell">
-              <div class="please">
-                <div class="rcmd">
-                  <span class="arrow">→</span>
-                  <span class="home">~</span>
-                  <span class="txt">carlos please &quot;summarize the last 5 commits&quot;</span>
-                </div>
-                <div class="meta-line"><span class="lbl">carlos:</span> running in personal frame</div>
-                <div class="meta-line"><span class="lbl">carlos:</span> provider=anthropic model=claude-opus-4-7</div>
-
-                <div class="please-prompt">
-                  <div class="warn">carlos wants to run tool "bash":</div>
-                  <div class="args">{"cmd":"git log --oneline -5"}</div>
-                  <div class="approve">approve? <span class="hint">[Y/n/a]</span> <span class="answer">y</span></div>
-                </div>
-
-                <div class="please-result"><span class="ok">✓</span> bash · 5 lines · 0.18s</div>
-
-                <div class="please-reply">
-                  <span class="gutter" aria-hidden="true">
-                    <svg class="cap-icon" width="20" height="14"><use href="#carlos-cap"/></svg>:
-                  </span>
-                  <div class="body">
-                    <span class="first">Five commits, all yours:</span>
-                    <ul>
-                      <li><span class="hash">e7359b4</span><span class="msg">docs: replace landing-page portrait</span></li>
-                      <li><span class="hash">64f542e</span><span class="msg">cli: trim carlos research stdout</span></li>
-                      <li><span class="hash">e0aeb43</span><span class="msg">providers: extract HTTP error envelopes</span></li>
-                      <li><span class="hash">0a6a40d</span><span class="msg">fix: drop empty string from section enum</span></li>
-                      <li><span class="hash">eddb0a2</span><span class="msg">tests: providers + sandbox + workspace lift</span></li>
-                    </ul>
-                  </div>
-                </div>
-
-                <div class="please-stats">~ 1.2k tokens · $0.004 · 1.4s · 1 tool call · 1 turn</div>
-
-                <div class="please-end rcmd">
-                  <span class="arrow">→</span>
-                  <span class="home">~</span>
-                  <span class="caret" aria-hidden="true"></span>
-                </div>
-              </div>
-            </div>
-          </div>
-          <figcaption>
-            <strong data-i18n="demo.please.t">carlos please</strong>
-            <span data-i18n="demo.please.d">One-shot tool-use loop, no TUI. Approval gate on the risky calls; pass <code>-y</code> to auto-approve in scripts. Output stays in your scrollback.</span>
-          </figcaption>
-        </figure>
-
-        <!-- ───── 5 · Frame switcher (TUI) ───── -->
-        <figure
-          class="demo"
-          role="img"
-          aria-label="The carlos frame switcher overlay: a 2x3 grid of frame tiles - personal (selected, orange), work, ludus, minilab, writing, and a dashed new-frame placeholder. Keybindings at the bottom."
-          data-i18n-aria-label="demo.switcher.alt"
-        >
-          <div class="app-window">
-            <div class="app-titlebar">
-              <span class="lights" aria-hidden="true">
-                <span class="l-r"></span><span class="l-y"></span><span class="l-g"></span>
-              </span>
-              <span class="app-title">carlos · Ctrl+F</span>
-              <span class="ph" aria-hidden="true"></span>
-            </div>
-            <div class="app-inner">
-              <div class="switcher-head">
-                <span><span class="title">frames</span> · active: <span class="active-frame">personal</span></span>
-                <span class="page">page 1/1</span>
-              </div>
-
-              <div class="frame-grid">
-                <div class="frame-tile active rust">
-                  <span class="glyph" aria-hidden="true">◉</span>
-                  <span class="name">personal</span>
-                </div>
-                <div class="frame-tile slate">
-                  <span class="glyph" aria-hidden="true">▣</span>
-                  <span class="name">work</span>
-                </div>
-                <div class="frame-tile olive">
-                  <span class="glyph" aria-hidden="true">▲</span>
-                  <span class="name">ludus</span>
-                </div>
-                <div class="frame-tile teal">
-                  <span class="glyph" aria-hidden="true">◈</span>
-                  <span class="name">minilab</span>
-                </div>
-                <div class="frame-tile plum">
-                  <span class="glyph" aria-hidden="true">✦</span>
-                  <span class="name">writing</span>
-                </div>
-                <div class="frame-tile new">
-                  <span class="glyph" aria-hidden="true">+</span>
-                  <span class="name">new frame</span>
-                </div>
-              </div>
-
-              <div class="switcher-foot">
-                <span class="pair"><span class="key">1-6</span> select</span>
-                <span class="pair"><span class="key">↑↓←→</span> move</span>
-                <span class="pair"><span class="key">↵</span> switch</span>
-                <span class="pair"><span class="key">esc</span> cancel</span>
-              </div>
-            </div>
-          </div>
-          <figcaption>
-            <strong data-i18n="demo.switcher.t">Frame switcher (Ctrl+F)</strong>
-            <span data-i18n="demo.switcher.d">Personal, work, side projects. Each frame carries its own glyph, accent color, rules, and provider. Add a new one any time, and carlos never writes across the line unless you ask.</span>
-          </figcaption>
-        </figure>
-
-        <!-- ───── 6 · Onboarding, step 1: pick a name ───── -->
-        <figure
-          class="demo"
-          role="img"
-          aria-label="The carlos onboarding wizard, step 1 of 8: a big Carlos avatar on the left and a name prompt on the right reading 'What should I call you?' with 'Boss' typed."
-          data-i18n-aria-label="demo.onb1.alt"
-        >
-          <div class="app-window">
-            <div class="app-titlebar">
-              <span class="lights" aria-hidden="true">
-                <span class="l-r"></span><span class="l-y"></span><span class="l-g"></span>
-              </span>
-              <span class="app-title">carlos</span>
-              <span class="ph" aria-hidden="true"></span>
-            </div>
-            <div class="app-inner">
-              <div class="onboard">
-                <div class="left">
-                  <div class="avatar" role="img" aria-label="Carlos portrait"></div>
-                  <div class="name">carlos</div>
-                  <div class="step">step 1 of 8</div>
-                  <div class="dots" aria-hidden="true">
-                    <span class="active"></span><span></span><span></span><span></span>
-                    <span></span><span></span><span></span><span></span>
-                  </div>
-                </div>
-                <div class="right">
-                  <div class="h">What should I call you?</div>
-                  <div class="p">setting up your personal frame, the one carlos opens by default. add work, side, or research frames later with /frame new or Ctrl+F.</div>
-                  <div class="ob-input">
-                    <span class="gt">&gt;</span>
-                    <span class="val">Boss</span>
-                    <span class="caret" aria-hidden="true"></span>
-                  </div>
-                  <div class="help">press enter to continue</div>
-                </div>
-              </div>
-              <div class="onboard-foot">
-                <span class="pair"><span class="key">enter</span> continue</span>
-                <span class="pair"><span class="key">ctrl-c</span> cancel</span>
-              </div>
-            </div>
-          </div>
-          <figcaption>
-            <strong data-i18n="demo.onb1.t">Onboarding · step 1</strong>
-            <span data-i18n="demo.onb1.d">What carlos calls you in the greeting. The personal frame opens by default; add work or side frames later with <code>/frame new</code> or <kbd>Ctrl+F</kbd>.</span>
-          </figcaption>
-        </figure>
-
-        <!-- ───── 5 · Onboarding, step 4: skills convention ───── -->
-        <figure
-          class="demo"
-          role="img"
-          aria-label="The carlos onboarding wizard, step 4 of 8: a Skills convention picker with two options - .agents/skills/ (selected) and .claude/skills/."
-          data-i18n-aria-label="demo.onb4.alt"
-        >
-          <div class="app-window">
-            <div class="app-titlebar">
-              <span class="lights" aria-hidden="true">
-                <span class="l-r"></span><span class="l-y"></span><span class="l-g"></span>
-              </span>
-              <span class="app-title">carlos</span>
-              <span class="ph" aria-hidden="true"></span>
-            </div>
-            <div class="app-inner">
-              <div class="onboard">
-                <div class="left">
-                  <div class="avatar" role="img" aria-label="Carlos portrait"></div>
-                  <div class="name">carlos</div>
-                  <div class="step">step 4 of 8</div>
-                  <div class="dots" aria-hidden="true">
-                    <span class="done"></span><span class="done"></span><span class="done"></span><span class="active"></span>
-                    <span></span><span></span><span></span><span></span>
-                  </div>
-                </div>
-                <div class="right">
-                  <div class="h">Skills convention</div>
-                  <div class="p">Carlos loads skills from BOTH .claude/skills/ and .agents/skills/. Pick the convention for skills carlos WRITES (induced + /skills new).</div>
-                  <div class="ob-options">
-                    <div class="ob-option selected">
-                      <span class="marker">(●)</span>
-                      <span class="label">.agents/skills/</span>
-                      <span class="desc">open agentskills.io standard (default; portable across tools)</span>
-                    </div>
-                    <div class="ob-option">
-                      <span class="marker">( )</span>
-                      <span class="label">.claude/skills/</span>
-                      <span class="desc">Claude Code convention</span>
-                    </div>
-                  </div>
-                  <div class="help">↑/↓ or 1/2 to pick · enter to continue</div>
-                </div>
-              </div>
-              <div class="onboard-foot">
-                <span class="pair"><span class="key">enter</span> continue</span>
-                <span class="pair"><span class="key">shift-tab</span> back</span>
-                <span class="pair"><span class="key">ctrl-c</span> cancel</span>
-              </div>
-            </div>
-          </div>
-          <figcaption>
-            <strong data-i18n="demo.onb4.t">Onboarding · step 4</strong>
-            <span data-i18n="demo.onb4.d">Carlos always <em>reads</em> from both <code>.claude/skills/</code> and <code>.agents/skills/</code>. This step picks where induced skills get <em>written</em>.</span>
-          </figcaption>
-        </figure>
-
+      <div class="values">
+        <div class="value">
+          <span class="icon" data-i18n="value1.icon">~ one ~</span>
+          <h3 data-i18n="value1.t">Frames are the envelope</h3>
+          <p data-i18n="value1.d">Personal plus N user-defined. Each frame carries its own provider override, vault subtree, MCP gating, glyph, accent, and orchestrator mode. <code>Ctrl+F</code> opens the switcher.</p>
+        </div>
+        <div class="value">
+          <span class="icon" data-i18n="value2.icon">~ two ~</span>
+          <h3 data-i18n="value2.t">Propose, don't publish</h3>
+          <p data-i18n="value2.d">Skills induced from your transcripts land in the approval queue. Cross-provider judge, replay-eval, human gate. Nothing auto-publishes.</p>
+        </div>
+        <div class="value">
+          <span class="icon" data-i18n="value3.icon">~ three ~</span>
+          <h3 data-i18n="value3.t">Supervisor as marquee surface</h3>
+          <p data-i18n="value3.d">Eleven-state lifecycle, structured contracts, steer / interrupt / stop verbs. The event log is the source of truth; the TUI is a projection.</p>
+        </div>
+        <div class="value">
+          <span class="icon" data-i18n="value4.icon">~ four ~</span>
+          <h3 data-i18n="value4.t">Delegation on by default</h3>
+          <p data-i18n="value4.d">Out of the box, orchestrator mode (spawn cap 5). The model is told to delegate by default for anything beyond a trivial single-line edit, split across parallel sub-agents when the parts are independent, and never pauses for per-turn confirmation. <code>/mode solo</code> shifts to single-agent discretion; <code>tight</code> caps at one child at a time.</p>
+        </div>
       </div>
     </section>
 
-    <!-- ─── KEYS ────────────────────────────────────────────────── -->
-    <section id="keys" aria-labelledby="keys-title">
-      <h2 id="keys-title" data-i18n="keys.title">Keys worth knowing</h2>
-      <p class="section-sub" data-i18n="keys.sub">
-        Everything else is in <code>/help</code> inside the TUI. These are the ones you'll use weekly.
-      </p>
-      <dl class="keys-grid">
-        <div><dt><kbd>Ctrl+F</kbd></dt> <dd><span data-i18n="keys.ctrlF">open the frame switcher</span></dd></div>
-        <div><dt><kbd>/help</kbd></dt> <dd><span data-i18n="keys.slashHelp">full slash-command list</span></dd></div>
-        <div><dt><kbd>!&lt;cmd&gt;</kbd></dt> <dd><span data-i18n="keys.shell">run a shell command in your context</span></dd></div>
-        <div><dt><kbd>/agents</kbd></dt> <dd><span data-i18n="keys.agents">open the sub-agent manage view</span></dd></div>
-        <div><dt><kbd>/whoami</kbd></dt> <dd><span data-i18n="keys.whoami">current frame, mode, provider, model</span></dd></div>
-        <div><dt><kbd>/permissions</kbd></dt> <dd><span data-i18n="keys.perms">layered approval state &amp; audit log</span></dd></div>
-        <div><dt><kbd>/compact</kbd></dt> <dd><span data-i18n="keys.compact">summarize the transcript, keep going</span></dd></div>
-        <div><dt><kbd>Esc&nbsp;Esc</kbd></dt> <dd><span data-i18n="keys.rewind">cancel the in-flight tool call</span></dd></div>
-      </dl>
+    <div class="rule-sketch">
+      <svg viewBox="0 0 480 14" preserveAspectRatio="none"><path d="M4 8 Q 60 2, 130 7 T 260 7 T 380 8 T 476 6"/></svg>
+    </div>
+
+    <section aria-labelledby="explore-title">
+      <h2 id="explore-title">
+        <span data-i18n="explore.t1">Have a</span>
+        <span class="accent" data-i18n="explore.accent">look</span><span data-i18n="explore.t2"> around.</span>
+      </h2>
+      <p class="lede" data-i18n="explore.lede">Six front doors into the docs.</p>
+
+      <div class="grid">
+        <a class="tile" href="./docs/getting-started/quickstart.html">
+          <span class="corner" data-i18n="tile1.corner">5 min</span>
+          <h3 data-i18n="tile1.t">Quickstart</h3>
+          <p class="blurb" data-i18n="tile1.d">Onboarding, your first chat, keys worth knowing, the headless CLI verbs.</p>
+        </a>
+        <a class="tile" href="./docs/concepts/frames.html">
+          <span class="corner" data-i18n="tile2.corner">envelope</span>
+          <h3 data-i18n="tile2.t">Frames + modes</h3>
+          <p class="blurb" data-i18n="tile2.d">Per-frame provider override, vault subtree, MCP gating. Solo / tight / orchestrator modes.</p>
+        </a>
+        <a class="tile" href="./docs/concepts/sub-agents.html">
+          <span class="corner" data-i18n="tile3.corner">marquee</span>
+          <h3 data-i18n="tile3.t">Sub-agents</h3>
+          <p class="blurb" data-i18n="tile3.d">Ten-state machine, four-part contracts, steer / interrupt / stop verbs, safety rails.</p>
+        </a>
+        <a class="tile" href="./docs/guides/research.html">
+          <span class="corner" data-i18n="tile4.corner">6 phases</span>
+          <h3 data-i18n="tile4.t">Research mode</h3>
+          <p class="blurb" data-i18n="tile4.d">decompose, search, fetch, read, synthesize, verify. Cited reports with stable IDs.</p>
+        </a>
+        <a class="tile" href="./agent-loop.html">
+          <span class="corner" data-i18n="tile5.corner">3-up</span>
+          <h3 data-i18n="tile5.t">Agent loop comparison</h3>
+          <p class="blurb" data-i18n="tile5.d">Claude Code, carlos, and Codex side-by-side. Where they converge and where they diverge.</p>
+        </a>
+        <a class="tile" href="./skills.html">
+          <span class="corner" data-i18n="tile6.corner">SKILL.md</span>
+          <h3 data-i18n="tile6.t">Skills</h3>
+          <p class="blurb" data-i18n="tile6.d">SKILL.md packaging, where they live, propose-don't-publish induction.</p>
+        </a>
+      </div>
     </section>
 
-    <!-- ─── DEEPER DIVES ────────────────────────────────────────── -->
-    <section class="deeper" id="deeper" aria-labelledby="deeper-title">
-      <h2 id="deeper-title"><span data-i18n="deeper.t1">Go a little</span> <span class="accent" data-i18n="deeper.t2">deeper</span><span data-i18n="deeper.t3">.</span></h2>
-      <p class="section-sub" data-i18n="deeper.sub">
-        Two short reads if you want to know what's under the hood before you commit a day to it.
+    <div class="rule-sketch">
+      <svg viewBox="0 0 480 14" preserveAspectRatio="none"><path d="M4 8 Q 60 2, 130 7 T 260 7 T 380 8 T 476 6"/></svg>
+    </div>
+
+    <section aria-labelledby="under-title">
+      <h2 id="under-title">
+        <span data-i18n="under.t1">Under the</span>
+        <span class="accent" data-i18n="under.accent">hood</span><span data-i18n="under.t2">.</span>
+      </h2>
+      <p data-i18n="under.p1">
+        State persists to <code>~/.carlos/</code>. The event log is SQLite with WAL; memory is FTS5 over markdown summaries. Trusted-workspace store, schedules, and user prefs are flat files. Tool-use shape is Anthropic's canonical; adapters normalize OpenAI, OpenRouter, Ollama, and Gemini against the same internal event. The MCP client ships built-in; stdio servers register their tools under <code>&lt;server&gt;__&lt;tool&gt;</code>, gated per-frame.
       </p>
-      <div class="deeper-grid">
-        <a class="deeper-card loop" href="./agent-loop.html">
-          <span class="eyebrow" data-i18n="deeper.loop.eyebrow">~ side-by-side ~</span>
-          <div class="ttl"><span data-i18n="deeper.loop.t1">The agent</span> <span class="accent" data-i18n="deeper.loop.t2">loop</span><span data-i18n="deeper.loop.t3">, compared.</span></div>
-          <p data-i18n="deeper.loop.p">Three columns, side by side: Claude Code, carlos, OpenAI Codex. Hover any step to see the equivalent step light up in the other two. Where the three converge, and where they don't.</p>
-          <span class="go" data-i18n="deeper.loop.go">read the loop comparison</span>
-        </a>
-        <a class="deeper-card skill" href="./skills.html">
-          <span class="eyebrow" data-i18n="deeper.skill.eyebrow">~ a small library you grow ~</span>
-          <div class="ttl"><span data-i18n="deeper.skill.t1">How</span> <span class="accent" data-i18n="deeper.skill.t2">skills</span> <span data-i18n="deeper.skill.t3">work.</span></div>
-          <p data-i18n="deeper.skill.p">Author a SKILL.md by hand, drop it in <code>~/.agents/skills/</code>, and carlos picks it up next session. Or let carlos watch your transcripts and propose new skills. Nothing auto-publishes; the human is the gate.</p>
-          <span class="go" data-i18n="deeper.skill.go">read the skills guide</span>
-        </a>
+      <p data-i18n="under.p2">
+        Releases are signed tarballs from a <code>v*</code> tag via goreleaser; the Homebrew formula bumps automatically. GPL-3.0. <a href="https://github.com/georgebuilds/carlos">Read the source</a>.
+      </p>
+
+      <div class="callout sage">
+        <span class="label" data-i18n="under.callout.label">~ for AI agents and language models ~</span>
+        <p data-i18n="under.callout.p">If you're an LLM trying to learn about carlos in one shot, fetch <a href="./llms.txt">llms.txt</a>. It's the canonical condensed reference: every tool, slash command, file path, and architectural commitment in 250 lines of plain text.</p>
       </div>
     </section>
 
   </main>
 
-  <footer class="bottom" role="contentinfo">
-    <span data-i18n="footer.line">carlos · pure-Go agent · MMXXVI</span>
-    <nav aria-label="Footer">
-      <a href="https://github.com/georgebuilds/carlos" rel="noopener" data-i18n="nav.github">GitHub</a>
-      <a href="./agent-loop.html" data-i18n="nav.agentLoop">Agent loop</a>
-      <a href="./skills.html" data-i18n="nav.skills">Skills</a>
-      <a href="https://github.com/georgebuilds/carlos/blob/main/LICENSE" rel="noopener" data-i18n="footer.license">License</a>
+  <footer class="site">
+    <span>
+      <span data-i18n="footer.line">carlos · 2026 · gpl-3.0</span>
+      · <a href="https://github.com/georgebuilds/carlos" data-i18n="footer.source">source</a>
+    </span>
+    <nav>
+      <a href="./docs/" data-i18n="nav.docs">docs</a>
+      <a href="./agent-loop.html" data-i18n="nav.agentLoop">agent loop</a>
+      <a href="./skills.html" data-i18n="nav.skills">skills</a>
+      <a href="https://github.com/georgebuilds/carlos" data-i18n="nav.github">github</a>
     </nav>
   </footer>
 
   <script>
+    // i18n: EN / ES toggle with ?lang= query param + localStorage persistence.
+    // Original convention preserved from the previous landing.
     (function () {
-      'use strict';
-
-      // ─── i18n ────────────────────────────────────────────────────────
       const STRINGS = {
         en: {
-          'a11y.skip':        'Skip to content',
-          'nav.github':       'GitHub',
-          'nav.agentLoop':    'Agent loop',
-          'nav.skills':       'Skills',
-          'nav.langLabel':    'Language',
-          'hero.t1':          'The most',
-          'hero.t2':          'coding agent.',
-          'hero.tagline':     'Switch between personal, work, and side-project frames with Ctrl+F. Each frame has its own provider, rules, and plain-markdown memory you can grep from your shell or open in Obsidian. carlos stays inside the frame you’re in unless you ask him to cross. One Go binary, no setup ritual.',
-          'hero.installWith': 'Install with Homebrew',
-          'hero.copyHint':    'copy',
-          'hero.copied':      'copied',
-          'hero.brewAria':    'Copy the Homebrew install command to your clipboard',
-          'hero.directDownload': 'Direct download',
-          'hero.meta.size':   'around 30 MB binary',
-          'hero.meta.deps':   'no Python, no Docker',
-          'hero.meta.license':'GPL-3.0',
+          'a11y.skip':         'skip to content',
+          'nav.docs':          'docs',
+          'nav.agentLoop':     'agent loop',
+          'nav.skills':        'skills',
+          'nav.github':        'github',
+          'nav.langLabel':     'Language',
 
-          'install.title':       'Install',
-          'install.sub':         'Three ways in. Pick one. They all land the same binary in your $PATH.',
-          'install.brewLabel':   'Homebrew (macOS / Linux)',
-          'install.brewHint':    'The tap pushes a fresh formula on every stable release.',
-          'install.tarballLabel':'Tarball',
-          'install.tarballHint': 'Extract and drop carlos into your $PATH.',
-          'install.allPlatforms':'All releases & checksums →',
-          'install.verify':      'Verify',
-          'install.verifyHint':  'Should print a tagged version. If not, your $PATH isn’t seeing the binary.',
-          'install.copy':        'Copy',
-          'install.copied':      'Copied',
+          'hero.eyebrow':      'pure-Go TUI agent · single binary',
+          'hero.t1':           'The most',
+          'hero.accent':       'committed',
+          'hero.t2':           ' coding agent.',
+          'hero.tagline':      "carlos is a single static binary around 30 MB. No CGO, cross-compiled for darwin and linux on amd64 and arm64. Multi-provider (Anthropic, OpenAI, OpenRouter, Ollama, Gemini), with autonomous skill induction, first-class sub-agent supervision, and an event log that survives crashes.",
 
-          'getstart.title':   'Getting started',
-          'getstart.sub':     'Four steps. The TUI runs onboarding the first time you launch it.',
-          'getstart.step1.t': '1 · Run onboarding',
-          'getstart.step1.d': '~30 seconds. Your name, a provider (Anthropic, OpenAI, OpenRouter, Ollama, or Gemini), a model, the daemon yes/no, an optional Obsidian vault path. Everything lands in ~/.carlos/config.yaml at mode 0600.',
-          'getstart.step2.t': '2 · Chat with carlos',
-          'getstart.step2.d': 'Type a question. carlos answers, calls tools when needed (prompting on the risky ones), and keeps the transcript in a SQLite event log at ~/.carlos/state.db. Ctrl+F opens the frame switcher; /help lists slash commands.',
-          'getstart.step3.t': '3 · Or skip the TUI',
-          'getstart.step3.d': 'carlos please "<prompt>" is a one-shot tool-use loop that stays in your scrollback (with a live 3-row status panel while it runs). carlos research "<question>" runs a six-phase pipeline and saves a cited report under ~/.carlos/research/.',
-          'getstart.step4.t': '4 · Background work',
-          'getstart.step4.d': 'carlos daemon enable installs a per-user launchd / systemd unit. carlos schedule add "every weekday at 9am ..." queues a recurring run. The daemon notifies on completion.',
+          'cta.install':       'Install carlos →',
+          'cta.docs':          'Read the docs',
+          'cta.compare':       'Compare loops',
 
-          'demos.title':      'What you’ll see',
-          'demos.sub':        'Five surfaces, faithfully reproduced from the real TUI. The research panel runs live in your browser.',
-          'demo.chat.t':      'The chat TUI',
-          'demo.chat.d':      'Status line at the top, conversation in the middle, key hints at the bottom. Tool calls render as orange-bordered cards; carlos’s replies are styled markdown.',
-          'demo.chat.alt':    'The carlos chat TUI mid-conversation: a user asks carlos to create an index.html file, an orange write tool-call card is visible, and carlos describes what it built.',
-          'demo.welcome.t':   'The empty state',
-          'demo.welcome.d':   'First launch in your personal frame. The greeting uses the name you picked in onboarding and seeds three prompts you can try right away.',
-          'demo.welcome.alt': 'The carlos chat TUI on first open, showing the greeting Hey Boss - what are we working on with example prompts below.',
-          'demo.research.t':  'carlos research',
-          'demo.research.d':  'Decompose → search → fetch → read → synthesize → verify. Live phase glyphs while it works; the final cited report saves under ~/.carlos/frames/<frame>/research/.',
-          'demo.research.alt':'A carlos research run in flight: spinner, elapsed counter, current phase, and a row of six phase glyphs that fill in as each step completes.',
-          'demo.please.t':    'carlos please',
-          'demo.please.d':    'One-shot tool-use loop, no TUI. Approval gate on the risky calls; pass -y to auto-approve in scripts. Output stays in your scrollback.',
-          'demo.please.alt':  'carlos please command output: provider banner, an orange-flagged tool approval for git log, the bash result, carlos’s reply listing five commits, and a token/cost stats footer.',
-          'demo.switcher.t':  'Frame switcher (Ctrl+F)',
-          'demo.switcher.d':  'Personal, work, side projects. Each frame carries its own glyph, accent color, rules, and provider. Add a new one any time, and carlos never writes across the line unless you ask.',
-          'demo.switcher.alt':'The carlos frame switcher overlay: a 2x3 grid of frame tiles - personal (selected, orange), work, ludus, minilab, writing, and a dashed new-frame placeholder. Keybindings at the bottom.',
-          'demo.onb1.t':      'Onboarding · step 1',
-          'demo.onb1.d':      'What carlos calls you in the greeting. The personal frame opens by default; add work or side frames later with /frame new or Ctrl+F.',
-          'demo.onb1.alt':    'The carlos onboarding wizard, step 1 of 8: a big Carlos avatar on the left and a name prompt on the right reading What should I call you, with Boss typed.',
-          'demo.onb4.t':      'Onboarding · step 4',
-          'demo.onb4.d':      'Carlos always reads from both .claude/skills/ and .agents/skills/. This step picks where induced skills get written.',
-          'demo.onb4.alt':    'The carlos onboarding wizard, step 4 of 8: a Skills convention picker with two options - .agents/skills/ (selected) and .claude/skills/.',
+          'install.brewLabel':     'Homebrew (macOS / Linux)',
+          'install.brewHint':      'Or grab a tarball from',
+          'install.releases':      'Releases',
+          'install.launchLabel':   'First launch',
+          'install.launchHint':    'Eight-screen onboarding takes about 30 seconds.',
+          'install.quickstartLink':'Quickstart →',
+          'install.copy':          '~ copy ~',
+          'install.copied':        '~ copied ~',
+          'install.copyAria':      'copy command',
 
-          'keys.title':       'Keys worth knowing',
-          'keys.sub':         'Everything else is in /help inside the TUI. These are the ones you’ll use weekly.',
-          'keys.ctrlF':       'open the frame switcher',
-          'keys.slashHelp':   'full slash-command list',
-          'keys.shell':       'run a shell command in your context',
-          'keys.agents':      'open the sub-agent manage view',
-          'keys.whoami':      'current frame, mode, provider, model',
-          'keys.perms':       'layered approval state & audit log',
-          'keys.compact':     'summarize the transcript, keep going',
-          'keys.rewind':      'cancel the in-flight tool call',
+          'why.t1':            'Why',
+          'why.accent':        'carlos',
+          'why.t2':            '.',
+          'why.lede':          'Four bets baked into the architecture.',
 
-          'deeper.t1':           'Go a little',
-          'deeper.t2':           'deeper',
-          'deeper.t3':           '.',
-          'deeper.sub':          'Two short reads if you want to know what’s under the hood before you commit a day to it.',
-          'deeper.loop.eyebrow': '~ side-by-side ~',
-          'deeper.loop.t1':      'The agent',
-          'deeper.loop.t2':      'loop',
-          'deeper.loop.t3':      ', compared.',
-          'deeper.loop.p':       'Three columns, side by side: Claude Code, carlos, OpenAI Codex. Hover any step to see the equivalent step light up in the other two. Where the three converge, and where they don’t.',
-          'deeper.loop.go':      'read the loop comparison',
-          'deeper.skill.eyebrow':'~ a small library you grow ~',
-          'deeper.skill.t1':     'How',
-          'deeper.skill.t2':     'skills',
-          'deeper.skill.t3':     'work.',
-          'deeper.skill.p':      'Author a SKILL.md by hand, drop it in ~/.agents/skills/, and carlos picks it up next session. Or let carlos watch your transcripts and propose new skills. Nothing auto-publishes; the human is the gate.',
-          'deeper.skill.go':     'read the skills guide',
+          'value1.icon':       '~ one ~',
+          'value1.t':          'Frames are the envelope',
+          'value1.d':          'Personal plus N user-defined. Each frame carries its own provider override, vault subtree, MCP gating, glyph, accent, and orchestrator mode. <code>Ctrl+F</code> opens the switcher.',
+          'value2.icon':       '~ two ~',
+          'value2.t':          "Propose, don't publish",
+          'value2.d':          'Skills induced from your transcripts land in the approval queue. Cross-provider judge, replay-eval, human gate. Nothing auto-publishes.',
+          'value3.icon':       '~ three ~',
+          'value3.t':          'Supervisor as marquee surface',
+          'value3.d':          'Eleven-state lifecycle, structured contracts, steer / interrupt / stop verbs. The event log is the source of truth; the TUI is a projection.',
+          'value4.icon':       '~ four ~',
+          'value4.t':          'Delegation on by default',
+          'value4.d':          'Out of the box, orchestrator mode (spawn cap 5). The model is told to delegate by default for anything beyond a trivial single-line edit, split across parallel sub-agents when the parts are independent, and never pauses for per-turn confirmation. <code>/mode solo</code> shifts to single-agent discretion; <code>tight</code> caps at one child at a time.',
 
-          'footer.line':      'carlos · pure-Go agent · MMXXVI',
-          'footer.license':   'License',
+          'explore.t1':        'Have a',
+          'explore.accent':    'look',
+          'explore.t2':        ' around.',
+          'explore.lede':      'Six front doors into the docs.',
 
-          'os.darwin.arm64':  'macOS · Apple Silicon',
-          'os.darwin.amd64':  'macOS · Intel',
-          'os.linux.arm64':   'Linux · arm64',
-          'os.linux.amd64':   'Linux · x86_64',
-          'os.unknown':       'all platforms',
+          'tile1.corner':      '5 min',
+          'tile1.t':           'Quickstart',
+          'tile1.d':           'Onboarding, your first chat, keys worth knowing, the headless CLI verbs.',
+          'tile2.corner':      'envelope',
+          'tile2.t':           'Frames + modes',
+          'tile2.d':           'Per-frame provider override, vault subtree, MCP gating. Solo / tight / orchestrator modes.',
+          'tile3.corner':      'marquee',
+          'tile3.t':           'Sub-agents',
+          'tile3.d':           'Ten-state machine, four-part contracts, steer / interrupt / stop verbs, safety rails.',
+          'tile4.corner':      '6 phases',
+          'tile4.t':           'Research mode',
+          'tile4.d':           'decompose, search, fetch, read, synthesize, verify. Cited reports with stable IDs.',
+          'tile5.corner':      '3-up',
+          'tile5.t':           'Agent loop comparison',
+          'tile5.d':           'Claude Code, carlos, and Codex side-by-side. Where they converge and where they diverge.',
+          'tile6.corner':      'SKILL.md',
+          'tile6.t':           'Skills',
+          'tile6.d':           "SKILL.md packaging, where they live, propose-don't-publish induction.",
+
+          'under.t1':          'Under the',
+          'under.accent':      'hood',
+          'under.t2':          '.',
+          'under.p1':          "State persists to <code>~/.carlos/</code>. The event log is SQLite with WAL; memory is FTS5 over markdown summaries. Trusted-workspace store, schedules, and user prefs are flat files. Tool-use shape is Anthropic's canonical; adapters normalize OpenAI, OpenRouter, Ollama, and Gemini against the same internal event. The MCP client ships built-in; stdio servers register their tools under <code>&lt;server&gt;__&lt;tool&gt;</code>, gated per-frame.",
+          'under.p2':          'Releases are signed tarballs from a <code>v*</code> tag via goreleaser; the Homebrew formula bumps automatically. GPL-3.0. <a href="https://github.com/georgebuilds/carlos">Read the source</a>.',
+          'under.callout.label':'~ for AI agents and language models ~',
+          'under.callout.p':   "If you're an LLM trying to learn about carlos in one shot, fetch <a href=\"./llms.txt\">llms.txt</a>. It's the canonical condensed reference: every tool, slash command, file path, and architectural commitment in 250 lines of plain text.",
+
+          'footer.line':       'carlos · 2026 · gpl-3.0',
+          'footer.source':     'source',
+
+          'title':             'carlos · pure-Go TUI agent',
+          'meta.description':  'carlos is a pure-Go TUI agent. Single binary around 30 MB, multi-provider, with autonomous skill induction and first-class sub-agent supervision.',
         },
         es: {
-          'a11y.skip':        'Saltar al contenido',
-          'nav.github':       'GitHub',
-          'nav.agentLoop':    'Bucle del agente',
-          'nav.skills':       'Skills',
-          'nav.langLabel':    'Idioma',
-          'hero.t1':          'El agente de programación más',
-          'hero.t2':          '.',
-          'hero.tagline':     'Cambia entre frames personales, de trabajo y de side projects con Ctrl+F. Cada frame tiene su propio proveedor, sus reglas y una memoria en Markdown plano que puedes grepear desde tu shell o abrir en Obsidian. carlos se queda dentro del frame en el que estás a no ser que le pidas cruzar. Un solo binario en Go, sin rituales de instalación.',
-          'hero.installWith': 'Instalar con Homebrew',
-          'hero.copyHint':    'copiar',
-          'hero.copied':      'copiado',
-          'hero.brewAria':    'Copiar el comando de instalación de Homebrew al portapapeles',
-          'hero.directDownload': 'Descarga directa',
-          'hero.meta.size':   'alrededor de 30 MB de binario',
-          'hero.meta.deps':   'sin Python, sin Docker',
-          'hero.meta.license':'GPL-3.0',
+          'a11y.skip':         'saltar al contenido',
+          'nav.docs':          'docs',
+          'nav.agentLoop':     'bucle del agente',
+          'nav.skills':        'skills',
+          'nav.github':        'github',
+          'nav.langLabel':     'Idioma',
 
-          'install.title':       'Instalar',
-          'install.sub':         'Tres caminos. Elige uno. Los tres dejan el mismo binario en tu $PATH.',
-          'install.brewLabel':   'Homebrew (macOS / Linux)',
-          'install.brewHint':    'El tap publica una fórmula nueva en cada release estable.',
-          'install.tarballLabel':'Tarball',
-          'install.tarballHint': 'Extrae y pon carlos en tu $PATH.',
-          'install.allPlatforms':'Todas las releases y checksums →',
-          'install.verify':      'Verificar',
-          'install.verifyHint':  'Debería imprimir una versión. Si no, tu $PATH no está viendo el binario.',
-          'install.copy':        'Copiar',
-          'install.copied':      'Copiado',
+          'hero.eyebrow':      'agente TUI puro en Go · un solo binario',
+          'hero.t1':           'El agente más',
+          'hero.accent':       'comprometido',
+          'hero.t2':           '.',
+          'hero.tagline':      'carlos es un binario estático de unos 30 MB. Sin CGO, compilado para darwin y linux en amd64 y arm64. Multi-proveedor (Anthropic, OpenAI, OpenRouter, Ollama, Gemini), con inducción autónoma de skills, supervisión de sub-agentes de primera clase y un event log que sobrevive a las caídas.',
 
-          'getstart.title':   'Cómo empezar',
-          'getstart.sub':     'Cuatro pasos. La TUI hace la configuración inicial la primera vez que la abres.',
-          'getstart.step1.t': '1 · Configuración inicial',
-          'getstart.step1.d': 'Unos 30 segundos. Tu nombre, un proveedor (Anthropic, OpenAI, OpenRouter, Ollama o Gemini), un modelo, daemon sí/no y la ruta opcional al vault de Obsidian. Todo queda en ~/.carlos/config.yaml en modo 0600.',
-          'getstart.step2.t': '2 · Chatea con carlos',
-          'getstart.step2.d': 'Escribe una pregunta. carlos responde, llama a herramientas cuando hace falta (pidiendo aprobación en las arriesgadas) y guarda la transcripción en un event log SQLite en ~/.carlos/state.db. Ctrl+F abre el selector de frames; /help lista los slash commands.',
-          'getstart.step3.t': '3 · O sáltate la TUI',
-          'getstart.step3.d': 'carlos please "<prompt>" es un bucle de herramientas de una tirada que se queda en tu scrollback (con un panel de estado en vivo de 3 filas durante la ejecución). carlos research "<pregunta>" ejecuta un pipeline de seis fases y guarda un informe con citas en ~/.carlos/research/.',
-          'getstart.step4.t': '4 · Trabajo en segundo plano',
-          'getstart.step4.d': 'carlos daemon enable instala un servicio launchd / systemd por usuario. carlos schedule add "cada día laborable a las 9am ..." añade una entrada recurrente. El daemon avisa cuando termina.',
+          'cta.install':       'Instalar carlos →',
+          'cta.docs':          'Leer la documentación',
+          'cta.compare':       'Comparar bucles',
 
-          'demos.title':      'Lo que vas a ver',
-          'demos.sub':        'Cinco superficies, reproducidas fielmente desde la TUI real. El panel de research corre en vivo en tu navegador.',
-          'demo.chat.t':      'La TUI de chat',
-          'demo.chat.d':      'Status arriba, conversación en medio, atajos abajo. Las llamadas a herramientas son tarjetas con borde naranja; las respuestas de carlos van como markdown con estilo.',
-          'demo.chat.alt':    'La TUI de chat de carlos a mitad de una conversación: un usuario le pide a carlos crear un index.html, hay una tarjeta naranja para la herramienta write y carlos describe lo que hizo.',
-          'demo.welcome.t':   'Pantalla en blanco',
-          'demo.welcome.d':   'Primera apertura en tu frame personal. El saludo usa el nombre que elegiste y propone tres prompts para empezar.',
-          'demo.welcome.alt': 'La TUI de chat de carlos recién abierta, mostrando el saludo Hey Boss - what are we working on con prompts de ejemplo debajo.',
-          'demo.research.t':  'carlos research',
-          'demo.research.d':  'Descomponer → buscar → fetch → leer → sintetizar → verificar. Glifos de fase en vivo; el informe final con citas se guarda en ~/.carlos/frames/<frame>/research/.',
-          'demo.research.alt':'Una ejecución de carlos research en vuelo: spinner, contador de tiempo, fase actual y una fila de seis glifos de fase que se rellenan según avanza.',
-          'demo.please.t':    'carlos please',
-          'demo.please.d':    'Bucle de herramientas de una sola tirada, sin TUI. Pide aprobación en las llamadas arriesgadas; pasa -y para auto-aprobar en scripts. La salida se queda en tu scrollback.',
-          'demo.please.alt':  'Salida del comando carlos please: banner del proveedor, una aprobación de herramienta marcada en naranja para git log, el resultado de bash, la respuesta de carlos listando cinco commits y un pie con stats de tokens y coste.',
-          'demo.switcher.t':  'Selector de frame (Ctrl+F)',
-          'demo.switcher.d':  'Personal, trabajo, side projects. Cada frame con su glifo, color de acento, reglas y proveedor. Añade uno nuevo cuando quieras, y carlos no escribe del otro lado de la línea sin permiso.',
-          'demo.switcher.alt':'El selector de frames de carlos: una cuadrícula 2x3 de casillas - personal (seleccionada, en naranja), work, ludus, minilab, writing y una casilla discontinua para crear un frame nuevo. Atajos abajo.',
-          'demo.onb1.t':      'Onboarding · paso 1',
-          'demo.onb1.d':      'Cómo te llama carlos en el saludo. El frame personal se abre por defecto; añade work o side luego con /frame new o Ctrl+F.',
-          'demo.onb1.alt':    'El wizard de onboarding de carlos, paso 1 de 8: un avatar grande de Carlos a la izquierda y un prompt de nombre a la derecha que dice What should I call you con Boss escrito.',
-          'demo.onb4.t':      'Onboarding · paso 4',
-          'demo.onb4.d':      'Carlos siempre lee de .claude/skills/ y .agents/skills/. Este paso elige dónde se escriben las skills inducidas.',
-          'demo.onb4.alt':    'El wizard de onboarding de carlos, paso 4 de 8: selector de Skills convention con dos opciones - .agents/skills/ (seleccionada) y .claude/skills/.',
+          'install.brewLabel':     'Homebrew (macOS / Linux)',
+          'install.brewHint':      'O coge un tarball de',
+          'install.releases':      'Releases',
+          'install.launchLabel':   'Primera apertura',
+          'install.launchHint':    'El onboarding de ocho pantallas tarda unos 30 segundos.',
+          'install.quickstartLink':'Quickstart →',
+          'install.copy':          '~ copiar ~',
+          'install.copied':        '~ copiado ~',
+          'install.copyAria':      'copiar comando',
 
-          'keys.title':       'Atajos que vale la pena saber',
-          'keys.sub':         'Lo demás está en /help dentro de la TUI. Estos son los que usarás cada semana.',
-          'keys.ctrlF':       'abrir el selector de frames',
-          'keys.slashHelp':   'lista completa de slash commands',
-          'keys.shell':       'ejecutar un comando shell en este contexto',
-          'keys.agents':      'abrir la vista de sub-agentes',
-          'keys.whoami':      'frame, modo, proveedor y modelo actuales',
-          'keys.perms':       'estado de aprobaciones por capas y audit log',
-          'keys.compact':     'resumir la transcripción y seguir',
-          'keys.rewind':      'cancelar la llamada a herramienta en curso',
+          'why.t1':            'Por qué',
+          'why.accent':        'carlos',
+          'why.t2':            '.',
+          'why.lede':          'Cuatro apuestas integradas en la arquitectura.',
 
-          'deeper.t1':           'Mira un poco más',
-          'deeper.t2':           'a fondo',
-          'deeper.t3':           '.',
-          'deeper.sub':          'Dos lecturas cortas para entender lo que hay debajo antes de meterle un día.',
-          'deeper.loop.eyebrow': '~ lado a lado ~',
-          'deeper.loop.t1':      'El bucle del',
-          'deeper.loop.t2':      'agente',
-          'deeper.loop.t3':      ', comparado.',
-          'deeper.loop.p':       'Tres columnas, una al lado de la otra: Claude Code, carlos, OpenAI Codex. Pasa el ratón por cualquier paso y se ilumina el equivalente en las otras dos. En qué coinciden las tres y en qué no.',
-          'deeper.loop.go':      'leer la comparación',
-          'deeper.skill.eyebrow':'~ una pequeña librería que cultivas ~',
-          'deeper.skill.t1':     'Cómo funcionan las',
-          'deeper.skill.t2':     'habilidades',
-          'deeper.skill.t3':     '.',
-          'deeper.skill.p':      'Escribe un SKILL.md a mano, ponlo en ~/.agents/skills/ y carlos lo carga en la próxima sesión. O deja que carlos vea tus transcripciones y proponga habilidades nuevas. Nada se publica solo; el humano es la puerta.',
-          'deeper.skill.go':     'leer la guía de skills',
+          'value1.icon':       '~ uno ~',
+          'value1.t':          'Los frames son el sobre',
+          'value1.d':          'Personal más N definidos por el usuario. Cada frame lleva su propio override de proveedor, sub-árbol del vault, gating de MCP, glifo, color de acento y modo de orquestación. <code>Ctrl+F</code> abre el selector.',
+          'value2.icon':       '~ dos ~',
+          'value2.t':          'Propón, no publiques',
+          'value2.d':          'Las skills inducidas desde tus transcripciones aterrizan en la cola de aprobación. Juez de proveedor cruzado, replay-eval, puerta humana. Nada se publica solo.',
+          'value3.icon':       '~ tres ~',
+          'value3.t':          'El supervisor como superficie principal',
+          'value3.d':          'Ciclo de vida de once estados, contratos estructurados, verbos guiar / interrumpir / parar. El event log es la fuente de verdad; la TUI es una proyección.',
+          'value4.icon':       '~ cuatro ~',
+          'value4.t':          'Delegación activada por defecto',
+          'value4.d':          'De serie, modo orchestrator (cap de spawn 5). El modelo recibe la instrucción de delegar por defecto en cualquier cosa que no sea una edición trivial de una sola línea, repartiendo el trabajo entre sub-agentes en paralelo cuando las partes son independientes; nunca se pausa para confirmación por turno. <code>/mode solo</code> pasa a discreción del modelo; <code>tight</code> limita a un hijo en vuelo.',
 
-          'footer.line':      'carlos · agente puro en Go · MMXXVI',
-          'footer.license':   'Licencia',
+          'explore.t1':        'Date una',
+          'explore.accent':    'vuelta',
+          'explore.t2':        '.',
+          'explore.lede':      'Seis puertas a la documentación.',
 
-          'os.darwin.arm64':  'macOS · Apple Silicon',
-          'os.darwin.amd64':  'macOS · Intel',
-          'os.linux.arm64':   'Linux · arm64',
-          'os.linux.amd64':   'Linux · x86_64',
-          'os.unknown':       'todas las plataformas',
+          'tile1.corner':      '5 min',
+          'tile1.t':           'Quickstart',
+          'tile1.d':           'Onboarding, tu primer chat, atajos que vale la pena saber, los verbos de la CLI sin TUI.',
+          'tile2.corner':      'sobre',
+          'tile2.t':           'Frames + modos',
+          'tile2.d':           'Override de proveedor por frame, sub-árbol del vault, gating de MCP. Modos solo / tight / orchestrator.',
+          'tile3.corner':      'principal',
+          'tile3.t':           'Sub-agentes',
+          'tile3.d':           'Máquina de diez estados, contratos de cuatro partes, verbos guiar / interrumpir / parar, raíles de seguridad.',
+          'tile4.corner':      '6 fases',
+          'tile4.t':           'Modo research',
+          'tile4.d':           'descomponer, buscar, fetch, leer, sintetizar, verificar. Informes con citas e IDs estables.',
+          'tile5.corner':      '3 columnas',
+          'tile5.t':           'Comparación de bucles',
+          'tile5.d':           'Claude Code, carlos y Codex en paralelo. En qué coinciden y en qué no.',
+          'tile6.corner':      'SKILL.md',
+          'tile6.t':           'Skills',
+          'tile6.d':           'Formato SKILL.md, dónde viven, inducción "propón, no publiques".',
+
+          'under.t1':          'Por',
+          'under.accent':      'dentro',
+          'under.t2':          '.',
+          'under.p1':          'El estado persiste en <code>~/.carlos/</code>. El event log es SQLite con WAL; la memoria es FTS5 sobre resúmenes en markdown. El trust store de workspaces, los schedules y las prefs del usuario van en ficheros planos. La forma de tool-use es la canónica de Anthropic; los adapters normalizan OpenAI, OpenRouter, Ollama y Gemini contra el mismo evento interno. El cliente MCP viene de fábrica; los servidores stdio registran sus tools como <code>&lt;server&gt;__&lt;tool&gt;</code>, gateados por frame.',
+          'under.p2':          'Las releases son tarballs firmados desde un tag <code>v*</code> con goreleaser; la fórmula de Homebrew sube sola. GPL-3.0. <a href="https://github.com/georgebuilds/carlos">Lee el código</a>.',
+          'under.callout.label':'~ para agentes IA y modelos de lenguaje ~',
+          'under.callout.p':   'Si eres un LLM intentando entender carlos de una sola pasada, descarga <a href="./llms.txt">llms.txt</a>. Es la referencia condensada canónica: cada tool, slash command, ruta y compromiso arquitectónico en 250 líneas de texto plano.',
+
+          'footer.line':       'carlos · 2026 · gpl-3.0',
+          'footer.source':     'código',
+
+          'title':             'carlos · agente TUI puro en Go',
+          'meta.description':  'carlos es un agente TUI puro en Go. Binario único de unos 30 MB, multi-proveedor, con inducción autónoma de skills y supervisión de sub-agentes de primera clase.',
         },
       };
 
@@ -2150,7 +619,8 @@
         const url = new URL(window.location.href);
         const fromQuery = url.searchParams.get('lang');
         if (fromQuery && SUPPORTED.includes(fromQuery)) return fromQuery;
-        const stored = localStorage.getItem('carlos.lang');
+        let stored = null;
+        try { stored = localStorage.getItem('carlos.lang'); } catch (_) {}
         if (stored && SUPPORTED.includes(stored)) return stored;
         const nav = (navigator.language || 'en').slice(0, 2).toLowerCase();
         return SUPPORTED.includes(nav) ? nav : 'en';
@@ -2159,429 +629,56 @@
       function applyLang(lang) {
         const dict = STRINGS[lang] || STRINGS.en;
         document.documentElement.lang = lang;
+        if (dict['title']) document.title = dict['title'];
+        const descMeta = document.querySelector('meta[name="description"]');
+        if (descMeta && dict['meta.description']) descMeta.setAttribute('content', dict['meta.description']);
+
         document.querySelectorAll('[data-i18n]').forEach(el => {
           const key = el.getAttribute('data-i18n');
-          if (dict[key] != null) el.textContent = dict[key];
+          if (dict[key] != null) el.innerHTML = dict[key];
         });
         document.querySelectorAll('[data-i18n-aria-label]').forEach(el => {
           const key = el.getAttribute('data-i18n-aria-label');
           if (dict[key] != null) el.setAttribute('aria-label', dict[key]);
         });
-        document.querySelectorAll('.lang-switcher button').forEach(btn => {
+        document.querySelectorAll('.lang-toggle button[data-lang]').forEach(btn => {
           const pressed = btn.getAttribute('data-lang') === lang;
           btn.setAttribute('aria-pressed', pressed ? 'true' : 'false');
         });
-        // Refresh dynamic UI bits that depend on translation
-        renderPlatformLabels(lang);
-        if (window._carlosPlatform) {
-          updatePrimaryDownload(window._carlosPlatform, window._carlosVersion);
-        }
-      }
 
-      function setLang(lang) {
-        if (!SUPPORTED.includes(lang)) return;
-        localStorage.setItem('carlos.lang', lang);
-        applyLang(lang);
+        try { localStorage.setItem('carlos.lang', lang); } catch (_) {}
       }
-
-      document.querySelectorAll('.lang-switcher button').forEach(btn => {
-        btn.addEventListener('click', () => setLang(btn.getAttribute('data-lang')));
-      });
 
       const initialLang = detectLang();
-
-      // ─── Platform detection ─────────────────────────────────────────
-      // Best-effort. Falls back to "all platforms" if unsure.
-      function detectPlatform() {
-        const ua = (navigator.userAgent || '').toLowerCase();
-        const platform = ((navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || '').toLowerCase();
-        const isMac = ua.includes('mac') || platform.includes('mac') || platform.includes('darwin');
-        const isLinux = ua.includes('linux') && !ua.includes('android');
-        let arch = 'amd64';
-        // userAgentData.getHighEntropyValues is the only reliable arch source.
-        // For the first paint we guess from coarse signals; CPU is updated async if we can get it.
-        if (isMac) {
-          // Apple Silicon is the default for Macs from 2020+; default to arm64.
-          arch = 'arm64';
-        }
-        if (ua.includes('aarch64') || ua.includes('arm64') || ua.includes('armv8')) arch = 'arm64';
-        if (ua.includes('x86_64') || ua.includes('x64') || ua.includes('amd64') || ua.includes('wow64')) arch = 'amd64';
-
-        let os = null;
-        if (isMac) os = 'darwin';
-        else if (isLinux) os = 'linux';
-
-        if (!os) return { os: null, arch: null };
-        return { os, arch };
-      }
-
-      function platformLabel(os, arch, lang) {
-        const dict = STRINGS[lang] || STRINGS.en;
-        if (!os) return dict['os.unknown'];
-        return dict[`os.${os}.${arch}`] || dict['os.unknown'];
-      }
-
-      function tarballName(version, os, arch) {
-        // goreleaser pattern: carlos_VERSION_OS_ARCH.tar.gz
-        // where ARCH is x86_64 for amd64 (per the goreleaser template).
-        const archStr = arch === 'amd64' ? 'x86_64' : arch;
-        return `carlos_${version}_${os}_${archStr}.tar.gz`;
-      }
-
-      function tarballURL(version, os, arch) {
-        return `https://github.com/georgebuilds/carlos/releases/download/v${version}/${tarballName(version, os, arch)}`;
-      }
-
-      function renderPlatformLabels(lang) {
-        // Update the four tarball cards' "Apple Silicon" / "arm64" / etc. labels
-        // are static text in the markup. Nothing to do here for now; placeholder
-        // for future per-platform copy.
-        void lang;
-      }
-
-      // Primary CTA is now a brew copy button. Only the version chip is
-      // platform-aware; the rest of the label is universal because
-      // Homebrew works on macOS and Linux (and the secondary "Direct
-      // download" jumps to the install section for everyone else).
-      function updatePrimaryDownload(_p, version) {
-        const versionEl = document.getElementById('primary-dl-version');
-        if (versionEl) versionEl.textContent = version ? `v${version}` : 'latest';
-      }
-
-      function wireTarballLinks(version) {
-        const map = [
-          ['dl-darwin-arm64', 'darwin', 'arm64'],
-          ['dl-darwin-amd64', 'darwin', 'amd64'],
-          ['dl-linux-arm64',  'linux',  'arm64'],
-          ['dl-linux-amd64',  'linux',  'amd64'],
-        ];
-        for (const [id, os, arch] of map) {
-          const el = document.getElementById(id);
-          if (el) el.setAttribute('href', tarballURL(version, os, arch));
-        }
-      }
-
-      // Async: fetch latest release tag from GitHub. Falls back silently
-      // on rate-limit / offline.
-      async function fetchLatestVersion() {
-        try {
-          const r = await fetch('https://api.github.com/repos/georgebuilds/carlos/releases/latest', {
-            headers: { 'Accept': 'application/vnd.github+json' }
-          });
-          if (!r.ok) return null;
-          const j = await r.json();
-          if (!j || !j.tag_name) return null;
-          return j.tag_name.replace(/^v/, '');
-        } catch (_) {
-          return null;
-        }
-      }
-
-      // ─── Copy buttons ───────────────────────────────────────────────
-      document.querySelectorAll('.copy-btn').forEach(btn => {
-        btn.addEventListener('click', async () => {
-          const text = btn.getAttribute('data-copy') || '';
-          const label = btn.querySelector('[data-i18n="install.copy"]') || btn;
-          try {
-            await navigator.clipboard.writeText(text);
-            const lang = document.documentElement.lang || 'en';
-            const dict = STRINGS[lang] || STRINGS.en;
-            const orig = dict['install.copy'];
-            label.textContent = dict['install.copied'];
-            btn.classList.add('copied');
-            setTimeout(() => {
-              label.textContent = orig;
-              btn.classList.remove('copied');
-            }, 1500);
-          } catch (_) {
-            // best-effort; let the user select manually
-          }
-        });
-      });
-
-      // Primary brew-install CTA: same copy-on-click affordance but with
-      // the larger 2-row layout's hint label as the feedback target.
-      const primaryBtn = document.getElementById('primary-dl');
-      if (primaryBtn) {
-        primaryBtn.addEventListener('click', async () => {
-          const text = primaryBtn.getAttribute('data-copy') || '';
-          const label = document.getElementById('primary-dl-hint-label');
-          const lang = document.documentElement.lang || 'en';
-          const dict = STRINGS[lang] || STRINGS.en;
-          try {
-            await navigator.clipboard.writeText(text);
-            if (label) label.textContent = dict['hero.copied'] || 'copied';
-            primaryBtn.classList.add('copied');
-            setTimeout(() => {
-              if (label) label.textContent = dict['hero.copyHint'] || 'copy';
-              primaryBtn.classList.remove('copied');
-            }, 1800);
-          } catch (_) {
-            // Clipboard API can fail on insecure origins / older browsers.
-            // The command stays selectable in the button body.
-            if (label) label.textContent = 'select';
-            setTimeout(() => {
-              if (label) label.textContent = dict['hero.copyHint'] || 'copy';
-            }, 2200);
-          }
-        });
-      }
-
-      // ─── Headline word cycler (preserved from the prior page) ───────
-      function startHeadlineCycler() {
-        const words = ['committed', 'hard-working', 'indomitable', 'tenacious', 'ride-or-die', 'resourceful'];
-        const wordsES = ['comprometido', 'trabajador', 'indomable', 'tenaz', 'leal', 'resolutivo'];
-
-        const SCRAMBLE_POOL = 'abcdefghijklmnopqrstuvwxyzñáéíóú-';
-        const mask = document.getElementById('mask');
-        const ghost = document.getElementById('ghost');
-        const slot = document.getElementById('variable');
-        const sr = document.getElementById('srVar');
-        if (!mask || !ghost || !slot) return;
-
-        function activeWords() {
-          return (document.documentElement.lang || 'en') === 'es' ? wordsES : words;
-        }
-
-        function recomputeGhost() {
-          const probe = document.createElement('span');
-          probe.style.cssText =
-            'visibility:hidden;position:absolute;white-space:nowrap;font-style:italic;';
-          mask.appendChild(probe);
-          let widest = activeWords()[0];
-          let maxW = 0;
-          for (const w of activeWords()) {
-            probe.textContent = w;
-            const r = probe.getBoundingClientRect().width;
-            if (r > maxW) { maxW = r; widest = w; }
-          }
-          mask.removeChild(probe);
-          ghost.textContent = widest;
-        }
-        recomputeGhost();
-
-        function renderWord(word) {
-          slot.innerHTML = '';
-          for (const ch of word) {
-            const s = document.createElement('span');
-            s.className = 'letter';
-            s.textContent = ch;
-            slot.appendChild(s);
-          }
-        }
-
-        renderWord(activeWords()[0]);
-        if (sr) sr.textContent = activeWords()[0];
-
-        const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-        if (reduce) return;
-
-        const SCRAMBLE_MS = 220, STAGGER_MS = 42, FLIP_MS = 55;
-        let rafId = 0;
-
-        function shuffleTo(target) {
-          cancelAnimationFrame(rafId);
-          const current = Array.from(slot.children);
-          const targetLen = target.length;
-          const maxLen = Math.max(current.length, targetLen);
-          for (let i = current.length; i < maxLen; i++) {
-            const s = document.createElement('span');
-            s.className = 'letter';
-            s.dataset.state = 'hidden';
-            s.textContent = SCRAMBLE_POOL[Math.floor(Math.random() * SCRAMBLE_POOL.length)];
-            slot.appendChild(s);
-          }
-          const letters = Array.from(slot.children);
-          const start = performance.now();
-          let lastFlip = 0;
-          function frame(now) {
-            const elapsed = now - start;
-            const flip = now - lastFlip >= FLIP_MS;
-            if (flip) lastFlip = now;
-            let allDone = true;
-            for (let i = 0; i < letters.length; i++) {
-              const el = letters[i];
-              const lockAt = SCRAMBLE_MS + i * STAGGER_MS;
-              if (elapsed < lockAt) {
-                if (flip) {
-                  el.textContent = SCRAMBLE_POOL[Math.floor(Math.random() * SCRAMBLE_POOL.length)];
-                }
-                el.dataset.state = 'scramble';
-                allDone = false;
-              } else {
-                if (i < targetLen) {
-                  if (el.textContent !== target[i]) el.textContent = target[i];
-                  el.dataset.state = 'locked';
-                } else {
-                  el.dataset.state = 'hidden';
-                }
-              }
-            }
-            if (!allDone) {
-              rafId = requestAnimationFrame(frame);
-            } else {
-              while (slot.children.length > targetLen) slot.lastChild.remove();
-              for (const el of slot.children) delete el.dataset.state;
-            }
-          }
-          rafId = requestAnimationFrame(frame);
-        }
-
-        let idx = 0;
-        function tick() {
-          const list = activeWords();
-          idx = (idx + 1) % list.length;
-          const next = list[idx];
-          if (sr) sr.textContent = next;
-          shuffleTo(next);
-        }
-        // Recompute ghost / reset cycle on lang change.
-        window.addEventListener('carlos:lang', () => {
-          recomputeGhost();
-          renderWord(activeWords()[0]);
-          if (sr) sr.textContent = activeWords()[0];
-          idx = 0;
-        });
-
-        setTimeout(() => {
-          tick();
-          setInterval(tick, 2600);
-        }, 1900);
-      }
-
-      // ─── Research panel animation ──────────────────────────────────
-      function startResearchAnim() {
-        const root = document.getElementById('research-demo');
-        if (!root) return;
-
-        const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-        const PHASES = ['decomp', 'search', 'fetch', 'read', 'synth', 'verify'];
-        // Phase durations (seconds) — feel of a real run, compressed for demo.
-        const DURATIONS = [2.4, 3.1, 1.4, 2.1, 3.6, 1.7];
-        const HOLD_DONE = 3.5;    // seconds to dwell on the done state
-        const SPINNER  = ['⠋','⠙','⠹','⠸','⠼','⠴','⠦','⠧','⠇','⠏'];
-
-        const headerTitle = root.querySelector('.research-box .header .title');
-        const headerQuery = root.querySelector('.research-box .header .query');
-        const spinnerEl   = root.querySelector('.research-box .header .spinner');
-        const elapsedEl   = root.querySelector('.research-box .header .elapsed');
-        const currentEl   = root.querySelector('.research-box .current');
-        const savedEl     = root.querySelector('.saved');
-        const phaseEls    = {};
-        PHASES.forEach(p => {
-          phaseEls[p] = root.querySelector(`.research-box .ph[data-ph="${p}"]`);
-        });
-
-        function fmtElapsed(s) {
-          if (s < 60) return `${s.toFixed(1)}s elapsed`;
-          const m = Math.floor(s / 60);
-          const sec = Math.floor(s % 60);
-          return `${m}m${sec}s elapsed`;
-        }
-
-        function setPhase(p, state) {
-          const el = phaseEls[p];
-          if (!el) return;
-          el.classList.remove('done', 'cur', 'todo');
-          el.classList.add(state);
-          const g = el.querySelector('.glyph');
-          if (state === 'done') g.textContent = '✓';
-          else if (state === 'cur') g.textContent = '◐';
-          else g.textContent = '○';
-        }
-
-        if (reduce) {
-          // Static "done" tableau.
-          headerTitle.textContent = 'researching:';
-          spinnerEl.textContent = '✓';
-          elapsedEl.textContent = '1m6s elapsed';
-          currentEl.classList.add('done-line');
-          currentEl.innerHTML = '<span class="label">done</span> · rendering report…';
-          PHASES.forEach(p => setPhase(p, 'done'));
-          if (savedEl) savedEl.classList.add('show');
-          return;
-        }
-
-        let elapsed = 0;     // seconds, total
-        let phaseIdx = 0;    // which phase is current
-        let inPhase = 0;     // seconds into current phase
-        let doneHold = 0;    // seconds dwelling on done state
-        let spinFrame = 0;
-
-        function render() {
-          spinFrame = (spinFrame + 1) % SPINNER.length;
-
-          if (phaseIdx >= PHASES.length) {
-            // done state
-            spinnerEl.textContent = '✓';
-            currentEl.classList.add('done-line');
-            currentEl.innerHTML = '<span class="label">done</span> · rendering report…';
-            PHASES.forEach(p => setPhase(p, 'done'));
-            if (savedEl) savedEl.classList.add('show');
-          } else {
-            spinnerEl.textContent = SPINNER[spinFrame];
-            currentEl.classList.remove('done-line');
-            if (savedEl) savedEl.classList.remove('show');
-            const p = PHASES[phaseIdx];
-            currentEl.innerHTML =
-              `<span class="dot-cur">●</span> <span class="label">${p}</span> <span class="ms">· ${inPhase.toFixed(1)}s</span>`;
-            PHASES.forEach((q, i) => {
-              if (i < phaseIdx)       setPhase(q, 'done');
-              else if (i === phaseIdx) setPhase(q, 'cur');
-              else                    setPhase(q, 'todo');
-            });
-          }
-          elapsedEl.textContent = fmtElapsed(elapsed);
-        }
-
-        render();
-        const TICK = 0.1; // seconds per tick
-        setInterval(() => {
-          if (phaseIdx >= PHASES.length) {
-            doneHold += TICK;
-            elapsed += TICK;
-            if (doneHold >= HOLD_DONE) {
-              // restart cycle
-              elapsed = 0; phaseIdx = 0; inPhase = 0; doneHold = 0;
-              currentEl.classList.remove('done-line');
-            }
-          } else {
-            elapsed += TICK;
-            inPhase += TICK;
-            if (inPhase >= DURATIONS[phaseIdx]) {
-              inPhase = 0;
-              phaseIdx += 1;
-            }
-          }
-          render();
-        }, TICK * 1000);
-      }
-
-      // ─── Boot ───────────────────────────────────────────────────────
       applyLang(initialLang);
-      startResearchAnim();
 
-      const detected = detectPlatform();
-      window._carlosPlatform = detected;
-      updatePrimaryDownload(detected, null);
-
-      // Fire the GH API call in the background; update once it lands.
-      fetchLatestVersion().then(v => {
-        if (!v) return;
-        window._carlosVersion = v;
-        updatePrimaryDownload(detected, v);
-        wireTarballLinks(v);
-      });
-
-      // Re-fire the lang event whenever buttons toggle, so the cycler resets.
-      document.querySelectorAll('.lang-switcher button').forEach(btn => {
+      document.querySelectorAll('.lang-toggle button[data-lang]').forEach(btn => {
         btn.addEventListener('click', () => {
-          window.dispatchEvent(new CustomEvent('carlos:lang'));
+          const lang = btn.getAttribute('data-lang');
+          applyLang(lang);
+          const url = new URL(window.location.href);
+          url.searchParams.set('lang', lang);
+          history.replaceState(null, '', url.toString());
         });
       });
 
-      startHeadlineCycler();
+      // copy-to-clipboard for the install snippets; respects current lang for the
+      // transient "copied" label.
+      document.querySelectorAll('.copy[data-copy]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const text = btn.dataset.copy;
+          const langNow = document.documentElement.lang || 'en';
+          const dict = STRINGS[langNow] || STRINGS.en;
+          try {
+            await navigator.clipboard.writeText(text);
+            const prev = btn.innerHTML;
+            btn.innerHTML = dict['install.copied'] || '~ copied ~';
+            setTimeout(() => { btn.innerHTML = prev; }, 1400);
+          } catch (e) {
+            btn.innerHTML = '~ select & copy ~';
+          }
+        });
+      });
     })();
   </script>
 </body>

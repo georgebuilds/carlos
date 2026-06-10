@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>carlos · tools reference</title>
+  <meta name="description" content="All 31 tools registered by default: filesystem, shell, git, web, notes, introspection. MCP servers contribute additional <server>__<tool> entries per frame." />
+  <meta name="theme-color" content="#f4ecd8" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#11131a" media="(prefers-color-scheme: dark)" />
+  <link rel="icon" type="image/png" href="../../branding/carlos-portrait.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" />
+  <link rel="stylesheet" href="../../theme.css" />
+</head>
+<body>
+  <a class="skip-link" href="#main">skip to content</a>
+
+  <!-- ambient doodles (2 max per page) -->
+  <svg class="doodle doodle-cloud-1" viewBox="0 0 240 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path d="M30 70 Q 10 70, 12 50 Q 14 30, 40 32 Q 48 14, 80 18 Q 110 6, 130 24 Q 160 16, 170 42 Q 200 38, 200 60 Q 210 78, 184 80 L 50 80 Q 30 82, 30 70 Z"/>
+  </svg>
+  <svg class="doodle doodle-cloud-2 ink" viewBox="0 0 240 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path d="M30 70 Q 10 70, 12 50 Q 14 30, 40 32 Q 48 14, 80 18 Q 110 6, 130 24 Q 160 16, 170 42 Q 200 38, 200 60 Q 210 78, 184 80 L 50 80 Q 30 82, 30 70 Z"/>
+  </svg>
+
+  <header class="site">
+    <a class="mark" href="../../" aria-label="carlos home">carlos</a>
+    <nav>
+      <a href="../" aria-current="page">docs</a>
+      <a href="../../agent-loop.html">agent loop</a>
+      <a href="https://github.com/georgebuilds/carlos">github</a>
+    </nav>
+  </header>
+
+  <nav class="docnav" aria-label="documentation sections">
+    <a href="../getting-started/install.html">install</a>
+    <a href="../getting-started/quickstart.html">quickstart</a>
+    <a href="../concepts/frames.html">frames</a>
+    <a href="../concepts/permissions.html">permissions</a>
+    <a href="../concepts/sub-agents.html">sub-agents</a>
+    <a href="../concepts/memory.html">memory</a>
+    <a href="./tools.html" aria-current="page">tools</a>
+    <a href="./slash-commands.html">slash</a>
+    <a href="./config.html">config</a>
+    <a href="../guides/research.html">research</a>
+    <a href="../guides/gateway.html">gateway</a>
+    <a href="../guides/schedule.html">schedule</a>
+  </nav>
+
+  <main id="main">
+    <p class="crumbs">
+      <a href="../../">home</a>
+      <span class="sep">·</span>
+      <a href="../">docs</a>
+      <span class="sep">·</span>
+      <span class="here">tools</span>
+    </p>
+
+    <section class="hero">
+      <span class="eyebrow">reference · tools</span>
+      <h1>Every tool, every <span class="accent">surface</span>.</h1>
+      <p class="subhead">carlos registers 31 tools by default through <code>NewDefaultRegistryWithBaseDirAndFrames</code>. MCP servers contribute additional tools per frame. Every tool flows through the layered approval policy.</p>
+    </section>
+
+    <section>
+      <div class="card straight">
+        <h3>Filesystem (read)</h3>
+        <p>Auto-approved by layer 1 of the permission model. Sandboxed by <code>BaseDir</code> when running inside a worktree.</p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>tool</th>
+                <th>what</th>
+                <th>approval</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="row-label"><code>read</code></td>
+                <td>Read a file, optional line range.</td>
+                <td><span class="pill sage"><span class="dot"></span>builtin</span></td>
+              </tr>
+              <tr>
+                <td class="row-label"><code>grep</code></td>
+                <td>Pattern over a tree, ripgrep-style.</td>
+                <td><span class="pill sage"><span class="dot"></span>builtin</span></td>
+              </tr>
+              <tr>
+                <td class="row-label"><code>glob</code></td>
+                <td>Path pattern enumeration.</td>
+                <td><span class="pill sage"><span class="dot"></span>builtin</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <div class="rule-sketch"><svg viewBox="0 0 480 14" preserveAspectRatio="none"><path d="M4 8 Q 60 2, 130 7 T 260 7 T 380 8 T 476 6"/></svg></div>
+
+    <section>
+      <div class="card straight">
+        <h3>Filesystem (mutate)</h3>
+        <p>Always prompt unless the session has cached an <code>Always</code> answer.</p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>tool</th>
+                <th>what</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="row-label"><code>write</code></td>
+                <td>Create or overwrite a file. Atomic write (temp + fsync + rename).</td>
+              </tr>
+              <tr>
+                <td class="row-label"><code>edit</code></td>
+                <td>Exact-string replace. Fails if <code>old_string</code> is not unique.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <div class="rule-sketch"><svg viewBox="0 0 480 14" preserveAspectRatio="none"><path d="M4 8 Q 60 2, 130 7 T 260 7 T 380 8 T 476 6"/></svg></div>
+
+    <section>
+      <div class="card straight">
+        <h3>Shell</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>tool</th>
+                <th>what</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="row-label"><code>bash</code></td>
+                <td>Non-PTY by default. Stdout and stderr captured, truncated at 8 KiB. 30s timeout. Exit code surfaced. A non-zero exit is not an error; it is part of the output the model needs to see.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="callout">
+          <span class="label">trust carve-out</span>
+          <p>The workspace-trust classifier (<code>internal/workspace/bash.go:IsReadOnly</code>) carves out a narrow set of read-only verbs for auto-approval when the cwd is trusted. See <a href="../concepts/permissions.html">Permissions</a>.</p>
+        </div>
+      </div>
+    </section>
+
+    <div class="rule-sketch"><svg viewBox="0 0 480 14" preserveAspectRatio="none"><path d="M4 8 Q 60 2, 130 7 T 260 7 T 380 8 T 476 6"/></svg></div>
+
+    <section>
+      <div class="card straight">
+        <h3>Git (read-only)</h3>
+        <p>Auto-approved by layer 1.</p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>tool</th>
+                <th>what</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="row-label"><code>git_status</code></td>
+                <td>Working-tree state plus the branch summary.</td>
+              </tr>
+              <tr>
+                <td class="row-label"><code>git_diff</code></td>
+                <td>Unified diff between refs, the index, or the working tree.</td>
+              </tr>
+              <tr>
+                <td class="row-label"><code>git_log</code></td>
+                <td>Commit history with subject, author, and date.</td>
+              </tr>
+              <tr>
+                <td class="row-label"><code>git_blame</code></td>
+                <td>Line-by-line commit attribution for a file.</td>
+              </tr>
+              <tr>
+                <td class="row-label"><code>git_show</code></td>
+                <td>Single-commit detail including the full patch.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <div class="rule-sketch"><svg viewBox="0 0 480 14" preserveAspectRatio="none"><path d="M4 8 Q 60 2, 130 7 T 260 7 T 380 8 T 476 6"/></svg></div>
+
+    <section>
+      <div class="card straight">
+        <h3>Web</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>tool</th>
+                <th>what</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="row-label"><code>web_fetch</code></td>
+                <td>HTTP GET. HTML to text. Refuses non-http(s), private and loopback ranges (config-gated), non-text content types, and robots-disallowed URLs (override available). HEAD-then-GET; 5 MiB raw / 256 KiB extracted caps; 5-redirect ceiling; 5-minute robots cache.</td>
+              </tr>
+              <tr>
+                <td class="row-label"><code>web_search</code></td>
+                <td><code>SearchBackend</code> interface. Implementations: Brave (when <code>BRAVE_API_KEY</code> is set), SearXNG (when <code>SEARXNG_URL</code> is set), DuckDuckGo HTML fallback.</td>
+              </tr>
+              <tr>
+                <td class="row-label"><code>http_request</code></td>
+                <td>Method-parametric REST, GraphQL, and webhook caller.</td>
+              </tr>
+              <tr>
+                <td class="row-label"><code>code_search</code></td>
+                <td>Concurrent fan-out to Codewiki, Context7, and DeepWiki. Defaults to carlos's own repo for self-reference.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <div class="rule-sketch"><svg viewBox="0 0 480 14" preserveAspectRatio="none"><path d="M4 8 Q 60 2, 130 7 T 260 7 T 380 8 T 476 6"/></svg></div>
+
+    <section>
+      <div class="card straight">
+        <h3>Introspection</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>tool</th>
+                <th>what</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="row-label"><code>carlos_about</code></td>
+                <td>Returns carlos's own state: vault path, active frame, all configured frames, capabilities, providers, user name. Auto-approved. Never leaks API keys. The <code>carlos_about</code> tool cards are hidden from chat (v0.7.7) to avoid clutter.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <div class="rule-sketch"><svg viewBox="0 0 480 14" preserveAspectRatio="none"><path d="M4 8 Q 60 2, 130 7 T 260 7 T 380 8 T 476 6"/></svg></div>
+
+    <section>
+      <div class="card straight">
+        <h3>Notes (configured vault, pinned)</h3>
+        <p>Schema does not accept a <code>vault:</code> arg. Auto-approved by layer 1.</p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>tool</th>
+                <th>what</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="row-label"><code>notes_get</code></td>
+                <td>Fetch a note by path or wikilink target.</td>
+              </tr>
+              <tr>
+                <td class="row-label"><code>notes_search</code></td>
+                <td>Full-text query over the configured vault.</td>
+              </tr>
+              <tr>
+                <td class="row-label"><code>notes_backlinks</code></td>
+                <td>Inbound wikilinks pointing at a note.</td>
+              </tr>
+              <tr>
+                <td class="row-label"><code>notes_tagged</code></td>
+                <td>Notes carrying a given tag.</td>
+              </tr>
+              <tr>
+                <td class="row-label"><code>notes_neighbors</code></td>
+                <td>Outgoing wikilink targets from a note.</td>
+              </tr>
+              <tr>
+                <td class="row-label"><code>notes_recent</code></td>
+                <td>Recently modified notes, newest first.</td>
+              </tr>
+              <tr>
+                <td class="row-label"><code>notes_resolve</code></td>
+                <td>Resolve a wikilink target to a concrete path.</td>
+              </tr>
+              <tr>
+                <td class="row-label"><code>notes_write</code></td>
+                <td>Append or overwrite a note in the configured vault. Scoped to the active frame's <code>vault_subtree</code>.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p><code>notes_write</code> is scoped to the active frame's <code>vault_subtree</code>. Cross-vault or cross-subtree writes are rejected and have to go through the generic <code>write</code> tool with full prompting.</p>
+        <p>Each tool supports a <code>frame:</code> arg (Phase F-11) for cross-frame fan-out with prefix labels.</p>
+      </div>
+    </section>
+
+    <div class="rule-sketch"><svg viewBox="0 0 480 14" preserveAspectRatio="none"><path d="M4 8 Q 60 2, 130 7 T 260 7 T 380 8 T 476 6"/></svg></div>
+
+    <section>
+      <div class="card straight">
+        <h3>Notes (arbitrary vault)</h3>
+        <p>Schema requires a <code>vault:</code> arg. Always prompts.</p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>tool</th>
+                <th>what</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="row-label"><code>obsidian_get</code></td>
+                <td>Fetch a note from any vault root.</td>
+              </tr>
+              <tr>
+                <td class="row-label"><code>obsidian_search</code></td>
+                <td>Full-text query against an arbitrary vault.</td>
+              </tr>
+              <tr>
+                <td class="row-label"><code>obsidian_backlinks</code></td>
+                <td>Inbound wikilinks within the named vault.</td>
+              </tr>
+              <tr>
+                <td class="row-label"><code>obsidian_tagged</code></td>
+                <td>Tag query within the named vault.</td>
+              </tr>
+              <tr>
+                <td class="row-label"><code>obsidian_neighbors</code></td>
+                <td>Outgoing wikilink targets within the named vault.</td>
+              </tr>
+              <tr>
+                <td class="row-label"><code>obsidian_recent</code></td>
+                <td>Recently modified notes from the named vault.</td>
+              </tr>
+              <tr>
+                <td class="row-label"><code>obsidian_resolve</code></td>
+                <td>Resolve a wikilink target inside the named vault.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <div class="rule-sketch"><svg viewBox="0 0 480 14" preserveAspectRatio="none"><path d="M4 8 Q 60 2, 130 7 T 260 7 T 380 8 T 476 6"/></svg></div>
+
+    <section>
+      <div class="card straight">
+        <h3>MCP-contributed tools</h3>
+        <p>stdio servers register their tools under <code>&lt;server&gt;__&lt;tool&gt;</code> and inherit the standard approval path. Per-frame gating: top-level <code>mcp_servers:</code> list, each entry's optional <code>frames:</code> field restricts to a subset.</p>
+        <p><code>/mcp</code> lists configured servers and the tools each contributed at boot.</p>
+      </div>
+    </section>
+
+    <div class="rule-sketch"><svg viewBox="0 0 480 14" preserveAspectRatio="none"><path d="M4 8 Q 60 2, 130 7 T 260 7 T 380 8 T 476 6"/></svg></div>
+
+    <section>
+      <div class="card straight">
+        <h3>Tool counter</h3>
+        <p><code>carlos_about</code> reports the exact count. The default registry is <strong>31</strong>; counts grow as MCP servers register.</p>
+      </div>
+    </section>
+
+    <nav class="prevnext" aria-label="page navigation">
+      <a class="prev" href="../concepts/memory.html">
+        <span class="dir">~ previous ~</span>
+        <span class="title">Memory</span>
+      </a>
+      <a class="next" href="./slash-commands.html">
+        <span class="dir">~ next ~</span>
+        <span class="title">Slash commands</span>
+      </a>
+    </nav>
+  </main>
+
+  <footer class="site">
+    <span>carlos · 2026 · gpl-3.0</span>
+    <nav>
+      <a href="https://github.com/georgebuilds/carlos">github</a>
+      <a href="../">all docs</a>
+    </nav>
+  </footer>
+</body>
+</html>

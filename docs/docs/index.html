@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>carlos · docs</title>
+  <meta name="description" content="carlos documentation. Install, quickstart, concepts, reference, and guides. Single-binary pure-Go TUI agent." />
+  <meta name="theme-color" content="#f4ecd8" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#11131a" media="(prefers-color-scheme: dark)" />
+  <link rel="icon" type="image/png" href="../branding/carlos-portrait.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" />
+  <link rel="stylesheet" href="../theme.css" />
+  <style>
+    /* tiny page-local flourishes; theme.css owns the rest */
+    .you-are-here {
+      font-family: 'Caveat', cursive;
+      font-weight: 700;
+      font-size: 20px;
+      color: var(--clay);
+      margin-left: 10px;
+      display: inline-block;
+      transform: rotate(-2deg);
+      transform-origin: left center;
+      vertical-align: -2px;
+    }
+    .you-are-here svg {
+      display: inline-block;
+      vertical-align: middle;
+      margin-right: 4px;
+      width: 22px;
+      height: 14px;
+    }
+    .you-are-here svg path {
+      fill: none;
+      stroke: var(--clay);
+      stroke-width: 1.6;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .bucket + .bucket { margin-top: 56px; }
+    .bucket-head { align-items: baseline; }
+    /* keep the inter-section sketched rule from hugging the next bucket */
+    .rule-sketch { margin: 64px auto 40px; max-width: 480px; }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#main">skip to content</a>
+
+  <!-- ambient doodles (2 per page) -->
+  <svg class="doodle doodle-cloud-1" viewBox="0 0 240 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path d="M30 70 Q 10 70, 12 50 Q 14 30, 40 32 Q 48 14, 80 18 Q 110 6, 130 24 Q 160 16, 170 42 Q 200 38, 200 60 Q 210 78, 184 80 L 50 80 Q 30 82, 30 70 Z"/>
+  </svg>
+  <svg class="doodle doodle-cloud-2 ink" viewBox="0 0 240 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path d="M30 70 Q 10 70, 12 50 Q 14 30, 40 32 Q 48 14, 80 18 Q 110 6, 130 24 Q 160 16, 170 42 Q 200 38, 200 60 Q 210 78, 184 80 L 50 80 Q 30 82, 30 70 Z"/>
+  </svg>
+
+  <header class="site">
+    <a class="mark" href="../" aria-label="carlos home">carlos</a>
+    <nav>
+      <a href="./" aria-current="page">docs</a>
+      <a href="../agent-loop.html">agent loop</a>
+      <a href="https://github.com/georgebuilds/carlos">github</a>
+    </nav>
+  </header>
+
+  <main id="main" class="wide">
+    <p class="crumbs">
+      <a href="../">home</a>
+      <span class="sep">·</span>
+      <span class="here">docs</span>
+      <span class="you-are-here" aria-hidden="true">
+        <svg viewBox="0 0 30 14" xmlns="http://www.w3.org/2000/svg"><path d="M2 10 Q 8 2, 16 7 T 26 6 M 22 3 L 26 6 L 22 9"/></svg>
+        you are here
+      </span>
+    </p>
+
+    <section class="hero">
+      <span class="eyebrow">documentation</span>
+      <h1>The <span class="accent">whole</span> story.</h1>
+      <p class="subhead">carlos is a pure-Go TUI agent. Single binary around 30 MB. Local-first, multi-provider, with autonomous skill induction and first-class sub-agent supervision. These docs cover install, the core concepts (frames, permissions, sub-agents, memory), the reference surfaces (tools, slash, config), and the guides that wire them together (research, gateway, schedule).</p>
+    </section>
+
+    <section class="bucket bucket-getting" id="getting-started">
+      <div class="bucket-head">
+        <h2><span class="num">1</span><span class="accent">Get</span> started.</h2>
+        <span class="count">2 pages</span>
+      </div>
+      <p class="blurb">Install, onboard, and run your first chat in about five minutes.</p>
+      <div class="grid">
+        <a class="tile" href="./getting-started/install.html">
+          <span class="corner">brew</span>
+          <h3>Install</h3>
+          <p class="blurb">Homebrew tap, pre-built tarball, or build from source. Single binary, no CGO.</p>
+        </a>
+        <a class="tile" href="./getting-started/quickstart.html">
+          <span class="corner">5 min</span>
+          <h3>Quickstart</h3>
+          <p class="blurb">Eight-screen onboarding, your first chat, keys worth knowing, the headless CLI.</p>
+        </a>
+      </div>
+    </section>
+
+    <section class="bucket bucket-concepts" id="concepts">
+      <div class="bucket-head">
+        <h2><span class="num">2</span><span class="accent">Core</span> concepts.</h2>
+        <span class="count">4 pages</span>
+      </div>
+      <p class="blurb">The mental model. What a frame is, how the approval policy composes, how the supervisor tracks sub-agents, where memory lives.</p>
+      <div class="grid">
+        <a class="tile" href="./concepts/frames.html">
+          <span class="corner">envelope</span>
+          <h3>Frames + modes</h3>
+          <p class="blurb">Personal plus N user-defined. Provider override, vault subtree, MCP gating, orchestrator mode.</p>
+        </a>
+        <a class="tile" href="./concepts/permissions.html">
+          <span class="corner">3 layers</span>
+          <h3>Permissions</h3>
+          <p class="blurb">Built-in allowlist, workspace trust, session fallback. Cross-frame detector ahead of the chain.</p>
+        </a>
+        <a class="tile" href="./concepts/sub-agents.html">
+          <span class="corner">marquee</span>
+          <h3>Sub-agent supervision</h3>
+          <p class="blurb">Ten-state machine, four-part contract, steer / interrupt / stop, safety rails. The event log is the source of truth.</p>
+        </a>
+        <a class="tile" href="./concepts/memory.html">
+          <span class="corner">3 tiers</span>
+          <h3>Memory</h3>
+          <p class="blurb">Episodic event log, FTS5-searchable summaries, slow-moving user model.</p>
+        </a>
+      </div>
+    </section>
+
+    <section class="bucket bucket-reference" id="reference">
+      <div class="bucket-head">
+        <h2><span class="num">3</span><span class="accent">Reference</span>.</h2>
+        <span class="count">3 pages</span>
+      </div>
+      <p class="blurb">Every tool, every slash command, every config key. The "what does X do" surface.</p>
+      <div class="grid three">
+        <a class="tile" href="./reference/tools.html">
+          <span class="corner">31 + MCP</span>
+          <h3>Tools</h3>
+          <p class="blurb">Filesystem, shell, git, web, notes, introspection. Plus per-frame MCP-contributed surfaces.</p>
+        </a>
+        <a class="tile" href="./reference/slash-commands.html">
+          <span class="corner">/</span>
+          <h3>Slash commands</h3>
+          <p class="blurb">Claude Code parity verbs plus carlos-specific ones. Inline autocomplete with ghost text.</p>
+        </a>
+        <a class="tile" href="./reference/config.html">
+          <span class="corner">~/.carlos/</span>
+          <h3>Config</h3>
+          <p class="blurb">config.yaml schema, on-disk layout, file modes, atomic writes.</p>
+        </a>
+      </div>
+    </section>
+
+    <section class="bucket bucket-guides" id="guides">
+      <div class="bucket-head">
+        <h2><span class="num">4</span><span class="accent">Guides</span>.</h2>
+        <span class="count">4 pages</span>
+      </div>
+      <p class="blurb">End-to-end usage of the surfaces that build on the core. Each guide is a worked example with the relevant CLI verbs.</p>
+      <div class="grid">
+        <a class="tile" href="./guides/research.html">
+          <span class="corner">6 phases</span>
+          <h3>Research mode</h3>
+          <p class="blurb">decompose, search, fetch, read, synthesize, verify. Cited reports with stable IDs.</p>
+        </a>
+        <a class="tile" href="../skills.html">
+          <span class="corner">SKILL.md</span>
+          <h3>Skills</h3>
+          <p class="blurb">SKILL.md packaging, where they live, propose-don't-publish induction.</p>
+        </a>
+        <a class="tile" href="./guides/gateway.html">
+          <span class="corner">ntfy + tg</span>
+          <h3>Messaging gateway</h3>
+          <p class="blurb">Reach carlos from your phone. ntfy, Telegram, Signal stub, signed action tokens.</p>
+        </a>
+        <a class="tile" href="./guides/schedule.html">
+          <span class="corner">cron + NL</span>
+          <h3>Scheduled runs</h3>
+          <p class="blurb">Five-field cron plus a seven-form English grammar. Per-frame fires.</p>
+        </a>
+      </div>
+    </section>
+
+    <div class="rule-sketch">
+      <svg viewBox="0 0 480 14" preserveAspectRatio="none"><path d="M4 8 Q 60 2, 130 7 T 260 7 T 380 8 T 476 6"/></svg>
+    </div>
+
+    <section class="bucket" id="extras">
+      <div class="bucket-head">
+        <h2>Worth a <span class="accent">look</span>.</h2>
+      </div>
+      <p class="blurb">Long-form pieces about how carlos compares to other agents.</p>
+      <div class="grid">
+        <a class="tile" href="../agent-loop.html">
+          <span class="corner">3-up</span>
+          <h3>Agent loop comparison</h3>
+          <p class="blurb">Claude Code, carlos, and Codex side-by-side. Where they converge and where they diverge.</p>
+        </a>
+        <a class="tile" href="https://github.com/georgebuilds/carlos">
+          <span class="corner">repo</span>
+          <h3>The code</h3>
+          <p class="blurb">Open on GitHub. README has install and contributor notes; SPEC and DESIGN live in the vault.</p>
+        </a>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="site">
+    <span>carlos · 2026 · gpl-3.0</span>
+    <nav>
+      <a href="https://github.com/georgebuilds/carlos">github</a>
+      <a href="../">home</a>
+    </nav>
+  </footer>
+</body>
+</html>

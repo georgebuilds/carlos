@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>carlos · frames + modes</title>
+  <meta name="description" content="Frames are carlos's per-session context envelope: provider override, vault subtree, MCP gating, accent, glyph. Modes set the supervisor's spawn cap." />
+  <meta name="theme-color" content="#f4ecd8" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#11131a" media="(prefers-color-scheme: dark)" />
+  <link rel="icon" type="image/png" href="../../branding/carlos-portrait.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" />
+  <link rel="stylesheet" href="../../theme.css" />
+</head>
+<body>
+  <a class="skip-link" href="#main">skip to content</a>
+
+  <!-- ambient doodles (2 max per page) -->
+  <svg class="doodle doodle-cloud-1" viewBox="0 0 240 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path d="M30 70 Q 10 70, 12 50 Q 14 30, 40 32 Q 48 14, 80 18 Q 110 6, 130 24 Q 160 16, 170 42 Q 200 38, 200 60 Q 210 78, 184 80 L 50 80 Q 30 82, 30 70 Z"/>
+  </svg>
+  <svg class="doodle doodle-cloud-2 ink" viewBox="0 0 240 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path d="M30 70 Q 10 70, 12 50 Q 14 30, 40 32 Q 48 14, 80 18 Q 110 6, 130 24 Q 160 16, 170 42 Q 200 38, 200 60 Q 210 78, 184 80 L 50 80 Q 30 82, 30 70 Z"/>
+  </svg>
+
+  <header class="site">
+    <a class="mark" href="../../" aria-label="carlos home">carlos</a>
+    <nav>
+      <a href="../" aria-current="page">docs</a>
+      <a href="../../agent-loop.html">agent loop</a>
+      <a href="https://github.com/georgebuilds/carlos">github</a>
+    </nav>
+  </header>
+
+  <nav class="docnav" aria-label="documentation sections">
+    <a href="../getting-started/install.html">install</a>
+    <a href="../getting-started/quickstart.html">quickstart</a>
+    <a href="./frames.html" aria-current="page">frames</a>
+    <a href="./permissions.html">permissions</a>
+    <a href="./sub-agents.html">sub-agents</a>
+    <a href="./memory.html">memory</a>
+    <a href="../reference/tools.html">tools</a>
+    <a href="../reference/slash-commands.html">slash</a>
+    <a href="../reference/config.html">config</a>
+    <a href="../guides/research.html">research</a>
+    <a href="../guides/gateway.html">gateway</a>
+    <a href="../guides/schedule.html">schedule</a>
+  </nav>
+
+  <main id="main">
+    <p class="crumbs">
+      <a href="../../">home</a>
+      <span class="sep">·</span>
+      <a href="../">docs</a>
+      <span class="sep">·</span>
+      <span class="here">frames + modes</span>
+    </p>
+
+    <section class="hero">
+      <span class="eyebrow">concepts · frames</span>
+      <h1>Frames are the <span class="accent">envelope</span>.</h1>
+      <p class="subhead">Sessions run inside a frame. Personal plus N user-defined (work, research, side projects, anything). Each frame carries its own provider, vault subtree, MCP gating, glyph, accent, and orchestrator mode.</p>
+    </section>
+
+    <h2>What's <span class="accent">in</span> a frame</h2>
+    <p>A frame is a named bundle of context that scopes every session opened against it. The full set of per-frame properties:</p>
+
+    <ul>
+      <li><strong>glyph</strong>: single emoji shown in the header pill.</li>
+      <li><strong>accent</strong>: color from an eight-name palette (<code>rust</code>, <code>slate</code>, <code>olive</code>, <code>teal</code>, <code>plum</code>, <code>cream</code>, <code>sand</code>, <code>navy</code>).</li>
+      <li><strong>provider + model + <code>provider_override</code></strong>: per-frame billing keys and base URLs that shadow the shared pantry.</li>
+      <li><strong>vault subtree</strong>: <code>notes_write</code> is scoped here.</li>
+      <li><strong><code>system_prompt_append</code></strong>: extra system-prompt lines appended after the base prompt.</li>
+      <li><strong><code>cwd_hints</code></strong>: auto-pick at fresh launch.</li>
+      <li><strong>capabilities</strong>: calendar, drive, mail, whatever the frame should reach.</li>
+      <li><strong>MCP-server gating</strong>: the top-level <code>mcp_servers:</code> list is global, but each entry's optional <code>frames:</code> field restricts that server to a subset of frames.</li>
+      <li><strong>orchestrator <code>mode</code></strong>: <code>solo</code> / <code>tight</code> / <code>orchestrator</code>.</li>
+    </ul>
+
+    <div class="rule-sketch"><svg viewBox="0 0 480 14" preserveAspectRatio="none"><path d="M4 8 Q 60 2, 130 7 T 260 7 T 380 8 T 476 6"/></svg></div>
+
+    <h2>On-disk <span class="accent">layout</span></h2>
+    <p>Every frame gets its own subtree under <code>~/.carlos/frames/&lt;name&gt;/</code>. Research notes, shell logs, worktrees, and digests all live frame-local. The F-17 migration moves legacy paths idempotently on first boot of a newer build.</p>
+
+    <div class="code-block">
+      <span class="fname">~/.carlos/</span>
+<pre><span class="key">frames/</span>
+  <span class="key">personal/</span>
+    <span class="key">research/</span>
+      <span class="val">deep-dive-1717948800.md</span>
+      <span class="val">routing-sketch-1717952400.md</span>
+    <span class="key">usershell/</span>
+      <span class="val">8f3a-2026-06-10T09:14:22Z.log</span>
+    <span class="key">worktrees/</span>
+      <span class="key">a1b2c3/</span>
+    <span class="key">digest/</span>
+  <span class="key">work/</span>
+    <span class="key">research/</span>
+      <span class="val">incident-2026-05-1717862400.md</span>
+    <span class="key">usershell/</span>
+    <span class="key">worktrees/</span>
+    <span class="key">digest/</span>
+<span class="com"># slug format: &lt;slug&gt;-&lt;unix-ts&gt;.md
+# usershell logs are keyed by job id
+# F-17 migrated legacy ~/.carlos/research, etc., into frame-local subtrees</span></pre>
+    </div>
+
+    <div class="rule-sketch"><svg viewBox="0 0 480 14" preserveAspectRatio="none"><path d="M4 8 Q 60 2, 130 7 T 260 7 T 380 8 T 476 6"/></svg></div>
+
+    <h2>Cross-frame <span class="accent">rules</span></h2>
+    <p>Reading across frames is friction-free. Writing across frames is not. Every cross-frame write is intercepted ahead of the layered permission chain and surfaces a distinct audit reason so the trail stays legible after the fact.</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>action</th>
+            <th>behavior</th>
+            <th>audit reason</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="row-label">read</td>
+            <td><code>notes_get</code> / <code>notes_search</code> against another frame's subtree auto-approve.</td>
+            <td><code>ReasonBuiltinAllow</code></td>
+          </tr>
+          <tr>
+            <td class="row-label">write (approved)</td>
+            <td>The F-12 detector intercepts <code>write</code> / <code>edit</code> ahead of the chain and prompts the user.</td>
+            <td><code>ReasonCrossFrameAllow</code></td>
+          </tr>
+          <tr>
+            <td class="row-label">write (declined)</td>
+            <td>Same detector path, user said no. The chain never runs.</td>
+            <td><code>ReasonCrossFrameDeny</code></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>The <code>notes_write</code> tool is hard-scoped to the active frame's <code>vault_subtree</code>. Cross-vault or cross-subtree writes never go through <code>notes_write</code>; they route through the generic <code>write</code> tool with full prompting.</p>
+
+    <div class="rule-sketch"><svg viewBox="0 0 480 14" preserveAspectRatio="none"><path d="M4 8 Q 60 2, 130 7 T 260 7 T 380 8 T 476 6"/></svg></div>
+
+    <h2>Modes</h2>
+    <p>Three orchestrator modes per frame. The mode shapes the system prompt and gates the supervisor's spawn cap.</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>mode</th>
+            <th>spawn cap</th>
+            <th>shape</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="row-label"><code>solo</code></td>
+            <td>0</td>
+            <td>Single-agent only. No delegation.</td>
+          </tr>
+          <tr>
+            <td class="row-label"><code>tight</code></td>
+            <td>1</td>
+            <td>At most one delegated sub-agent at a time.</td>
+          </tr>
+          <tr>
+            <td class="row-label"><code>orchestrator</code></td>
+            <td>5</td>
+            <td>Up to five parallel children.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p><code>NewPersonal</code> defaults to <code>orchestrator</code> (was <code>solo</code> through v0.7.5). The solo default refused every <code>Spawn</code>, which left the chat-side <code>/agents</code> surface empty and the <code>agent</code> delegation tool unreachable from a fresh install; flipping to orchestrator matches the pre-modes behavior and lets sub-agents work out of the box. <code>/mode solo</code> brings the strict default back any time.</p>
+
+    <p>Mode shows up in two places: the supervisor's <code>SpawnCapFor</code> enforces 0 / 1 / 5 in-flight children, and the system prompt's Frame block tells the model how to behave under that cap (do the work yourself / one focused task at a time / delegate by default for anything beyond a single-line edit). The two layers are coupled but distinct: solo refuses every spawn even if the model asked; orchestrator never pauses for per-turn confirmation.</p>
+
+    <p>Spawn enforcement returns mode-specific error variants: <code>ErrSpawnRefusedSolo</code> when a child is requested under <code>solo</code>, and <code>ErrSpawnBusyTight</code> when a <code>tight</code> frame already has one in flight.</p>
+
+    <div class="callout clay">
+      <span class="label">delegation as design choice</span>
+      <p>DeepMind <code>arXiv:2512.08296</code> finds that multi-agent coordination nets negative once single-agent baselines exceed roughly 45% on a task class. Sequential and decision-dense work (coding, writing) degrades 39 to 70% under MAS. carlos surfaces the trade-off through mode selection rather than a per-turn overlay: pick <code>solo</code> for strict single-agent semantics, <code>tight</code> for sequential delegation, <code>orchestrator</code> when the parallel-fan-out shape pays.</p>
+    </div>
+
+    <div class="rule-sketch"><svg viewBox="0 0 480 14" preserveAspectRatio="none"><path d="M4 8 Q 60 2, 130 7 T 260 7 T 380 8 T 476 6"/></svg></div>
+
+    <h2>Switching <span class="accent">frames</span></h2>
+    <p>Switching is first-class. The takeover switcher, slash commands, and the mode flip all rebuild the active session in place.</p>
+
+    <ul>
+      <li><span class="kbd">Ctrl</span> + <span class="kbd">F</span> opens the full-screen 3×2 takeover switcher. Three columns at <code>innerW ≥ 100</code>, two at <code>≥ 70</code>, one below. Number keys <code>1</code> through <code>6</code> jump; <span class="kbd">Ctrl</span> + <span class="kbd">←</span> / <span class="kbd">→</span> paginate.</li>
+      <li><code>/frame list</code> and <code>/frame switch &lt;name&gt;</code> work from the composer.</li>
+      <li><code>/mode solo|tight|orchestrator</code> flips the active frame's mode.</li>
+      <li><code>/frame new [name]</code> opens the new-frame wizard.</li>
+      <li><code>/whoami</code> echoes frame + mode + provider + model in one line.</li>
+    </ul>
+
+    <p>Live mid-session swap rebuilds dispatch, sysprompt, and <code>chatglue.Loop</code> atomically. The transcript stays. In-process <code>FrameUI</code> refresh updates glyph, accent, mode, and capabilities immediately, without dropping a frame.</p>
+
+    <h2>Sub-agent <span class="accent">split</span></h2>
+    <p>When sub-agents are live and chat width is at least 120 columns, the transcript splits horizontally with a right-side children panel: state, last event, elapsed, tokens, spend. Below 120, a dim fallback line appears above the footer instead. A 250 ms tick keeps the panel current while it is up.</p>
+
+    <div class="rule-sketch"><svg viewBox="0 0 480 14" preserveAspectRatio="none"><path d="M4 8 Q 60 2, 130 7 T 260 7 T 380 8 T 476 6"/></svg></div>
+
+    <h2>Why a frame, not a <span class="accent">project</span></h2>
+    <p>A frame is not a project. It is the answer to "what should carlos consider in scope right now?" Two frames can share a working directory but write to different vault subtrees, prompt the user differently on cross-frame writes, and even use different providers. The <code>provider_override</code> field lets the <code>work</code> frame put OpenAI on a corporate billing key while <code>personal</code> stays on Anthropic, without touching the shared pantry.</p>
+
+    <h2>Quick-glance <span class="accent">properties</span></h2>
+
+    <div class="grid">
+      <div class="card straight">
+        <h3>Provider + billing</h3>
+        <p>Per-frame <code>provider_override</code> shadows the shared pantry with its own API key and base URL. Work pays from one budget; personal pays from another.</p>
+      </div>
+      <div class="card straight">
+        <h3>Vault subtree</h3>
+        <p>One <code>vault_subtree</code> per frame. <code>notes_write</code> is hard-scoped to it. <code>notes_get</code> across subtrees is free.</p>
+      </div>
+      <div class="card straight">
+        <h3>MCP gating</h3>
+        <p>The top-level <code>mcp_servers:</code> list is global; each entry's <code>frames:</code> field restricts that server to a subset.</p>
+      </div>
+      <div class="card straight">
+        <h3><code>cwd_hints</code></h3>
+        <p>Path hints picked up at fresh launch, so opening carlos from <code>~/code/work-repo</code> auto-selects the <code>work</code> frame.</p>
+      </div>
+      <div class="card straight">
+        <h3>Orchestrator mode</h3>
+        <p><code>solo</code> / <code>tight</code> / <code>orchestrator</code>. Sets the supervisor's spawn cap and reshapes the system prompt.</p>
+      </div>
+      <div class="card straight">
+        <h3><code>system_prompt_append</code></h3>
+        <p>Extra system-prompt lines per frame. Pin house style, role rules, or escalation hints without forking the base prompt.</p>
+      </div>
+    </div>
+
+    <div class="rule-sketch"><svg viewBox="0 0 480 14" preserveAspectRatio="none"><path d="M4 8 Q 60 2, 130 7 T 260 7 T 380 8 T 476 6"/></svg></div>
+
+    <h2>Related</h2>
+    <div class="callout">
+      <span class="label">keep reading</span>
+      <p><a href="./permissions.html">Permissions model</a> covers the three-layer approval chain that the cross-frame detector sits in front of. <a href="./sub-agents.html">Sub-agent supervision</a> details the spawn caps each mode enforces. The <a href="../reference/config.html">config reference</a> documents every per-frame field; <a href="../reference/slash-commands.html">slash commands</a> covers <code>/frame</code>, <code>/mode</code>, and <code>/whoami</code>.</p>
+    </div>
+
+    <nav class="prevnext" aria-label="page navigation">
+      <a class="prev" href="../getting-started/quickstart.html">
+        <span class="dir">~ previous ~</span>
+        <span class="title">Quickstart</span>
+      </a>
+      <a class="next" href="./permissions.html">
+        <span class="dir">~ next ~</span>
+        <span class="title">Permissions</span>
+      </a>
+    </nav>
+  </main>
+
+  <footer class="site">
+    <span>carlos · 2026 · gpl-3.0</span>
+    <nav>
+      <a href="https://github.com/georgebuilds/carlos">github</a>
+      <a href="../">all docs</a>
+    </nav>
+  </footer>
+</body>
+</html>

@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>carlos · install carlos</title>
+  <meta name="description" content="Install carlos: one Homebrew tap, one tarball download, or one go install. Single-binary, pure-Go, around 30 MB." />
+  <meta name="theme-color" content="#f4ecd8" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#11131a" media="(prefers-color-scheme: dark)" />
+  <link rel="icon" type="image/png" href="../../branding/carlos-portrait.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" />
+  <link rel="stylesheet" href="../../theme.css" />
+</head>
+<body>
+  <a class="skip-link" href="#main">skip to content</a>
+
+  <!-- ambient doodles (2 max per page) -->
+  <svg class="doodle doodle-cloud-1" viewBox="0 0 240 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path d="M30 70 Q 10 70, 12 50 Q 14 30, 40 32 Q 48 14, 80 18 Q 110 6, 130 24 Q 160 16, 170 42 Q 200 38, 200 60 Q 210 78, 184 80 L 50 80 Q 30 82, 30 70 Z"/>
+  </svg>
+  <svg class="doodle doodle-cloud-2 ink" viewBox="0 0 240 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path d="M30 70 Q 10 70, 12 50 Q 14 30, 40 32 Q 48 14, 80 18 Q 110 6, 130 24 Q 160 16, 170 42 Q 200 38, 200 60 Q 210 78, 184 80 L 50 80 Q 30 82, 30 70 Z"/>
+  </svg>
+
+  <header class="site">
+    <a class="mark" href="../../" aria-label="carlos home">carlos</a>
+    <nav>
+      <a href="../" aria-current="page">docs</a>
+      <a href="../../agent-loop.html">agent loop</a>
+      <a href="https://github.com/georgebuilds/carlos">github</a>
+    </nav>
+  </header>
+
+  <nav class="docnav" aria-label="documentation sections">
+    <a href="./install.html" aria-current="page">install</a>
+    <a href="./quickstart.html">quickstart</a>
+    <a href="../concepts/frames.html">frames</a>
+    <a href="../concepts/permissions.html">permissions</a>
+    <a href="../concepts/sub-agents.html">sub-agents</a>
+    <a href="../concepts/memory.html">memory</a>
+    <a href="../reference/tools.html">tools</a>
+    <a href="../reference/slash-commands.html">slash</a>
+    <a href="../reference/config.html">config</a>
+    <a href="../guides/research.html">research</a>
+    <a href="../guides/gateway.html">gateway</a>
+    <a href="../guides/schedule.html">schedule</a>
+  </nav>
+
+  <main id="main">
+    <p class="crumbs">
+      <a href="../../">home</a>
+      <span class="sep">·</span>
+      <a href="../">docs</a>
+      <span class="sep">·</span>
+      <span class="here">install</span>
+    </p>
+
+    <section class="hero">
+      <span class="eyebrow">getting started · install</span>
+      <h1>Get <span class="accent">carlos</span> on your machine.</h1>
+      <p class="subhead">carlos ships as a single static binary. No CGO, no system libraries, around 30 MB. Pre-built tarballs cover macOS and Linux on amd64 and arm64; Homebrew is the shortest path.</p>
+    </section>
+
+    <h2>Homebrew <span class="pill navy"><span class="dot"></span>recommended</span></h2>
+    <p>One tap, one formula. The release workflow bumps the formula on every <code>v*</code> tag, so <code>brew upgrade</code> tracks the latest stable release.</p>
+
+    <div class="code-block">
+      <span class="fname">shell</span>
+<pre><span class="kw">brew</span> install georgebuilds/tap/carlos
+<span class="kw">carlos</span></pre>
+    </div>
+
+    <p>The formula lives in <a href="https://github.com/georgebuilds/homebrew-tap"><code>georgebuilds/homebrew-tap</code></a>. On first launch you drop into the eight-screen onboarding flow; pick a name, configure at least one provider, and you are talking to carlos in under a minute.</p>
+
+    <div class="rule-sketch"><svg viewBox="0 0 480 14" preserveAspectRatio="none"><path d="M4 8 Q 60 2, 130 7 T 260 7 T 380 8 T 476 6"/></svg></div>
+
+    <h2>Pre-built <span class="accent">tarball</span></h2>
+    <p>Grab a tarball from the <a href="https://github.com/georgebuilds/carlos/releases">Releases page</a>. Four arch/os combos are published on every tag.</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>target</th>
+            <th>asset</th>
+            <th>note</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="row-label">darwin amd64</td>
+            <td><code>carlos_darwin_amd64.tar.gz</code></td>
+            <td>Intel Mac</td>
+          </tr>
+          <tr>
+            <td class="row-label">darwin arm64</td>
+            <td><code>carlos_darwin_arm64.tar.gz</code></td>
+            <td>Apple Silicon</td>
+          </tr>
+          <tr>
+            <td class="row-label">linux amd64</td>
+            <td><code>carlos_linux_amd64.tar.gz</code></td>
+            <td>most servers, most laptops</td>
+          </tr>
+          <tr>
+            <td class="row-label">linux arm64</td>
+            <td><code>carlos_linux_arm64.tar.gz</code></td>
+            <td>Raspberry Pi 4/5, Graviton, Ampere</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>Extract and drop the <code>carlos</code> binary onto your <code>$PATH</code>:</p>
+
+    <div class="code-block">
+      <span class="fname">shell</span>
+<pre><span class="kw">tar</span> -xzf carlos_darwin_arm64.tar.gz
+<span class="kw">mv</span> carlos /usr/local/bin/
+<span class="kw">carlos</span> version</pre>
+    </div>
+
+    <div class="callout sage">
+      <span class="label">reproducible</span>
+      <p>SHA-256 checksums are published alongside the tarballs. Builds use <code>CGO_ENABLED=0</code>, <code>-trimpath</code>, and a fixed commit <code>mod_timestamp</code>, so artifacts are bit-identical given the same source.</p>
+    </div>
+
+    <div class="rule-sketch"><svg viewBox="0 0 480 14" preserveAspectRatio="none"><path d="M4 8 Q 60 2, 130 7 T 260 7 T 380 8 T 476 6"/></svg></div>
+
+    <h2>From <span class="accent">source</span></h2>
+    <p>Requires a Go toolchain pinned by <code>go.mod</code>, currently 1.26.3. No CGO, no native dependencies.</p>
+
+    <div class="code-block">
+      <span class="fname">shell</span>
+<pre><span class="kw">git</span> clone https://github.com/georgebuilds/carlos
+<span class="kw">cd</span> carlos
+<span class="kw">go</span> build ./cmd/carlos
+./carlos</pre>
+    </div>
+
+    <p>Cross-compile sanity check for the supported targets:</p>
+
+    <div class="code-block">
+      <span class="fname">shell</span>
+<pre><span class="key">GOOS</span>=linux  <span class="key">GOARCH</span>=arm64  <span class="kw">go</span> build ./cmd/carlos
+<span class="key">GOOS</span>=darwin <span class="key">GOARCH</span>=amd64  <span class="kw">go</span> build ./cmd/carlos</pre>
+    </div>
+
+    <div class="rule-sketch"><svg viewBox="0 0 480 14" preserveAspectRatio="none"><path d="M4 8 Q 60 2, 130 7 T 260 7 T 380 8 T 476 6"/></svg></div>
+
+    <h2>Verify</h2>
+    <p><code>carlos version</code> prints version, build date, and commit. <code>carlos help</code> lists the CLI verbs. If both work, you are installed.</p>
+
+    <div class="code-block">
+      <span class="fname">shell</span>
+<pre><span class="kw">carlos</span> version
+<span class="com"># carlos v0.7.2  built 2026-06-08T14:22:01Z  commit 5ffed72</span>
+<span class="kw">carlos</span> help</pre>
+    </div>
+
+    <h2>What lands <span class="accent">on disk</span></h2>
+    <p>On first run carlos writes a minimal home directory at <code>~/.carlos/</code>. Everything is local, plain-text where possible, and easy to inspect.</p>
+
+    <ul class="paths">
+      <li class="user">
+        <span class="ord">1.</span>
+        <span class="path">~/.carlos/config.yaml</span>
+        <span class="note">mode 0600, your settings</span>
+      </li>
+      <li class="user">
+        <span class="ord">2.</span>
+        <span class="path">~/.carlos/state.db</span>
+        <span class="note">SQLite event log + memory FTS5</span>
+      </li>
+      <li class="proj">
+        <span class="ord">3.</span>
+        <span class="path">~/.carlos/frames/</span>
+        <span class="note">flat files per frame</span>
+      </li>
+      <li class="proj">
+        <span class="ord">4.</span>
+        <span class="path">~/.carlos/schedules/</span>
+        <span class="note">cron grammar + envelopes</span>
+      </li>
+      <li class="carlos">
+        <span class="ord">5.</span>
+        <span class="path">~/.carlos/trust/</span>
+        <span class="note">approval policy store</span>
+      </li>
+      <li class="carlos">
+        <span class="ord">6.</span>
+        <span class="path">~/.carlos/shell_history</span>
+        <span class="note">shell-prefix history</span>
+      </li>
+    </ul>
+
+    <p>The full layout, including per-frame subdirectories and the daemon socket, is documented in the <a href="../reference/config.html">config reference</a>.</p>
+
+    <div class="rule-sketch"><svg viewBox="0 0 480 14" preserveAspectRatio="none"><path d="M4 8 Q 60 2, 130 7 T 260 7 T 380 8 T 476 6"/></svg></div>
+
+    <h2>Update <span class="accent">path</span></h2>
+    <p>Homebrew installs upgrade with <code>brew upgrade</code>. The bordered farewell panel surfaces a "brew update available" notice on TUI exit when a newer release is detected, so you do not need to poll manually.</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>install method</th>
+            <th>update command</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="row-label">Homebrew</td>
+            <td><code>brew update &amp;&amp; brew upgrade carlos</code></td>
+          </tr>
+          <tr>
+            <td class="row-label">tarball</td>
+            <td>download the new tarball, swap the binary on <code>$PATH</code></td>
+          </tr>
+          <tr>
+            <td class="row-label">source</td>
+            <td><code>git pull &amp;&amp; go build ./cmd/carlos</code></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout sun">
+      <span class="label">next stop</span>
+      <p>Installed and verified? Head to the <a href="./quickstart.html">quickstart</a> for the eight-screen onboarding tour, the chat TUI keys worth knowing, and the headless <code>carlos please</code> verb.</p>
+    </div>
+
+    <nav class="prevnext" aria-label="page navigation">
+      <a class="prev" href="../">
+        <span class="dir">~ previous ~</span>
+        <span class="title">docs home</span>
+      </a>
+      <a class="next" href="./quickstart.html">
+        <span class="dir">~ next ~</span>
+        <span class="title">Quickstart</span>
+      </a>
+    </nav>
+  </main>
+
+  <footer class="site">
+    <span>carlos · 2026 · gpl-3.0</span>
+    <nav>
+      <a href="https://github.com/georgebuilds/carlos">github</a>
+      <a href="../">all docs</a>
+    </nav>
+  </footer>
+</body>
+</html>

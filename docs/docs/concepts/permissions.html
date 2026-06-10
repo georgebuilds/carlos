@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>carlos · permissions</title>
+  <meta name="description" content="Three-layer approval policy: built-in allowlist, workspace trust, session fallback. Cross-frame detector, identity hardening, read-only bash classifier." />
+  <meta name="theme-color" content="#f4ecd8" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#11131a" media="(prefers-color-scheme: dark)" />
+  <link rel="icon" type="image/png" href="../../branding/carlos-portrait.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" />
+  <link rel="stylesheet" href="../../theme.css" />
+</head>
+<body>
+  <a class="skip-link" href="#main">skip to content</a>
+
+  <!-- ambient doodles (2 max per page) -->
+  <svg class="doodle doodle-cloud-1" viewBox="0 0 240 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path d="M30 70 Q 10 70, 12 50 Q 14 30, 40 32 Q 48 14, 80 18 Q 110 6, 130 24 Q 160 16, 170 42 Q 200 38, 200 60 Q 210 78, 184 80 L 50 80 Q 30 82, 30 70 Z"/>
+  </svg>
+  <svg class="doodle doodle-cloud-2 ink" viewBox="0 0 240 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path d="M30 70 Q 10 70, 12 50 Q 14 30, 40 32 Q 48 14, 80 18 Q 110 6, 130 24 Q 160 16, 170 42 Q 200 38, 200 60 Q 210 78, 184 80 L 50 80 Q 30 82, 30 70 Z"/>
+  </svg>
+
+  <header class="site">
+    <a class="mark" href="../../" aria-label="carlos home">carlos</a>
+    <nav>
+      <a href="../" aria-current="page">docs</a>
+      <a href="../../agent-loop.html">agent loop</a>
+      <a href="https://github.com/georgebuilds/carlos">github</a>
+    </nav>
+  </header>
+
+  <nav class="docnav" aria-label="documentation sections">
+    <a href="../getting-started/install.html">install</a>
+    <a href="../getting-started/quickstart.html">quickstart</a>
+    <a href="./frames.html">frames</a>
+    <a href="./permissions.html" aria-current="page">permissions</a>
+    <a href="./sub-agents.html">sub-agents</a>
+    <a href="./memory.html">memory</a>
+    <a href="../reference/tools.html">tools</a>
+    <a href="../reference/slash-commands.html">slash</a>
+    <a href="../reference/config.html">config</a>
+    <a href="../guides/research.html">research</a>
+    <a href="../guides/gateway.html">gateway</a>
+    <a href="../guides/schedule.html">schedule</a>
+  </nav>
+
+  <main id="main">
+    <p class="crumbs">
+      <a href="../../">home</a>
+      <span class="sep">·</span>
+      <a href="../">docs</a>
+      <span class="sep">·</span>
+      <span class="here">permissions</span>
+    </p>
+
+    <section class="hero">
+      <span class="eyebrow">concepts · permissions</span>
+      <h1>Three layers, in <span class="accent">order</span>.</h1>
+      <p class="subhead">carlos's approval policy is a chain. Built-in allowlist first, then workspace trust, then a session-fallback prompt. The cross-frame detector intercepts ahead of the chain on writes. Every decision lands in an audit log.</p>
+    </section>
+
+    <h2>The <span class="accent">chain</span></h2>
+    <p>Implemented in <code>internal/agent/policy.go</code>. Layers run in order; the first layer to decide wins. Decisions feed an optional <code>AuditSink</code> that the <code>/permissions</code> overlay reads back.</p>
+
+    <div class="grid three">
+      <div class="card straight">
+        <h3>1. Built-in allowlist</h3>
+        <p>Hardcoded read-only tools auto-approve without inspecting input. The configured-vault <code>notes_*</code> tools (<code>notes_get</code>, <code>notes_search</code>, <code>notes_backlinks</code>, <code>notes_tagged</code>, <code>notes_neighbors</code>, <code>notes_recent</code>, <code>notes_resolve</code>) plus <code>read</code>, <code>grep</code>, <code>glob</code>, <code>ls</code>, and five <code>git_*</code> inspection tools (<code>git_status</code>, <code>git_diff</code>, <code>git_log</code>, <code>git_blame</code>, <code>git_show</code>). Trust anchor is the configuration boundary set during onboarding.</p>
+      </div>
+      <div class="card straight">
+        <h3>2. Workspace trust</h3>
+        <p>When the current working directory is in <code>~/.carlos/trusted-workspaces.json</code>, a curated set of read-only bash verbs auto-approves: <code>ls</code>, <code>pwd</code>, <code>cat</code>, <code>head</code>, <code>tail</code>, <code>wc</code>, <code>file</code>, <code>which</code>, <code>echo</code>, and the read-only <code>git</code> subcommands (<code>status</code>, <code>diff</code>, <code>log</code>, <code>show</code>, <code>blame</code>, <code>branch</code>, <code>ls-files</code>, <code>ls-tree</code>, <code>rev-parse</code>, <code>describe</code>, <code>remote</code>, read-form <code>config</code>). Build/test/install tools (<code>cargo</code>, <code>npm</code>, <code>yarn</code>, <code>pnpm</code>, <code>go test</code>, <code>go build</code>, <code>make</code>, <code>cmake</code>, <code>bazel</code>, <code>ninja</code>) are explicitly excluded. Mutating filesystem verbs are excluded. Implementation lives in <code>internal/workspace/bash.go:IsReadOnly</code>.</p>
+      </div>
+      <div class="card straight">
+        <h3>3. Session fallback</h3>
+        <p>The bubbletea TUI overlay prompts the user; <span class="kbd">y</span> / <span class="kbd">N</span> / <span class="kbd">Always</span>. An <code>Always</code> answer caches as a session entry, so identical (tool, key inputs) pairs auto-approve for the rest of the session. Dies with the process.</p>
+      </div>
+    </div>
+
+    <div class="rule-sketch"><svg viewBox="0 0 480 14" preserveAspectRatio="none"><path d="M4 8 Q 60 2, 130 7 T 260 7 T 380 8 T 476 6"/></svg></div>
+
+    <h2>Audit <span class="accent">reasons</span></h2>
+    <p>Every decision the chain emits is tagged with a stable reason. The <code>/permissions</code> overlay surfaces the current state plus the running audit log so an operator can answer "why did that happen?" without digging through the event store.</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>reason</th>
+            <th>when</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="row-label"><code>ReasonBuiltinAllow</code></td>
+            <td>Layer 1 hit. The tool is on the hardcoded read-only allowlist.</td>
+          </tr>
+          <tr>
+            <td class="row-label"><code>ReasonWorkspaceAllow</code></td>
+            <td>Layer 2 hit. cwd is in <code>trusted-workspaces.json</code> and the bash command parses as read-only.</td>
+          </tr>
+          <tr>
+            <td class="row-label"><code>ReasonSessionAllow</code></td>
+            <td>Layer 3, user said yes (or an <code>Always</code> cache entry served the call).</td>
+          </tr>
+          <tr>
+            <td class="row-label"><code>ReasonSessionDeny</code></td>
+            <td>Layer 3, user said no.</td>
+          </tr>
+          <tr>
+            <td class="row-label"><code>ReasonCrossFrameAllow</code></td>
+            <td>Cross-frame write detector, user approved.</td>
+          </tr>
+          <tr>
+            <td class="row-label"><code>ReasonCrossFrameDeny</code></td>
+            <td>Cross-frame write detector, user declined.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="rule-sketch"><svg viewBox="0 0 480 14" preserveAspectRatio="none"><path d="M4 8 Q 60 2, 130 7 T 260 7 T 380 8 T 476 6"/></svg></div>
+
+    <h2>Cross-frame detector <span class="pill clay"><span class="dot"></span>phase F-12</span></h2>
+    <p>Intercepts ahead of the layered chain on <code>write</code> and <code>edit</code> inputs whose path lands in a non-active frame's subtree. The matcher is separator-anchored prefix, so <code>/work/foo</code> does not collide with <code>/work-extra/foo</code>. These calls force the prompt path; there is no silent allow. The user's answer is recorded as <code>ReasonCrossFrameAllow</code> or <code>ReasonCrossFrameDeny</code> so the trail stays legible.</p>
+
+    <h2>First-launch <span class="accent">trust</span> prompt</h2>
+    <p>When the chat opens and the cwd contains a project marker (<code>.git</code>, <code>go.mod</code>, <code>package.json</code>, etc.) and the workspace is untrusted, a bordered overlay surfaces: <span class="kbd">y</span> / <span class="kbd">n</span> / <span class="kbd">esc</span>. <span class="kbd">y</span> persists via the same store the <code>/trust</code> slash uses; <span class="kbd">n</span> or <span class="kbd">esc</span> dismiss for the session. The overlay only shows once per session.</p>
+
+    <div class="rule-sketch"><svg viewBox="0 0 480 14" preserveAspectRatio="none"><path d="M4 8 Q 60 2, 130 7 T 260 7 T 380 8 T 476 6"/></svg></div>
+
+    <h2>Identity <span class="accent">hardening</span></h2>
+    <p>Provider clients run every <code>EventError</code> through <code>providers.ScrubModelName</code> so "I am Gemini" or "I am Claude" reveals become "I am carlos". The <code>cmd/carlos.scrubProviderName</code> wrapper runs the same scrub at the stderr boundary, catching anything that escapes the event path. A regression test (<code>internal/tui/chatglue/sysprompt_pinning_test.go</code>) pins the system prompt against user-injection attempts; new providers added to the pantry inherit the same scrub by default.</p>
+
+    <h2>Slashes</h2>
+
+    <ul>
+      <li><code>/permissions</code>: opens the overlay. Current session-allow cache plus the running audit log.</li>
+      <li><code>/trust</code>: marks the current cwd as trusted. Layer 2 lights up.</li>
+      <li><code>/untrust</code>: removes the cwd from <code>trusted-workspaces.json</code>.</li>
+      <li><code>/trusts</code>: lists every trusted workspace currently on disk.</li>
+    </ul>
+
+    <div class="rule-sketch"><svg viewBox="0 0 480 14" preserveAspectRatio="none"><path d="M4 8 Q 60 2, 130 7 T 260 7 T 380 8 T 476 6"/></svg></div>
+
+    <h2>Notes vs. <span class="accent">Obsidian</span> tools</h2>
+    <p>Two parallel surfaces, one configured and one freeform. The configured surface is auto-approved; the freeform surface always prompts.</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>tool family</th>
+            <th>behavior</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="row-label"><code>notes_*</code></td>
+            <td>Configured vault, no <code>vault:</code> arg accepted. Auto-approved by layer 1 of the permission model. <code>notes_write</code> is hard-scoped to the active frame's <code>vault_subtree</code>.</td>
+          </tr>
+          <tr>
+            <td class="row-label"><code>obsidian_*</code></td>
+            <td>Arbitrary vault, requires <code>vault:</code> arg. Always prompts, regardless of trust state.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout clay">
+      <span class="label">bash classifier</span>
+      <p>Any shell metacharacter (<code>|</code>, <code>&gt;</code>, <code>&lt;</code>, <code>&amp;</code>, <code>;</code>, <code>$</code>, backtick, <code>(</code>, <code>)</code>) anywhere in the command disqualifies the whole call from the read-only allowlist. The carve-out is intentionally narrow; the risk of a clever pipeline doing unexpected work is too high to swallow for the convenience of a one-line approval.</p>
+    </div>
+
+    <nav class="prevnext" aria-label="page navigation">
+      <a class="prev" href="./frames.html">
+        <span class="dir">~ previous ~</span>
+        <span class="title">Frames &amp; modes</span>
+      </a>
+      <a class="next" href="./sub-agents.html">
+        <span class="dir">~ next ~</span>
+        <span class="title">Sub-agent supervision</span>
+      </a>
+    </nav>
+  </main>
+
+  <footer class="site">
+    <span>carlos · 2026 · gpl-3.0</span>
+    <nav>
+      <a href="https://github.com/georgebuilds/carlos">github</a>
+      <a href="../">all docs</a>
+    </nav>
+  </footer>
+</body>
+</html>

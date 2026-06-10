@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>carlos · scheduled runs</title>
+  <meta name="description" content="carlos's cron + natural-language schedule grammar. Per-frame fires. Daemon-owned, system-notified, gateway-routable." />
+  <meta name="theme-color" content="#f4ecd8" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#11131a" media="(prefers-color-scheme: dark)" />
+  <link rel="icon" type="image/png" href="../../branding/carlos-portrait.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" />
+  <link rel="stylesheet" href="../../theme.css" />
+</head>
+<body>
+  <a class="skip-link" href="#main">skip to content</a>
+
+  <!-- ambient doodles (2 max per page) -->
+  <svg class="doodle doodle-cloud-1" viewBox="0 0 240 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path d="M30 70 Q 10 70, 12 50 Q 14 30, 40 32 Q 48 14, 80 18 Q 110 6, 130 24 Q 160 16, 170 42 Q 200 38, 200 60 Q 210 78, 184 80 L 50 80 Q 30 82, 30 70 Z"/>
+  </svg>
+  <svg class="doodle doodle-cloud-2 ink" viewBox="0 0 240 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path d="M30 70 Q 10 70, 12 50 Q 14 30, 40 32 Q 48 14, 80 18 Q 110 6, 130 24 Q 160 16, 170 42 Q 200 38, 200 60 Q 210 78, 184 80 L 50 80 Q 30 82, 30 70 Z"/>
+  </svg>
+
+  <header class="site">
+    <a class="mark" href="../../" aria-label="carlos home">carlos</a>
+    <nav>
+      <a href="../" aria-current="page">docs</a>
+      <a href="../../agent-loop.html">agent loop</a>
+      <a href="https://github.com/georgebuilds/carlos">github</a>
+    </nav>
+  </header>
+
+  <nav class="docnav" aria-label="documentation sections">
+    <a href="../getting-started/install.html">install</a>
+    <a href="../getting-started/quickstart.html">quickstart</a>
+    <a href="../concepts/frames.html">frames</a>
+    <a href="../concepts/permissions.html">permissions</a>
+    <a href="../concepts/sub-agents.html">sub-agents</a>
+    <a href="../concepts/memory.html">memory</a>
+    <a href="../reference/tools.html">tools</a>
+    <a href="../reference/slash-commands.html">slash</a>
+    <a href="../reference/config.html">config</a>
+    <a href="./research.html">research</a>
+    <a href="./gateway.html">gateway</a>
+    <a href="./schedule.html" aria-current="page">schedule</a>
+  </nav>
+
+  <main id="main">
+    <p class="crumbs">
+      <a href="../../">home</a>
+      <span class="sep">·</span>
+      <a href="../">docs</a>
+      <span class="sep">·</span>
+      <span class="here">schedule</span>
+    </p>
+
+    <section class="hero">
+      <span class="eyebrow">guides · schedule</span>
+      <h1>Set it once, <span class="accent">forget it</span>.</h1>
+      <p class="subhead">carlos's daemon fires scheduled runs. Five-field cron plus a seven-form English grammar. Each schedule binds to a frame; the per-fire context loads that frame's provider override, vault subtree, and capabilities.</p>
+    </section>
+
+    <h2>How to <span class="accent">schedule</span></h2>
+
+    <div class="code-block">
+      <span class="fname">shell</span>
+<pre><span class="kw">carlos</span> schedule add <span class="str">"every weekday at 9am tell me yesterday's PRs"</span>
+<span class="kw">carlos</span> schedule add <span class="key">-f</span> research <span class="str">"daily at 7am summarize hn front page"</span>
+<span class="kw">carlos</span> schedule list
+<span class="kw">carlos</span> schedule rm <span class="val">&lt;id&gt;</span></pre>
+    </div>
+
+    <p>Or from the TUI composer:</p>
+
+    <div class="code-block">
+      <span class="fname">TUI</span>
+<pre><span class="kw">/schedule</span> list
+<span class="kw">/schedule</span> add <span class="val">&lt;natural-language expression&gt;</span>
+<span class="kw">/schedule</span> rm <span class="val">&lt;id&gt;</span></pre>
+    </div>
+
+    <div class="rule-sketch"><svg viewBox="0 0 480 14" preserveAspectRatio="none"><path d="M4 8 Q 60 2, 130 7 T 260 7 T 380 8 T 476 6"/></svg></div>
+
+    <h2>Grammar</h2>
+    <p>Two surfaces accepted; both lower to the same internal cron shape.</p>
+
+    <h3>Five-field cron</h3>
+    <div class="code-block">
+      <span class="fname">cron</span>
+<pre><span class="val">m h dom mon dow</span>      <span class="com"># standard cron, UTC by default; local-tz via config</span></pre>
+    </div>
+
+    <h3>Natural language (seven forms)</h3>
+    <p>The parser at <code>internal/schedule/parse.go</code> accepts a small English grammar:</p>
+
+    <ul>
+      <li><code>every weekday at 9am</code></li>
+      <li><code>daily at 7am</code></li>
+      <li><code>every 30 minutes</code></li>
+      <li><code>every monday and wednesday at 10pm</code></li>
+      <li><code>weekly on friday at 5pm</code></li>
+      <li><code>monthly on the 1st at midnight</code></li>
+      <li><code>at 14:30</code></li>
+    </ul>
+
+    <p>Each form lowers to the five-field shape; <code>carlos schedule list</code> shows both representations side by side.</p>
+
+    <div class="rule-sketch"><svg viewBox="0 0 480 14" preserveAspectRatio="none"><path d="M4 8 Q 60 2, 130 7 T 260 7 T 380 8 T 476 6"/></svg></div>
+
+    <h2>Per-frame <span class="accent">fires</span></h2>
+    <p>Schedules carry a <code>frame:</code> field (Phase F-14). Daemon-side per-fire plumbing (<code>73905ac</code>) resolves the right provider via <code>frame.ResolveProvider</code> before each run. The <code>-f &lt;frame&gt;</code> flag on <code>carlos schedule add</code> populates this field; <code>frame.ResolveProvider</code> honors <code>provider_override</code> if set on the frame.</p>
+
+    <h2>Notifications + <span class="accent">gateway</span></h2>
+    <p>The system notifier is wired to scheduled-run completion: <code>osascript</code> on macOS, <code>notify-send</code> on Linux, no-op fallback elsewhere. When the gateway is enabled, delivery routes through the same broker that handles approval prompts. See <a href="./gateway.html">Gateway</a> for the adapter set.</p>
+
+    <div class="rule-sketch"><svg viewBox="0 0 480 14" preserveAspectRatio="none"><path d="M4 8 Q 60 2, 130 7 T 260 7 T 380 8 T 476 6"/></svg></div>
+
+    <h2>Daemon <span class="accent">management</span></h2>
+
+    <div class="code-block">
+      <span class="fname">shell</span>
+<pre><span class="kw">carlos</span> daemon enable      <span class="com"># install launch agent (launchd / systemd --user)</span>
+<span class="kw">carlos</span> daemon disable     <span class="com"># uninstall</span>
+<span class="kw">carlos</span> daemon status      <span class="com"># is it running, when did it last fire</span>
+<span class="kw">carlos</span> daemon run         <span class="com"># foreground run (for debugging)</span></pre>
+    </div>
+
+    <p>The daemon listens on <code>~/.carlos/daemon.sock</code> (UDS IPC). The onboarding daemon screen surfaces what enabling actually means (Phase O-4 consequence box).</p>
+
+    <h2>Output</h2>
+    <p>Per-fire artifacts land under <code>~/.carlos/frames/&lt;name&gt;/digest/</code>. Each run is a sub-agent in its own right; the same Budget and Tracker caps apply. The supervisor view surfaces scheduled runs the same as any other sub-agent, so a runaway nightly job shows up where you already look.</p>
+
+    <h2>Composing with <span class="accent">research</span></h2>
+    <p>A useful pattern: schedule a recurring <code>/research</code> so the cited report lands automatically. Combined with gateway delivery, you get a digest pushed to your phone every morning.</p>
+
+    <div class="callout sage">
+      <span class="label">Recipe</span>
+      <p>Daily WebGPU digest at 7am, delivered via ntfy to your phone:</p>
+      <div class="code-block">
+        <span class="fname">shell</span>
+<pre><span class="kw">carlos</span> schedule add <span class="key">-f</span> research \
+  <span class="str">"daily at 7am research what's new in webgpu"</span></pre>
+      </div>
+      <p>The fire spawns a <code>/research</code> sub-agent in the <code>research</code> frame; the cited report saves to <code>~/.carlos/frames/research/research/</code> and the completion notification routes through whichever gateway channel you wired.</p>
+    </div>
+
+    <h2>Related</h2>
+    <p><a href="./gateway.html">Gateway</a> covers the broker that delivers scheduled-run notifications off-box. <a href="./research.html">Research</a> documents the pipeline that pairs naturally with recurring fires. <a href="../concepts/frames.html">Frames</a> covers <code>provider_override</code> and the per-frame context each fire loads; <a href="../reference/slash-commands.html">slash commands</a> covers <code>/schedule</code> and <code>/daemon</code>.</p>
+
+    <nav class="prevnext" aria-label="page navigation">
+      <a class="prev" href="./gateway.html">
+        <span class="dir">~ previous ~</span>
+        <span class="title">Gateway</span>
+      </a>
+      <a class="next" href="../">
+        <span class="dir">~ next ~</span>
+        <span class="title">Docs home</span>
+      </a>
+    </nav>
+  </main>
+
+  <footer class="site">
+    <span>carlos · 2026 · gpl-3.0</span>
+    <nav>
+      <a href="https://github.com/georgebuilds/carlos">github</a>
+      <a href="../">all docs</a>
+    </nav>
+  </footer>
+</body>
+</html>

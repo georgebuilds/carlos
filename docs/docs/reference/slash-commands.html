@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>carlos · slash command reference</title>
+  <meta name="description" content="Every slash command carlos understands, grouped by Claude Code parity and carlos-specific verbs." />
+  <meta name="theme-color" content="#f4ecd8" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#11131a" media="(prefers-color-scheme: dark)" />
+  <link rel="icon" type="image/png" href="../../branding/carlos-portrait.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" />
+  <link rel="stylesheet" href="../../theme.css" />
+</head>
+<body>
+  <a class="skip-link" href="#main">skip to content</a>
+
+  <!-- ambient doodles (2 max per page) -->
+  <svg class="doodle doodle-cloud-1" viewBox="0 0 240 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path d="M30 70 Q 10 70, 12 50 Q 14 30, 40 32 Q 48 14, 80 18 Q 110 6, 130 24 Q 160 16, 170 42 Q 200 38, 200 60 Q 210 78, 184 80 L 50 80 Q 30 82, 30 70 Z"/>
+  </svg>
+  <svg class="doodle doodle-cloud-2 ink" viewBox="0 0 240 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path d="M30 70 Q 10 70, 12 50 Q 14 30, 40 32 Q 48 14, 80 18 Q 110 6, 130 24 Q 160 16, 170 42 Q 200 38, 200 60 Q 210 78, 184 80 L 50 80 Q 30 82, 30 70 Z"/>
+  </svg>
+
+  <header class="site">
+    <a class="mark" href="../../" aria-label="carlos home">carlos</a>
+    <nav>
+      <a href="../" aria-current="page">docs</a>
+      <a href="../../agent-loop.html">agent loop</a>
+      <a href="https://github.com/georgebuilds/carlos">github</a>
+    </nav>
+  </header>
+
+  <nav class="docnav" aria-label="documentation sections">
+    <a href="../getting-started/install.html">install</a>
+    <a href="../getting-started/quickstart.html">quickstart</a>
+    <a href="../concepts/frames.html">frames</a>
+    <a href="../concepts/permissions.html">permissions</a>
+    <a href="../concepts/sub-agents.html">sub-agents</a>
+    <a href="../concepts/memory.html">memory</a>
+    <a href="./tools.html">tools</a>
+    <a href="./slash-commands.html" aria-current="page">slash</a>
+    <a href="./config.html">config</a>
+    <a href="../guides/research.html">research</a>
+    <a href="../guides/gateway.html">gateway</a>
+    <a href="../guides/schedule.html">schedule</a>
+  </nav>
+
+  <main id="main">
+    <p class="crumbs">
+      <a href="../../">home</a>
+      <span class="sep">·</span>
+      <a href="../">docs</a>
+      <span class="sep">·</span>
+      <span class="here">slash commands</span>
+    </p>
+
+    <section class="hero">
+      <span class="eyebrow">reference · slash commands</span>
+      <h1>Every <span class="accent">slash</span>.</h1>
+      <p class="subhead">Type <code>/</code> in the composer and an autocomplete band opens with ghost text on the input row. carlos mirrors Claude Code's vocabulary where parity makes sense and adds verbs for the surfaces Claude Code does not have.</p>
+    </section>
+
+    <h2>How <span class="accent">slashes</span> work</h2>
+    <p>Any line beginning with <code>/</code> routes through <code>slash.Parse</code> to a handler; anything else is a model-bound message. Verbs are case-insensitive. The verb is parsed up to the first space; the rest is the args string.</p>
+    <p>New verbs land in <code>slash.Builtins</code> and surface in <code>/help</code> automatically. The chat composer also shows inline slash autocomplete (<code>internal/tui/chat/suggest.go</code>): a thin hint band plus fish-style ghost text.</p>
+
+    <div class="rule-sketch"><svg viewBox="0 0 480 14" preserveAspectRatio="none"><path d="M4 8 Q 60 2, 130 7 T 260 7 T 380 8 T 476 6"/></svg></div>
+
+    <h2>Mirrored from <span class="accent">Claude Code</span></h2>
+    <p>Same name, same behavior.</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>slash</th>
+            <th>args</th>
+            <th>what</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="row-label"><code>/clear</code></td>
+            <td>none</td>
+            <td>Clear the chat view. Conversation persists in the event log.</td>
+          </tr>
+          <tr>
+            <td class="row-label"><code>/help</code></td>
+            <td>none</td>
+            <td>Bordered overlay parsed from <code>slash.Builtins</code>.</td>
+          </tr>
+          <tr>
+            <td class="row-label"><code>/exit</code></td>
+            <td>none</td>
+            <td>Exit carlos. Aliases: <code>/quit</code>, <code>/q</code>.</td>
+          </tr>
+          <tr>
+            <td class="row-label"><code>/compact</code></td>
+            <td>none</td>
+            <td>Summarize the conversation and shed older context.</td>
+          </tr>
+          <tr>
+            <td class="row-label"><code>/model</code></td>
+            <td><code>[provider:model]</code></td>
+            <td>Switch the active model. No args lists options with provider:model autocomplete.</td>
+          </tr>
+          <tr>
+            <td class="row-label"><code>/review</code></td>
+            <td>none</td>
+            <td>Open the manage-mode approval queue (plans, diffs, skill proposals).</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="rule-sketch"><svg viewBox="0 0 480 14" preserveAspectRatio="none"><path d="M4 8 Q 60 2, 130 7 T 260 7 T 380 8 T 476 6"/></svg></div>
+
+    <h2>carlos-<span class="accent">specific</span></h2>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>slash</th>
+            <th>args</th>
+            <th>what</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="row-label"><code>/insights</code></td>
+            <td><code>[topic]</code></td>
+            <td>What carlos has learned about you and your work; topical filter optional.</td>
+          </tr>
+          <tr>
+            <td class="row-label"><code>/skills</code></td>
+            <td><code>[list | review | edit &lt;name&gt;]</code></td>
+            <td>Inspect or edit the skill library.</td>
+          </tr>
+          <tr>
+            <td class="row-label"><code>/memory</code></td>
+            <td><code>&lt;query&gt;</code></td>
+            <td>FTS5 over summaries. Per-frame via <code>-f</code> from CLI.</td>
+          </tr>
+          <tr>
+            <td class="row-label"><code>/schedule</code></td>
+            <td><code>[list | add | rm]</code></td>
+            <td>Manage scheduled runs.</td>
+          </tr>
+          <tr>
+            <td class="row-label"><code>/daemon</code></td>
+            <td><code>[enable | disable | status]</code></td>
+            <td>Manage the background daemon.</td>
+          </tr>
+          <tr>
+            <td class="row-label"><code>/agents</code></td>
+            <td>none</td>
+            <td>Switch focus to the manage view (sub-agent supervisor).</td>
+          </tr>
+          <tr>
+            <td class="row-label"><code>/research</code></td>
+            <td><code>&lt;question&gt;</code></td>
+            <td>Six-phase deep research; cited report.</td>
+          </tr>
+          <tr>
+            <td class="row-label"><code>/notes</code></td>
+            <td><code>&lt;query&gt;</code></td>
+            <td>Ad-hoc vault search (wraps <code>notes_search</code>).</td>
+          </tr>
+          <tr>
+            <td class="row-label"><code>/shell</code></td>
+            <td><code>&lt;cmd&gt;</code></td>
+            <td>Phase U user-shell entry (same as <code>!</code> prefix).</td>
+          </tr>
+          <tr>
+            <td class="row-label"><code>/jobs</code></td>
+            <td>none</td>
+            <td>Background-jobs overlay.</td>
+          </tr>
+          <tr>
+            <td class="row-label"><code>/fg</code></td>
+            <td><code>&lt;id&gt;</code></td>
+            <td>Foreground a background shell job.</td>
+          </tr>
+          <tr>
+            <td class="row-label"><code>/bg</code></td>
+            <td><code>&lt;id&gt;</code></td>
+            <td>Background a foreground shell job.</td>
+          </tr>
+          <tr>
+            <td class="row-label"><code>/resume</code></td>
+            <td>none</td>
+            <td>Picker for past chat sessions (styled after <code>/agents</code>).</td>
+          </tr>
+          <tr>
+            <td class="row-label"><code>/trust</code></td>
+            <td>none</td>
+            <td>Trust the current workspace.</td>
+          </tr>
+          <tr>
+            <td class="row-label"><code>/untrust</code></td>
+            <td>none</td>
+            <td>Untrust the current workspace.</td>
+          </tr>
+          <tr>
+            <td class="row-label"><code>/trusts</code></td>
+            <td>none</td>
+            <td>List trusted workspaces.</td>
+          </tr>
+          <tr>
+            <td class="row-label"><code>/permissions</code></td>
+            <td>none</td>
+            <td>Layered approval state plus audit log.</td>
+          </tr>
+          <tr>
+            <td class="row-label"><code>/frame</code></td>
+            <td><code>[list | switch &lt;name&gt; | new [name]]</code></td>
+            <td>Show or switch the active frame.</td>
+          </tr>
+          <tr>
+            <td class="row-label"><code>/capabilities</code></td>
+            <td>none</td>
+            <td>List wired capabilities (calendar, etc.) in the active frame.</td>
+          </tr>
+          <tr>
+            <td class="row-label"><code>/mode</code></td>
+            <td><code>[solo | tight | orchestrator]</code></td>
+            <td>Show or set the active frame's orchestrator mode.</td>
+          </tr>
+          <tr>
+            <td class="row-label"><code>/whoami</code></td>
+            <td>none</td>
+            <td>Frame, mode, provider, and model in one line.</td>
+          </tr>
+          <tr>
+            <td class="row-label"><code>/mcp</code></td>
+            <td>none</td>
+            <td>List configured MCP servers and the tools each contributed at boot.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="rule-sketch"><svg viewBox="0 0 480 14" preserveAspectRatio="none"><path d="M4 8 Q 60 2, 130 7 T 260 7 T 380 8 T 476 6"/></svg></div>
+
+    <h2>Shell <span class="accent">prefix</span></h2>
+    <p><code>!&lt;cmd&gt;</code> is the parallel composer entry that drives the user-shell driver (<code>internal/usershell</code>). Output enters the conversation as context for the next turn. The <code>/shell</code>, <code>/jobs</code>, <code>/fg</code>, and <code>/bg</code> slashes are the explicit surface for the same machinery.</p>
+    <p><code>cd &lt;path&gt;</code> is intercepted as a once-per-(frame, path) cwd-hint footer hint; <span class="kbd">Ctrl+L</span> locks the hint dismissed.</p>
+
+    <div class="callout sage">
+      <span class="label">autocomplete</span>
+      <p>Typing <code>/</code> opens an inline band: ghost text on the input row showing the best match, plus a hint strip below with chip palette, description, and keybinds. <span class="kbd">Tab</span> accepts the ghost text.</p>
+    </div>
+
+    <nav class="prevnext" aria-label="page navigation">
+      <a class="prev" href="./tools.html">
+        <span class="dir">~ previous ~</span>
+        <span class="title">Tools</span>
+      </a>
+      <a class="next" href="./config.html">
+        <span class="dir">~ next ~</span>
+        <span class="title">Config</span>
+      </a>
+    </nav>
+  </main>
+
+  <footer class="site">
+    <span>carlos · 2026 · gpl-3.0</span>
+    <nav>
+      <a href="https://github.com/georgebuilds/carlos">github</a>
+      <a href="../">all docs</a>
+    </nav>
+  </footer>
+</body>
+</html>

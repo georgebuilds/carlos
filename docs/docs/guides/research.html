@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>carlos · research mode</title>
+  <meta name="description" content="carlos's six-phase research pipeline: decompose, search, fetch, read, synthesize, verify. Cited reports with stable [sN]/[pN] IDs." />
+  <meta name="theme-color" content="#f4ecd8" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#11131a" media="(prefers-color-scheme: dark)" />
+  <link rel="icon" type="image/png" href="../../branding/carlos-portrait.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" />
+  <link rel="stylesheet" href="../../theme.css" />
+</head>
+<body>
+  <a class="skip-link" href="#main">skip to content</a>
+
+  <!-- ambient doodles (2 max per page) -->
+  <svg class="doodle doodle-cloud-1" viewBox="0 0 240 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path d="M30 70 Q 10 70, 12 50 Q 14 30, 40 32 Q 48 14, 80 18 Q 110 6, 130 24 Q 160 16, 170 42 Q 200 38, 200 60 Q 210 78, 184 80 L 50 80 Q 30 82, 30 70 Z"/>
+  </svg>
+  <svg class="doodle doodle-cloud-2 ink" viewBox="0 0 240 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path d="M30 70 Q 10 70, 12 50 Q 14 30, 40 32 Q 48 14, 80 18 Q 110 6, 130 24 Q 160 16, 170 42 Q 200 38, 200 60 Q 210 78, 184 80 L 50 80 Q 30 82, 30 70 Z"/>
+  </svg>
+
+  <header class="site">
+    <a class="mark" href="../../" aria-label="carlos home">carlos</a>
+    <nav>
+      <a href="../" aria-current="page">docs</a>
+      <a href="../../agent-loop.html">agent loop</a>
+      <a href="https://github.com/georgebuilds/carlos">github</a>
+    </nav>
+  </header>
+
+  <nav class="docnav" aria-label="documentation sections">
+    <a href="../getting-started/install.html">install</a>
+    <a href="../getting-started/quickstart.html">quickstart</a>
+    <a href="../concepts/frames.html">frames</a>
+    <a href="../concepts/permissions.html">permissions</a>
+    <a href="../concepts/sub-agents.html">sub-agents</a>
+    <a href="../concepts/memory.html">memory</a>
+    <a href="../reference/tools.html">tools</a>
+    <a href="../reference/slash-commands.html">slash</a>
+    <a href="../reference/config.html">config</a>
+    <a href="./research.html" aria-current="page">research</a>
+    <a href="./gateway.html">gateway</a>
+    <a href="./schedule.html">schedule</a>
+  </nav>
+
+  <main id="main">
+    <p class="crumbs">
+      <a href="../../">home</a>
+      <span class="sep">·</span>
+      <a href="../">docs</a>
+      <span class="sep">·</span>
+      <span class="here">research</span>
+    </p>
+
+    <section class="hero">
+      <span class="eyebrow">guides · research</span>
+      <h1>Cited research, <span class="accent">six phases</span>.</h1>
+      <p class="subhead">carlos's research mode is a first-class equivalent of Claude Research, Gemini Deep Research, ChatGPT Deep Research. Composed from <code>web_fetch</code>, <code>web_search</code>, the citation tracker, and the existing safety gates. Runs as a tracked sub-agent or as a headless CLI.</p>
+    </section>
+
+    <h2>How to <span class="accent">run it</span></h2>
+    <p>Three entry points, same engine behind each:</p>
+
+    <div class="code-block">
+      <span class="fname">shell</span>
+<pre><span class="kw">carlos</span> research <span class="str">"is webgpu supported in safari 17 yet?"</span>        <span class="com"># headless</span>
+<span class="kw">/research</span> <span class="str">"is webgpu supported in safari 17 yet?"</span>              <span class="com"># inside the TUI</span>
+<span class="com"># inside a /research, the engine runs as a sub-agent with the
+# manage view surfacing phase progress in real time</span></pre>
+    </div>
+
+    <p>Live progress is rendered in <code>cmd/carlos</code> via a bordered status panel; visual language mirrors the <code>carlos please</code> panel. The cited report saves to:</p>
+
+    <div class="code-block">
+      <span class="fname">~/.carlos/</span>
+<pre><span class="key">frames/</span><span class="val">&lt;frame&gt;</span><span class="key">/research/</span><span class="val">&lt;slug&gt;-&lt;unix-ts&gt;.md</span>
+<span class="com"># 0600 inside a 0700 dir</span></pre>
+    </div>
+
+    <div class="rule-sketch"><svg viewBox="0 0 480 14" preserveAspectRatio="none"><path d="M4 8 Q 60 2, 130 7 T 260 7 T 380 8 T 476 6"/></svg></div>
+
+    <h2>The six <span class="accent">phases</span></h2>
+    <p>Each phase fires <code>start</code> and <code>done</code> callbacks against the <code>Engine.Run</code> API; chat consumes them as <code>EvtResearchPhase</code> events and renders progress, done, and failed lines that collapse on <code>AgentID</code>.</p>
+
+    <ol>
+      <li>
+        <div class="card straight">
+          <h3>1. decompose</h3>
+          <p>Model splits the question into sub-questions and an answer schema. The schema is what verify will audit coverage against later.</p>
+        </div>
+      </li>
+      <li>
+        <div class="card straight">
+          <h3>2. search</h3>
+          <p><code>web_search</code> fans out across configured backends (Brave, SearXNG, DuckDuckGo HTML). Result list with stable <code>sN</code> IDs that follow each candidate through the rest of the pipeline.</p>
+        </div>
+      </li>
+      <li>
+        <div class="card straight">
+          <h3>3. fetch</h3>
+          <p><code>web_fetch</code> resolves each candidate URL. HTML to text via <code>golang.org/x/net/html</code>. Refuses non-<code>http(s)</code>, private and loopback addresses (config-gated), non-text content types, and robots-disallowed paths (override available). HEAD-then-GET; 5 MiB raw and 256 KiB extracted caps; 5-redirect ceiling; 5-minute robots cache.</p>
+        </div>
+      </li>
+      <li>
+        <div class="card straight">
+          <h3>4. read</h3>
+          <p>Each fetched page is chunked into <code>Passage</code>s with stable <code>pN</code> IDs. These IDs are the ground truth verify will trust.</p>
+        </div>
+      </li>
+      <li>
+        <div class="card straight">
+          <h3>5. synthesize</h3>
+          <p>Model writes the report. Prompt forces inline <code>[pN]</code> citations so verify can audit coverage claim-by-claim.</p>
+        </div>
+      </li>
+      <li>
+        <div class="card straight">
+          <h3>6. verify</h3>
+          <p>Independent pass checks that every claim cites a real <code>pN</code> and that the cited passage supports the claim. The citation auditor (<code>internal/research/citations.go</code>) flags hallucinated or misattributed cites.</p>
+        </div>
+      </li>
+    </ol>
+
+    <div class="rule-sketch"><svg viewBox="0 0 480 14" preserveAspectRatio="none"><path d="M4 8 Q 60 2, 130 7 T 260 7 T 380 8 T 476 6"/></svg></div>
+
+    <h2>Budget</h2>
+    <p><code>ResearchBudget</code> caps provider calls, fetched bytes, and wall-clock time. On overrun the engine refuses cleanly with a partial <code>Report</code> rather than running unbounded.</p>
+
+    <h2>Output <span class="accent">shape</span></h2>
+    <p>The Report is a structured artifact. Citations are stable <code>sN</code> and <code>pN</code> IDs. The final markdown is rendered with inline <code>[pN]</code> references for every claim. Verifiers walk the report against the raw <code>Passages</code> slice to catch fabricated IDs.</p>
+
+    <h2>Backends</h2>
+    <p>Configured via env at startup; <code>NewWebSearchTool</code> picks in order:</p>
+    <ul>
+      <li><code>BRAVE_API_KEY</code> set: Brave.</li>
+      <li><code>SEARXNG_URL</code> set: SearXNG.</li>
+      <li>fallback: DuckDuckGo HTML.</li>
+    </ul>
+
+    <h2>Where the <span class="accent">report</span> lives</h2>
+    <p><code>~/.carlos/frames/&lt;frame&gt;/research/&lt;slug&gt;-&lt;unix-ts&gt;.md</code> (0600). The slash variant also persists the rendered Report as one <code>EvtAssistantMessage</code> in the conversation transcript, so it survives the session and stays searchable.</p>
+
+    <div class="rule-sketch"><svg viewBox="0 0 480 14" preserveAspectRatio="none"><path d="M4 8 Q 60 2, 130 7 T 260 7 T 380 8 T 476 6"/></svg></div>
+
+    <h2>Tail <span class="accent">roadmap</span></h2>
+
+    <div class="callout sun">
+      <span class="label">On deck</span>
+      <p>Not yet shipped; sequenced behind the current research surface.</p>
+      <ul>
+        <li><strong>11g</strong> source skepticism (domain age, https, cross-reference scorer).</li>
+        <li><strong>11h</strong> research-aware skill induction.</li>
+        <li><strong>11i</strong> CitationAgent (independent post-synthesis cite walker).</li>
+        <li><strong>11j</strong> source-quality curator (domain whitelists, citation-count signals).</li>
+        <li><strong>11k</strong> clarify, brief, plan pre-flight.</li>
+      </ul>
+    </div>
+
+    <h2>Related</h2>
+    <p><a href="../../agent-loop.html">Agent loop comparison</a> shows where research sits relative to the broader loop. <a href="../concepts/sub-agents.html">Sub-agents</a> covers spawn caps and tracker plumbing the engine inherits when invoked via <code>/research</code>. <a href="../reference/tools.html">Tools</a> documents <code>web_search</code> and <code>web_fetch</code> in full; <a href="../reference/slash-commands.html">slash commands</a> covers <code>/research</code>.</p>
+
+    <nav class="prevnext" aria-label="page navigation">
+      <a class="prev" href="../reference/config.html">
+        <span class="dir">~ previous ~</span>
+        <span class="title">Config</span>
+      </a>
+      <a class="next" href="./gateway.html">
+        <span class="dir">~ next ~</span>
+        <span class="title">Gateway</span>
+      </a>
+    </nav>
+  </main>
+
+  <footer class="site">
+    <span>carlos · 2026 · gpl-3.0</span>
+    <nav>
+      <a href="https://github.com/georgebuilds/carlos">github</a>
+      <a href="../">all docs</a>
+    </nav>
+  </footer>
+</body>
+</html>

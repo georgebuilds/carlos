@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>carlos · sub-agent supervision</title>
+  <meta name="description" content="carlos's marquee surface for delegation. Ten-state lifecycle, structured contracts, steer/interrupt/stop verbs, safety rails. The event log is the source of truth." />
+  <meta name="theme-color" content="#f4ecd8" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#11131a" media="(prefers-color-scheme: dark)" />
+  <link rel="icon" type="image/png" href="../../branding/carlos-portrait.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" />
+  <link rel="stylesheet" href="../../theme.css" />
+</head>
+<body>
+  <a class="skip-link" href="#main">skip to content</a>
+
+  <!-- ambient doodles (2 max per page) -->
+  <svg class="doodle doodle-cloud-1" viewBox="0 0 240 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path d="M30 70 Q 10 70, 12 50 Q 14 30, 40 32 Q 48 14, 80 18 Q 110 6, 130 24 Q 160 16, 170 42 Q 200 38, 200 60 Q 210 78, 184 80 L 50 80 Q 30 82, 30 70 Z"/>
+  </svg>
+  <svg class="doodle doodle-cloud-2 ink" viewBox="0 0 240 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path d="M30 70 Q 10 70, 12 50 Q 14 30, 40 32 Q 48 14, 80 18 Q 110 6, 130 24 Q 160 16, 170 42 Q 200 38, 200 60 Q 210 78, 184 80 L 50 80 Q 30 82, 30 70 Z"/>
+  </svg>
+
+  <header class="site">
+    <a class="mark" href="../../" aria-label="carlos home">carlos</a>
+    <nav>
+      <a href="../" aria-current="page">docs</a>
+      <a href="../../agent-loop.html">agent loop</a>
+      <a href="https://github.com/georgebuilds/carlos">github</a>
+    </nav>
+  </header>
+
+  <nav class="docnav" aria-label="documentation sections">
+    <a href="../getting-started/install.html">install</a>
+    <a href="../getting-started/quickstart.html">quickstart</a>
+    <a href="../concepts/frames.html">frames</a>
+    <a href="../concepts/permissions.html">permissions</a>
+    <a href="../concepts/sub-agents.html" aria-current="page">sub-agents</a>
+    <a href="../concepts/memory.html">memory</a>
+    <a href="../reference/tools.html">tools</a>
+    <a href="../reference/slash-commands.html">slash</a>
+    <a href="../reference/config.html">config</a>
+    <a href="../guides/research.html">research</a>
+    <a href="../guides/gateway.html">gateway</a>
+    <a href="../guides/schedule.html">schedule</a>
+  </nav>
+
+  <main id="main">
+    <p class="crumbs">
+      <a href="../../">home</a>
+      <span class="sep">·</span>
+      <a href="../">docs</a>
+      <span class="sep">·</span>
+      <span class="here">sub-agent supervision</span>
+    </p>
+
+    <section class="hero">
+      <span class="eyebrow">concepts · sub-agents</span>
+      <h1>Sub-agent <span class="accent">supervision</span>.</h1>
+      <p class="subhead">When carlos delegates, the supervisor view is the marquee surface. Per-agent intent, live tool-call stream, progress, state, token spend and burn-rate, diff preview, and explicit steer / interrupt / stop verbs. Single-agent by default; delegation is the exception.</p>
+    </section>
+
+    <h2>The architectural <span class="accent">commitment</span></h2>
+
+    <p>The event log is the source of truth. Every agent writes an append-only event log to SQLite (WAL mode). Live state, the roster, the focus pane, lineage, resume-after-crash, the skill-proposal review queue: all projections over those logs. The TUI never owns state; it reads from the log and the in-memory projection.</p>
+
+    <div class="callout">
+      <span class="label">why projections, not state</span>
+      <p>Crash recovery, time-travel debugging, and the "what was that sub-agent doing at 3:42?" question all reduce to "replay the log." If a projection disagrees with the log, the projection is wrong by construction.</p>
+    </div>
+
+    <div class="rule-sketch"><svg viewBox="0 0 480 14" preserveAspectRatio="none"><path d="M4 8 Q 60 2, 130 7 T 260 7 T 380 8 T 476 6"/></svg></div>
+
+    <h2>Ten-state <span class="accent">machine</span></h2>
+
+    <p>The set is deliberately fine-grained because conflating any two of these is the documented legibility-failure mode in real supervisors (systemd, OTP, Claude Code's "thinking vs hung" issue).</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>state</th>
+            <th>meaning</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="row-label"><code>spawning</code></td>
+            <td>Process/context created; system prompt + tool allowlist + budget being injected; first provider call not returned.</td>
+          </tr>
+          <tr>
+            <td class="row-label"><code>queued</code></td>
+            <td>Admitted but waiting on a concurrency slot. Distinct from <code>spawning</code> because attribution of spawn failures matters.</td>
+          </tr>
+          <tr>
+            <td class="row-label"><code>running</code></td>
+            <td>Actively in its provider-call / tool-call loop.</td>
+          </tr>
+          <tr>
+            <td class="row-label"><code>awaiting-input</code></td>
+            <td>Blocked specifically on the user or parent. Resolver: a human.</td>
+          </tr>
+          <tr>
+            <td class="row-label"><code>blocked</code></td>
+            <td>Waiting on an external dependency (sibling artifact, rate-limited API, file lock). Resolver: the system.</td>
+          </tr>
+          <tr>
+            <td class="row-label"><code>paused-by-user</code></td>
+            <td>The user explicitly froze this agent. Different cause, UI affordance, and resume semantics from <code>blocked</code>.</td>
+          </tr>
+          <tr>
+            <td class="row-label"><code>compacting</code></td>
+            <td>Agent is summarizing or handing off context near the window limit.</td>
+          </tr>
+          <tr>
+            <td class="row-label"><code>cancelling</code></td>
+            <td>Stop requested but the agent is mid-tool-call. Must reach a safe boundary before terminating.</td>
+          </tr>
+          <tr>
+            <td class="row-label"><code>done</code></td>
+            <td>Terminal, success.</td>
+          </tr>
+          <tr>
+            <td class="row-label"><code>failed</code></td>
+            <td>Terminal, unrecoverable for this attempt. Retries are new attempts with new IDs, never resurrections.</td>
+          </tr>
+          <tr>
+            <td class="row-label"><code>orphaned</code></td>
+            <td>Pathological terminal-ish: supervisor lost the child (crash, OOM, heartbeat lost). May still burn tokens; this state is loud.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>Eleven rows. carlos's SPEC says ten, but in practice <code>orphaned</code> is a separate state, so it's included here. Legal transitions are encoded as <code>(state, event) &rarr; state | error</code> in <code>internal/agent/state.go</code>. Illegal events are rejected at runtime; the TUI never infers state from side-effects.</p>
+
+    <div class="callout clay">
+      <span class="label">illegal transitions (must be unrepresentable)</span>
+      <ul>
+        <li><code>queued &rarr; running</code> (cannot skip <code>spawning</code>)</li>
+        <li><code>done &rarr; anything</code></li>
+        <li><code>failed &rarr; running</code> without going through <code>spawning</code> (no resurrection)</li>
+        <li><code>paused-by-user &rarr; done</code> (a paused agent did not finish)</li>
+        <li><code>compacting &rarr; done</code> directly (must return to <code>running</code> first)</li>
+      </ul>
+    </div>
+
+    <div class="rule-sketch"><svg viewBox="0 0 480 14" preserveAspectRatio="none"><path d="M4 8 Q 60 2, 130 7 T 260 7 T 380 8 T 476 6"/></svg></div>
+
+    <h2>Parent-child <span class="accent">contract</span></h2>
+
+    <p>When an agent delegates, the parent sends a <strong>structured task spec</strong>, not a free-form prompt. Four parts, every time.</p>
+
+    <div class="grid">
+      <div class="card straight">
+        <span class="pill navy"><span class="dot"></span>1 · objective</span>
+        <p>What the child must accomplish, one paragraph. Concrete, scoped, falsifiable. No "explore the codebase and report back."</p>
+      </div>
+      <div class="card straight">
+        <span class="pill navy"><span class="dot"></span>2 · output format</span>
+        <p>Typed result schema. The child returns a struct, not free text. The parent parses, validates, and routes the result without re-reading prose.</p>
+      </div>
+      <div class="card straight">
+        <span class="pill navy"><span class="dot"></span>3 · tool subset</span>
+        <p>Restricted allowlist. A research child cannot run shell commands. The supervisor enforces; the child cannot escape.</p>
+      </div>
+      <div class="card straight">
+        <span class="pill navy"><span class="dot"></span>4 · boundaries</span>
+        <p>Explicit token cap, turn cap, wall-clock cap, success criteria, definition-of-done. A child without a budget is a leak.</p>
+      </div>
+    </div>
+
+    <p>The child returns a compressed deliverable plus references to artifacts written to disk (content-addressable at <code>~/.carlos/artifacts/&lt;sha256&gt;</code>). Full transcripts stay in the child's event log; they don't pollute the parent's context window.</p>
+
+    <div class="rule-sketch"><svg viewBox="0 0 480 14" preserveAspectRatio="none"><path d="M4 8 Q 60 2, 130 7 T 260 7 T 380 8 T 476 6"/></svg></div>
+
+    <h2>Three verbs: <span class="accent">steer, interrupt, stop</span></h2>
+
+    <p>Each labeled in the status bar with a distinct keybinding so they're discoverable, not memorized.</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>verb</th>
+            <th>key</th>
+            <th>semantics</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="row-label"><strong>steer</strong></td>
+            <td><span class="kbd">s</span></td>
+            <td>Inject a <code>[steering]</code> message into the agent's event log; delivered at the <strong>next tool-call boundary</strong>, never mid-inference. Agent keeps its context and in-progress work.</td>
+          </tr>
+          <tr>
+            <td class="row-label"><strong>interrupt</strong></td>
+            <td><span class="kbd">i</span></td>
+            <td>Abort the current turn (soft). Keep the session and context alive; return control to the user. Tool calls already completed stay in place; they are not rolled back.</td>
+          </tr>
+          <tr>
+            <td class="row-label"><strong>stop</strong></td>
+            <td><span class="kbd">x</span></td>
+            <td>Terminate the agent. Default is <strong>graceful drain</strong>: signal stop, wait for the agent to reach a safe boundary, then transition to <code>done</code> / <code>failed</code>. Drain timeout escalates to <strong>hard-kill</strong> if the agent doesn't reach a boundary within the budget (OTP-style <code>shutdown</code> timeout).</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>Never hard-kill mid-side-effect. A file-write or HTTP request in flight completes (or fails atomically) before transition to terminal.</p>
+
+    <div class="callout clay">
+      <span class="label">the queues-but-doesn't-interrupt trap</span>
+      <p>Claude Code's documented "Enter queues but doesn't interrupt" failure mode is exactly what these three verbs are designed against. <span class="kbd">s</span> steers without aborting, <span class="kbd">i</span> aborts without killing, <span class="kbd">x</span> kills with a drain budget. Each is reachable in one keypress from the supervisor.</p>
+    </div>
+
+    <div class="rule-sketch"><svg viewBox="0 0 480 14" preserveAspectRatio="none"><path d="M4 8 Q 60 2, 130 7 T 260 7 T 380 8 T 476 6"/></svg></div>
+
+    <h2>Roster &amp; focus <span class="accent">pane</span></h2>
+
+    <p><strong>Roster.</strong> One row per agent (including the top-level agent), lineage by indentation, terminal-state rows dim or collapse. Columns: short ID, state badge (text + color, never color alone), one-line intent, model, tokens-in/out, cost, current tool, 60-bucket burn-rate sparkline, elapsed time.</p>
+
+    <p><strong>Sorting and filtering.</strong> k9s-style. <span class="kbd">/</span> opens a fuzzy filter; sortable by any column. Default sort surfaces the four priority-ordered monitored conditions (next section) above normal-running.</p>
+
+    <p><strong>Focus pane.</strong> Transcript tail of the selected agent. Most recent reasoning + last tool call by default, scrollback on demand. Streaming tokens render from a coalesced in-memory projection (250-500ms flush cadence).</p>
+
+    <p><strong>Status bar.</strong> Current verb labels (<span class="kbd">s</span> steer, <span class="kbd">i</span> interrupt, <span class="kbd">x</span> stop, <span class="kbd">Enter</span> focus), discoverable without memorization. Mode chip (<code>mode=X (cap N)</code>) shown when the supervisor satisfies <code>ModeReporter</code>.</p>
+
+    <div class="rule-sketch"><svg viewBox="0 0 480 14" preserveAspectRatio="none"><path d="M4 8 Q 60 2, 130 7 T 260 7 T 380 8 T 476 6"/></svg></div>
+
+    <h2>What the user <span class="accent">monitors for</span></h2>
+
+    <p>Priority order. This list drives the default roster sort.</p>
+
+    <ol>
+      <li><strong>Agents awaiting input.</strong> Block downstream progress; only a human unblocks them. Loudest signal.</li>
+      <li><strong>Runaway cost.</strong> Burn-rate spike. Irreversible spend.</li>
+      <li><strong>Confidently-wrong / drifting outputs.</strong> Verification-failed flags, citation-missing markers.</li>
+      <li><strong>Stuck agents.</strong> No heartbeat, no progress, not compacting.</li>
+      <li>Everything else (normal running, done).</li>
+    </ol>
+
+    <div class="rule-sketch"><svg viewBox="0 0 480 14" preserveAspectRatio="none"><path d="M4 8 Q 60 2, 130 7 T 260 7 T 380 8 T 476 6"/></svg></div>
+
+    <h2>Safety <span class="accent">rails</span></h2>
+
+    <p>Non-negotiable. Each is enforced by the supervisor, not by the model.</p>
+
+    <ul>
+      <li><strong>Restart intensity (OTP pattern).</strong> If more than MaxR (default 3) retries occur within MaxT (default 60s), the parent supervisor terminates the subtree and surfaces a circuit-breaker alert.</li>
+      <li><strong>Per-run and per-subtree token/cost caps.</strong> Hard ceilings, enforced before each provider call. <code>Budget</code> + <code>Tracker</code> (Phase 5a).</li>
+      <li><strong>Spawn-depth cap</strong> (default 1; leaf agents cannot spawn) and <strong>concurrency cap</strong> (default 3-5 parallel children, mode-gated to 0/1/5).</li>
+      <li><strong>Heartbeat-based orphan detection.</strong> 5s heartbeat emit + 10s sweep; agents past 2x interval transition to <code>orphaned</code> at next startup via <code>Recover</code>.</li>
+      <li><strong>Worktree isolation for side-effecting sub-agents.</strong> Each agent that may write to shared state gets an isolated git worktree under <code>~/.carlos/frames/&lt;frame&gt;/worktrees/&lt;agent-id&gt;/</code>. "Apply" is a separate, user-gated merge step.</li>
+    </ul>
+
+    <div class="callout sage">
+      <span class="label">tip</span>
+      <p>Worktree isolation also means you can let a sub-agent edit files without polluting your working tree. If the deliverable is no good, the merge step is where you say no.</p>
+    </div>
+
+    <div class="rule-sketch"><svg viewBox="0 0 480 14" preserveAspectRatio="none"><path d="M4 8 Q 60 2, 130 7 T 260 7 T 380 8 T 476 6"/></svg></div>
+
+    <h2>When to delegate vs stay <span class="accent">single-agent</span></h2>
+
+    <p>Two layers, easily conflated. The frame's <code>mode</code> (<code>solo</code> / <code>tight</code> / <code>orchestrator</code>) is the supervisor's enforcement: how many in-flight children it allows at all (cap 0 / 1 / 5; <code>SpawnCapFor</code> in <code>internal/frame/frame.go</code>). The system prompt's Frame block then tells the model how to behave under that cap. New personal frames ship in <code>orchestrator</code>.</p>
+
+    <p>What each mode tells the model:</p>
+
+    <ul>
+      <li><code>solo</code>: do the work yourself. Sub-agent delegation is opt-in, only spawn when the user explicitly asks or the task is plainly beyond a single session.</li>
+      <li><code>tight</code>: single-task focus, no tangents. The supervisor caps in-flight children at 1, so when delegation does happen it runs sequentially.</li>
+      <li><code>orchestrator</code>: delegate by default. Anything more involved than a single-line edit, a one-shot lookup, or a trivial fix goes to a sub-agent; split the work across parallel sub-agents when the parts are independent. The user opted into this mode, so no per-turn confirmation.</li>
+    </ul>
+
+    <p>Research evidence still informs the design: DeepMind <code>arXiv:2512.08296</code> finds that multi-agent coordination nets negative once single-agent baselines exceed ~45% on a task class, and sequential / decision-dense work degrades 39 to 70% under MAS. The user picks which trade-off matches the task class through <code>/mode</code>; the carlos design choice is to surface that as a mode selection rather than a per-turn overlay.</p>
+
+    <div class="callout">
+      <span class="label">policy lives in the sysprompt, not in the tool</span>
+      <p>The Agent tool's <code>Description()</code> stays policy-neutral: it documents the tool's mechanics (objective, output_format, tool_allowlist, atomic typed return) and points the model at the Frame block for when-to-delegate guidance. This lets the same tool surface change behavior per mode without re-registering. Implementation: <code>internal/agent/agent_tool.go</code> + <code>internal/agent/sysprompt.go</code>.</p>
+    </div>
+
+    <div class="rule-sketch"><svg viewBox="0 0 480 14" preserveAspectRatio="none"><path d="M4 8 Q 60 2, 130 7 T 260 7 T 380 8 T 476 6"/></svg></div>
+
+    <h2>Skill proposals share this <span class="accent">surface</span></h2>
+
+    <p>An induced skill is just another on-disk artifact referenced from the event log, reviewable as a markdown diff in the same focus-pane/approval UX as any other deliverable. There is no separate skill-review subsystem; skill PROPOSALs, file edits, plans, and research outputs all flow through the same plan/preview/apply gate.</p>
+
+    <div class="callout sage">
+      <span class="label">one queue, one mental model</span>
+      <p>If you can review a diff, you can review a skill proposal. If you can apply a plan, you can apply a skill. carlos refuses to invent a second approval surface for the second kind of artifact.</p>
+    </div>
+
+    <div class="rule-sketch"><svg viewBox="0 0 480 14" preserveAspectRatio="none"><path d="M4 8 Q 60 2, 130 7 T 260 7 T 380 8 T 476 6"/></svg></div>
+
+    <h2>Related <span class="accent">reading</span></h2>
+
+    <div class="callout">
+      <span class="label">go deeper</span>
+      <ul>
+        <li><a href="./permissions.html">Permissions</a>: the layered allow/deny gate every sub-agent tool call passes through.</li>
+        <li><a href="./memory.html">Memory</a>: event log, FTS5 summaries, and the user model.</li>
+        <li><a href="../../skills.html">Skills</a>: induced skills as reviewable artifacts.</li>
+        <li><a href="../../agent-loop.html">Agent loop comparison</a>: how carlos's loop differs from Claude Code's.</li>
+      </ul>
+    </div>
+
+    <nav class="prevnext" aria-label="page navigation">
+      <a class="prev" href="./permissions.html">
+        <span class="dir">~ previous ~</span>
+        <span class="title">Permissions</span>
+      </a>
+      <a class="next" href="./memory.html">
+        <span class="dir">~ next ~</span>
+        <span class="title">Memory</span>
+      </a>
+    </nav>
+  </main>
+
+  <footer class="site">
+    <span>carlos · 2026 · gpl-3.0</span>
+    <nav>
+      <a href="https://github.com/georgebuilds/carlos">github</a>
+      <a href="../">all docs</a>
+    </nav>
+  </footer>
+</body>
+</html>

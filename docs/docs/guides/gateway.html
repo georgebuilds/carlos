@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>carlos · messaging gateway</title>
+  <meta name="description" content="carlos's daemon-owned messaging surface: ntfy, Telegram, Signal stub. Adapter contract, signed action tokens, four-stage onboarding wizard." />
+  <meta name="theme-color" content="#f4ecd8" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#11131a" media="(prefers-color-scheme: dark)" />
+  <link rel="icon" type="image/png" href="../../branding/carlos-portrait.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" />
+  <link rel="stylesheet" href="../../theme.css" />
+</head>
+<body>
+  <a class="skip-link" href="#main">skip to content</a>
+
+  <!-- ambient doodles (2 max per page) -->
+  <svg class="doodle doodle-cloud-1" viewBox="0 0 240 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path d="M30 70 Q 10 70, 12 50 Q 14 30, 40 32 Q 48 14, 80 18 Q 110 6, 130 24 Q 160 16, 170 42 Q 200 38, 200 60 Q 210 78, 184 80 L 50 80 Q 30 82, 30 70 Z"/>
+  </svg>
+  <svg class="doodle doodle-cloud-2 ink" viewBox="0 0 240 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path d="M30 70 Q 10 70, 12 50 Q 14 30, 40 32 Q 48 14, 80 18 Q 110 6, 130 24 Q 160 16, 170 42 Q 200 38, 200 60 Q 210 78, 184 80 L 50 80 Q 30 82, 30 70 Z"/>
+  </svg>
+
+  <header class="site">
+    <a class="mark" href="../../" aria-label="carlos home">carlos</a>
+    <nav>
+      <a href="../" aria-current="page">docs</a>
+      <a href="../../agent-loop.html">agent loop</a>
+      <a href="https://github.com/georgebuilds/carlos">github</a>
+    </nav>
+  </header>
+
+  <nav class="docnav" aria-label="documentation sections">
+    <a href="../getting-started/install.html">install</a>
+    <a href="../getting-started/quickstart.html">quickstart</a>
+    <a href="../concepts/frames.html">frames</a>
+    <a href="../concepts/permissions.html">permissions</a>
+    <a href="../concepts/sub-agents.html">sub-agents</a>
+    <a href="../concepts/memory.html">memory</a>
+    <a href="../reference/tools.html">tools</a>
+    <a href="../reference/slash-commands.html">slash</a>
+    <a href="../reference/config.html">config</a>
+    <a href="./research.html">research</a>
+    <a href="./gateway.html" aria-current="page">gateway</a>
+    <a href="./schedule.html">schedule</a>
+  </nav>
+
+  <main id="main">
+    <p class="crumbs">
+      <a href="../../">home</a>
+      <span class="sep">·</span>
+      <a href="../">docs</a>
+      <span class="sep">·</span>
+      <span class="here">gateway</span>
+    </p>
+
+    <section class="hero">
+      <span class="eyebrow">guides · gateway</span>
+      <h1>Reach carlos from <span class="accent">anywhere</span>.</h1>
+      <p class="subhead">When the daemon is enabled, carlos can send notifications, surface approval prompts, and accept replies through messaging channels. ntfy and Telegram ship; Signal is a stub. Future channels (Discord, Slack, email) follow the same adapter contract.</p>
+    </section>
+
+    <h2>Architecture <span class="accent">(Phase G1)</span></h2>
+    <p>The broker is daemon-owned. Each channel implements a small adapter contract; the broker handles routing, retry, dedupe, and event streaming.</p>
+
+    <ul>
+      <li><strong>Daemon-owned broker</strong>: one process, one queue, one event log.</li>
+      <li><strong>Adapter contract</strong>: each channel implements the <code>Adapter</code> interface (<code>Deliver</code>, <code>Resolve</code>, optional <code>Handler() http.Handler</code>).</li>
+      <li><strong>Canonical envelopes</strong>: <code>Notification</code>, <code>Decision</code>, <code>Reply</code>.</li>
+      <li><strong>Retry + dedupe table</strong>: replayed tokens and duplicate deliveries are absorbed at the broker.</li>
+      <li><strong>EvtGateway events</strong>: streamed through the same event log every other surface consumes.</li>
+      <li><strong><code>FakeAdapter</code></strong>: ships for tests; the broker is exercised without a live channel.</li>
+    </ul>
+
+    <div class="code-block">
+      <span class="fname">gateway envelopes</span>
+<pre><span class="kw">type</span> <span class="key">Notification</span> <span class="kw">struct</span> { <span class="com">// outbound: push to a channel</span>
+  <span class="key">ID</span>      <span class="val">string</span>
+  <span class="key">Title</span>   <span class="val">string</span>
+  <span class="key">Body</span>    <span class="val">string</span>
+  <span class="key">Actions</span> <span class="val">[]Action</span>  <span class="com">// up to 3 inline buttons</span>
+}
+
+<span class="kw">type</span> <span class="key">Decision</span> <span class="kw">struct</span> { <span class="com">// inbound: user resolved an approval</span>
+  <span class="key">ID</span>     <span class="val">string</span>
+  <span class="key">Choice</span> <span class="val">string</span>     <span class="com">// matches Notification.Actions[i].ID</span>
+}
+
+<span class="kw">type</span> <span class="key">Reply</span> <span class="kw">struct</span> { <span class="com">// inbound: free-text reply</span>
+  <span class="key">ID</span>   <span class="val">string</span>
+  <span class="key">Text</span> <span class="val">string</span>
+}</pre>
+    </div>
+
+    <div class="rule-sketch"><svg viewBox="0 0 480 14" preserveAspectRatio="none"><path d="M4 8 Q 60 2, 130 7 T 260 7 T 380 8 T 476 6"/></svg></div>
+
+    <h2>Adapters <span class="accent">(shipped)</span></h2>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>adapter</th>
+            <th>status</th>
+            <th>notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="row-label"><strong>ntfy</strong> (G3)</td>
+            <td><span class="pill sage"><span class="dot"></span>shipped</span></td>
+            <td>JSON publish plus up to 3 action buttons plus HMAC-SHA256-signed action tokens. Inbound replies via <code>Handler() http.Handler</code>.</td>
+          </tr>
+          <tr>
+            <td class="row-label"><strong>Telegram</strong> (G2)</td>
+            <td><span class="pill sage"><span class="dot"></span>shipped</span></td>
+            <td>Bot API long-poll. MarkdownV2 messages. Inline keyboard for actions. <code>callback_query</code> resolves to a <code>Decision</code> envelope.</td>
+          </tr>
+          <tr>
+            <td class="row-label"><strong>Signal</strong> (G6)</td>
+            <td><span class="pill sun"><span class="dot"></span>stub</span></td>
+            <td><code>not yet implemented</code> in enabled mode. The adapter is wired so the routing matrix can reference it once the bridge lands.</td>
+          </tr>
+          <tr>
+            <td class="row-label"><strong>Custom</strong></td>
+            <td><span class="pill navy"><span class="dot"></span>contract</span></td>
+            <td>Implement the <code>Adapter</code> interface; register via the daemon. Same envelopes, same retry plumbing.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2>Approval-queue routing <span class="accent">(G4)</span></h2>
+    <p>When the manage view surfaces an item awaiting input, the broker can deliver to whichever channel the user wired. Inline keyboard and action buttons resolve back into a <code>Decision</code> envelope that hits the same approval surface as an in-TUI prompt. One queue, two surfaces.</p>
+
+    <div class="callout sun">
+      <span class="label">until /away lands</span>
+      <p>Future: <code>/away</code> mode gates gateway delivery so notifications only leave the box when you're actually away. Until then, gateway delivery is always-on once enabled. Plan accordingly if your phone is loud.</p>
+    </div>
+
+    <div class="rule-sketch"><svg viewBox="0 0 480 14" preserveAspectRatio="none"><path d="M4 8 Q 60 2, 130 7 T 260 7 T 380 8 T 476 6"/></svg></div>
+
+    <h2>Setting up: <span class="accent">onboarding wizard</span></h2>
+    <p>Four-stage wizard. <code>carlos gateway add</code> runs the same flow standalone (Phase G5).</p>
+
+    <ol>
+      <li><strong>Enable.</strong> Switch on the broker; defer until later if you're not ready.</li>
+      <li><strong>Channel picker.</strong> ntfy, Telegram, or Signal stub.</li>
+      <li><strong>ntfy.</strong> Server URL plus topic plus (optional) HMAC secret for signed action tokens.</li>
+      <li><strong>Telegram.</strong> Bot token plus chat ID (the wizard hints how to get both).</li>
+    </ol>
+
+    <p>Inside the TUI onboarding, gateway defaults to "set up later" (Phase O-5). Skipping is the safe default; nothing breaks if you wire it up after the fact.</p>
+
+    <h2>Testing the <span class="accent">wiring</span></h2>
+
+    <div class="code-block">
+      <span class="fname">shell</span>
+<pre><span class="kw">carlos</span> gateway test <span class="val">&lt;channel&gt;</span></pre>
+    </div>
+
+    <p>Dispatches a fixed <code>Notification</code> envelope through one adapter via the UDS <code>gateway-test</code> verb. Successful delivery proves token, network path, and adapter wiring without waiting for an organic event.</p>
+
+    <h2>Action tokens <span class="accent">(ntfy)</span></h2>
+    <p>ntfy buttons fire URLs back to a configured handler. To survive untrusted middlemen, action tokens are HMAC-SHA256-signed with the topic secret. Replayed tokens are rejected via the dedupe table, so a refreshed-tab double-tap can't double-resolve an approval.</p>
+
+    <div class="rule-sketch"><svg viewBox="0 0 480 14" preserveAspectRatio="none"><path d="M4 8 Q 60 2, 130 7 T 260 7 T 380 8 T 476 6"/></svg></div>
+
+    <h2>Onward <span class="accent">(Phase G deferred)</span></h2>
+
+    <div class="callout">
+      <span class="label">Soon</span>
+      <ul>
+        <li>SIGHUP hot-reload of routing and retry config.</li>
+        <li>Routing-matrix onboarding screen.</li>
+        <li>G7 custom HITL side-app (separate repo, deferred until the Telegram UX ceiling is concrete).</li>
+        <li>Multi-user gateway identity (the <code>gateway_identities</code> table lands when carlos goes multi-user).</li>
+        <li>Discord, Slack, and email adapters; each is a small slice against the broker contract.</li>
+      </ul>
+    </div>
+
+    <h2>Related</h2>
+    <p><a href="./schedule.html">Schedule</a> covers the daemon-fired runs that route notifications through this gateway. <a href="../concepts/sub-agents.html">Sub-agents</a> covers the supervisor surface that emits the approval events the broker delivers. <a href="../reference/slash-commands.html">Slash commands</a> documents <code>/gateway</code> and the future <code>/away</code> toggle; <a href="../reference/config.html">config</a> covers every gateway field.</p>
+
+    <nav class="prevnext" aria-label="page navigation">
+      <a class="prev" href="./research.html">
+        <span class="dir">~ previous ~</span>
+        <span class="title">Research</span>
+      </a>
+      <a class="next" href="./schedule.html">
+        <span class="dir">~ next ~</span>
+        <span class="title">Schedule</span>
+      </a>
+    </nav>
+  </main>
+
+  <footer class="site">
+    <span>carlos · 2026 · gpl-3.0</span>
+    <nav>
+      <a href="https://github.com/georgebuilds/carlos">github</a>
+      <a href="../">all docs</a>
+    </nav>
+  </footer>
+</body>
+</html>
