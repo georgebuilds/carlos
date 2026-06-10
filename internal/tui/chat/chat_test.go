@@ -419,14 +419,17 @@ func TestDispatchSlash_UnknownVerbWarns(t *testing.T) {
 // TestSlashHelpTip_AppearsInFooter verifies the discoverability hint
 // is present in the input-mode footer string. We check the raw footer
 // (not the full View) so border / viewport content can't shadow the
-// substring match.
+// substring match. Width is 120 cells — comfortable enough to fit
+// the keybind row + the right-aligned tip without truncation; under
+// the threshold the tip is dropped on purpose to keep the row from
+// wrapping (covered separately by the render-footer narrow tests).
 func TestSlashHelpTip_AppearsInFooter(t *testing.T) {
 	log := openTempLog(t)
 	const agentID = "01HV0000000000000000000010"
 	seedAgent(t, log, agentID, "footer tip", "fake")
 	m := New(log, agentID, NewMemTextSource())
 	m = drive(t, m, 120, 30)
-	footer := m.renderFooter(100)
+	footer := m.renderFooter(120)
 	if !strings.Contains(footer, "type /help for commands") {
 		t.Fatalf("input-mode footer missing /help tip:\n%q", footer)
 	}

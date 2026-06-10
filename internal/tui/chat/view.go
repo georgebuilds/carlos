@@ -445,11 +445,13 @@ func (m *Model) renderFooter(w int) string {
 	var hints string
 	if m.readOnly {
 		hints = keyStyle.Render("pgup/pgdn") + hintStyle.Render(" scroll  ") +
+			keyStyle.Render("alt+m") + hintStyle.Render(mouseHintLabel(m.mouseOff)) +
 			keyStyle.Render("ctrl-c") + hintStyle.Render(" quit")
 	} else {
 		hints = keyStyle.Render("enter") + hintStyle.Render(" send  ") +
 			keyStyle.Render("shift-enter") + hintStyle.Render(" newline  ") +
 			keyStyle.Render("pgup/pgdn") + hintStyle.Render(" scroll  ") +
+			keyStyle.Render("alt+m") + hintStyle.Render(mouseHintLabel(m.mouseOff)) +
 			keyStyle.Render("ctrl-c") + hintStyle.Render(" quit")
 	}
 
@@ -492,16 +494,21 @@ func (m *Model) renderFooter(w int) string {
 		hintLine := lipgloss.NewStyle().Foreground(colorSubtle).Render(m.footerHint)
 		return hintLine + "\n" + row
 	}
-	// Mouse-capture state hint. Capture starts OFF (so text selection
-	// works in Ghostty/iTerm2/etc out of the box); when the user has
-	// toggled it ON with Alt+M to get wheel scroll back, show a dim
-	// line so the cost (loss of click-drag selection) is visible and
-	// the toggle is discoverable in reverse.
-	if !m.mouseOff {
-		hint := lipgloss.NewStyle().Foreground(colorSubtle).Render("mouse capture on (wheel scroll) · alt+m to release for text selection")
-		return hint + "\n" + row
-	}
 	return row
+}
+
+// mouseHintLabel returns the dim trailer that follows the bolded
+// "alt+m" key in the footer. The verb tracks the current mouse-
+// capture state so a single keystroke description tells the user
+// what pressing it WILL do: " select " when capture is on (press
+// alt+m to release for selection), " scroll " when capture is off
+// (press alt+m to restore wheel/trackpad scroll). Two-space pad on
+// each side matches the other hint trailers in renderFooter.
+func mouseHintLabel(mouseOff bool) string {
+	if mouseOff {
+		return " scroll  "
+	}
+	return " select  "
 }
 
 // renderApprovalBox returns a bordered, accent-colored panel for a

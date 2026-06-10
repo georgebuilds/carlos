@@ -8,80 +8,78 @@ import (
 )
 
 // TestMouseCapture_AltMTogglesState confirms the Alt+M toggle still
-// works after the default flip: starting OFF (post-flip default), one
-// Alt+M turns capture ON (wheel-scroll), a second Alt+M turns it back
-// OFF (release for text selection).
+// works: starting in the default (capture ON for trackpad/wheel
+// scroll), one Alt+M releases capture so the terminal can do
+// text selection; a second Alt+M restores capture for scroll.
 func TestMouseCapture_AltMTogglesState(t *testing.T) {
 	log := openTempLog(t)
 	const agentID = "01HV0000000000000000MOUSE0"
 	seedAgent(t, log, agentID, "mouse toggle", "fake")
 	m := New(log, agentID, NewMemTextSource())
 	m = drive(t, m, 120, 30)
-	// Simulate the Run-time default: capture starts OFF for
-	// out-of-the-box text selection. (Run() sets m.mouseOff = true
-	// before launching the program; we re-create that condition here
-	// since drive() goes around Run().)
-	m.mouseOff = true
+	// Default: capture ON. (Run() leaves m.mouseOff at its zero
+	// value (false) so the bubbletea program starts with
+	// WithMouseCellMotion.)
 
-	// First Alt+M turns capture ON.
+	// First Alt+M releases capture (mouseOff = true).
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'m'}, Alt: true})
 	m = updated.(*Model)
-	if m.mouseOff {
-		t.Errorf("first alt+m should turn capture ON; mouseOff still true")
-	}
-	if cmd == nil {
-		t.Errorf("expected tea.EnableMouseCellMotion cmd; got nil")
-	}
-
-	// Second Alt+M turns capture OFF.
-	updated, cmd = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'m'}, Alt: true})
-	m = updated.(*Model)
 	if !m.mouseOff {
-		t.Errorf("second alt+m should turn capture OFF; mouseOff = false")
+		t.Errorf("first alt+m should release capture; mouseOff still false")
 	}
 	if cmd == nil {
 		t.Errorf("expected tea.DisableMouse cmd; got nil")
 	}
+
+	// Second Alt+M restores capture (mouseOff = false).
+	updated, cmd = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'m'}, Alt: true})
+	m = updated.(*Model)
+	if m.mouseOff {
+		t.Errorf("second alt+m should restore capture; mouseOff still true")
+	}
+	if cmd == nil {
+		t.Errorf("expected tea.EnableMouseCellMotion cmd; got nil")
+	}
 }
 
-// TestRenderFooter_HintShownWhenMouseCaptureOn is the discoverability
-// regression test for the default flip. When the user has Alt+M'd
-// capture ON (the unusual state, post-flip), the footer surfaces a
-// dim line telling them how to release it for text selection.
-// Otherwise users could end up stuck wondering why their text won't
-// select without knowing the toggle exists.
-func TestRenderFooter_HintShownWhenMouseCaptureOn(t *testing.T) {
+// TestRenderFooter_AltMHintAlwaysPresent is the discoverability
+// regression test: the keybind row always carries an "alt+m" hint
+// (with a label that tracks the current state) so users discover
+// the toggle without having to read docs or stumble onto it.
+func TestRenderFooter_AltMHintAlwaysPresent(t *testing.T) {
 	log := openTempLog(t)
 	const agentID = "01HV0000000000000000MOUSE1"
 	seedAgent(t, log, agentID, "mouse hint", "fake")
 	m := New(log, agentID, NewMemTextSource())
 	m = drive(t, m, 120, 30)
 
-	// Capture ON state.
-	m.mouseOff = false
-	out := m.renderFooter(120)
-	if !strings.Contains(out, "alt+m") {
-		t.Errorf("footer should mention alt+m hint when capture is on; got:\n%s", out)
-	}
-	if !strings.Contains(out, "text selection") {
-		t.Errorf("footer should explain the toggle's effect; got:\n%s", out)
+	for _, state := range []struct {
+		mouseOff bool
+		want     string
+	}{
+		{mouseOff: false, want: "select"}, // capture on → press alt+m to select
+		{mouseOff: true, want: "scroll"},  // capture off → press alt+m to scroll
+	} {
+		m.mouseOff = state.mouseOff
+		out := m.renderFooter(120)
+		if !strings.Contains(out, "alt+m") {
+			t.Errorf("mouseOff=%v: footer missing alt+m hint:\n%s", state.mouseOff, out)
+		}
+		if !strings.Contains(out, state.want) {
+			t.Errorf("mouseOff=%v: footer hint label should mention %q:\n%s",
+				state.mouseOff, state.want, out)
+		}
 	}
 }
 
-// TestRenderFooter_NoHintWhenMouseCaptureOff guards the inverse:
-// when capture is OFF (the default), the footer must NOT carry the
-// mouse-capture hint — that's the expected state and adding a hint
-// would just clutter every user's screen.
-func TestRenderFooter_NoHintWhenMouseCaptureOff(t *testing.T) {
-	log := openTempLog(t)
-	const agentID = "01HV0000000000000000MOUSE2"
-	seedAgent(t, log, agentID, "mouse no hint", "fake")
-	m := New(log, agentID, NewMemTextSource())
-	m = drive(t, m, 120, 30)
-
-	m.mouseOff = true
-	out := m.renderFooter(120)
-	if strings.Contains(out, "mouse capture") {
-		t.Errorf("footer should not show capture hint when capture is off; got:\n%s", out)
+// TestMouseHintLabel_LabelTracksState pins the pure label helper so
+// the keymap and the visible label can't drift apart in a future
+// refactor.
+func TestMouseHintLabel_LabelTracksState(t *testing.T) {
+	if got := mouseHintLabel(false); !strings.Contains(got, "select") {
+		t.Errorf("capture on (mouseOff=false) → hint should say 'select'; got %q", got)
+	}
+	if got := mouseHintLabel(true); !strings.Contains(got, "scroll") {
+		t.Errorf("capture off (mouseOff=true) → hint should say 'scroll'; got %q", got)
 	}
 }

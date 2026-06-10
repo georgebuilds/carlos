@@ -728,16 +728,16 @@ func New(log agent.EventLog, agentID string, source TextSource, opts ...Option) 
 // model for now (we don't carry state out). The OpenManageRequested
 // helper is the typed read of the post-exit flag for slice 7g.
 func (m *Model) Run() (tea.Model, error) {
-	// Mouse capture starts OFF so the terminal's native click-and-drag
-	// text selection works out of the box — field report from Ghostty:
-	// carlos's responses could not be selected for copy/paste because
-	// bubbletea was eating the drag events. The Alt+M toggle still
-	// turns capture ON to restore viewport wheel-scroll for users
-	// who prefer it; PgUp/PgDn handles the scroll affordance either
-	// way, and an inline footer hint surfaces the toggle when capture
-	// is on so the trade-off is discoverable.
-	m.mouseOff = true
-	p := tea.NewProgram(m, tea.WithAltScreen())
+	// Mouse capture starts ON so the trackpad / mousewheel scrolls
+	// the transcript out of the box (the field default users expect
+	// from any modern TUI). Selection-for-copy/paste is a press
+	// away: Alt+M releases capture so the terminal owns the cursor
+	// for click-and-drag selection. Modern terminals (Ghostty,
+	// iTerm2, WezTerm, macOS Terminal) also pass Shift+drag
+	// through capture as a force-selection override, so users on
+	// those don't even need the toggle. The footer carries a
+	// permanent alt+m hint so the toggle is always discoverable.
+	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	return p.Run()
 }
 
