@@ -432,6 +432,88 @@ func TestNewFrame_BlankToggleZeroes(t *testing.T) {
 	}
 }
 
+// TestNewFrame_BlankShellDefaultsToOrchestratorMode pins the
+// "first-run consistency" contract: a freshly-created blank frame
+// must land with Mode = orchestrator, matching what NewPersonal /
+// onboarding write for the default install. Without this, the
+// blank-shell branch produced a Mode-empty frame that surfaced as
+// solo via EffectiveMode (when its fallback was solo) or — even
+// after the EffectiveMode flip — as an inconsistent "no explicit
+// mode" record that any future safety-stance refactor would treat
+// as no-delegation.
+func TestNewFrame_BlankShellDefaultsToOrchestratorMode(t *testing.T) {
+	var captured frame.Frame
+	m := newWizardModel(t, []string{"personal"}, func(f frame.Frame) error {
+		captured = f
+		return nil
+	}, func() frame.Frame {
+		return frame.Frame{Provider: "anthropic", Model: "claude-sonnet-4-6"}
+	})
+	m.openNewFrameWizard("blank-mode")
+	// Flip to blank, same dance as TestNewFrame_BlankToggleZeroes.
+	for i := 0; i < 3; i++ {
+		m.handleNewFrameKey(namedKey(tea.KeyTab))
+	}
+	m.handleNewFrameKey(runeKey(" "))
+	if m.newFrameCopy {
+		t.Fatal("space should have flipped copy to blank")
+	}
+	_, _, _ = m.handleNewFrameKey(namedKey(tea.KeyEnter))
+	if captured.Mode != frame.ModeOrchestrator {
+		t.Errorf("blank-shell new frame Mode = %q, want %q", captured.Mode, frame.ModeOrchestrator)
+	}
+}
+
+// TestNewFrame_CopyTemplateWithEmptyModeFallsBackToOrchestrator
+// covers the partial-template case: if the personal template happens
+// to have an empty Mode (legacy / migrated-pre-modes config), the
+// copy path must NOT downgrade the new frame into the
+// no-explicit-mode state. The wizard's seed orchestrator value
+// should survive when the template can't override it.
+func TestNewFrame_CopyTemplateWithEmptyModeFallsBackToOrchestrator(t *testing.T) {
+	var captured frame.Frame
+	m := newWizardModel(t, []string{"personal"}, func(f frame.Frame) error {
+		captured = f
+		return nil
+	}, func() frame.Frame {
+		// Note: Mode intentionally left empty.
+		return frame.Frame{Provider: "anthropic", Model: "claude-sonnet-4-6"}
+	})
+	m.openNewFrameWizard("legacy-template")
+	_, _, _ = m.handleNewFrameKey(namedKey(tea.KeyEnter))
+	if captured.Mode != frame.ModeOrchestrator {
+		t.Errorf("copy from empty-Mode template should keep the orchestrator seed; got Mode = %q", captured.Mode)
+	}
+	// Sanity check that the template's other fields DID copy through.
+	if captured.Provider != "anthropic" {
+		t.Errorf("template provider lost: %q", captured.Provider)
+	}
+}
+
+// TestNewFrame_CopyTemplateWithExplicitSoloIsHonoured guards
+// against an over-eager default. When the user's personal frame is
+// explicitly solo and they choose "copy personal", the new frame
+// should inherit solo — not be silently promoted to orchestrator by
+// the wizard's seed.
+func TestNewFrame_CopyTemplateWithExplicitSoloIsHonoured(t *testing.T) {
+	var captured frame.Frame
+	m := newWizardModel(t, []string{"personal"}, func(f frame.Frame) error {
+		captured = f
+		return nil
+	}, func() frame.Frame {
+		return frame.Frame{
+			Provider: "anthropic",
+			Model:    "claude-sonnet-4-6",
+			Mode:     frame.ModeSolo,
+		}
+	})
+	m.openNewFrameWizard("intentional-solo")
+	_, _, _ = m.handleNewFrameKey(namedKey(tea.KeyEnter))
+	if captured.Mode != frame.ModeSolo {
+		t.Errorf("explicit solo on template should not be overridden by wizard seed; got %q", captured.Mode)
+	}
+}
+
 func TestNewFrame_SwitcherNKeyOpensWizard(t *testing.T) {
 	m := newWizardModel(t, []string{"personal", "work"}, func(frame.Frame) error { return nil }, nil)
 	m.openFrameSwitcher()

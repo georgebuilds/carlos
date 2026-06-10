@@ -195,8 +195,12 @@ func NewPersonal(provider, model string) Frame {
 
 // Orchestrator-mode constants (per the 2026-06-06 orchestrator mode
 // proposal). A frame's `mode` field accepts one of these three strings.
-// Empty falls back to ModeSolo at consumption time so a pre-modes config
-// behaves predictably.
+// Empty falls back to ModeOrchestrator at consumption time so partial
+// or pre-v0.7.6 configs surface the same user-visible default as a
+// freshly-onboarded install (NewPersonal also defaults to orchestrator;
+// SPEC.md frames the "delegation on by default" stance). The safety
+// backstop lives in SpawnCapFor, which still treats unknown modes as
+// no-delegation so a corrupted frame cannot accidentally fan out.
 const (
 	// ModeSolo means carlos does the work itself; sub-agent delegation
 	// is opt-in (the user explicitly invokes /agents). Best fit for
@@ -224,12 +228,15 @@ func IsValidMode(m string) bool {
 
 // EffectiveMode returns the mode the consumer should treat as active
 // for a frame: the frame's own Mode when set, else the package default
-// (ModeSolo). Pulled out so callers don't reimplement the fallback.
+// (ModeOrchestrator, matching NewPersonal). Pulled out so callers don't
+// reimplement the fallback. The supervisor's SpawnCapFor stays
+// independent and uses a safer no-delegation default for unknown modes
+// — see its doc for the rationale.
 func EffectiveMode(f Frame) string {
 	if IsValidMode(f.Mode) {
 		return f.Mode
 	}
-	return ModeSolo
+	return ModeOrchestrator
 }
 
 // SpawnCap* are the per-mode supervisor concurrency caps. Solo disables

@@ -56,14 +56,27 @@ func TestIsValidMode(t *testing.T) {
 }
 
 func TestEffectiveMode(t *testing.T) {
-	if m := EffectiveMode(Frame{}); m != ModeSolo {
-		t.Errorf("zero-frame default = %q, want %q", m, ModeSolo)
+	// Pre-modes / partial / blank-shell frames must surface as
+	// orchestrator so the user-visible default matches what onboarding
+	// (NewPersonal) writes for a fresh install. Without this flip a
+	// fresh-install config that happened to leave Mode empty would
+	// report solo via /whoami while the supervisor was actually
+	// running with the orchestrator cap from a separate code path —
+	// an internally-inconsistent surface we hit in field testing.
+	if m := EffectiveMode(Frame{}); m != ModeOrchestrator {
+		t.Errorf("zero-frame default = %q, want %q (orchestrator)", m, ModeOrchestrator)
 	}
-	if m := EffectiveMode(Frame{Mode: "garbage"}); m != ModeSolo {
-		t.Errorf("invalid mode should fall back to solo; got %q", m)
+	if m := EffectiveMode(Frame{Mode: "garbage"}); m != ModeOrchestrator {
+		t.Errorf("invalid mode should fall back to orchestrator; got %q", m)
 	}
 	if m := EffectiveMode(Frame{Mode: ModeOrchestrator}); m != ModeOrchestrator {
 		t.Errorf("valid mode = %q, want %q", m, ModeOrchestrator)
+	}
+	// Explicit solo is honoured — the flip is on the FALLBACK, not on
+	// the "user explicitly chose solo" path. Guards against accidentally
+	// regressing user intent.
+	if m := EffectiveMode(Frame{Mode: ModeSolo}); m != ModeSolo {
+		t.Errorf("explicit solo should be honoured, not overridden; got %q", m)
 	}
 }
 

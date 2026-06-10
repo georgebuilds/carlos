@@ -206,7 +206,12 @@ func (m *Model) newFrameCommit() tea.Cmd {
 	// Compose the frame. Start with either the personal template
 	// (provider/model/vault/system_prompt_append/mode/capabilities) or
 	// a blank shell, then layer the wizard's name/glyph/accent on top.
-	out := frame.Frame{}
+	// Blank-shell frames pick up the orchestrator default explicitly
+	// so a "just give me an empty frame" choice doesn't end up in
+	// EffectiveMode's fallback path. NewPersonal makes the same call
+	// for onboarding-created frames; this keeps the two surfaces
+	// aligned.
+	out := frame.Frame{Mode: frame.ModeOrchestrator}
 	if m.newFrameCopy && m.frame.PersonalTemplate != nil {
 		tmpl := m.frame.PersonalTemplate()
 		out.Provider = tmpl.Provider
@@ -214,7 +219,14 @@ func (m *Model) newFrameCommit() tea.Cmd {
 		out.ProviderOverride = tmpl.ProviderOverride
 		out.VaultSubtree = tmpl.VaultSubtree
 		out.SystemPromptAppend = tmpl.SystemPromptAppend
-		out.Mode = tmpl.Mode
+		// Only override the orchestrator seed when the template
+		// itself has an explicit Mode — a template with an empty
+		// Mode (legacy / partial config) should not silently
+		// downgrade the new frame back into EffectiveMode's
+		// fallback path.
+		if tmpl.Mode != "" {
+			out.Mode = tmpl.Mode
+		}
 		out.Capabilities = tmpl.Capabilities
 	}
 	out.Name = name
