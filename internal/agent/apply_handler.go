@@ -34,6 +34,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 )
 
@@ -74,6 +75,19 @@ type ApplyHandler struct {
 	// Log is the SQLite event log we subscribe to + write outcomes
 	// into. Required.
 	Log *SQLiteEventLog
+	// Logger is the slog handler we pipe malformed-payload and
+	// outcome-write failures into. nil falls back to slog.Default().
+	// Production cmd/carlos wires a structured handler so post-mortem
+	// can correlate apply failures with the agent + event ID.
+	Logger *slog.Logger
+}
+
+// slog returns the never-nil slog logger for this handler.
+func (h *ApplyHandler) slogger() *slog.Logger {
+	if h.Logger != nil {
+		return h.Logger
+	}
+	return slog.Default()
 }
 
 // Run subscribes to EvtApprovalAccepted + EvtApprovalRejected events
@@ -117,7 +131,14 @@ func (h *ApplyHandler) handle(ctx context.Context, ev Event) {
 	}
 	var p ApprovalResolutionPayload
 	if err := json.Unmarshal(ev.Payload, &p); err != nil {
-		return // malformed event; nothing to act on
+		// Malformed payload: nothing to act on, but surface via slog
+		// so the operator + post-mortem CLI can correlate which
+		// resolver event was unparseable. The handler stays running.
+		h.slogger().Error("apply handler: malformed resolution payload",
+			"event_id", ev.Seq,
+			"agent_id", ev.AgentID,
+			"err", err)
+		return
 	}
 	producingAgent, kind, ok := h.lookupArtifact(ctx, p.ArtifactID)
 	if !ok || kind != ArtifactKindPlan {
@@ -181,11 +202,23 @@ func (h *ApplyHandler) lookupArtifact(ctx context.Context, id string) (string, s
 // writeOutcome records an ApplyOutcome artifact. Failure to write is
 // not fatal - the apply / discard already happened on disk; we just
 // lose one telemetry record. The handler MUST stay running so other
-// resolutions still process.
+// resolutions still process. Marshal + WriteArtifact failures are
+// logged at Error so a missing audit row is noticed rather than
+// silently lost.
 func (h *ApplyHandler) writeOutcome(ctx context.Context, agentID string, o ApplyOutcome) {
 	blob, err := json.Marshal(o)
 	if err != nil {
+		h.slogger().Error("apply handler: marshal outcome",
+			"agent_id", agentID,
+			"plan_artifact_id", o.PlanArtifactID,
+			"err", err)
 		return
 	}
-	_, _ = WriteArtifact(ctx, h.Log, agentID, ApplyOutcomeKind, blob)
+	if _, err := WriteArtifact(ctx, h.Log, agentID, ApplyOutcomeKind, blob); err != nil {
+		h.slogger().Error("apply handler: write outcome artifact",
+			"agent_id", agentID,
+			"plan_artifact_id", o.PlanArtifactID,
+			"status", o.Status,
+			"err", err)
+	}
 }

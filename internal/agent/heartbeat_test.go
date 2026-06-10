@@ -1,8 +1,11 @@
 package agent_test
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -431,4 +434,91 @@ func TestSupervisor_NilLogSpawnRejected(t *testing.T) {
 	if _, _, err := sup.Spawn(context.Background(), "", agent.SpawnContract{}); err == nil {
 		t.Fatalf("expected error from Spawn with nil log")
 	}
+}
+
+// TestOrphanSweeper_RunGoroutineLogsSweepErrors pins fix #5: the
+// per-process sweep goroutine now pipes Sweep errors through slog
+// instead of silently swallowing them. We trigger an error by
+// closing the underlying *sql.DB before the sweep fires (StaleAgents
+// fails on a closed connection), capture stderr-bound slog output
+// in a bytes.Buffer, and assert the run loop logged the failure.
+//
+// Synchronisation is channel-based: the fakeClock's After() fires
+// when Advance() crosses the registered duration, so we know the
+// sweep goroutine has registered its timer before we trigger the
+// error. We then poll the buffer with a deadline (no fixed sleep).
+func TestOrphanSweeper_RunGoroutineLogsSweepErrors(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "state.db")
+	log, err := agent.OpenStateDB(dbPath)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+
+	clk := newFakeClock(time.Now().UTC())
+	sw := agent.NewOrphanSweeper(log, clk, agent.SweepInterval, agent.StalenessTolerance)
+
+	var buf bytes.Buffer
+	// Mutex on the buffer because slog's text handler may emit
+	// concurrently with the test goroutine's Read - the race
+	// detector would otherwise complain on a plain Buffer.
+	var mu sync.Mutex
+	syncedW := &syncedBuffer{buf: &buf, mu: &mu}
+	handler := slog.NewTextHandler(syncedW, &slog.HandlerOptions{Level: slog.LevelDebug})
+	sw.SetLogger(slog.New(handler))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	sw.Start(ctx)
+	defer sw.Stop()
+
+	// Wait for the run goroutine to register its After() before we
+	// close the DB; otherwise we might race the goroutine's first
+	// loop entry.
+	if !waitFor(time.Second, func() bool { return clk.Pending() >= 1 }) {
+		t.Fatalf("sweep goroutine did not register After() within budget")
+	}
+
+	// Close the DB so the next Sweep returns an error from
+	// StaleAgents (sqlite "database is closed").
+	if err := agent.CloseStateDB(log); err != nil {
+		t.Fatalf("close db: %v", err)
+	}
+
+	// Advance virtual time so the sweep fires.
+	clk.Advance(agent.SweepInterval)
+
+	// Wait for the log line. waitFor polls the buffer until it
+	// observes the expected error attribute or the budget elapses.
+	got := waitFor(2*time.Second, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return strings.Contains(buf.String(), "orphan sweep failed")
+	})
+	if !got {
+		mu.Lock()
+		dump := buf.String()
+		mu.Unlock()
+		t.Fatalf("expected slog Error log for sweep failure, captured: %q", dump)
+	}
+	// Tighter check: the log line is at Error level.
+	mu.Lock()
+	out := buf.String()
+	mu.Unlock()
+	if !strings.Contains(out, "level=ERROR") {
+		t.Errorf("sweep error log should be at ERROR level, got: %q", out)
+	}
+}
+
+// syncedBuffer wraps a bytes.Buffer with a mutex so concurrent
+// goroutine writes + test-side reads stay race-free.
+type syncedBuffer struct {
+	mu  *sync.Mutex
+	buf *bytes.Buffer
+}
+
+func (b *syncedBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
 }

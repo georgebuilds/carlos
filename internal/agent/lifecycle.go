@@ -33,6 +33,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"time"
@@ -88,10 +89,11 @@ func OpenStateDB(path string) (*SQLiteEventLog, error) {
 		// guarantee 0700 even if a previous run created it differently.
 		if err := os.Chmod(dir, 0o700); err != nil {
 			// Non-fatal: on some filesystems chmod is a no-op, and we'd
-			// rather succeed than hard-fail on a working dir. Surface as
-			// a warning by wrapping into a returned error only if we
-			// later need it; for now we swallow.
-			_ = err
+			// rather succeed than hard-fail on a working dir. Log via
+			// slog at Warn so the operator notices the relaxed perms
+			// even though the open still proceeds.
+			slog.Default().Warn("state.db parent chmod 0700 failed (non-fatal)",
+				"dir", dir, "err", err)
 		}
 	}
 	log, err := OpenSQLiteEventLog(path)

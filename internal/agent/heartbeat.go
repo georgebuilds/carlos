@@ -38,6 +38,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 )
@@ -230,6 +231,13 @@ type OrphanSweeper struct {
 	done     chan struct{}
 
 	OnOrphan OnOrphanFunc // optional callback; nil = silent
+
+	// logger is the slog handler the run goroutine pipes Sweep errors
+	// into. Always non-nil after NewOrphanSweeper (falls back to
+	// slog.Default()); SetLogger overrides for callers that want a
+	// structured handler. Tests inject a capturing handler to assert
+	// the error path emits.
+	logger *slog.Logger
 }
 
 // NewOrphanSweeper constructs a sweeper that polls log every `interval`
@@ -250,7 +258,22 @@ func NewOrphanSweeper(log *SQLiteEventLog, clock Clock, interval, tolerance time
 		clock:     clock,
 		interval:  interval,
 		tolerance: tolerance,
+		logger:    slog.Default(),
 	}
+}
+
+// SetLogger swaps the slog handler the sweep goroutine pipes Sweep
+// errors into. Pass nil to restore the default (slog.Default()).
+// Useful for tests that want to capture the error path and for
+// production callers that route everything through a structured
+// handler. Safe to call before or after Start.
+func (s *OrphanSweeper) SetLogger(l *slog.Logger) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if l == nil {
+		l = slog.Default()
+	}
+	s.logger = l
 }
 
 // Start launches the sweep goroutine. Calling Start a second time is a
@@ -347,9 +370,17 @@ func (s *OrphanSweeper) run(ctx context.Context) {
 			return
 		case <-s.clock.After(s.interval):
 			if err := s.Sweep(ctx); err != nil {
-				// Production: nowhere to log yet (no logger pkg).
-				// Best-effort continue; next sweep will retry.
-				_ = err
+				// Best-effort continue; next sweep will retry. We
+				// surface the error via slog so a structured handler
+				// (cmd/carlos + the daemon both wire one) can alert
+				// the operator instead of swallowing it.
+				s.mu.Lock()
+				logger := s.logger
+				s.mu.Unlock()
+				if logger == nil {
+					logger = slog.Default()
+				}
+				logger.Error("orphan sweep failed", "err", err)
 			}
 		}
 	}

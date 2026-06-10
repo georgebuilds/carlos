@@ -1183,6 +1183,94 @@ func TestRun_SignalHandlerSighupReloads(t *testing.T) {
 	<-done
 }
 
+// TestTick_OnceRemovalPersistFailureIsLogged guards the fix for the
+// silently-swallowed persistSchedules error after one-shot removal: if
+// the second persist (the post-removeSchedule one) fails, the daemon
+// must surface it via slog.Error so an operator notices the inconsistent
+// in-memory / on-disk state. Previously the return value was assigned
+// to _, hiding the failure entirely and letting the daemon re-fire the
+// schedule on restart.
+//
+// We exercise the path by deleting the config file before tick() so both
+// persists fail; the test only cares that the second log entry is
+// present with the schedule name attribute (the pre-fix code would have
+// emitted only the first "persist schedules" line, not the second).
+func TestTick_OnceRemovalPersistFailureIsLogged(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+
+	// Anchor the clock and use a schedule that's immediately Due. Once=true
+	// drives the post-fire removal path.
+	clock := &fakeClock{now: time.Date(2026, 6, 5, 9, 0, 0, 0, time.Local)}
+	once := schedule.Schedule{
+		Name:   "one-off",
+		Spec:   "0 9 * * *",
+		Prompt: "do it",
+		Once:   true,
+	}
+	writeTestConfig(t, cfgPath, []schedule.Schedule{once})
+
+	buf := &syncBuffer{}
+	logger := slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	d, err := New(Options{
+		ConfigPath:     cfgPath,
+		SocketPath:     shortSock(t),
+		Spawner:        &fakeSpawner{},
+		TickInterval:   500 * time.Millisecond,
+		DisableSignals: true,
+		Now:            clock,
+		Logger:         logger,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Boot the daemon's per-fire snapshot (userName, frameCfg, etc.) by
+	// running loadConfig once. We skip the full Run() loop - we only
+	// need the in-memory state primed enough for fire() to not nil-deref
+	// on frame resolution.
+	if err := d.loadConfig(); err != nil {
+		t.Fatalf("loadConfig: %v", err)
+	}
+	// Run() is what normally promotes opts.Spawner into d.spawner; we
+	// short-circuit that here since we're calling tick() directly.
+	d.spawner = d.opts.Spawner
+
+	// Yank the config file so BOTH persistSchedules calls fail. The
+	// pre-fix code would only have logged the first; we want to confirm
+	// the second is logged too with the schedule name attribute.
+	if err := os.Remove(cfgPath); err != nil {
+		t.Fatalf("remove cfg: %v", err)
+	}
+
+	d.tick(context.Background())
+
+	// The Once removal must have happened in-memory regardless of
+	// persist outcome (per the fix's reasoning: don't re-introduce
+	// state on persist failure).
+	d.mu.Lock()
+	remaining := len(d.schedules)
+	d.mu.Unlock()
+	if remaining != 0 {
+		t.Errorf("expected in-memory removal of one-off schedule; %d schedules remain", remaining)
+	}
+
+	out := buf.String()
+	// First persist failure (post-fire status update) - sanity check.
+	if !strings.Contains(out, "persist schedules") {
+		t.Errorf("expected pre-existing persist error log; got: %s", out)
+	}
+	// THIS is the regression assertion: the second persist failure must
+	// surface with its distinct message + schedule name attribute.
+	if !strings.Contains(out, "persist schedules after one-shot removal") {
+		t.Errorf("expected post-removal persist error log; got: %s", out)
+	}
+	if !strings.Contains(out, "schedule=one-off") {
+		t.Errorf("expected schedule=one-off attribute in log; got: %s", out)
+	}
+}
+
 // Avoid unused-import shadow when the file doesn't reference fmt
 // in the final build.
 var _ = fmt.Sprintf

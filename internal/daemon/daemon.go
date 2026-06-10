@@ -487,7 +487,16 @@ func (d *Daemon) tick(ctx context.Context) {
 		// One-shot: remove on successful fire.
 		if s.Once && ok {
 			d.removeSchedule(s.Name)
-			_ = d.persistSchedules()
+			// The in-memory state is already advanced. If this persist
+			// fails, the on-disk config still carries the schedule and
+			// the daemon will re-fire it on restart. We log loudly but
+			// don't restore the in-memory entry — doing so could race
+			// with newly-arriving fires and re-introduce a removed
+			// schedule. Operator sees the error in the daemon log and
+			// can fix the underlying disk/config issue.
+			if err := d.persistSchedules(); err != nil {
+				d.slogger().Error("persist schedules after one-shot removal", "schedule", s.Name, "err", err)
+			}
 		}
 	}
 }
