@@ -188,6 +188,14 @@ func NewDefaultRegistryWithIdentity(
 	// else DuckDuckGo HTML fallback).
 	r.Register(NewWebFetchTool())
 	r.Register(NewWebSearchTool())
+	// Specialty single-source search tools the model can reach for
+	// when it knows the right shape (paper / wiki / code). They share
+	// rate-limit state with the same backend instances inside the
+	// MultiBackend when web_search is multi-wired — produces one
+	// rate-limiter per process, not one per tool.
+	r.Register(NewArxivSearchTool())
+	r.Register(NewWikipediaSearchTool())
+	r.Register(NewGHSearchTool())
 	r.Register(NewCodeSearchTool())
 	// http_request: method-parametric HTTP for API consumption.
 	// web_fetch handles human-readable web pages (GET + HTML→text);

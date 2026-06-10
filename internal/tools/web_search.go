@@ -34,6 +34,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/net/html"
@@ -41,12 +42,17 @@ import (
 
 // SearchResult is one entry in a search response. Fields stay
 // JSON-stable so model prompts can rely on the shape.
+//
+// Source names the contributing backend ("brave", "arxiv", "wikipedia", …)
+// when the result came up through a MultiBackend fan-out. Single-backend
+// flows leave it set to the backend name too — uniform shape.
 type SearchResult struct {
 	Rank        int    `json:"rank"`
 	Title       string `json:"title"`
 	URL         string `json:"url"`
 	Snippet     string `json:"snippet"`
 	PublishedAt string `json:"published_at,omitempty"`
+	Source      string `json:"source,omitempty"`
 }
 
 // SearchBackend is the seam between the tool and the concrete search
@@ -76,32 +82,73 @@ const (
 	maxWebSearchMaxResults     = 20
 )
 
-// NewWebSearchTool picks a backend from environment (Brave key →
-// SearXNG URL → DuckDuckGo fallback) and returns the tool. The model
-// always sees the same `web_search` tool; the backend choice is
-// invisible to it.
+// Process-shared singletons for the specialty backends. arxiv's 1-req-
+// per-3s guidance is per-IP, so two backend instances in the same
+// process would race and stand a real chance of getting 429'd. Both
+// the MultiBackend wrapping web_search and the standalone arxiv_search
+// / wikipedia_search tools route through these singletons.
+var (
+	sharedArxivOnce     sync.Once
+	sharedArxivInstance *ArxivBackend
+	sharedWikipediaOnce sync.Once
+	sharedWikipediaIns  *WikipediaBackend
+)
+
+func sharedArxivBackend() *ArxivBackend {
+	sharedArxivOnce.Do(func() { sharedArxivInstance = NewArxivBackend() })
+	return sharedArxivInstance
+}
+
+func sharedWikipediaBackend() *WikipediaBackend {
+	sharedWikipediaOnce.Do(func() { sharedWikipediaIns = NewWikipediaBackend() })
+	return sharedWikipediaIns
+}
+
+// NewWebSearchTool builds the tool's backend tree. The factory picks
+// the primary general-web backend by env precedence (Brave > SearXNG >
+// DuckDuckGo), then layers in optional specialty backends on top:
+// arxiv (default on) and wikipedia (default on). When at least one
+// specialty backend is enabled the primary + specialties get wrapped
+// in a MultiBackend that fans out concurrently and merges by
+// interleaved rank with URL dedup.
 //
-// Env-based selection keeps this slice config-integration-free -
-// when the daemon's config schema settles (sibling slice 8a), a
-// follow-up adds Cfg.WebSearch fields and the factory prefers
-// config over env.
+// Opt-outs: CARLOS_DISABLE_ARXIV=1, CARLOS_DISABLE_WIKIPEDIA=1. With
+// both set, the factory returns the bare primary as before — byte
+// identical to the pre-multi behavior.
 func NewWebSearchTool() *WebSearchTool {
-	var backend SearchBackend
-	switch {
-	case os.Getenv("BRAVE_API_KEY") != "":
-		backend = &BraveBackend{APIKey: os.Getenv("BRAVE_API_KEY")}
-	case os.Getenv("SEARXNG_URL") != "":
-		backend = &SearXNGBackend{InstanceURL: os.Getenv("SEARXNG_URL")}
-	default:
-		backend = &DuckDuckGoBackend{}
+	primary := selectPrimaryBackend()
+	var aux []SearchBackend
+	if os.Getenv("CARLOS_DISABLE_ARXIV") != "1" {
+		aux = append(aux, sharedArxivBackend())
+	}
+	if os.Getenv("CARLOS_DISABLE_WIKIPEDIA") != "1" {
+		aux = append(aux, sharedWikipediaBackend())
+	}
+	var backend SearchBackend = primary
+	if len(aux) > 0 {
+		backend = NewMultiBackend(primary, aux...)
 	}
 	return &WebSearchTool{Backend: backend}
+}
+
+// selectPrimaryBackend resolves the general-web backend per the
+// long-standing env precedence. Extracted so the factory above can
+// stay focused on the multi-wiring shape.
+func selectPrimaryBackend() SearchBackend {
+	switch {
+	case os.Getenv("BRAVE_API_KEY") != "":
+		return &BraveBackend{APIKey: os.Getenv("BRAVE_API_KEY")}
+	case os.Getenv("SEARXNG_URL") != "":
+		return &SearXNGBackend{InstanceURL: os.Getenv("SEARXNG_URL")}
+	default:
+		return &DuckDuckGoBackend{}
+	}
 }
 
 func (*WebSearchTool) Name() string { return "web_search" }
 
 func (*WebSearchTool) Description() string {
-	return "Search the web. Returns ranked title + URL + snippet results so you can pick which URLs to follow up on with web_fetch. Use for current events, fact-checking claims, finding documentation, locating canonical sources. The actual content of pages requires a follow-up web_fetch - search returns previews only."
+	return "Search the web across multiple sources (general web + arxiv + wikipedia by default) and return ranked title + URL + snippet results. Each result includes a `source` field naming the backend that produced it. Use for current events, fact-checking claims, finding documentation, locating canonical sources. Pass `backends: [\"arxiv\"]` (or similar subset) to restrict the query when you know which source you want — saves time and avoids noise. The actual content of pages requires a follow-up web_fetch."
 }
 
 func (*WebSearchTool) Schema() []byte {
@@ -115,6 +162,15 @@ func (*WebSearchTool) Schema() []byte {
 			"max_results": {
 				"type": "integer",
 				"description": "1-20, default 10. Smaller is usually better - pick the top few and follow up with web_fetch."
+			},
+			"backends": {
+				"type": "array",
+				"items": {"type": "string"},
+				"description": "Optional subset of backends to query, e.g. [\"arxiv\"] or [\"brave\",\"wikipedia\"]. Names: brave, searxng, duckduckgo, arxiv, wikipedia. Omit or empty = all configured backends. Unknown names are silently ignored."
+			},
+			"per_backend_max": {
+				"type": "integer",
+				"description": "Optional per-backend result cap. 0 or absent uses max_results for each backend (then interleave-merges and trims). Set lower to keep any one backend from dominating."
 			}
 		},
 		"required": ["query"]
@@ -122,14 +178,18 @@ func (*WebSearchTool) Schema() []byte {
 }
 
 type webSearchInput struct {
-	Query      string `json:"query"`
-	MaxResults int    `json:"max_results"`
+	Query         string   `json:"query"`
+	MaxResults    int      `json:"max_results"`
+	Backends      []string `json:"backends,omitempty"`
+	PerBackendMax int      `json:"per_backend_max,omitempty"`
 }
 
 type webSearchOutput struct {
-	Backend string         `json:"backend"`
-	Query   string         `json:"query"`
-	Results []SearchResult `json:"results"`
+	Backend         string            `json:"backend"`
+	Backends        []string          `json:"backends,omitempty"`
+	Query           string            `json:"query"`
+	Results         []SearchResult    `json:"results"`
+	PartialFailures map[string]string `json:"partial_failures,omitempty"`
 }
 
 // Execute validates input, calls the backend, returns the JSON the
@@ -163,7 +223,19 @@ func (t *WebSearchTool) Execute(ctx context.Context, input []byte) ([]byte, erro
 	cctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	results, err := t.Backend.Search(cctx, q, max)
+	var (
+		results []SearchResult
+		err     error
+	)
+	// Multi backend honors the `backends` subset + `per_backend_max`
+	// fields. A single non-multi backend silently ignores them — the
+	// model can still pass them when it doesn't know which shape the
+	// install ended up with, and the call still works.
+	if multi, ok := t.Backend.(*MultiBackend); ok {
+		results, err = multi.SearchSubset(cctx, q, max, in.Backends, in.PerBackendMax)
+	} else {
+		results, err = t.Backend.Search(cctx, q, max)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("web_search/%s: %w", t.Backend.Name(), err)
 	}
@@ -172,6 +244,15 @@ func (t *WebSearchTool) Execute(ctx context.Context, input []byte) ([]byte, erro
 		Backend: t.Backend.Name(),
 		Query:   q,
 		Results: results,
+	}
+	if multi, ok := t.Backend.(*MultiBackend); ok {
+		out.Backends = multi.Names()
+		if errs := multi.LastErrors(); len(errs) > 0 {
+			out.PartialFailures = make(map[string]string, len(errs))
+			for name, e := range errs {
+				out.PartialFailures[name] = e.Error()
+			}
+		}
 	}
 	return json.Marshal(out)
 }
@@ -246,6 +327,7 @@ func (b *BraveBackend) Search(ctx context.Context, query string, max int) ([]Sea
 			URL:         r.URL,
 			Snippet:     stripHTMLTags(r.Description),
 			PublishedAt: r.Age,
+			Source:      "brave",
 		})
 	}
 	return out, nil
@@ -319,6 +401,7 @@ func (s *SearXNGBackend) Search(ctx context.Context, query string, max int) ([]S
 			URL:         r.URL,
 			Snippet:     r.Content,
 			PublishedAt: r.PublishedDate,
+			Source:      "searxng",
 		})
 	}
 	return out, nil
@@ -398,6 +481,7 @@ func parseDuckDuckGoHTML(body string, max int) ([]SearchResult, error) {
 			r := extractDuckDuckGoResult(n)
 			if r.URL != "" && r.Title != "" {
 				r.Rank = len(out) + 1
+				r.Source = "duckduckgo"
 				out = append(out, r)
 			}
 		}
