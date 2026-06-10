@@ -225,6 +225,41 @@ func TestNotesWrite_ResolvePathHelper(t *testing.T) {
 	}
 }
 
+// TestNotesWrite_SymlinkOutsideVaultRejected covers the auto-approve
+// containment bypass: a symlink planted inside the vault whose target
+// points outside it must NOT be followed by notes_write. Lexical
+// isInside alone would pass (the user-supplied path stays under the
+// vault) — the EvalSymlinks check is what closes the hole.
+func TestNotesWrite_SymlinkOutsideVaultRejected(t *testing.T) {
+	env, vault := newWriteEnv(t)
+	tool := NewNotesWriteTool(env)
+
+	// Plant a symlink at <vault>/personal/escape → <outsideDir>.
+	outsideDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(vault, "personal"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	linkPath := filepath.Join(vault, "personal", "escape")
+	if err := os.Symlink(outsideDir, linkPath); err != nil {
+		t.Skipf("symlink not supported on this filesystem: %v", err)
+	}
+
+	// Try to write through the symlink. Lexically `escape/leak.md` looks
+	// like personal/escape/leak.md (inside vault); after EvalSymlinks it
+	// becomes <outsideDir>/leak.md (outside vault). The fix refuses.
+	b, _ := json.Marshal(notesWriteInput{Path: "escape/leak.md", Content: "leaked"})
+	if _, err := tool.Execute(context.Background(), b); err == nil {
+		t.Fatal("expected symlink containment refusal")
+	} else if !strings.Contains(err.Error(), "outside") && !strings.Contains(err.Error(), "containment") {
+		t.Errorf("error should mention containment: %v", err)
+	}
+
+	// Confirm the outside file was NOT written.
+	if _, err := os.Stat(filepath.Join(outsideDir, "leak.md")); !os.IsNotExist(err) {
+		t.Errorf("outside file was written: %v", err)
+	}
+}
+
 func TestNotesWrite_IsInsideHelper(t *testing.T) {
 	cases := []struct {
 		path, root string

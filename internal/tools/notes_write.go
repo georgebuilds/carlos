@@ -141,7 +141,10 @@ func (t *NotesWriteTool) Execute(_ context.Context, input []byte) ([]byte, error
 //  2. Relative input -> joined with vault+subtree.
 //
 // Either way the result is cleaned and re-checked to be inside the
-// allowed root so `..` shenanigans are denied.
+// allowed root so `..` shenanigans are denied. The check is done both
+// lexically AND after EvalSymlinks so a symlink planted inside the
+// vault that points outside it cannot redirect the write past the
+// containment fence.
 func resolveNotesWritePath(vault, subtree, in string) (string, error) {
 	root := vault
 	if subtree != "" {
@@ -160,7 +163,73 @@ func resolveNotesWritePath(vault, subtree, in string) (string, error) {
 		// Default extension so the model doesn't have to remember.
 		target += ".md"
 	}
+	// Symlink-aware containment check: resolve every existing component
+	// in both the root and the target, then re-test isInside. Both
+	// paths may have not-yet-created suffixes (the frame subtree
+	// directory and the target file are commonly auto-created on first
+	// write), so we resolve the deepest existing ancestor in each and
+	// stitch on the unrealized tail. A symlink inside the vault that
+	// points outside it (e.g. `vault/escape -> /etc`) trips this check
+	// even though the lexical isInside above would have passed.
+	canonicalRoot, err := evalAncestor(root)
+	if err != nil {
+		return "", fmt.Errorf("notes_write: resolve vault root %s: %w", root, err)
+	}
+	canonicalTarget, err := evalAncestor(target)
+	if err != nil {
+		return "", fmt.Errorf("notes_write: resolve target %s: %w", target, err)
+	}
+	if !isInside(canonicalTarget, canonicalRoot) {
+		return "", fmt.Errorf("notes_write: target %s resolves outside the active frame's vault_subtree %s (symlink containment)", target, root)
+	}
 	return target, nil
+}
+
+// evalAncestor returns the canonical (symlink-resolved) path for `p`.
+// `p` may not exist yet — we walk up the path component-by-component,
+// EvalSymlinks the deepest existing ancestor, and append the remaining
+// unrealized suffix. This lets us validate containment for a path
+// that's about to be created without requiring the file to exist first.
+func evalAncestor(p string) (string, error) {
+	p = filepath.Clean(p)
+	suffix := ""
+	cur := p
+	for {
+		if cur == "" || cur == string(filepath.Separator) || cur == filepath.VolumeName(cur)+string(filepath.Separator) {
+			// Reached filesystem root - resolve what we have and prepend.
+			resolved, err := filepath.EvalSymlinks(cur)
+			if err != nil {
+				return "", err
+			}
+			return filepath.Join(resolved, suffix), nil
+		}
+		if _, err := os.Lstat(cur); err == nil {
+			resolved, err := filepath.EvalSymlinks(cur)
+			if err != nil {
+				return "", err
+			}
+			return filepath.Join(resolved, suffix), nil
+		} else if !os.IsNotExist(err) {
+			return "", err
+		}
+		// cur doesn't exist - peel one component and try again.
+		parent, last := filepath.Split(cur)
+		last = strings.TrimRight(last, string(filepath.Separator))
+		parent = strings.TrimRight(parent, string(filepath.Separator))
+		if last == "" {
+			// Defensive: shouldn't happen after filepath.Clean.
+			return p, nil
+		}
+		if suffix == "" {
+			suffix = last
+		} else {
+			suffix = filepath.Join(last, suffix)
+		}
+		if parent == "" {
+			parent = string(filepath.Separator)
+		}
+		cur = parent
+	}
 }
 
 // isInside reports whether path is the same as root or a descendant of
