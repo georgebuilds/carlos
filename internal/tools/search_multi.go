@@ -149,27 +149,16 @@ func (m *MultiBackend) SearchSubset(ctx context.Context, query string, max int, 
 		}(b)
 	}
 
-	// Wait either for all goroutines or for parent ctx cancellation.
-	// We always want to drain results we already have before returning -
-	// partial progress is better than no progress.
-	done := make(chan struct{})
-	go func() {
-		wg.Wait()
-		close(done)
-	}()
-
-	var parentCancelled bool
-	select {
-	case <-done:
-		// all goroutines finished
-	case <-ctx.Done():
-		parentCancelled = true
-		// Don't wait for stragglers; the caller's context died, so the
-		// caller wants out. Goroutines will still drain into the buffered
-		// channel as they finish (channel is sized to len(selected) so no
-		// goroutine blocks on send).
-	}
+	// Always wait for every goroutine to finish before closing the
+	// outcomes channel — closing it while a worker still has a send
+	// pending would panic ("send on closed channel"). Per-backend ctxs
+	// are derived from `ctx` via WithTimeout, so a cancelled parent
+	// propagates and unwinds workers promptly (every backend's Search
+	// method honors ctx per the SearchBackend contract); the wait is
+	// bounded by PerBackendTimeout at worst.
+	wg.Wait()
 	close(outcomes)
+	parentCancelled := ctx.Err() != nil
 
 	// Collect everything currently in the channel.
 	byName := make(map[string][]SearchResult, len(selected))
