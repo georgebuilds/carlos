@@ -831,10 +831,23 @@ func ensureDefaultAgent(ctx context.Context, log *agent.SQLiteEventLog, id, prov
 	}); err != nil {
 		return fmt.Errorf("append initial transition: %w", err)
 	}
-	return log.InsertAgent(ctx, agent.AgentRow{
+	if err := log.InsertAgent(ctx, agent.AgentRow{
 		ID: id, RootID: id, State: agent.StateRunning, Attempt: 1,
 		Title: title, Model: model, CreatedAt: now, UpdatedAt: now, LastHeartbeatAt: now,
-	})
+	}); err != nil {
+		return err
+	}
+	// Brand-new thread: prune top-level orphans the user never typed
+	// in. These accumulate on every abrupt exit and bury the /resume
+	// picker under "(no messages yet)" rows. Failure here is logged,
+	// never blocks startup — a janitor pass should never stop the
+	// user from getting a working chat.
+	if pruned, err := log.DeleteEmptyOrphanedAgents(ctx); err != nil {
+		fmt.Fprintf(os.Stderr, "carlos: prune empty orphans: %v\n", err)
+	} else if len(pruned) > 0 {
+		fmt.Fprintf(os.Stderr, "carlos: pruned %d empty orphaned session(s)\n", len(pruned))
+	}
+	return nil
 }
 
 // $TMPDIR/carlos-chat-devaid/state.db, seeds a sample agent if the log

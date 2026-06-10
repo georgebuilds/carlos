@@ -94,12 +94,16 @@ func TestListUserSessions_ExcludedID(t *testing.T) {
 	}
 }
 
-func TestListUserSessions_PreviewAndCount(t *testing.T) {
+func TestListUserSessions_PreviewIsFirstMessage(t *testing.T) {
+	// Preview surfaces the FIRST user message (the thread topic), not
+	// the most recent follow-up — that's what identifies a thread in
+	// the picker. Regression test: if a future change re-orders by
+	// seq DESC, this catches it.
 	log := newSessionLog(t)
 	mkSession(t, log, "01HCHAT", "title", "", 1*time.Minute)
-	appendUserMsg(t, log, "01HCHAT", "first message")
-	appendUserMsg(t, log, "01HCHAT", "second message")
-	appendUserMsg(t, log, "01HCHAT", "third message — this should be the preview")
+	appendUserMsg(t, log, "01HCHAT", "topic: rewrite the resume picker")
+	appendUserMsg(t, log, "01HCHAT", "follow-up: also fix the footer")
+	appendUserMsg(t, log, "01HCHAT", "latest: and add tests")
 	got, _ := ListUserSessions(context.Background(), log, "")
 	if len(got) != 1 {
 		t.Fatalf("got %d sessions", len(got))
@@ -107,8 +111,11 @@ func TestListUserSessions_PreviewAndCount(t *testing.T) {
 	if got[0].UserMsgs != 3 {
 		t.Errorf("UserMsgs: want 3, got %d", got[0].UserMsgs)
 	}
-	if !strings.HasPrefix(got[0].Preview, "third message") {
-		t.Errorf("preview should be last msg: %q", got[0].Preview)
+	if !strings.HasPrefix(got[0].Preview, "topic:") {
+		t.Errorf("preview should be the FIRST user message (topic), got: %q", got[0].Preview)
+	}
+	if strings.Contains(got[0].Preview, "latest") {
+		t.Errorf("preview leaked the latest message instead of the topic: %q", got[0].Preview)
 	}
 }
 

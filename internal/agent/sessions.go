@@ -22,17 +22,20 @@ import (
 )
 
 // Session is the picker-row shape: enough for a TUI to render a
-// browsable list without re-querying. Last-message preview comes
-// from the most recent EvtUserMessage payload, truncated.
+// browsable list without re-querying. Preview comes from the FIRST
+// EvtUserMessage payload (the topic), truncated — that's what
+// identifies a thread when scrolling a long list, whereas the most
+// recent message tends to be incremental follow-up the picker can't
+// disambiguate on.
 type Session struct {
-	ID         string
-	Title      string
-	Model      string
-	State      State
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
-	Preview    string // last user message, truncated; "" if no user messages yet
-	UserMsgs   int    // count of user messages - handy for filtering empty drafts
+	ID        string
+	Title     string
+	Model     string
+	State     State
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	Preview   string // first user message, truncated; "" if no user messages yet
+	UserMsgs  int    // count of user messages - handy for filtering empty drafts
 }
 
 // ErrNoSessions is returned by MostRecentUserSession when the agents
@@ -96,7 +99,7 @@ func ListUserSessions(ctx context.Context, log *SQLiteEventLog, excluded string)
 	// indexed query (events_by_agent index covers it) so even at
 	// 100 sessions this is ms.
 	for i := range out {
-		preview, count, err := lastUserMessage(ctx, log, out[i].ID)
+		preview, count, err := firstUserMessage(ctx, log, out[i].ID)
 		if err != nil {
 			// A bad preview shouldn't break the picker - leave
 			// blank and move on.
@@ -122,11 +125,13 @@ func MostRecentUserSession(ctx context.Context, log *SQLiteEventLog) (Session, e
 	return sessions[0], nil
 }
 
-// lastUserMessage scans the events table for the most recent
-// EvtUserMessage on agentID, returning (truncated preview, total
-// user-message count). A nil payload or a malformed JSON row
+// firstUserMessage scans the events table for the EARLIEST
+// EvtUserMessage on agentID, returning (truncated preview of that
+// message, total user-message count). The first user message reads
+// as the thread's topic in the picker — far more identifying than
+// the latest follow-up. A nil payload or a malformed JSON row
 // doesn't error - preview stays empty for that session.
-func lastUserMessage(ctx context.Context, log *SQLiteEventLog, agentID string) (string, int, error) {
+func firstUserMessage(ctx context.Context, log *SQLiteEventLog, agentID string) (string, int, error) {
 	// Count first - cheap aggregate.
 	var count int
 	row := log.DB().QueryRowContext(ctx,
@@ -143,12 +148,12 @@ func lastUserMessage(ctx context.Context, log *SQLiteEventLog, agentID string) (
 		return "", 0, nil
 	}
 
-	// Then preview - last user message body.
+	// Then preview - first user message body (seq ASC).
 	var payload []byte
 	row = log.DB().QueryRowContext(ctx,
 		`SELECT payload FROM events
 		 WHERE agent_id = ? AND type = ?
-		 ORDER BY seq DESC LIMIT 1`,
+		 ORDER BY seq ASC LIMIT 1`,
 		agentID, string(EvtUserMessage),
 	)
 	if err := row.Scan(&payload); err != nil {

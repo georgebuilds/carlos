@@ -194,9 +194,11 @@ func renderResumeFooter() string {
 		footerSep() + footerKey("esc") + footerLabel(" cancel")
 }
 
-// renderResumeCard paints one session as a bordered card. Mirrors
-// the manage roster's "selected = thick border + reverse video" rule
-// so the picker visually rhymes with /agents.
+// renderResumeCard paints one session as a bordered card. Selection
+// shows as a thick accent border only — no reverse-video fill. The
+// fill made every selected card read as a single inverted slab that
+// drowned the meta strip and clipped the corners; the border alone
+// is enough signal and lets the body text stay readable.
 func renderResumeCard(s resumeSession, w int, selected bool) string {
 	innerW := w - 4
 	if innerW < 8 {
@@ -231,8 +233,6 @@ func renderResumeCard(s resumeSession, w int, selected bool) string {
 			BorderForeground(colorAccent).
 			Padding(0, 1).
 			Width(w - 2).
-			Reverse(true).
-			Bold(true).
 			Render(body)
 	}
 	return lipgloss.NewStyle().

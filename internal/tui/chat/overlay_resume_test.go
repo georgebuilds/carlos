@@ -62,6 +62,32 @@ func TestRenderResumeCard_BothBranches(t *testing.T) {
 	}
 }
 
+// TestRenderResumeCard_SelectedHasNoReverseFill pins the v0.7.x
+// styling rule: the selected card uses border-only highlighting, never
+// reverse-video over the body. The original `.Reverse(true)` painted
+// the whole row inverted, which drowned the meta strip and clipped
+// the rounded corners — issue surfaced in the resume-picker review.
+// Regression check: assert the rendered selected card does NOT emit
+// the SGR 7 (reverse video) escape sequence.
+func TestRenderResumeCard_SelectedHasNoReverseFill(t *testing.T) {
+	s := resumeSession{
+		ID:        "01HVDEVDEVDEVDEVDEVDEVDEV3",
+		Model:     "claude-opus-4-7",
+		State:     agent.StateRunning,
+		UpdatedAt: time.Now(),
+		Preview:   "topic line",
+		UserMsgs:  1,
+	}
+	sel := renderResumeCard(s, 80, true)
+	// Lipgloss emits SGR 7 for Reverse(true). Match the canonical
+	// `\x1b[7m` form and the combined-attribute prefix `\x1b[...;7m`
+	// (some terminals reorder) so a future style refactor that
+	// re-introduces reverse via a chained Style call also trips this.
+	if strings.Contains(sel, "\x1b[7m") || strings.Contains(sel, ";7m") {
+		t.Errorf("selected card should not use reverse-video fill; got:\n%q", sel)
+	}
+}
+
 // TestRenderResumeCard_EmptyPreview falls back to the placeholder.
 func TestRenderResumeCard_EmptyPreview(t *testing.T) {
 	s := resumeSession{

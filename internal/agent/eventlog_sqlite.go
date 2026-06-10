@@ -406,6 +406,94 @@ func (l *SQLiteEventLog) InsertAgent(ctx context.Context, r AgentRow) error {
 	return nil
 }
 
+// DeleteEmptyOrphanedAgents prunes top-level agents that died before
+// the user ever typed in them — heartbeat-lost from a prior process
+// kill, with no user_message events, no children, and no artifacts.
+// These accumulate on every abrupt exit (force-quit, crash, ctrl-c
+// during boot) and clutter the /resume picker with rows the user
+// gets zero information from.
+//
+// Defensive criteria — we never want a janitor pass to drop a row
+// that holds data:
+//
+//   - state = 'orphaned'           (terminal; nothing is going to revive it)
+//   - parent_id IS NULL            (top-level chat sessions only; sub-agents
+//     may legitimately orphan with their parent
+//     still around)
+//   - 0 EvtUserMessage events      (the user never typed)
+//   - 0 child agents               (nothing depends on this row's id)
+//   - 0 artifact rows              (no file output recorded)
+//
+// Wrapped in a single transaction so a partial failure can't leave
+// dangling events behind. Returns the deleted ids so the caller can
+// log them.
+func (l *SQLiteEventLog) DeleteEmptyOrphanedAgents(ctx context.Context) ([]string, error) {
+	tx, err := l.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("eventlog: prune orphans: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	rows, err := tx.QueryContext(ctx, `
+		SELECT a.id
+		FROM agents a
+		WHERE a.state = 'orphaned'
+		  AND a.parent_id IS NULL
+		  AND NOT EXISTS (
+		    SELECT 1 FROM events e
+		     WHERE e.agent_id = a.id AND e.type = ?
+		  )
+		  AND NOT EXISTS (
+		    SELECT 1 FROM agents c WHERE c.parent_id = a.id
+		  )
+		  AND NOT EXISTS (
+		    SELECT 1 FROM artifacts r WHERE r.agent_id = a.id
+		  )
+	`, string(EvtUserMessage))
+	if err != nil {
+		return nil, fmt.Errorf("eventlog: prune orphans: select: %w", err)
+	}
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
+	rows.Close()
+
+	if len(ids) == 0 {
+		return nil, tx.Commit()
+	}
+
+	// Two-step delete: events first (no FK pointing in but we want
+	// the cascade ordering explicit), then the projection row. We use
+	// per-id Exec rather than IN (...) so we can stream-delete without
+	// dynamic SQL string-building or sqlite's variadic-IN limits.
+	for _, id := range ids {
+		if _, err := tx.ExecContext(ctx,
+			`DELETE FROM events WHERE agent_id = ?`, id,
+		); err != nil {
+			return nil, fmt.Errorf("eventlog: prune orphans: delete events %s: %w", id, err)
+		}
+		if _, err := tx.ExecContext(ctx,
+			`DELETE FROM agents WHERE id = ?`, id,
+		); err != nil {
+			return nil, fmt.Errorf("eventlog: prune orphans: delete agent %s: %w", id, err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("eventlog: prune orphans: commit: %w", err)
+	}
+	return ids, nil
+}
+
 // GetAgent returns the projection-cache row for `agentID`. Returns
 // (row, true, nil) on hit, (zero, false, nil) on miss, (zero, false, err)
 // on DB error. Used by the OrphanSweeper to read the current state
