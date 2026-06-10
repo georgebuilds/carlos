@@ -298,14 +298,15 @@ func (t *WebSearchTool) Execute(ctx context.Context, input []byte) ([]byte, erro
 			err     error
 		)
 		if multi, ok := t.Backend.(*MultiBackend); ok {
-			results, err = multi.SearchSubset(rctx, q, max, in.Backends, in.PerBackendMax)
+			var perBackend PerBackendErrors
+			results, perBackend, err = multi.SearchSubset(rctx, q, max, in.Backends, in.PerBackendMax)
 			if err != nil {
 				return nil, nil, err
 			}
 			var fails map[string]string
-			if errs := multi.LastErrors(); len(errs) > 0 {
-				fails = make(map[string]string, len(errs))
-				for name, e := range errs {
+			if len(perBackend) > 0 {
+				fails = make(map[string]string, len(perBackend))
+				for name, e := range perBackend {
 					fails[name] = e.Error()
 				}
 			}
@@ -335,52 +336,31 @@ func (t *WebSearchTool) Execute(ctx context.Context, input []byte) ([]byte, erro
 		return json.Marshal(out)
 	}
 
-	// Batched mode. MultiBackend stashes errors in a process-shared
-	// map keyed by backend name; if two queries run concurrently they
-	// race on it. Cap concurrency at webSearchBatchConcurrency to
-	// reduce overlap, and snapshot LastErrors immediately after each
-	// call so the per-query map captures that query's failures even
-	// when a later query overwrites the shared slot.
-	//
-	// Because LastErrors is reset at the start of every Search call,
-	// concurrent batch entries can still collide. To keep behavior
-	// observable we serialize batch entries when the backend is a
-	// MultiBackend; for plain single backends we let the runner fan
-	// them out concurrently.
+	// Batched mode. Every backend (including *MultiBackend) is safe to
+	// call concurrently — MultiBackend's per-call error state lives on
+	// the stack of each SearchSubset call, so two batch entries do not
+	// race on a shared error map. Cap concurrency at
+	// webSearchBatchConcurrency to avoid hammering any one backend.
 	concurrency := webSearchBatchConcurrency
-	if _, ok := t.Backend.(*MultiBackend); ok {
-		concurrency = 1
-	}
 
 	blocks := make([]webSearchBatchedBlock, len(queries))
-	if concurrency == 1 {
-		for i, q := range queries {
+	sem := make(chan struct{}, concurrency)
+	var wg sync.WaitGroup
+	for i, q := range queries {
+		wg.Add(1)
+		go func(i int, q string) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
 			results, fails, err := runOne(cctx, q)
 			blk := webSearchBatchedBlock{Query: q, Results: results, PartialFailures: fails}
 			if err != nil {
 				blk.Error = err.Error()
 			}
 			blocks[i] = blk
-		}
-	} else {
-		sem := make(chan struct{}, concurrency)
-		var wg sync.WaitGroup
-		for i, q := range queries {
-			wg.Add(1)
-			go func(i int, q string) {
-				defer wg.Done()
-				sem <- struct{}{}
-				defer func() { <-sem }()
-				results, fails, err := runOne(cctx, q)
-				blk := webSearchBatchedBlock{Query: q, Results: results, PartialFailures: fails}
-				if err != nil {
-					blk.Error = err.Error()
-				}
-				blocks[i] = blk
-			}(i, q)
-		}
-		wg.Wait()
+		}(i, q)
 	}
+	wg.Wait()
 
 	out := webSearchBatchedOutput{
 		Backend: t.Backend.Name(),

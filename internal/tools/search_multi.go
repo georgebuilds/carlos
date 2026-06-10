@@ -3,10 +3,10 @@
 // One query, N backends, concurrent fan-out, interleaved merge with URL
 // dedup. Each backend gets its own PerBackendTimeout so a slow or dead
 // backend can't hold the whole query hostage - its failure ends up in
-// LastErrors() instead. The primary motivation is robustness: pair a
-// commercial backend (Brave) with a free fallback (DuckDuckGo) and a
-// long-tail backend (SearXNG) without paying the latency cost of the
-// slowest one.
+// the per-call PerBackendErrors map returned alongside results. The
+// primary motivation is robustness: pair a commercial backend (Brave)
+// with a free fallback (DuckDuckGo) and a long-tail backend (SearXNG)
+// without paying the latency cost of the slowest one.
 //
 // Result merge is interleave-by-rank: walk rank=1,2,3,... and at each
 // rank take the first not-yet-seen URL from each backend in registration
@@ -18,8 +18,14 @@
 // nil + a wrapped error listing each backend's failure. If at least one
 // backend succeeds (even with zero results) the call returns whatever
 // merged results we have + nil; the per-backend errors stay accessible
-// via LastErrors(). The intent is that the model sees results when any
-// route works, and the operator sees the full error map for debugging.
+// via SearchSubset's PerBackendErrors return value. The intent is that
+// the model sees results when any route works, and the operator sees
+// the full error map for debugging.
+//
+// Concurrency note: every error-bearing piece of state lives on the
+// stack of the in-flight SearchSubset call. Two callers can run
+// Search/SearchSubset on the same *MultiBackend concurrently without
+// racing. There is no shared mutable error map on the receiver.
 
 package tools
 
@@ -41,6 +47,11 @@ const defaultPerBackendTimeout = 5 * time.Second
 // MultiBackend fans a single query out across a primary backend and zero
 // or more auxiliary backends concurrently. It satisfies SearchBackend, so
 // callers can treat it as a drop-in for any single backend.
+//
+// The receiver carries no per-call mutable state. Two callers can run
+// Search/SearchSubset on the same instance concurrently without racing.
+// Per-backend errors are returned alongside the merged results so each
+// caller sees only the errors from its own call.
 type MultiBackend struct {
 	// Primary is the first backend in the merge order. Required.
 	Primary SearchBackend
@@ -49,10 +60,16 @@ type MultiBackend struct {
 	// PerBackendTimeout caps each backend's individual fan-out call.
 	// Zero falls back to defaultPerBackendTimeout (5s).
 	PerBackendTimeout time.Duration
-
-	mu       sync.Mutex
-	lastErrs map[string]error
 }
+
+// PerBackendErrors maps backend Name() to the error that backend returned
+// on a single SearchSubset/Search call. Successful backends are omitted.
+// Callers should treat a nil/empty map as "no per-backend failures".
+//
+// A special "multi" key carries fan-out level sentinels. Currently the
+// only sentinel is "subset matched no backends" (caller passed a Subset
+// that filtered every backend out).
+type PerBackendErrors map[string]error
 
 // NewMultiBackend constructs a MultiBackend with the given primary +
 // optional auxiliaries. Use this rather than the struct literal when
@@ -62,7 +79,6 @@ func NewMultiBackend(primary SearchBackend, aux ...SearchBackend) *MultiBackend 
 		Primary:           primary,
 		Aux:               aux,
 		PerBackendTimeout: defaultPerBackendTimeout,
-		lastErrs:          map[string]error{},
 	}
 }
 
@@ -71,10 +87,16 @@ func NewMultiBackend(primary SearchBackend, aux ...SearchBackend) *MultiBackend 
 func (*MultiBackend) Name() string { return "multi" }
 
 // Search runs every backend (Primary + Aux) concurrently and returns the
-// interleaved-dedup top max. Equivalent to SearchSubset(ctx, query, max,
-// nil, 0) - i.e. no name filter, each backend gets the full quota.
+// interleaved-dedup top max. Per-backend errors from this single call
+// are discarded; callers that need them should use SearchSubset, which
+// returns the PerBackendErrors map.
+//
+// Search satisfies the SearchBackend interface; its 2-value shape is
+// fixed by that contract. SearchSubset is the per-call-state-bearing
+// entry point.
 func (m *MultiBackend) Search(ctx context.Context, query string, max int) ([]SearchResult, error) {
-	return m.SearchSubset(ctx, query, max, nil, 0)
+	results, _, err := m.SearchSubset(ctx, query, max, nil, 0)
+	return results, err
 }
 
 // SearchSubset is the full fan-out entry point.
@@ -87,22 +109,26 @@ func (m *MultiBackend) Search(ctx context.Context, query string, max int) ([]Sea
 //     backend's Search(). When 0, each backend receives max - i.e. the
 //     trim happens post-merge.
 //
-// If the subset filters out every backend, returns (nil, nil) and
-// records a sentinel "subset matched no backends" error under the
-// "multi" key in LastErrors. Empty results + nil error means "I ran but
-// found nothing"; this signals "I had nothing to run".
-func (m *MultiBackend) SearchSubset(ctx context.Context, query string, max int, subset []string, perBackendMax int) ([]SearchResult, error) {
-	// Reset LastErrors at the start of every call. The contract is
-	// "snapshot of the most recent run" - stale entries from a previous
-	// run would mislead the caller.
-	m.mu.Lock()
-	m.lastErrs = map[string]error{}
-	m.mu.Unlock()
+// Returns (results, perBackendErrors, error). perBackendErrors keys are
+// backend Name() values; successful backends are omitted. The map is
+// owned by the caller and safe to mutate.
+//
+// If the subset filters out every backend, returns (nil, {"multi":
+// "subset matched no backends"}, nil). Empty results + nil error means
+// "I ran but found nothing"; this signals "I had nothing to run".
+//
+// Concurrency: every error-bearing piece of state lives on the stack;
+// concurrent calls on the same *MultiBackend do not race.
+func (m *MultiBackend) SearchSubset(ctx context.Context, query string, max int, subset []string, perBackendMax int) ([]SearchResult, PerBackendErrors, error) {
+	// Per-call error map. Owned by this goroutine until we return it.
+	// Workers send their results via the outcomes channel; we collect
+	// the errors here without taking a lock.
+	perBackend := PerBackendErrors{}
 
 	if max <= 0 {
 		// Zero quota means no backend call needed. Returning early also
 		// avoids spawning goroutines we'd immediately throw away.
-		return nil, nil
+		return nil, perBackend, nil
 	}
 
 	all := m.allBackends()
@@ -110,8 +136,8 @@ func (m *MultiBackend) SearchSubset(ctx context.Context, query string, max int, 
 	if len(selected) == 0 {
 		// Either no backends configured at all, or subset rejected
 		// everything. Either way we record the sentinel + return empty.
-		m.recordErr("multi", fmt.Errorf("subset matched no backends"))
-		return nil, nil
+		perBackend["multi"] = fmt.Errorf("subset matched no backends")
+		return nil, perBackend, nil
 	}
 
 	timeout := m.PerBackendTimeout
@@ -164,7 +190,7 @@ func (m *MultiBackend) SearchSubset(ctx context.Context, query string, max int, 
 	byName := make(map[string][]SearchResult, len(selected))
 	for o := range outcomes {
 		if o.err != nil {
-			m.recordErr(o.name, o.err)
+			perBackend[o.name] = o.err
 			continue
 		}
 		byName[o.name] = o.results
@@ -172,7 +198,7 @@ func (m *MultiBackend) SearchSubset(ctx context.Context, query string, max int, 
 
 	// If parent ctx was cancelled and some backends never reported,
 	// record a ctx-cancelled error for each missing backend so
-	// LastErrors reflects the full picture.
+	// perBackend reflects the full picture.
 	if parentCancelled {
 		ctxErr := ctx.Err()
 		if ctxErr == nil {
@@ -183,48 +209,33 @@ func (m *MultiBackend) SearchSubset(ctx context.Context, query string, max int, 
 			if _, ok := byName[name]; ok {
 				continue
 			}
-			if _, ok := m.LastErrors()[name]; ok {
+			if _, ok := perBackend[name]; ok {
 				continue
 			}
-			m.recordErr(name, ctxErr)
+			perBackend[name] = ctxErr
 		}
 	}
 
 	merged := interleaveByRank(selected, byName, max)
 
 	// All-fail: every selected backend errored. Build a wrapped error
-	// listing each failure so the caller can log it; LastErrors still
+	// listing each failure so the caller can log it; perBackend still
 	// carries the structured map.
 	if len(byName) == 0 {
-		errs := m.LastErrors()
 		if parentCancelled {
-			return nil, ctx.Err()
+			return nil, perBackend, ctx.Err()
 		}
-		return nil, wrapAllErrors(errs)
+		return nil, perBackend, wrapAllErrors(perBackend)
 	}
 
 	// At least one backend succeeded. If parent ctx was cancelled we
-	// still return ctx.Err() at the end - the caller asked us to stop -
-	// but the partial results are visible to anyone who calls
-	// LastErrors() to introspect.
+	// still return ctx.Err() at the end (the caller asked us to stop),
+	// but the partial results stay in `merged` and the per-backend
+	// errors stay in perBackend.
 	if parentCancelled {
-		return merged, ctx.Err()
+		return merged, perBackend, ctx.Err()
 	}
-	return merged, nil
-}
-
-// LastErrors returns a snapshot of the per-backend errors from the most
-// recent Search/SearchSubset call. Successful backends are omitted. Safe
-// to call concurrently with other LastErrors calls; not synchronised
-// against an in-flight Search (callers should not call both at once).
-func (m *MultiBackend) LastErrors() map[string]error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	out := make(map[string]error, len(m.lastErrs))
-	for k, v := range m.lastErrs {
-		out[k] = v
-	}
-	return out
+	return merged, perBackend, nil
 }
 
 // Names returns the Name() of every contributing backend, Primary first,
@@ -276,17 +287,6 @@ func filterBackends(backends []SearchBackend, subset []string) []SearchBackend {
 		}
 	}
 	return out
-}
-
-// recordErr stashes a per-backend error into the LastErrors map. Locked
-// because goroutines from the fan-out call it concurrently.
-func (m *MultiBackend) recordErr(name string, err error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.lastErrs == nil {
-		m.lastErrs = map[string]error{}
-	}
-	m.lastErrs[name] = err
 }
 
 // interleaveByRank merges per-backend result slices using interleave-by-rank

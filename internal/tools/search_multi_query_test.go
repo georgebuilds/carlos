@@ -181,6 +181,182 @@ func TestWebSearchTool_BothEmptyErrors(t *testing.T) {
 	}
 }
 
+// TestWebSearchTool_BatchedMultiBackend_FansOutAtNormalCap verifies that
+// when the backend is a *MultiBackend, the batched path no longer
+// serializes at concurrency=1. With webSearchBatchConcurrency=2 we
+// should see at least 2 queries in flight simultaneously across a
+// 3-query batch. Without per-call error isolation this test would
+// require the old concurrency=1 workaround.
+func TestWebSearchTool_BatchedMultiBackend_FansOutAtNormalCap(t *testing.T) {
+	// concurrentBackend tracks max-concurrent in-flight calls. We make
+	// the wrapped *MultiBackend fan out across two of these and run a
+	// 3-query batch; with concurrency=2 the peak observed in-flight on
+	// each backend must reach at least 2 (one per batch entry, both
+	// running at once).
+	a := newConcurrentBackend("a", 30*time.Millisecond)
+	b := newConcurrentBackend("b", 30*time.Millisecond)
+	multi := NewMultiBackend(a, b)
+	tool := &WebSearchTool{Backend: multi, Timeout: 5 * time.Second}
+	raw, _ := json.Marshal(map[string]any{"queries": []string{"q1", "q2", "q3"}})
+	out, err := tool.Execute(context.Background(), raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var resp webSearchBatchedOutput
+	if err := json.Unmarshal(out, &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(resp.Blocks) != 3 {
+		t.Fatalf("blocks = %d, want 3", len(resp.Blocks))
+	}
+	if got := a.peak.Load(); got < 2 {
+		t.Errorf("backend 'a' peak in-flight = %d, want >= 2 (batched fan-out should match webSearchBatchConcurrency)", got)
+	}
+	if got := b.peak.Load(); got < 2 {
+		t.Errorf("backend 'b' peak in-flight = %d, want >= 2 (batched fan-out should match webSearchBatchConcurrency)", got)
+	}
+}
+
+// TestWebSearchTool_BatchedMultiBackend_PerQueryFailuresIsolated checks
+// that when one query's backend fails, the failure ends up in *that
+// query's* partial_failures envelope and not in the other queries'
+// envelopes. This is the user-visible contract the per-call state
+// refactor is supposed to preserve: each block sees only its own
+// fan-out errors.
+func TestWebSearchTool_BatchedMultiBackend_PerQueryFailuresIsolated(t *testing.T) {
+	// Backend 'flaky' fails when the query string is "bad" and succeeds
+	// otherwise. The 3-query batch ["good1", "bad", "good2"] should
+	// produce: block 0 partial_failures empty, block 1 carries 'flaky'
+	// in partial_failures, block 2 partial_failures empty.
+	flaky := &queryAwareBackend{
+		name: "flaky",
+		failOn: map[string]error{
+			"bad": errors.New("HTTP 429: rate limited"),
+		},
+		results: []SearchResult{mkResult(1, "https://flaky/", "F")},
+	}
+	good := &fakeMulti{
+		name:    "stable",
+		results: []SearchResult{mkResult(1, "https://stable/", "S")},
+	}
+	multi := NewMultiBackend(flaky, good)
+	tool := &WebSearchTool{Backend: multi, Timeout: 5 * time.Second}
+	raw, _ := json.Marshal(map[string]any{"queries": []string{"good1", "bad", "good2"}})
+	out, err := tool.Execute(context.Background(), raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var resp webSearchBatchedOutput
+	if err := json.Unmarshal(out, &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(resp.Blocks) != 3 {
+		t.Fatalf("blocks = %d, want 3", len(resp.Blocks))
+	}
+
+	// Map blocks by query so the order-of-completion does not matter.
+	byQuery := map[string]webSearchBatchedBlock{}
+	for _, blk := range resp.Blocks {
+		byQuery[blk.Query] = blk
+	}
+
+	if len(byQuery["good1"].PartialFailures) != 0 {
+		t.Errorf("good1 partial_failures leaked: %v", byQuery["good1"].PartialFailures)
+	}
+	if len(byQuery["good2"].PartialFailures) != 0 {
+		t.Errorf("good2 partial_failures leaked: %v", byQuery["good2"].PartialFailures)
+	}
+	badPF := byQuery["bad"].PartialFailures
+	if badPF["flaky"] == "" {
+		t.Errorf("bad partial_failures missing 'flaky': %v", badPF)
+	}
+	// Pin the wording the model sees: the backend name + the original
+	// error string come through verbatim.
+	if !strings.Contains(badPF["flaky"], "HTTP 429") {
+		t.Errorf("bad partial_failures['flaky'] = %q, want substring 'HTTP 429'", badPF["flaky"])
+	}
+}
+
+// TestWebSearchTool_SingleQueryMultiBackend_SurfacesPerBackendErrors
+// pins the single-query response envelope: when one backend in a
+// MultiBackend fan-out fails, the failure name + message land in the
+// top-level partial_failures map (the field the model reads to know
+// which sources fell over).
+func TestWebSearchTool_SingleQueryMultiBackend_SurfacesPerBackendErrors(t *testing.T) {
+	good := &fakeMulti{
+		name:    "good",
+		results: []SearchResult{mkResult(1, "https://good/", "G")},
+	}
+	bad := &fakeMulti{name: "arxiv", err: errors.New("HTTP 429: rate limited")}
+	multi := NewMultiBackend(good, bad)
+	tool := &WebSearchTool{Backend: multi, Timeout: 5 * time.Second}
+	raw, _ := json.Marshal(map[string]any{"query": "neural networks"})
+	out, err := tool.Execute(context.Background(), raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var resp webSearchOutput
+	if err := json.Unmarshal(out, &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.PartialFailures["arxiv"] == "" {
+		t.Fatalf("partial_failures missing 'arxiv': %v", resp.PartialFailures)
+	}
+	if !strings.Contains(resp.PartialFailures["arxiv"], "HTTP 429") {
+		t.Errorf("partial_failures['arxiv'] = %q, want substring 'HTTP 429'", resp.PartialFailures["arxiv"])
+	}
+}
+
+// concurrentBackend is a SearchBackend that tracks how many calls are
+// in flight at once. peak holds the high-water mark. Used by the
+// batched-fan-out tests.
+type concurrentBackend struct {
+	name     string
+	hold     time.Duration
+	inflight atomic.Int32
+	peak     atomic.Int32
+}
+
+func newConcurrentBackend(name string, hold time.Duration) *concurrentBackend {
+	return &concurrentBackend{name: name, hold: hold}
+}
+
+func (c *concurrentBackend) Name() string { return c.name }
+func (c *concurrentBackend) Search(ctx context.Context, _ string, _ int) ([]SearchResult, error) {
+	cur := c.inflight.Add(1)
+	defer c.inflight.Add(-1)
+	for {
+		p := c.peak.Load()
+		if cur <= p || c.peak.CompareAndSwap(p, cur) {
+			break
+		}
+	}
+	select {
+	case <-time.After(c.hold):
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	return []SearchResult{{Rank: 1, Title: c.name, URL: "https://" + c.name + "/"}}, nil
+}
+
+// queryAwareBackend lets a test fail on specific query strings and
+// succeed on others. Used by the per-query isolation test.
+type queryAwareBackend struct {
+	name    string
+	failOn  map[string]error
+	results []SearchResult
+}
+
+func (q *queryAwareBackend) Name() string { return q.name }
+func (q *queryAwareBackend) Search(_ context.Context, query string, _ int) ([]SearchResult, error) {
+	if err, ok := q.failOn[query]; ok {
+		return nil, err
+	}
+	out := make([]SearchResult, len(q.results))
+	copy(out, q.results)
+	return out, nil
+}
+
 // --- wikipedia_search batched ----------------------------------------------
 
 func TestWikipediaSearchTool_BatchedConcurrentCap(t *testing.T) {

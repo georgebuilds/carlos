@@ -96,8 +96,13 @@ func (e *Engine) dispatchPlanned(ctx context.Context, planned PlannedSearch) ([]
 		max = e.SourcesPerQuery
 	}
 	if multi, ok := e.Search.(*tools.MultiBackend); ok {
-		return multi.SearchSubset(ctx, planned.Query, max,
+		// Per-backend errors from SearchSubset are intentionally dropped
+		// here: dispatchPlanned already records search failures via the
+		// `searchErr` path in runSearch (the second return value
+		// surfaces fan-out detail that the routing layer doesn't need).
+		results, _, err := multi.SearchSubset(ctx, planned.Query, max,
 			[]string{planned.Backend}, 0)
+		return results, err
 	}
 	return e.Search.Search(ctx, planned.Query, max)
 }

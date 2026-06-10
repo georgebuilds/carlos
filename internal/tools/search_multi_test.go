@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -75,9 +76,9 @@ func TestMultiBackend_TwoSucceed_InterleaveAndDedup(t *testing.T) {
 		},
 	}
 	m := NewMultiBackend(a, b)
-	got, err := m.Search(context.Background(), "q", 10)
+	got, perBackend, err := m.SearchSubset(context.Background(), "q", 10, nil, 0)
 	if err != nil {
-		t.Fatalf("Search returned err: %v", err)
+		t.Fatalf("SearchSubset returned err: %v", err)
 	}
 	// Interleave-by-rank order: a1, b1, (rank2: a-shared takes the
 	// shared URL; b's rank2 is dropped as dup), a3, b3.
@@ -107,8 +108,8 @@ func TestMultiBackend_TwoSucceed_InterleaveAndDedup(t *testing.T) {
 		t.Errorf("shared row Source = %q, want a", got[2].Source)
 	}
 	// No errors recorded for successful runs.
-	if errs := m.LastErrors(); len(errs) != 0 {
-		t.Errorf("LastErrors = %v, want empty", errs)
+	if len(perBackend) != 0 {
+		t.Errorf("perBackend = %v, want empty", perBackend)
 	}
 }
 
@@ -124,19 +125,18 @@ func TestMultiBackend_OneErrors_OthersSucceed(t *testing.T) {
 		results: []SearchResult{mkResult(1, "https://c/", "C1")},
 	}
 	m := NewMultiBackend(a, bad, c)
-	got, err := m.Search(context.Background(), "q", 10)
+	got, perBackend, err := m.SearchSubset(context.Background(), "q", 10, nil, 0)
 	if err != nil {
-		t.Fatalf("Search returned err: %v", err)
+		t.Fatalf("SearchSubset returned err: %v", err)
 	}
 	if len(got) != 2 {
 		t.Fatalf("len(got)=%d want 2 (results=%+v)", len(got), got)
 	}
-	errs := m.LastErrors()
-	if len(errs) != 1 {
-		t.Fatalf("LastErrors = %v, want one entry", errs)
+	if len(perBackend) != 1 {
+		t.Fatalf("perBackend = %v, want one entry", perBackend)
 	}
-	if errs["bad"] == nil {
-		t.Errorf("LastErrors missing 'bad' key: %v", errs)
+	if perBackend["bad"] == nil {
+		t.Errorf("perBackend missing 'bad' key: %v", perBackend)
 	}
 }
 
@@ -157,20 +157,19 @@ func TestMultiBackend_SlowBackend_TimesOut(t *testing.T) {
 	}
 	m := NewMultiBackend(fast, slow, other)
 	m.PerBackendTimeout = 30 * time.Millisecond
-	got, err := m.Search(context.Background(), "q", 10)
+	got, perBackend, err := m.SearchSubset(context.Background(), "q", 10, nil, 0)
 	if err != nil {
-		t.Fatalf("Search returned err: %v", err)
+		t.Fatalf("SearchSubset returned err: %v", err)
 	}
 	if len(got) != 2 {
 		t.Fatalf("len(got)=%d want 2; results=%+v", len(got), got)
 	}
-	errs := m.LastErrors()
-	if errs["slow"] == nil {
-		t.Fatalf("LastErrors[slow] is nil; got %v", errs)
+	if perBackend["slow"] == nil {
+		t.Fatalf("perBackend[slow] is nil; got %v", perBackend)
 	}
 	// Should be a context-deadline-style error.
-	if !errors.Is(errs["slow"], context.DeadlineExceeded) {
-		t.Errorf("LastErrors[slow] = %v, want DeadlineExceeded", errs["slow"])
+	if !errors.Is(perBackend["slow"], context.DeadlineExceeded) {
+		t.Errorf("perBackend[slow] = %v, want DeadlineExceeded", perBackend["slow"])
 	}
 }
 
@@ -179,7 +178,7 @@ func TestMultiBackend_AllFail(t *testing.T) {
 	a := &fakeMulti{name: "a", err: errors.New("a-down")}
 	b := &fakeMulti{name: "b", err: errors.New("b-down")}
 	m := NewMultiBackend(a, b)
-	got, err := m.Search(context.Background(), "q", 10)
+	got, perBackend, err := m.SearchSubset(context.Background(), "q", 10, nil, 0)
 	if err == nil {
 		t.Fatalf("expected error when all backends fail; got results=%+v", got)
 	}
@@ -191,9 +190,8 @@ func TestMultiBackend_AllFail(t *testing.T) {
 	if !strings.Contains(msg, "a-down") || !strings.Contains(msg, "b-down") {
 		t.Errorf("error %q missing backend details", msg)
 	}
-	errs := m.LastErrors()
-	if len(errs) != 2 {
-		t.Errorf("LastErrors len=%d want 2 (%v)", len(errs), errs)
+	if len(perBackend) != 2 {
+		t.Errorf("perBackend len=%d want 2 (%v)", len(perBackend), perBackend)
 	}
 }
 
@@ -213,18 +211,18 @@ func TestMultiBackend_ParentCtxCancelled(t *testing.T) {
 	m.PerBackendTimeout = 1 * time.Second // longer than the test ctx
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
 	defer cancel()
-	got, err := m.SearchSubset(ctx, "q", 10, nil, 0)
+	got, perBackend, err := m.SearchSubset(ctx, "q", 10, nil, 0)
 	if err == nil {
 		t.Fatalf("expected ctx error; got results=%+v", got)
 	}
 	if !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, context.Canceled) {
 		t.Errorf("expected ctx error; got %v", err)
 	}
-	// LastErrors should reflect at least one backend's state. We don't
+	// perBackend should reflect at least one backend's state. We don't
 	// assert exact contents because there's a small race between
 	// goroutine ctx-cancellation and the parent timer.
-	if errs := m.LastErrors(); len(errs) == 0 {
-		t.Errorf("LastErrors empty after parent cancel")
+	if len(perBackend) == 0 {
+		t.Errorf("perBackend empty after parent cancel")
 	}
 }
 
@@ -262,7 +260,7 @@ func TestMultiBackend_SearchSubset_PicksByName(t *testing.T) {
 		results: []SearchResult{mkResult(1, "https://ddg/", "D")},
 	}
 	m := NewMultiBackend(arxiv, brave, ddg)
-	got, err := m.SearchSubset(context.Background(), "q", 10, []string{"arxiv", "brave"}, 0)
+	got, _, err := m.SearchSubset(context.Background(), "q", 10, []string{"arxiv", "brave"}, 0)
 	if err != nil {
 		t.Fatalf("SearchSubset err: %v", err)
 	}
@@ -284,16 +282,16 @@ func TestMultiBackend_SearchSubset_UnknownNamesDropped(t *testing.T) {
 		results: []SearchResult{mkResult(1, "https://a/", "A1")},
 	}
 	m := NewMultiBackend(a)
-	got, err := m.SearchSubset(context.Background(), "q", 10, []string{"a", "nope", "alsono"}, 0)
+	got, perBackend, err := m.SearchSubset(context.Background(), "q", 10, []string{"a", "nope", "alsono"}, 0)
 	if err != nil {
 		t.Fatalf("SearchSubset err: %v", err)
 	}
 	if len(got) != 1 || got[0].URL != "https://a/" {
 		t.Errorf("got=%+v want single 'a' result", got)
 	}
-	// Unknown names must NOT show up in LastErrors - they're silently dropped.
-	if errs := m.LastErrors(); len(errs) != 0 {
-		t.Errorf("LastErrors=%v want empty", errs)
+	// Unknown names must NOT show up in perBackend - they're silently dropped.
+	if len(perBackend) != 0 {
+		t.Errorf("perBackend=%v want empty", perBackend)
 	}
 }
 
@@ -304,19 +302,18 @@ func TestMultiBackend_SearchSubset_MatchesNothing(t *testing.T) {
 		results: []SearchResult{mkResult(1, "https://a/", "A1")},
 	}
 	m := NewMultiBackend(a)
-	got, err := m.SearchSubset(context.Background(), "q", 10, []string{"nope"}, 0)
+	got, perBackend, err := m.SearchSubset(context.Background(), "q", 10, []string{"nope"}, 0)
 	if err != nil {
 		t.Fatalf("expected nil err; got %v", err)
 	}
 	if len(got) != 0 {
 		t.Errorf("expected empty results; got %+v", got)
 	}
-	errs := m.LastErrors()
-	if errs["multi"] == nil {
-		t.Fatalf("LastErrors missing 'multi' sentinel: %v", errs)
+	if perBackend["multi"] == nil {
+		t.Fatalf("perBackend missing 'multi' sentinel: %v", perBackend)
 	}
-	if !strings.Contains(errs["multi"].Error(), "subset matched no backends") {
-		t.Errorf("'multi' err = %q, want sentinel text", errs["multi"])
+	if !strings.Contains(perBackend["multi"].Error(), "subset matched no backends") {
+		t.Errorf("'multi' err = %q, want sentinel text", perBackend["multi"])
 	}
 	if atomic.LoadInt32(&a.calls) != 0 {
 		t.Errorf("a was called %d times; expected 0", a.calls)
@@ -334,7 +331,7 @@ func TestMultiBackend_SearchSubset_PerBackendMax(t *testing.T) {
 		results: []SearchResult{mkResult(1, "https://b/", "B1")},
 	}
 	m := NewMultiBackend(a, b)
-	_, err := m.SearchSubset(context.Background(), "q", 10, nil, 2)
+	_, _, err := m.SearchSubset(context.Background(), "q", 10, nil, 2)
 	if err != nil {
 		t.Fatalf("SearchSubset err: %v", err)
 	}
@@ -353,7 +350,7 @@ func TestMultiBackend_SearchSubset_PerBackendMaxZeroDefaultsToMax(t *testing.T) 
 		results: []SearchResult{mkResult(1, "https://a/", "A1")},
 	}
 	m := NewMultiBackend(a)
-	_, err := m.SearchSubset(context.Background(), "q", 7, nil, 0)
+	_, _, err := m.SearchSubset(context.Background(), "q", 7, nil, 0)
 	if err != nil {
 		t.Fatalf("SearchSubset err: %v", err)
 	}
@@ -500,4 +497,121 @@ func TestMultiBackend_TrimToMax(t *testing.T) {
 	if len(got) != 3 {
 		t.Errorf("len=%d want 3", len(got))
 	}
+}
+
+// TestMultiBackend_ConcurrentSearch_RaceDetectorClean spins up several
+// goroutines that all hammer the same *MultiBackend with concurrent
+// SearchSubset calls. Run with `-race`: any write/write race on the
+// (formerly process-shared) per-backend error map would trip the
+// detector. The receiver carries no mutable state, so this must stay
+// race-free.
+func TestMultiBackend_ConcurrentSearch_RaceDetectorClean(t *testing.T) {
+	t.Parallel()
+	// Two backends: one always succeeds, one always fails. Concurrent
+	// callers should each get their own error map without colliding.
+	good := &fakeMulti{
+		name:    "good",
+		results: []SearchResult{mkResult(1, "https://good/", "G")},
+	}
+	bad := &fakeMulti{name: "bad", err: errors.New("kaboom")}
+	m := NewMultiBackend(good, bad)
+
+	const goroutines = 8
+	const callsPerGoroutine = 5
+	var wg sync.WaitGroup
+	for i := 0; i < goroutines; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < callsPerGoroutine; j++ {
+				got, perBackend, err := m.SearchSubset(context.Background(), "q", 10, nil, 0)
+				if err != nil {
+					t.Errorf("SearchSubset err: %v", err)
+					return
+				}
+				if len(got) != 1 {
+					t.Errorf("len(got)=%d want 1", len(got))
+				}
+				// Every call must see 'bad' as a failed backend; the map
+				// is per-call so no other goroutine can race it.
+				if perBackend["bad"] == nil {
+					t.Errorf("perBackend missing 'bad': %v", perBackend)
+				}
+				if perBackend["good"] != nil {
+					t.Errorf("perBackend should not flag 'good': %v", perBackend["good"])
+				}
+			}
+		}()
+	}
+	wg.Wait()
+}
+
+// TestMultiBackend_PerCallIsolation_NoLeak verifies that a 429 from one
+// backend on call A does NOT leak into call B's error envelope. Call A
+// runs against a misbehaving 'arxiv' that returns rate-limited; call B
+// runs against the same instance after A returns and must NOT see the
+// 429 in its perBackend map (the backend that misbehaved only does so
+// on call A — call B sees a clean run).
+func TestMultiBackend_PerCallIsolation_NoLeak(t *testing.T) {
+	t.Parallel()
+	var callCount atomic.Int32
+	flaky := &errorOnceBackend{
+		name:    "arxiv",
+		failErr: errors.New("HTTP 429: rate limited"),
+		count:   &callCount,
+		results: []SearchResult{mkResult(1, "https://arxiv/ok/", "OK")},
+	}
+	clean := &fakeMulti{
+		name:    "brave",
+		results: []SearchResult{mkResult(1, "https://brave/", "B")},
+	}
+	m := NewMultiBackend(flaky, clean)
+
+	// Call A: flaky returns 429.
+	_, perBackendA, errA := m.SearchSubset(context.Background(), "q", 10, nil, 0)
+	if errA != nil {
+		t.Fatalf("call A err: %v", errA)
+	}
+	if perBackendA["arxiv"] == nil {
+		t.Fatalf("call A: perBackend missing 'arxiv' 429: %v", perBackendA)
+	}
+	if !strings.Contains(perBackendA["arxiv"].Error(), "429") {
+		t.Errorf("call A: arxiv err = %q, want substring '429'", perBackendA["arxiv"])
+	}
+
+	// Call B: flaky now succeeds. perBackend must NOT carry the stale
+	// 429 from call A.
+	_, perBackendB, errB := m.SearchSubset(context.Background(), "q", 10, nil, 0)
+	if errB != nil {
+		t.Fatalf("call B err: %v", errB)
+	}
+	if perBackendB["arxiv"] != nil {
+		t.Errorf("call B: arxiv error leaked from call A: %v (got %d total calls)", perBackendB["arxiv"], callCount.Load())
+	}
+	// Sanity: call A's perBackend map is untouched by call B (the map
+	// was returned by value, so the caller owns it).
+	if perBackendA["arxiv"] == nil {
+		t.Errorf("call A's perBackend was mutated by call B")
+	}
+}
+
+// errorOnceBackend is a SearchBackend that returns failErr on its first
+// invocation and succeeds (returning results) on every subsequent one.
+// Used by TestMultiBackend_PerCallIsolation_NoLeak.
+type errorOnceBackend struct {
+	name    string
+	failErr error
+	count   *atomic.Int32
+	results []SearchResult
+}
+
+func (e *errorOnceBackend) Name() string { return e.name }
+func (e *errorOnceBackend) Search(_ context.Context, _ string, _ int) ([]SearchResult, error) {
+	n := e.count.Add(1)
+	if n == 1 {
+		return nil, e.failErr
+	}
+	out := make([]SearchResult, len(e.results))
+	copy(out, e.results)
+	return out, nil
 }
