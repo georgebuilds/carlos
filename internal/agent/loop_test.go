@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/georgebuilds/carlos/internal/agent"
 	"github.com/georgebuilds/carlos/internal/providers"
@@ -374,6 +375,156 @@ func TestLoop_TextBeforeAndAfterToolUse(t *testing.T) {
 	a2 := out[3].Content
 	if len(a2) != 1 || a2[0].Kind != "text" || a2[0].Text != "second block." {
 		t.Errorf("turn2: %+v", a2)
+	}
+}
+
+// panicTool is a Tool that always panics. Used to pin fix #3: a
+// misbehaving tool MUST NOT tear down the loop goroutine - instead
+// the loop wraps the call with recover() and synthesises a
+// tool_result error block.
+type panicTool struct{}
+
+func (panicTool) Name() string        { return "panicker" }
+func (panicTool) Description() string { return "panics on call" }
+func (panicTool) Schema() []byte      { return []byte(`{"type":"object"}`) }
+func (panicTool) Execute(_ context.Context, _ []byte) ([]byte, error) {
+	panic("boom from a misbehaving tool")
+}
+
+// TestLoop_PanickingToolReportsErrorAndContinues pins fix #3. The
+// scripted provider asks for the panicking tool on turn 1 and then
+// emits a clean end_turn on turn 2. Without the recover() in
+// executeOneTool the test would crash the goroutine and fail the
+// suite; with it the loop returns cleanly and the tool_result block
+// carries a "panicked" message the model can adapt to.
+func TestLoop_PanickingToolReportsErrorAndContinues(t *testing.T) {
+	p := &sequenceProvider{scripts: [][]providers.Event{
+		// Turn 1: call the panicking tool.
+		{
+			{Kind: providers.EventToolUseStart, ToolUse: &providers.ToolUse{ID: "tu-1", Name: "panicker"}},
+			{Kind: providers.EventToolUseEnd, ToolUse: &providers.ToolUse{ID: "tu-1", Name: "panicker", Input: []byte(`{}`)}},
+			{Kind: providers.EventStopReason, Stop: "tool_use"},
+		},
+		// Turn 2: after seeing the tool_result, the model wraps up.
+		{
+			{Kind: providers.EventTextDelta, Text: "noted; the tool failed."},
+			{Kind: providers.EventStopReason, Stop: "end_turn"},
+		},
+	}}
+	reg := tools.NewRegistry()
+	reg.Register(panicTool{})
+
+	out, err := agent.Run(context.Background(), p, reg,
+		agent.LoopOptions{Model: "x", Approver: agent.AutoApprover{}},
+		[]providers.Message{{Role: "user", Content: []providers.Block{{Kind: "text", Text: "call it"}}}},
+	)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	// Expected message order: user (initial), assistant (tool_use),
+	// user (tool_result), assistant (end_turn text).
+	if len(out) != 4 {
+		t.Fatalf("messages: want 4 got %d", len(out))
+	}
+	if out[2].Role != "user" || len(out[2].Content) != 1 || out[2].Content[0].Kind != "tool_result" {
+		t.Fatalf("tool_result message malformed: %+v", out[2])
+	}
+	body := string(out[2].Content[0].ToolResult)
+	if !strings.Contains(body, "panic") {
+		t.Errorf("tool_result body = %q, want to mention the panic", body)
+	}
+	// The loop reached the end_turn turn - proves we didn't crash mid-run.
+	if out[3].Role != "assistant" || len(out[3].Content) == 0 || !strings.Contains(out[3].Content[0].Text, "noted") {
+		t.Errorf("turn 2 missing or wrong: %+v", out[3])
+	}
+	// Provider was called twice (one tool_use turn, one end_turn).
+	if p.calls != 2 {
+		t.Errorf("provider calls = %d, want 2", p.calls)
+	}
+}
+
+// errorThenWedgeProvider emits an EventError followed by more events
+// than the channel can hold without consumption. Used to pin fix #4:
+// when collectAssistant sees an EventError it must cancel the
+// per-stream ctx so the producer goroutine exits, then drain
+// remaining events. Before the fix the producer wedged on the next
+// send (buffer cap 16; we send 64) and leaked.
+type errorThenWedgeProvider struct {
+	mu         sync.Mutex
+	streamDone chan struct{}
+}
+
+func (p *errorThenWedgeProvider) Name() string                         { return "wedge" }
+func (p *errorThenWedgeProvider) Capabilities() providers.Capabilities { return providers.Capabilities{} }
+
+func (p *errorThenWedgeProvider) Stream(ctx context.Context, _ providers.Request) (<-chan providers.Event, error) {
+	// Buffer cap small enough that producing more than cap events
+	// without consumption blocks the sender - the wedge condition the
+	// fix must defuse. We use cap 4; the producer tries to send ~64
+	// post-error events.
+	ch := make(chan providers.Event, 4)
+	done := make(chan struct{})
+	p.mu.Lock()
+	p.streamDone = done
+	p.mu.Unlock()
+	go func() {
+		defer close(ch)
+		defer close(done)
+		// First send the error.
+		select {
+		case <-ctx.Done():
+			return
+		case ch <- providers.Event{Kind: providers.EventError, Err: errors.New("provider exploded")}:
+		}
+		// Then attempt to send a flood of follow-up events. Without
+		// the fix the channel fills, the consumer has returned, and
+		// the producer wedges on the next send - leaking this
+		// goroutine + its HTTP body equivalent. With the fix
+		// collectAssistant cancels ctx and drains the rest of the
+		// channel so this loop observes ctx.Done() and exits cleanly.
+		for i := 0; i < 64; i++ {
+			select {
+			case <-ctx.Done():
+				return
+			case ch <- providers.Event{Kind: providers.EventTextDelta, Text: "junk"}:
+			}
+		}
+	}()
+	return ch, nil
+}
+
+// streamDoneCh returns the producer-exit signal channel for the most
+// recent Stream() call.
+func (p *errorThenWedgeProvider) streamDoneCh() <-chan struct{} {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.streamDone
+}
+
+// TestLoop_ProviderStreamErrorDoesNotLeakProducer pins fix #4: when
+// collectAssistant sees an EventError it cancels the per-stream ctx
+// and drains the channel so the producer goroutine exits within a
+// tight budget rather than wedging on a full buffered channel.
+func TestLoop_ProviderStreamErrorDoesNotLeakProducer(t *testing.T) {
+	p := &errorThenWedgeProvider{}
+	_, err := agent.Run(context.Background(), p, tools.NewRegistry(),
+		agent.LoopOptions{Model: "x"},
+		[]providers.Message{{Role: "user", Content: []providers.Block{{Kind: "text", Text: "go"}}}},
+	)
+	if err == nil {
+		t.Fatalf("expected error from provider, got nil")
+	}
+	if !strings.Contains(err.Error(), "provider exploded") {
+		t.Errorf("err did not preserve provider's error: %v", err)
+	}
+	// Critical assertion: the producer goroutine must have exited.
+	// We use a channel-with-timeout rather than time.Sleep so a slow
+	// CI doesn't flake.
+	select {
+	case <-p.streamDoneCh():
+		// good - producer exited; fix is holding.
+	case <-time.After(2 * time.Second):
+		t.Fatal("producer goroutine did not exit after EventError; cap-N channel wedged on send")
 	}
 }
 

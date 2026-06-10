@@ -180,9 +180,11 @@ func (c *Client) Stream(ctx context.Context, req providers.Request) (<-chan prov
 				}
 			case "content_block_stop":
 				if tu, ok := toolBlocks[ev.Index]; ok {
-					full := toolInputBuf[ev.Index].String()
-					if full == "" {
-						full = "{}"
+					full := "{}"
+					if buf, bufOk := toolInputBuf[ev.Index]; bufOk && buf != nil {
+						if s := buf.String(); s != "" {
+							full = s
+						}
 					}
 					tu.Input = []byte(full)
 					emit(providers.Event{

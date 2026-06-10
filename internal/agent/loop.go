@@ -138,20 +138,31 @@ func Run(ctx context.Context, p providers.Provider, reg *tools.Registry, opts Lo
 		reqBytes := messageBodyBytes(messages)
 		sysBytes := len(opts.System)
 
-		stream, err := p.Stream(ctx, providers.Request{
+		// Derive a per-stream cancellable ctx so collectAssistant can
+		// drop a wedged provider producer if the stream surfaces an
+		// EventError mid-flight. Without this the producer goroutine
+		// can block forever on a full buffered channel after we've
+		// already returned, leaking the goroutine + the HTTP body per
+		// error. Cancel always (defer) so the success path also
+		// releases the WithCancel allocation cleanly.
+		streamCtx, streamCancel := context.WithCancel(ctx)
+		stream, err := p.Stream(streamCtx, providers.Request{
 			Model:    opts.Model,
 			System:   opts.System,
 			Messages: messages,
 			Tools:    opts.Tools,
 		})
 		if err != nil {
+			streamCancel()
 			return messages, fmt.Errorf("loop: stream iter %d: %w", iter, err)
 		}
 
-		assistant, stopReason, err := collectAssistant(stream, opts.TextSink)
+		assistant, stopReason, err := collectAssistant(stream, opts.TextSink, streamCancel)
 		if err != nil {
+			streamCancel()
 			return messages, fmt.Errorf("loop: iter %d: %w", iter, err)
 		}
+		streamCancel()
 		messages = append(messages, assistant)
 
 		// Push an estimate to the Tracker so the NEXT iteration's gate
@@ -259,7 +270,23 @@ func drainSteering(ch <-chan string, messages []providers.Message) []providers.M
 // corresponding tool_result. Denials and execution errors come back as
 // tool_result text so the model can adapt - they are not surfaced as
 // loop errors.
-func executeOneTool(ctx context.Context, reg *tools.Registry, approver Approver, use providers.Block) providers.Block {
+//
+// Tool panics are recovered: a misbehaving skill, MCP adapter, or
+// in-process tool that panics would otherwise tear down the whole
+// loop goroutine (and, for sub-agents, the supervisor's runChild
+// worker). Instead we synthesise a tool_result error so the model
+// sees the tool fail and can adapt on the next turn. Without this
+// recovery a single buggy tool collapses the entire agent.
+func executeOneTool(ctx context.Context, reg *tools.Registry, approver Approver, use providers.Block) (out providers.Block) {
+	defer func() {
+		if r := recover(); r != nil {
+			out = providers.Block{
+				Kind:       "tool_result",
+				ToolUseID:  use.ToolUseID,
+				ToolResult: []byte(fmt.Sprintf("tool %q panicked: %v", use.ToolName, r)),
+			}
+		}
+	}()
 	if !approver.ApproveToolCall(use.ToolName, use.ToolInput) {
 		return providers.Block{
 			Kind:       "tool_result",
@@ -267,7 +294,7 @@ func executeOneTool(ctx context.Context, reg *tools.Registry, approver Approver,
 			ToolResult: []byte("(rejected by user)"),
 		}
 	}
-	out, err := reg.Execute(ctx, use.ToolName, use.ToolInput)
+	res, err := reg.Execute(ctx, use.ToolName, use.ToolInput)
 	if err != nil {
 		return providers.Block{
 			Kind:       "tool_result",
@@ -278,7 +305,7 @@ func executeOneTool(ctx context.Context, reg *tools.Registry, approver Approver,
 	return providers.Block{
 		Kind:       "tool_result",
 		ToolUseID:  use.ToolUseID,
-		ToolResult: out,
+		ToolResult: res,
 	}
 }
 
@@ -290,7 +317,16 @@ func executeOneTool(ctx context.Context, reg *tools.Registry, approver Approver,
 //
 // textSink (if non-nil) receives every text delta as it arrives so the
 // CLI / TUI can render progressively without waiting for the full turn.
-func collectAssistant(stream <-chan providers.Event, textSink io.Writer) (providers.Message, string, error) {
+//
+// streamCancel is invoked when an EventError arrives so the upstream
+// producer (typically an HTTP body reader fanning into the channel)
+// observes ctx.Done() and exits cleanly. After cancelling we still
+// drain `stream` to completion - a producer that has already buffered
+// events ahead of the error must be allowed to finish its `defer
+// close(ch)` before we return, otherwise it wedges on the next send.
+// nil is accepted (tests + headless callers that don't plumb a per-
+// stream cancel); the drain still happens.
+func collectAssistant(stream <-chan providers.Event, textSink io.Writer, streamCancel context.CancelFunc) (providers.Message, string, error) {
 	var blocks []providers.Block
 	var textBuf strings.Builder
 	var stopReason string
@@ -353,7 +389,21 @@ func collectAssistant(stream <-chan providers.Event, textSink io.Writer) (provid
 		case providers.EventStopReason:
 			stopReason = ev.Stop
 		case providers.EventError:
-			return providers.Message{}, "", ev.Err
+			// Cancel the per-stream ctx so the producer goroutine
+			// observes Done() and exits, then drain any events it
+			// already buffered. Without the drain a cap-N channel that
+			// the producer has filled past N still wedges on its next
+			// send; without the cancel an unbuffered/HTTP-backed
+			// producer that hasn't selected on ctx yet never sees the
+			// stop signal.
+			if streamCancel != nil {
+				streamCancel()
+			}
+			err := ev.Err
+			for range stream {
+				// drain to release the producer
+			}
+			return providers.Message{}, "", err
 		}
 	}
 	flushText()

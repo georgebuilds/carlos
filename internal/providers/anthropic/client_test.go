@@ -127,6 +127,82 @@ func TestStream_ToolUseAccumulatesInput(t *testing.T) {
 	}
 }
 
+// TestStream_ToolUseStopWithoutDeltasDoesNotPanic covers the defensive
+// branch in content_block_stop: when a tool_use block is opened and
+// immediately stopped without any input_json_delta in between, the
+// accumulator buffer is empty (or, under a protocol skew where the start
+// frame's index doesn't match the stop frame's buffer registration, nil).
+// The handler must not panic and must emit EventToolUseEnd with Input "{}"
+// so downstream consumers see a well-formed tool_use block.
+func TestStream_ToolUseStopWithoutDeltasDoesNotPanic(t *testing.T) {
+	body := strings.Join([]string{
+		`event: message_start`, `data: {"type":"message_start"}`, ``,
+		`event: content_block_start`, `data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"tu-empty","name":"noop","input":{}}}`, ``,
+		// No input_json_delta - go straight to stop.
+		`event: content_block_stop`, `data: {"type":"content_block_stop","index":0}`, ``,
+		`event: message_delta`, `data: {"type":"message_delta","delta":{"stop_reason":"tool_use"}}`, ``,
+		`event: message_stop`, `data: {"type":"message_stop"}`, ``,
+	}, "\n")
+	c, _ := newTestServer(t, body, nil)
+
+	ch, err := c.Stream(context.Background(), providers.Request{Model: "x"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := collect(ch)
+
+	var end *providers.ToolUse
+	for _, ev := range got {
+		if ev.Kind == providers.EventError {
+			t.Fatalf("unexpected error event: %v", ev.Err)
+		}
+		if ev.Kind == providers.EventToolUseEnd {
+			end = ev.ToolUse
+		}
+	}
+	if end == nil {
+		t.Fatal("no EventToolUseEnd emitted")
+	}
+	if end.ID != "tu-empty" || end.Name != "noop" {
+		t.Errorf("tool identity: %+v", end)
+	}
+	if string(end.Input) != "{}" {
+		t.Errorf("Input = %q, want %q", string(end.Input), "{}")
+	}
+}
+
+// TestStream_ToolUseStopForUnknownIndexIsIgnored covers the other edge of
+// the same defense: a content_block_stop for an index that was never
+// opened (corrupt frame ordering, flaky proxy reordering frames, future
+// stream format change). The handler must not panic and must not emit a
+// spurious EventToolUseEnd - the unknown index simply has no associated
+// tool_use to close.
+func TestStream_ToolUseStopForUnknownIndexIsIgnored(t *testing.T) {
+	body := strings.Join([]string{
+		`event: message_start`, `data: {"type":"message_start"}`, ``,
+		// Stop for index 7 with no prior start - must be a no-op.
+		`event: content_block_stop`, `data: {"type":"content_block_stop","index":7}`, ``,
+		`event: message_delta`, `data: {"type":"message_delta","delta":{"stop_reason":"end_turn"}}`, ``,
+		`event: message_stop`, `data: {"type":"message_stop"}`, ``,
+	}, "\n")
+	c, _ := newTestServer(t, body, nil)
+
+	ch, err := c.Stream(context.Background(), providers.Request{Model: "x"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := collect(ch)
+
+	for _, ev := range got {
+		if ev.Kind == providers.EventToolUseEnd {
+			t.Errorf("unexpected EventToolUseEnd for unknown index: %+v", ev.ToolUse)
+		}
+		if ev.Kind == providers.EventError {
+			t.Fatalf("unexpected error event: %v", ev.Err)
+		}
+	}
+}
+
 func TestStream_HeadersAndAuth(t *testing.T) {
 	var captured http.Header
 	body := "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"

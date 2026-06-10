@@ -44,6 +44,7 @@ package signal
 import (
 	"context"
 	"errors"
+	"sync"
 	"time"
 
 	"github.com/georgebuilds/carlos/internal/gateway"
@@ -87,7 +88,8 @@ type Adapter struct {
 	cfg Config
 	now func() time.Time
 
-	stopCh chan struct{}
+	stopCh   chan struct{}
+	stopOnce sync.Once
 }
 
 // New constructs a Signal adapter from cfg. When cfg.Enabled is false
@@ -209,12 +211,7 @@ func (a *Adapter) Stop(_ context.Context) error {
 	if !a.cfg.Enabled {
 		return nil
 	}
-	select {
-	case <-a.stopCh:
-		// already closed
-	default:
-		close(a.stopCh)
-	}
+	a.stopOnce.Do(func() { close(a.stopCh) })
 	return nil
 }
 
