@@ -764,19 +764,30 @@ func sortedProviderNamesForCompletion(provs map[string]config.ProviderConfig) []
 }
 
 // knownModelsFor returns the candidate model ids the autocomplete
-// surfaces for a provider. For OpenRouter we read the cached catalog
-// JSON file the onboarding flow drops at ~/.carlos/openrouter-models.json;
-// for every other provider the only authoritative source is the
-// provider's configured DefaultModel.
+// surfaces for a provider. For each provider we layer:
+//
+//  1. The configured DefaultModel (the model the user is on right now).
+//  2. The curated onboarding list (a small hand-picked spread per
+//     provider). Survives offline / first-run / missing-cache cases
+//     where the on-disk catalog would yield nothing — field report:
+//     "/model openrouter:<tab> only suggests the model I'm already
+//     using" was exactly this gap, because the cache only populates
+//     after a successful live fetch.
+//  3. For OpenRouter only, the cached live catalog at
+//     ~/.carlos/openrouter-models.json when available. Layered LAST
+//     so curated suggestions still surface even when the live fetch
+//     hasn't run.
 //
 // Failures here are silent — the user still gets at least the default
-// model when one is configured, so an unreadable cache file degrades
-// to "no extra completions" rather than blocking the swap.
+// model and the curated spread, so an unreadable cache file degrades
+// to "no extra completions beyond the curated list" rather than
+// blocking the swap.
 func knownModelsFor(cfg *config.Config, provider string) []string {
 	var out []string
 	if pc, ok := cfg.Providers[provider]; ok && pc.DefaultModel != "" {
 		out = append(out, pc.DefaultModel)
 	}
+	out = append(out, onboarding.CuratedModelSlugs(provider)...)
 	if provider == "openrouter" {
 		out = append(out, loadOpenRouterCatalog()...)
 	}

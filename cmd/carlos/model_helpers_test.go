@@ -96,8 +96,14 @@ func TestModelCompletionsFor_PrefixFiltersProviders(t *testing.T) {
 }
 
 // TestModelCompletionsFor_AfterColonReturnsModels exercises the
-// second regime: "<provider>:" or "<provider>:<frag>" → known model
-// ids for that provider.
+// second regime: "<provider>:" → known model ids for that provider.
+// The configured DefaultModel plus the curated onboarding spread
+// surface together so a user typing the colon sees a useful menu of
+// alternatives, not just the one they're already on. Curated
+// suggestions guarantee a multi-entry list even without the
+// disk-cached live catalog (the field report behind the fix:
+// "/model openrouter:<tab> only suggests one model" was exactly
+// the empty-cache case).
 func TestModelCompletionsFor_AfterColonReturnsModels(t *testing.T) {
 	cfg := &config.Config{
 		Providers: map[string]config.ProviderConfig{
@@ -105,9 +111,27 @@ func TestModelCompletionsFor_AfterColonReturnsModels(t *testing.T) {
 		},
 	}
 	got := modelCompletionsFor(cfg, "anthropic:")
-	want := []string{"anthropic:claude-opus-4-7"}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("got %v want %v", got, want)
+	// Must include the configured default AND multiple curated
+	// suggestions. We don't pin the exact list because the curated
+	// spread is hand-tuned per release; just assert the contract.
+	if len(got) < 2 {
+		t.Fatalf("expected ≥2 entries (default + curated); got %v", got)
+	}
+	wantContains := []string{
+		"anthropic:claude-opus-4-7",        // configured default
+		"anthropic:claude-sonnet-4-6",      // curated workhorse
+	}
+	for _, want := range wantContains {
+		found := false
+		for _, g := range got {
+			if g == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("missing %q in completion list: %v", want, got)
+		}
 	}
 }
 
@@ -187,27 +211,117 @@ func TestModelCompletionsFor_FragmentFiltersModels(t *testing.T) {
 	}
 }
 
-// TestModelCompletionsFor_UnknownProvider returns nil — no defaults
-// to surface, no catalog wired.
-func TestModelCompletionsFor_UnknownProvider(t *testing.T) {
+// TestModelCompletionsFor_UnconfiguredProviderStillSurfacesCurated
+// pins the post-fix behavior: even when a provider has no
+// configured DefaultModel (the user never set up ollama in their
+// config, for example), the curated onboarding spread still
+// surfaces so /model ollama:<tab> hands back a useful starter menu.
+// Pre-fix this returned nil — fine for the "user has no idea what's
+// available" path but wrong for the "user is exploring" path.
+func TestModelCompletionsFor_UnconfiguredProviderStillSurfacesCurated(t *testing.T) {
 	cfg := &config.Config{
 		Providers: map[string]config.ProviderConfig{"openai": {DefaultModel: "gpt-5"}},
 	}
-	if got := modelCompletionsFor(cfg, "ollama:"); got != nil {
+	got := modelCompletionsFor(cfg, "ollama:")
+	if len(got) == 0 {
+		t.Fatal("expected curated ollama suggestions for unconfigured provider; got none")
+	}
+	for _, g := range got {
+		if !strings.HasPrefix(g, "ollama:") {
+			t.Errorf("entry %q not prefixed with ollama:", g)
+		}
+	}
+}
+
+// TestModelCompletionsFor_TrulyUnknownProviderReturnsNil pins the
+// "no curated list at all" path — a typo or made-up provider name
+// has nothing to suggest and should return nil.
+func TestModelCompletionsFor_TrulyUnknownProviderReturnsNil(t *testing.T) {
+	cfg := &config.Config{Providers: map[string]config.ProviderConfig{}}
+	if got := modelCompletionsFor(cfg, "made-up-provider:"); got != nil {
 		t.Errorf("unknown provider should return nil; got %v", got)
 	}
 }
 
-// TestKnownModelsFor_NoDefault returns nil for a provider with no
-// configured default and no cached catalog.
-func TestKnownModelsFor_NoDefault(t *testing.T) {
+// TestModelCompletionsFor_OpenRouterCuratedFallback is the direct
+// regression test for the field report: with HOME pointed at a
+// temp dir (no openrouter-models.json on disk), /model openrouter:
+// must still surface multiple curated suggestions instead of just
+// the configured default. Before the fix, knownModelsFor returned
+// only the DefaultModel when the disk cache was missing — which
+// looked like "autocomplete only suggests the model I'm already
+// using" to the user.
+func TestModelCompletionsFor_OpenRouterCuratedFallback(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+	// Note: no openrouter-models.json written to tmp/.carlos — we want
+	// to assert the empty-cache fallback path.
+	cfg := &config.Config{
+		Providers: map[string]config.ProviderConfig{
+			"openrouter": {DefaultModel: "google/gemini-3.5-flash"},
+		},
+	}
+	got := modelCompletionsFor(cfg, "openrouter:")
+	if len(got) < 3 {
+		t.Fatalf("expected ≥3 curated suggestions for /model openrouter: even without disk cache; got %d: %v", len(got), got)
+	}
+	// Spot-check that meaningful spread is present (anthropic + openai
+	// + google show up in the curated openrouter list).
+	wantSubstr := []string{"anthropic/", "openai/", "google/"}
+	for _, sub := range wantSubstr {
+		found := false
+		for _, g := range got {
+			if strings.Contains(g, sub) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("curated fallback missing %q-prefixed model; got %v", sub, got)
+		}
+	}
+	// And the configured default is still present so the active model
+	// stays a visible option.
+	wantDefault := "openrouter:google/gemini-3.5-flash"
+	found := false
+	for _, g := range got {
+		if g == wantDefault {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("configured default %q missing from completions: %v", wantDefault, got)
+	}
+}
+
+// TestKnownModelsFor_NoDefaultStillSurfacesCurated guards the
+// "user opened the picker without a configured default" path. The
+// curated onboarding spread surfaces as a sensible starter list
+// instead of returning nil — which used to leave the user staring
+// at an empty autocomplete with no way to discover what models
+// are available.
+func TestKnownModelsFor_NoDefaultStillSurfacesCurated(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("HOME", tmp)
 	cfg := &config.Config{
 		Providers: map[string]config.ProviderConfig{"anthropic": {}},
 	}
-	if got := knownModelsFor(cfg, "anthropic"); got != nil {
-		t.Errorf("no default + no catalog should yield nil; got %v", got)
+	got := knownModelsFor(cfg, "anthropic")
+	if len(got) == 0 {
+		t.Errorf("expected curated anthropic suggestions even without a default; got empty")
+	}
+}
+
+// TestKnownModelsFor_UnknownProviderNoSuggestions confirms a
+// completely unknown provider (no curated list, no config entry,
+// no cache) still yields nil — there's nothing useful to offer.
+func TestKnownModelsFor_UnknownProviderNoSuggestions(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+	cfg := &config.Config{Providers: map[string]config.ProviderConfig{}}
+	if got := knownModelsFor(cfg, "no-such-provider"); got != nil {
+		t.Errorf("unknown provider should still yield nil; got %v", got)
 	}
 }
 

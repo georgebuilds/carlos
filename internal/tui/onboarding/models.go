@@ -118,6 +118,31 @@ func providerModels(provider string) []ModelSuggestion {
 	return nil
 }
 
+// CuratedModelSlugs returns the curated model-slug list for the
+// given provider, suitable for downstream autocomplete surfaces
+// (e.g. the /model slash) that want a sensible offline fallback
+// when no live or cached catalog is available. Empty slice for
+// unknown providers. Order matches providerModels — position 0 is
+// the suggested default for that provider.
+//
+// The onboarding picker carries pricing + context-window metadata
+// for its own UI; consumers that just need the slugs use this
+// instead of importing the full ModelSuggestion type, keeping the
+// caller free of onboarding's UI-shaped struct.
+func CuratedModelSlugs(provider string) []string {
+	all := providerModels(provider)
+	if len(all) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(all))
+	for _, m := range all {
+		if m.Slug != "" {
+			out = append(out, m.Slug)
+		}
+	}
+	return out
+}
+
 // filterModels returns suggestions for `provider` whose Slug or Label
 // matches `query` case-insensitively. Empty query returns the full
 // list. Used by the model screen to drive the dropdown.
