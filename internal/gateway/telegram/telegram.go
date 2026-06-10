@@ -41,6 +41,13 @@ import (
 	"github.com/georgebuilds/carlos/internal/gateway"
 )
 
+// maxResponseBytes caps how much of a Bot API response body we'll buffer
+// into memory. Telegram getUpdates batches top out at ~100 updates per
+// poll and individual messages are bounded by Bot API limits, so 16 MiB
+// is comfortably above any legitimate response while still preventing a
+// hostile or buggy upstream from OOMing the daemon by streaming forever.
+const maxResponseBytes = 16 * 1024 * 1024
+
 // Config configures a Telegram adapter. BotToken is the only required
 // field; everything else has a sensible default (see New).
 //
@@ -128,7 +135,20 @@ func New(cfg Config) (*Adapter, error) {
 	}
 	httpc := cfg.HTTPClient
 	if httpc == nil {
-		httpc = http.DefaultClient
+		// Default client must allow the server-side long-poll window to
+		// elapse without tripping the HTTP timeout. PollTimeoutSec is
+		// the time Telegram holds the connection open; we add a buffer
+		// for connection setup + the response round-trip so a quiet bot
+		// doesn't spuriously fail every poll. When PollTimeoutSec is
+		// unset, fall back to a 60s ceiling - enough headroom for the
+		// default 30s long-poll plus slack.
+		pollSec := cfg.PollTimeoutSec
+		if pollSec <= 0 {
+			pollSec = 30
+		}
+		httpc = &http.Client{
+			Timeout: time.Duration(pollSec+30) * time.Second,
+		}
 	}
 	now := cfg.Now
 	if now == nil {
@@ -513,9 +533,16 @@ func (a *Adapter) callAPI(ctx context.Context, method string, body any, result a
 	}
 	defer httpResp.Body.Close()
 
-	respBytes, err := io.ReadAll(httpResp.Body)
+	// Cap the response body at maxResponseBytes so a hostile or buggy
+	// upstream can't OOM the daemon by streaming forever. Read one byte
+	// past the cap so we can distinguish "exactly at limit" from "limit
+	// exceeded" and surface a clean error in the latter case.
+	respBytes, err := io.ReadAll(io.LimitReader(httpResp.Body, maxResponseBytes+1))
 	if err != nil {
 		return fmt.Errorf("telegram: read %s response: %w", method, err)
+	}
+	if int64(len(respBytes)) > maxResponseBytes {
+		return fmt.Errorf("telegram: %s response exceeds %d byte cap", method, maxResponseBytes)
 	}
 
 	var resp apiResponse

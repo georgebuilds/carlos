@@ -69,6 +69,15 @@ const defaultTokenTTL = 24 * time.Hour
 // and the broker should see a Failed receipt rather than hang on Send.
 const defaultHTTPTimeout = 30 * time.Second
 
+// maxResponseBodyBytes caps how many bytes we read from any ntfy
+// response. ntfy publish acks are tiny JSON objects (id/time/event/topic,
+// roughly 100 bytes in practice); error bodies are short status messages.
+// 64 KiB is two orders of magnitude beyond what a well-behaved server
+// will ever return, but bounded so a hostile or buggy server cannot OOM
+// the daemon by streaming a giant body. Compounded across retries this
+// matters even more.
+const maxResponseBodyBytes = 64 * 1024
+
 // Config holds everything the adapter needs. Fields with non-empty
 // defaults document them on the New constructor.
 type Config struct {
@@ -270,7 +279,10 @@ func (a *Adapter) Send(ctx context.Context, env gateway.OutboundEnvelope) (gatew
 		}, err
 	}
 	defer resp.Body.Close()
-	respBody, _ := io.ReadAll(resp.Body)
+	// Bound the read so a hostile or buggy server returning a giant
+	// body cannot OOM the daemon. ntfy acks are tiny JSON objects so
+	// maxResponseBodyBytes is well above any legitimate response.
+	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, maxResponseBodyBytes))
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		wrapped := fmt.Errorf("ntfy: publish failed: %d %s: %s", resp.StatusCode, resp.Status, truncate(string(respBody), 256))

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -1147,6 +1148,128 @@ func TestStart_IngestErrorLogged_LoopContinues(t *testing.T) {
 		return len(in.Received()) >= 1 && in.Count() >= 2
 	}, "second update never ingested")
 	_ = a.Stop(context.Background())
+}
+
+// TestSend_OversizedResponse_RejectedCleanly stands up a server that
+// streams a body well above the 16 MiB cap and asserts the adapter
+// fails the Send instead of buffering the whole stream into memory.
+// Without the io.LimitReader wrap a hostile/buggy upstream could OOM
+// the daemon by writing forever.
+func TestSend_OversizedResponse_RejectedCleanly(t *testing.T) {
+	// 17 MiB of filler - just above the 16 MiB cap. We use a fixed
+	// size (not infinite) so the test still terminates if the cap
+	// regresses; the adapter must still error because it sees > cap
+	// bytes before EOF.
+	const bodyBytes = 17 * 1024 * 1024
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		// Write a giant blob; valid JSON wrapper is irrelevant because
+		// the adapter should error on the size check before decoding.
+		buf := make([]byte, 64*1024)
+		for i := range buf {
+			buf[i] = 'a'
+		}
+		written := 0
+		for written < bodyBytes {
+			n, err := w.Write(buf)
+			if err != nil {
+				return
+			}
+			written += n
+		}
+	}))
+	defer server.Close()
+
+	a, err := telegram.New(telegram.Config{
+		BotToken:       "t",
+		APIBaseURL:     server.URL,
+		AllowedChatIDs: []int64{1},
+		HTTPClient:     server.Client(),
+		Logger:         log.New(io.Discard, "", 0),
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	r, err := a.Send(context.Background(), gateway.OutboundEnvelope{
+		Kind: gateway.OutboundNotification, Title: "hi",
+	})
+	if err == nil {
+		t.Fatal("expected error from oversized response, got nil")
+	}
+	if r.Status != gateway.StatusFailed {
+		t.Errorf("Status = %q, want failed", r.Status)
+	}
+	if !strings.Contains(err.Error(), "cap") && !strings.Contains(err.Error(), "exceeds") {
+		t.Errorf("error should mention the cap, got %v", err)
+	}
+}
+
+// TestNew_DefaultHTTPClient_NotDefaultClient asserts the adapter does
+// not adopt http.DefaultClient (which has Timeout=0 and would let a
+// hung TCP connection wedge the long-poll goroutine forever) when the
+// caller leaves cfg.HTTPClient nil. We test the property indirectly:
+// point Send at a raw TCP listener that accepts but never writes, then
+// confirm Send returns via the request-scoped context deadline rather
+// than blocking past it. With the old http.DefaultClient code the
+// request would only end when the client *transport* gave up - which
+// for a 0-Timeout client effectively means "never" unless the per-call
+// context is honored, but historically httpc.Do respects ctx so this
+// test is really pinning the layered defense: even if a future refactor
+// drops the per-call context, the client-level Timeout must kick in.
+func TestNew_DefaultHTTPClient_NotDefaultClient(t *testing.T) {
+	// Raw TCP listener: accept connections and hold them open without
+	// ever writing a response. Unlike httptest.Server, Close() here
+	// doesn't wait for handler goroutines to drain.
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer ln.Close()
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			// Hold the conn; the deferred ln.Close will trip Accept and
+			// these conns leak briefly but are cleaned up at process exit.
+			_ = c
+		}
+	}()
+
+	a, err := telegram.New(telegram.Config{
+		BotToken:       "x",
+		APIBaseURL:     "http://" + ln.Addr().String(),
+		AllowedChatIDs: []int64{1},
+		PollTimeoutSec: 1,
+		Logger:         log.New(io.Discard, "", 0),
+		// HTTPClient intentionally nil - we're testing the default.
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	// Bound Send with a short context. The assertion is that Send
+	// returns rather than blocking; a regression that wires up
+	// http.DefaultClient + drops ctx honoring would hang past the
+	// outer 3s deadline below.
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		_, err := a.Send(ctx, gateway.OutboundEnvelope{
+			Kind: gateway.OutboundNotification, Title: "hi",
+		})
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("expected error from hanging server")
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("Send blocked past context deadline - default client likely missing Timeout")
+	}
 }
 
 // waitFor polls cond every 10ms until it returns true or deadline

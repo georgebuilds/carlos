@@ -524,5 +524,93 @@ func TestDaemon_Run_WithGateway(t *testing.T) {
 	}
 }
 
+// TestStartGateway_NtfyListenerClosedOnLaterAdapterFailure exercises the
+// resource-leak guard added to startGateway: when ntfy mounts a listener
+// and a *later* adapter (telegram here) fails its construction, the
+// returned error must come with the listener already closed.
+//
+// We grab an ephemeral port for ntfy, then verify that after the failure
+// the port is reusable - i.e. the listener wasn't orphaned. A leaked
+// listener would either keep the port bound or keep an http.Server
+// goroutine alive.
+func TestStartGateway_NtfyListenerClosedOnLaterAdapterFailure(t *testing.T) {
+	// Reserve an ephemeral port, then release it so startGateway can take
+	// the same one. We re-bind it after the failure to prove the prior
+	// listener is gone.
+	probe, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Skip("cannot bind ephemeral")
+	}
+	addr := probe.Addr().String()
+	_ = probe.Close()
+
+	cfg := config.GatewayConfig{
+		Enabled: true,
+		Ntfy: config.NtfyGatewayConfig{
+			Enabled:        true,
+			Server:         "https://ntfy.example",
+			Topic:          "carlos-test",
+			ActionEndpoint: "https://carlos.example/gateway/ntfy/action",
+			ListenAddr:     addr,
+			SigningKey:     "0123456789abcdef0123456789abcdef",
+		},
+		// Telegram enabled but with no BotToken: buildTelegramAdapter
+		// returns "telegram: bot token required", forcing the cleanup
+		// path AFTER the ntfy listener is mounted.
+		Telegram: config.TelegramConfig{Enabled: true},
+	}
+	rt, err := startGateway(context.Background(), newGatewayLog(t), cfg, nil)
+	if err == nil {
+		// Should never happen - bail with cleanup so we don't leak.
+		if rt != nil {
+			_ = rt.Stop(context.Background())
+		}
+		t.Fatal("expected telegram failure to fail startGateway")
+	}
+	if rt != nil {
+		t.Errorf("error return must come with a nil runtime; got %+v", rt)
+	}
+
+	// Critical assertion: the port we passed to ntfy is now free. If the
+	// listener leaked, this Listen will fail with "address in use".
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		t.Fatalf("ntfy listener was leaked: cannot rebind %s: %v", addr, err)
+	}
+	_ = ln.Close()
+}
+
+// TestMountNtfyListener_TimeoutsSet asserts the HTTP server returned by
+// mountNtfyListener carries non-zero Read/Write/Idle timeouts and a
+// bounded MaxHeaderBytes. Trivial sanity check that the defensive defaults
+// added to harden the public-facing ntfy callback endpoint are wired.
+func TestMountNtfyListener_TimeoutsSet(t *testing.T) {
+	ln, srv, err := mountNtfyListener(config.NtfyGatewayConfig{ListenAddr: "127.0.0.1:0"}, http.NewServeMux())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	if srv.ReadHeaderTimeout <= 0 {
+		t.Errorf("ReadHeaderTimeout must be > 0; got %v", srv.ReadHeaderTimeout)
+	}
+	if srv.ReadTimeout <= 0 {
+		t.Errorf("ReadTimeout must be > 0; got %v", srv.ReadTimeout)
+	}
+	if srv.WriteTimeout <= 0 {
+		t.Errorf("WriteTimeout must be > 0; got %v", srv.WriteTimeout)
+	}
+	if srv.IdleTimeout <= 0 {
+		t.Errorf("IdleTimeout must be > 0; got %v", srv.IdleTimeout)
+	}
+	if srv.MaxHeaderBytes <= 0 {
+		t.Errorf("MaxHeaderBytes must be > 0; got %d", srv.MaxHeaderBytes)
+	}
+	// Sanity: ReadTimeout >= ReadHeaderTimeout (otherwise the header
+	// deadline can never be reached before the whole-request one).
+	if srv.ReadTimeout < srv.ReadHeaderTimeout {
+		t.Errorf("ReadTimeout (%v) must be >= ReadHeaderTimeout (%v)", srv.ReadTimeout, srv.ReadHeaderTimeout)
+	}
+}
+
 // silence unused-import lints from helpers that only certain test paths use
 var _ = strings.TrimSpace

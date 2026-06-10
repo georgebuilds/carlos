@@ -91,6 +91,21 @@ func Connect(ctx context.Context, cfg ServerConfig) (*Server, error) {
 	}, nil)
 	session, err := client.Connect(ctx, transport, nil)
 	if err != nil {
+		// CommandTransport.Connect calls cmd.Start() before returning a
+		// Connection. If the handshake then fails, the SDK usually calls
+		// session.Close() (which closes the transport, which kills the
+		// subprocess via pipeRWC.Close's stdin-close / SIGTERM / SIGKILL
+		// staircase) - but a couple of error branches in client.Connect
+		// return without closing (the unsupported-protocol-version branch
+		// is the obvious one). exec.CommandContext only reaps the cmd
+		// when the parent ctx is cancelled, and carlos's daemon ctx is
+		// process-lifetime, so any leak here lingers until shutdown.
+		//
+		// Defensive: kill and reap. Both calls are no-ops if the SDK
+		// already cleaned up - Kill on an exited process returns an
+		// error we ignore, and Wait after the SDK already Wait'd
+		// returns "Wait was already called" which we also ignore.
+		killAndReap(cmd)
 		return nil, fmt.Errorf("mcp: connect %q: %w", cfg.Name, err)
 	}
 	return &Server{
@@ -98,6 +113,19 @@ func Connect(ctx context.Context, cfg ServerConfig) (*Server, error) {
 		Session: session,
 		cmd:     cmd,
 	}, nil
+}
+
+// killAndReap force-terminates a subprocess and waits for it to exit so
+// we don't leave a zombie. Safe to call on a process that has already
+// exited or already been waited on - both Kill and Wait errors are
+// intentionally discarded. Intended for the Connect-failed cleanup path
+// where we can't tell whether the SDK has already torn cmd down.
+func killAndReap(cmd *exec.Cmd) {
+	if cmd == nil || cmd.Process == nil {
+		return
+	}
+	_ = cmd.Process.Kill()
+	_ = cmd.Wait()
 }
 
 // ListTools fetches the server's tool catalog and translates each entry

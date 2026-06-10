@@ -102,6 +102,23 @@ func startGateway(parent context.Context, log *agent.SQLiteEventLog, cfg config.
 
 	rt := &gatewayRuntime{broker: broker}
 
+	// Resource leak guard: if any step below this point returns an
+	// error, we must close anything already allocated (listener, http
+	// server). The success flag flips to true at the very end; the
+	// deferred cleanup is a no-op on the happy path.
+	success := false
+	defer func() {
+		if success {
+			return
+		}
+		if rt.httpServer != nil {
+			_ = rt.httpServer.Shutdown(context.Background())
+		}
+		if rt.listener != nil {
+			_ = rt.listener.Close()
+		}
+	}()
+
 	// Construct + register each enabled adapter. We collect adapter
 	// construction errors and bail out with cleanup so a half-wired
 	// runtime never escapes this function.
@@ -185,6 +202,7 @@ func startGateway(parent context.Context, log *agent.SQLiteEventLog, cfg config.
 		}
 	}()
 
+	success = true
 	return rt, nil
 }
 
@@ -308,9 +326,18 @@ func mountNtfyListener(cfg config.NtfyGatewayConfig, handler http.Handler) (net.
 	}
 	mux := http.NewServeMux()
 	mux.Handle(path, handler)
+	// Timeouts are sized for the ntfy action callback: a small signed
+	// JSON ack. 30s read/write is generously above the wire roundtrip;
+	// 120s idle keeps keep-alive friendly without parking connections
+	// indefinitely. MaxHeaderBytes caps a misbehaving / hostile client
+	// at 1 MiB so the listener can't be exhausted by oversized headers.
 	srv := &http.Server{
 		Handler:           mux,
 		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       120 * time.Second,
+		MaxHeaderBytes:    1 << 20, // 1 MiB
 	}
 	return ln, srv, nil
 }
