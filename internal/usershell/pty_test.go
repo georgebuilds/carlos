@@ -3,7 +3,9 @@ package usershell
 import (
 	"bytes"
 	"context"
+	"io"
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -157,6 +159,122 @@ func TestPTYRunner_Cancel(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		kill()
 		t.Fatal("process did not die after cancel within 2s")
+	}
+}
+
+// TestPTYRunner_OrphanedCallerDoesNotLeak exercises the defensive
+// cleanup path: an "orphaned" caller invokes kill, lets ctx fire,
+// then later calls wait. Pre-fix, the ctx-watcher only ran doKill
+// while wait() did cmd.Wait + tty.Close — if both ran (kill + cancel
+// + late wait), tty.Close ran from inside wait() while cmd was
+// already dead, no double-close concern; but the ordering was racy:
+// the watcher exited on ctx.Done having done nothing about the cmd,
+// and the only path to reap cmd / close tty was through wait().
+//
+// Post-fix:
+//
+//   - doWait is wrapped in sync.Once so the watcher's pre-emptive
+//     cmd.Wait races safely with the caller's wait()
+//   - closeTTY is wrapped in sync.Once so the two paths don't
+//     double-close (which would log a "pty close" warning)
+//
+// The directly observable post-condition we assert: an interleaved
+// orphaned-caller pattern (kill → cancel → late wait) does NOT
+// emit any "pty close" warnings into the package errLog. Pre-fix,
+// the only close was in wait() so this was already true; post-fix,
+// the sync.Once means the ctx-watcher's defensive close + wait()'s
+// close don't both run. Either way the warning surface stays
+// silent, but we exercise the code path under -race to flush out
+// data races on cmd / tty / sync internals.
+func TestPTYRunner_OrphanedCallerDoesNotLeak(t *testing.T) {
+	if testing.Short() {
+		t.Skip("orphaned-caller: -short")
+	}
+	if _, err := os.Stat(shellPicker()); err != nil {
+		t.Skipf("orphaned-caller: shell %s unavailable: %v", shellPicker(), err)
+	}
+
+	buf, restore := captureErrLog(t)
+	defer restore()
+
+	// Warm up so caches / one-time init land before baseline.
+	{
+		ctx, cancel := context.WithCancel(context.Background())
+		_, w, k, err := ptyRunner{}.Start(ctx, "true", "")
+		if err != nil {
+			t.Fatalf("warmup Start: %v", err)
+		}
+		_, _ = w()
+		k()
+		cancel()
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	runtime.GC()
+	time.Sleep(50 * time.Millisecond)
+	baseline := runtime.NumGoroutine()
+
+	const iterations = 5
+	for i := range iterations {
+		ctx, cancel := context.WithCancel(context.Background())
+		reader, wait, kill, err := ptyRunner{}.Start(ctx, "sleep 30", "")
+		if err != nil {
+			cancel()
+			t.Fatalf("iteration %d: Start: %v", i, err)
+		}
+
+		// Orphaned-caller pattern: caller invokes kill, ctx
+		// fires (triggers defensive cleanup post-fix), then a
+		// late wait() arrives. sync.Once must make the close
+		// path single-shot OR the second close attempt will
+		// emit a "pty close ... bad file descriptor" warning.
+		kill()
+		cancel()
+
+		// Reader drains in parallel — the slave fd closes when
+		// the subprocess dies (SIGKILL'd), so reads return EIO.
+		readDone := make(chan struct{})
+		go func() {
+			_, _ = io.Copy(io.Discard, reader)
+			close(readDone)
+		}()
+
+		// Give the ctx-watcher its cleanup window so its
+		// defensive doKill→doWait→closeTTY can race with the
+		// late wait() below. This is the interleaving sync.Once
+		// guards: without it, both paths would tty.Close → the
+		// second close logs a warning.
+		time.Sleep(killGrace + 100*time.Millisecond)
+
+		// Late wait() — must not hang.
+		waitReturned := make(chan struct{})
+		go func() {
+			_, _ = wait()
+			close(waitReturned)
+		}()
+		select {
+		case <-waitReturned:
+		case <-time.After(3 * time.Second):
+			t.Fatalf("iteration %d: late wait() hung after ctx-driven cleanup", i)
+		}
+
+		<-readDone
+	}
+
+	// Assert no "pty close" warnings landed. Pre-fix this also
+	// passes (only one close site), but post-fix without
+	// sync.Once we'd see N warnings here from the second close.
+	out := buf.String()
+	if strings.Contains(out, "pty close") {
+		t.Errorf("unexpected pty close warning(s) emitted — sync.Once on tty.Close is not holding:\n%s", out)
+	}
+
+	runtime.GC()
+	time.Sleep(100 * time.Millisecond)
+	after := runtime.NumGoroutine()
+	if delta := after - baseline; delta > iterations*2 {
+		t.Errorf("goroutine count grew unexpectedly: baseline=%d after=%d delta=%d",
+			baseline, after, delta)
 	}
 }
 

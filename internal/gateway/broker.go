@@ -544,8 +544,17 @@ func (b *Broker) recordDecision(artifactID string, d Decision, src Source, at ti
 		case c <- d:
 		default:
 		}
-		close(c)
+		safeClose(c)
 	}
+}
+
+// safeClose closes c, swallowing the panic if it has already been
+// closed. Defence-in-depth for the decision fan-out: today only
+// recordDecision closes subscriber channels, but a future caller
+// (e.g. shutdown drain) could race the close and crash the broker.
+func safeClose(c chan Decision) {
+	defer func() { _ = recover() }()
+	close(c)
 }
 
 // DecisionFor returns the resolved Decision for artifactID, if any. The
@@ -569,17 +578,29 @@ func (b *Broker) DecisionFor(artifactID string) (Decision, Source, time.Time, bo
 //
 // Used by the approvals router to bridge gateway Decisions to
 // agent.Approval state without polling.
+//
+// Lock order convention: subMu MUST be acquired before gateMu when
+// both are needed. recordDecision takes them sequentially (not
+// nested), so this nested acquisition here is the only place where
+// ordering matters. The atomic check-then-register guards against a
+// TOCTOU race where Ingest could resolve the gate and drain the
+// (then-empty) subscriber slice between an unlocked DecisionFor probe
+// and the subMu append.
 func (b *Broker) SubscribeDecision(artifactID string) (<-chan Decision, func()) {
 	ch := make(chan Decision, 1)
-	// Already resolved? Pre-seed.
+
+	b.subMu.Lock()
+	// Check resolution under subMu so recordDecision's drain cannot
+	// race past our about-to-register slot.
 	if d, _, _, ok := b.DecisionFor(artifactID); ok {
+		b.subMu.Unlock()
 		ch <- d
-		close(ch)
+		safeClose(ch)
 		return ch, func() {}
 	}
-	b.subMu.Lock()
 	b.subs[artifactID] = append(b.subs[artifactID], ch)
 	b.subMu.Unlock()
+
 	unsub := func() {
 		b.subMu.Lock()
 		defer b.subMu.Unlock()

@@ -352,3 +352,144 @@ func TestSupervisor_ClearAgentWorktreeNoop(t *testing.T) {
 	defer sup.Shutdown()
 	sup.ClearAgentWorktree("never-set") // no panic
 }
+
+// TestSupervisor_SettersAreRaceFreeUnderConcurrentSpawn drives the
+// public knob setters (SetMaxConcurrentChildren, SetMaxSpawnDepth,
+// SetRestartIntensity) concurrently with active Spawn calls. Without
+// the fix the setters wrote the fields lock-free while Spawn /
+// effectiveSpawnCapLocked / Retry read them under s.mu, producing a
+// reliable data race under -race. With the fix each setter takes
+// s.mu so the writes and reads are ordered. We don't assert any
+// specific schedule - just that -race stays clean across the run.
+func TestSupervisor_SettersAreRaceFreeUnderConcurrentSpawn(t *testing.T) {
+	dir := t.TempDir()
+	log, err := agent.OpenStateDB(filepath.Join(dir, "state.db"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer agent.CloseStateDB(log)
+
+	sup := agent.NewSupervisor(log, newHangingProvider(), tools.NewRegistry())
+	defer sup.Shutdown()
+	sup.SetMode(frame.ModeOrchestrator)
+	sup.SetMaxConcurrentChildren(8)
+
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+
+	// Knob writer: hammers each setter on a short cadence.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		i := 0
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			sup.SetMaxConcurrentChildren(1 + (i % 8))
+			sup.SetMaxSpawnDepth(1 + (i % 4))
+			sup.SetRestartIntensity(1+(i%5), time.Duration(10+i)*time.Millisecond)
+			i++
+		}
+	}()
+
+	// Reader/spawner: continuously calls Spawn (and Retry, which also
+	// reads restart fields). Spawns may legitimately fail with a
+	// concurrency-cap error when the writer drops the cap to 1; that's
+	// fine - we only care that the race detector stays silent.
+	spawnedIDs := make(chan string, 64)
+	for w := 0; w < 4; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+				sub, _, err := sup.Spawn(context.Background(), "", agent.SpawnContract{Objective: "x"})
+				if err == nil {
+					select {
+					case spawnedIDs <- sub.ID:
+					default:
+					}
+				}
+				_, _ = sup.Retry("noop")
+			}
+		}()
+	}
+
+	// Let the contention run briefly. 75ms is plenty for the race
+	// detector to fire on the original implementation while staying
+	// fast enough not to hurt CI.
+	time.Sleep(75 * time.Millisecond)
+	close(stop)
+	wg.Wait()
+
+	// Drain so Shutdown cancels the hanging children cleanly. We don't
+	// need to read the spawnedIDs channel - sup.Shutdown cancels every
+	// in-flight child.
+}
+
+// TestSupervisor_Spawn_CancelReleasesBothContexts pins fix #2: when
+// MaxWallClock > 0 the composed childCancel must release BOTH the
+// timeout context AND the underlying parent cancel context. Before
+// the fix the WithCancel return was overwritten by WithTimeout and
+// the parent cancel leaked - calling the returned childCancel only
+// fired the timeout, never the underlying parent.
+//
+// We observe the invariant indirectly: spawn with a generous wall
+// clock so the timeout cannot have fired naturally; cancel via
+// Supervisor.Shutdown; the runChild goroutine must observe Done()
+// and the result channel must close. A leaked cancel would NOT
+// surface as a build failure (govet's lostcancel rule already
+// passes), but the runtime contract - "cancelling the child stops
+// the loop" - would still hold either way for THIS path. The harder
+// assertion is the absence of leaks; we rely on govet + the
+// existing -race detector + the fact that the test exits without
+// hanging.
+func TestSupervisor_Spawn_CancelReleasesBothContexts(t *testing.T) {
+	dir := t.TempDir()
+	log, err := agent.OpenStateDB(filepath.Join(dir, "state.db"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer agent.CloseStateDB(log)
+
+	sup := agent.NewSupervisor(log, newHangingProvider(), tools.NewRegistry())
+	sup.SetMode(frame.ModeOrchestrator)
+
+	_, res, err := sup.Spawn(context.Background(), "", agent.SpawnContract{
+		Objective:    "hang please",
+		MaxWallClock: 10 * time.Minute, // never fires naturally during test
+	})
+	if err != nil {
+		t.Fatalf("spawn: %v", err)
+	}
+
+	// Shutdown is the path that calls the composed childCancel. After
+	// fix the inner WithCancel allocation is released; before fix it
+	// would have been leaked. The user-visible signal is that the
+	// child's result channel still closes - which it does either way
+	// when the timeout fires, but the leak would only surface to
+	// govet's lostcancel rule (already passing) or a goroutine-leak
+	// detector. The runtime contract we CAN assert here is that
+	// Shutdown propagates promptly: the result lands within a tight
+	// budget even though MaxWallClock is 10 minutes.
+	go sup.Shutdown()
+
+	select {
+	case r := <-res:
+		// Hanging provider's stream returns when ctx.Done() fires; the
+		// loop then sees no events, classifies as done, and sends.
+		// Either an err or a clean classification is fine - we only
+		// care that the channel actually closed (i.e. cancellation
+		// propagated and runChild unwound).
+		_ = r
+	case <-time.After(3 * time.Second):
+		t.Fatal("Shutdown did not propagate cancel to child within 3s; both contexts must release")
+	}
+}

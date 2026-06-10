@@ -59,6 +59,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -101,6 +102,15 @@ type Config struct {
 	// Now is the clock for any time-stamping the Router does. Optional;
 	// defaults to time.Now.
 	Now func() time.Time
+
+	// Logger receives Error-level records when the Router fails to
+	// persist a decision to the event log. Optional; defaults to
+	// slog.Default(). A failed AcceptApproval / RejectApproval call
+	// means the user's tap was acknowledged on the channel but never
+	// landed in the queue — the producing agent stays blocked, so we
+	// want operators to see the failure even though the silent-success
+	// path stays quiet.
+	Logger *slog.Logger
 }
 
 // Router polls the approval queue and bridges decisions through the
@@ -114,6 +124,7 @@ type Router struct {
 	titleMaxLen  int
 	bodyTemplate func(agent.PendingApproval) string
 	now          func() time.Time
+	logger       *slog.Logger
 
 	// sent is the in-memory dedupe set keyed by ArtifactID. Entries are
 	// added by dispatch (one envelope per pending) and removed by gc
@@ -121,6 +132,12 @@ type Router struct {
 	// happens when ANY surface (TUI click, scheduled auto-approve, or
 	// the gateway router itself) resolved the approval. Without the
 	// GC, a TUI-side accept leaves the watcher dangling forever.
+	//
+	// Invariant: r.watchers[id] exists ⇒ r.sent[id] exists. dispatch
+	// installs the watcher entry under r.mu before releasing the lock
+	// to call broker.Send, so a concurrent gc can never observe
+	// "sent without watcher" and silently drop sent[id] while the
+	// envelope is still in flight.
 	mu       sync.Mutex
 	sent     map[string]struct{}
 	watchers map[string]context.CancelFunc
@@ -142,6 +159,7 @@ func New(cfg Config) (*Router, error) {
 		titleMaxLen:  cfg.TitleMaxLen,
 		bodyTemplate: cfg.BodyTemplate,
 		now:          cfg.Now,
+		logger:       cfg.Logger,
 		sent:         map[string]struct{}{},
 		watchers:     map[string]context.CancelFunc{},
 	}
@@ -156,6 +174,9 @@ func New(cfg Config) (*Router, error) {
 	}
 	if r.now == nil {
 		r.now = time.Now
+	}
+	if r.logger == nil {
+		r.logger = slog.Default()
 	}
 	return r, nil
 }
@@ -277,6 +298,15 @@ func (r *Router) markSent(artifactID string) bool {
 // is not started - there's no point waiting for a decision the user
 // will never see - and we leave the artifact in the sent set so we
 // don't loop on a malformed envelope every tick.
+//
+// Ordering note: the watcher entry is installed in r.watchers BEFORE
+// broker.Send runs. broker.Send is IO-bound and can block for the full
+// retry budget; if we installed the watcher only after Send returned,
+// a poll tick firing during Send + an out-of-band resolution would let
+// gc walk an empty watchers map (no entry yet for this id), miss the
+// pairing, and corrupt the "watcher exists iff sent exists" invariant
+// the next poll relies on. Installing under r.mu keeps gc and dispatch
+// in lockstep.
 func (r *Router) dispatch(ctx context.Context, wg *sync.WaitGroup, p agent.PendingApproval) {
 	env := gateway.OutboundEnvelope{
 		Kind:       gateway.OutboundApprovalRequest,
@@ -292,20 +322,42 @@ func (r *Router) dispatch(ctx context.Context, wg *sync.WaitGroup, p agent.Pendi
 	// fires (Subscribe pre-seeds on already-resolved gates).
 	decCh, unsub := r.broker.SubscribeDecision(p.Ref.ID)
 
-	if _, err := r.broker.Send(ctx, env); err != nil {
-		// Validation or mint failure. Drop the watcher; we'll never
-		// see a decision because the user never saw the envelope.
-		unsub()
-		return
-	}
-
 	// Per-watcher cancel lets gc cull a watcher whose artifact was
 	// resolved out-of-band (TUI click). Derived from ctx so a Run-
 	// exit still tears everything down.
 	watchCtx, cancel := context.WithCancel(ctx)
+
+	// Install the watcher entry under r.mu BEFORE Send, so gc never
+	// observes "sent[id] present, watchers[id] missing" for a dispatch
+	// whose envelope is still in flight. The sent[id] check inside the
+	// lock is idempotent against a parallel gc that already culled this
+	// artifact (e.g. it resolved out-of-band between markSent and now).
 	r.mu.Lock()
+	if _, stillSent := r.sent[p.Ref.ID]; !stillSent {
+		r.mu.Unlock()
+		// gc has already decided this artifact is done. Drop the
+		// subscription + the un-started watchCtx and bail; a future
+		// poll won't see a pending row either, so there's nothing
+		// to do here.
+		cancel()
+		unsub()
+		return
+	}
 	r.watchers[p.Ref.ID] = cancel
 	r.mu.Unlock()
+
+	if _, err := r.broker.Send(ctx, env); err != nil {
+		// Validation or mint failure. Drop the watcher; we'll never
+		// see a decision because the user never saw the envelope.
+		// Pull the early-installed entry back out so gc doesn't see
+		// a watcher for a dispatch that never ran.
+		r.mu.Lock()
+		delete(r.watchers, p.Ref.ID)
+		r.mu.Unlock()
+		cancel()
+		unsub()
+		return
+	}
 
 	wg.Add(1)
 	go func() {
@@ -323,10 +375,23 @@ func (r *Router) dispatch(ctx context.Context, wg *sync.WaitGroup, p agent.Pendi
 
 // waitForDecision blocks until ctx cancels or a Decision arrives on
 // decCh. On Decision, translates to the matching agent.Approval API
-// call. Event-log errors are silently dropped - see package doc for
-// why we don't retry (the broker already deduplicated the decision;
-// any retry here would be against the local SQLite, which means we're
-// in a degraded state the loop can't fix).
+// call.
+//
+// Event-log errors are NOT retried here - the broker already deduped
+// the decision and any retry would just be against the same local
+// SQLite that just failed. But the failure mode matters: the user has
+// already tapped Approve / Reject on their phone and the channel has
+// acknowledged it; if we drop the write here silently, the producing
+// agent stays blocked on a pending approval that will never resolve
+// and operators have no trace. We log at Error so the failure is
+// visible; the silent-success path (happy case) stays quiet.
+//
+// We deliberately do NOT delete r.sent[artifactID] on a failed write.
+// That would let the next poll re-fire the envelope, re-prompt the
+// user, and likely fail the same way against the same degraded
+// SQLite. Leaving the state alone keeps the failure visible in logs
+// without amplifying it. (Possible follow-up: surface a manual retry
+// path once we have a structured ops-action API.)
 func (r *Router) waitForDecision(ctx context.Context, artifactID string, decCh <-chan gateway.Decision) {
 	var d gateway.Decision
 	select {
@@ -345,13 +410,25 @@ func (r *Router) waitForDecision(ctx context.Context, artifactID string, decCh <
 	// for resolution events; we don't pass an agentID through here.
 	switch d.Kind {
 	case gateway.DecisionApprove:
-		_, _ = agent.AcceptApproval(ctx, r.log, artifactID, d.Revision)
+		if _, err := agent.AcceptApproval(ctx, r.log, artifactID, d.Revision); err != nil {
+			r.logger.Error("approvals: accept failed",
+				"artifact_id", artifactID,
+				"decision", string(d.Kind),
+				"err", err,
+			)
+		}
 	case gateway.DecisionReject:
 		reason := d.Revision
 		if reason == "" {
 			reason = "user rejected"
 		}
-		_, _ = agent.RejectApproval(ctx, r.log, artifactID, reason)
+		if _, err := agent.RejectApproval(ctx, r.log, artifactID, reason); err != nil {
+			r.logger.Error("approvals: reject failed",
+				"artifact_id", artifactID,
+				"decision", string(d.Kind),
+				"err", err,
+			)
+		}
 	case gateway.DecisionRevise:
 		// Phase 4 has no Revise state; map to Reject with annotated
 		// reason so the producing agent has signal to act on. Post-G6
@@ -360,7 +437,13 @@ func (r *Router) waitForDecision(ctx context.Context, artifactID string, decCh <
 		if d.Revision != "" {
 			reason = "user requested revision: " + d.Revision
 		}
-		_, _ = agent.RejectApproval(ctx, r.log, artifactID, reason)
+		if _, err := agent.RejectApproval(ctx, r.log, artifactID, reason); err != nil {
+			r.logger.Error("approvals: revise-to-reject failed",
+				"artifact_id", artifactID,
+				"decision", string(d.Kind),
+				"err", err,
+			)
+		}
 	}
 }
 

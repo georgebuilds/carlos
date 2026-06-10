@@ -270,8 +270,16 @@ func (m *Manager) Submit(ctx context.Context, command string, mode Mode) (*Job, 
 		m.mu.Unlock()
 		return nil, fmt.Errorf("usershell: mint job id: %w", err)
 	}
-	jobCtx, cancel := context.WithCancel(ctx)
-	job := NewJob(id, command, m.cwd, mode, cancel)
+	// No per-job context yet: startLocked owns the cancellable
+	// context, so Submit shouldn't mint one. The previous shape
+	// (Submit creates a WithCancel, startLocked replaces it with
+	// a fresh WithCancel) leaked the first CancelFunc — a queued-
+	// job-never-promoted path or a startLocked early-return left
+	// the original cancel orphaned. Pending jobs cancel via the
+	// queue-removal path in Cancel(); only running jobs need
+	// job.cancel populated, and startLocked is the one that does
+	// that under m.mu before launching runJob.
+	job := NewJob(id, command, m.cwd, mode, nil)
 	job.SubmittedAt = m.now().UTC().Truncate(time.Millisecond)
 	m.jobs[id] = job
 	switch mode {
@@ -282,8 +290,11 @@ func (m *Manager) Submit(ctx context.Context, command string, mode Mode) (*Job, 
 	}
 	// Pick up jobs while there's capacity. This is a no-op when
 	// the queues are empty AND every slot is full; the same loop
-	// runs after every terminal transition to drain backlog.
-	m.advanceLocked(jobCtx)
+	// runs after every terminal transition to drain backlog. We
+	// pass the caller's raw ctx so the first promotion inherits
+	// the Submit caller's cancellation signal; startLocked chains
+	// a WithCancel off it for the per-job kill switch.
+	m.advanceLocked(ctx)
 	m.mu.Unlock()
 	return job, nil
 }
@@ -354,6 +365,14 @@ func (m *Manager) startLocked(parent context.Context, job *Job) {
 	}
 
 	// Per-job context: descendant of the parent + Manager-cancellable.
+	// If a prior cancel was somehow installed (e.g. by a future caller
+	// who pre-wires one), invoke it before overwriting so we never
+	// leak a CancelFunc. Today Submit always passes nil, but this
+	// keeps the invariant local to startLocked rather than load-
+	// bearing on the caller.
+	if job.cancel != nil {
+		job.cancel()
+	}
 	jobCtx, cancel := context.WithCancel(parent)
 	job.cancel = cancel
 

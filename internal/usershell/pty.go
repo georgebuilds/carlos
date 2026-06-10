@@ -97,34 +97,71 @@ func (ptyRunner) Start(ctx context.Context, command, cwd string) (io.Reader, fun
 		})
 	}
 
-	done := make(chan struct{})
+	// doWait reaps the subprocess exactly once. The Manager's runJob
+	// always calls wait(); but an orphaned caller (one that grabs the
+	// kill func and drops wait) used to leak the proc + the pty fd +
+	// the ctx-watcher goroutine. Now the ctx-watcher invokes doWait
+	// itself when ctx fires, so the cleanup converges either way.
+	var (
+		waitOnce sync.Once
+		waitExit int
+		waitErr  error
+		waitDone = make(chan struct{})
+	)
+	doWait := func() {
+		waitOnce.Do(func() {
+			defer close(waitDone)
+			err := cmd.Wait()
+			if err == nil {
+				waitExit = cmd.ProcessState.ExitCode()
+				return
+			}
+			var ee *exec.ExitError
+			if errors.As(err, &ee) {
+				waitExit = ee.ExitCode()
+				return
+			}
+			waitExit = -1
+			waitErr = err
+		})
+	}
+
+	// closeTTY guards tty.Close behind a sync.Once so the wait-path
+	// and the ctx-watcher path can both attempt it without double-
+	// closing the fd (which would be reported as EBADF on macOS /
+	// Linux). The first caller wins; the second is a no-op.
+	var ttyCloseOnce sync.Once
+	closeTTY := func() {
+		ttyCloseOnce.Do(func() {
+			if err := tty.Close(); err != nil {
+				warnf("pty close (pid %d): %v", cmd.Process.Pid, err)
+			}
+		})
+	}
+
 	go func() {
 		select {
 		case <-ctx.Done():
+			// Defensive cleanup for the orphaned-caller path:
+			// kill the group, reap the proc, close the fd.
+			// If the caller does later invoke wait(), doWait's
+			// sync.Once makes it a cheap pass-through and the
+			// recorded exit/err are still returned.
 			doKill()
-		case <-done:
+			doWait()
+			closeTTY()
+		case <-waitDone:
+			// wait() path is handling cleanup; nothing more to do.
 		}
 	}()
 
 	wait := func() (int, error) {
-		err := cmd.Wait()
-		close(done)
+		doWait()
 		// Always close the tty after wait returns so the reader
 		// goroutine sees EOF. Without this it parks on a pty fd
-		// no one will ever write to again. A Close error usually
-		// means a leaked file descriptor — surface it so the
-		// pattern shows up in operator logs.
-		if closeErr := tty.Close(); closeErr != nil {
-			warnf("pty close (pid %d): %v", cmd.Process.Pid, closeErr)
-		}
-		if err == nil {
-			return cmd.ProcessState.ExitCode(), nil
-		}
-		var ee *exec.ExitError
-		if errors.As(err, &ee) {
-			return ee.ExitCode(), nil
-		}
-		return -1, err
+		// no one will ever write to again.
+		closeTTY()
+		return waitExit, waitErr
 	}
 
 	return tty, wait, doKill, nil

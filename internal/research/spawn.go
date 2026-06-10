@@ -169,27 +169,38 @@ func runResearchSession(ctx context.Context, log ResearchLog, engine *Engine, ag
 		return
 	}
 
-	// 2. Wire phase callbacks. The closures capture log+agentID by
-	//    reference; they MUST not mutate engine state (the contract
-	//    promised in engine.go's docstring).
+	// 2. Wire phase callbacks on a per-call SHALLOW COPY of the engine.
+	//    The Engine struct only holds config + interface-typed
+	//    collaborators (Provider/Search/Fetcher/Judge) that are
+	//    designed for concurrent use; it carries no per-Engine
+	//    mutable state (no pool, no cache, no mutex). Working on a
+	//    local copy means:
 	//
-	//    We snapshot the engine's existing callbacks so a caller that
-	//    set them stays composed. This makes the test path that
-	//    asserts callbacks fire stack cleanly on top of the spawn-
-	//    emitted events.
+	//      - Concurrent SpawnResearch calls don't race on the shared
+	//        OnPhaseStart/OnPhaseDone fields (the original Bug 11d-r).
+	//      - The defaults-assignment block at the top of Engine.Run
+	//        (which writes to MaxSubQueries / SourcesPerQuery /
+	//        Budget) writes only to the local copy, also no longer a
+	//        cross-spawn race.
+	//      - The caller's engine value (and any callbacks they had
+	//        installed before SpawnResearch) is left untouched, so
+	//        there's no stale-restore order dependency.
+	//
+	//    Pre-existing callbacks set by the caller are composed by
+	//    invoking them through from the local engine's wrapper
+	//    closure. The closures capture log+agentID by value; they
+	//    MUST not mutate engine state (the contract promised in
+	//    engine.go's docstring).
+	localEng := *engine
 	prevStart := engine.OnPhaseStart
 	prevDone := engine.OnPhaseDone
-	defer func() {
-		engine.OnPhaseStart = prevStart
-		engine.OnPhaseDone = prevDone
-	}()
-	engine.OnPhaseStart = func(phase string) {
+	localEng.OnPhaseStart = func(phase string) {
 		if prevStart != nil {
 			prevStart(phase)
 		}
 		emitResearchPhase(ctx, log, agentID, agent.ResearchPhasePayload{Phase: phase})
 	}
-	engine.OnPhaseDone = func(phase string, elapsed time.Duration, err error) {
+	localEng.OnPhaseDone = func(phase string, elapsed time.Duration, err error) {
 		if prevDone != nil {
 			prevDone(phase, elapsed, err)
 		}
@@ -202,7 +213,7 @@ func runResearchSession(ctx context.Context, log ResearchLog, engine *Engine, ag
 
 	// 3. Run the engine. The Engine.Run guarantees a non-nil Report
 	//    even on failure, so we always have something to inspect.
-	report, runErr := engine.Run(ctx, question)
+	report, runErr := localEng.Run(ctx, question)
 
 	// 4. Persist the rendered report (best-effort: write failure does
 	//    NOT degrade the engine's success/failure classification).

@@ -350,7 +350,12 @@ func (s *Supervisor) Spawn(ctx context.Context, parentID string, contract SpawnC
 	if err != nil {
 		return nil, nil, fmt.Errorf("supervisor.Spawn: depth check: %w", err)
 	}
-	if parentDepth+1 > s.maxSpawnDepth {
+	// Snapshot maxSpawnDepth under s.mu so a concurrent
+	// SetMaxSpawnDepth doesn't race the read.
+	s.mu.Lock()
+	maxDepth := s.maxSpawnDepth
+	s.mu.Unlock()
+	if parentDepth+1 > maxDepth {
 		return nil, nil, ErrSpawnDepthExceeded
 	}
 
@@ -430,9 +435,23 @@ func (s *Supervisor) Spawn(ctx context.Context, parentID string, contract SpawnC
 	// 7. Heartbeat + active-children registration. We derive a
 	//    cancellable childCtx that is a *sibling* of the caller's
 	//    ctx - Shutdown can cancel it independently of the parent.
-	childCtx, childCancel := context.WithCancel(context.Background())
+	//
+	// MaxWallClock > 0 layers a WithTimeout on top of the WithCancel.
+	// We compose a single childCancel that releases BOTH so the inner
+	// cancel returned by WithCancel is never orphaned (govet's
+	// lostcancel rule). Calling the composed cancel is idempotent and
+	// safe to invoke from multiple goroutines (the bridge goroutine
+	// below + Shutdown + runChild's defer-chain).
+	baseCtx, baseCancel := context.WithCancel(context.Background())
+	childCtx := baseCtx
+	childCancel := baseCancel
 	if contract.MaxWallClock > 0 {
-		childCtx, childCancel = context.WithTimeout(childCtx, contract.MaxWallClock)
+		var timeoutCancel context.CancelFunc
+		childCtx, timeoutCancel = context.WithTimeout(baseCtx, contract.MaxWallClock)
+		childCancel = func() {
+			timeoutCancel()
+			baseCancel()
+		}
 	}
 	// Honor caller-side cancel too: bridge ctx.Done into childCtx.
 	go func() {
@@ -712,11 +731,27 @@ func (s *Supervisor) SnapshotChildrenOf(ctx context.Context, parentID string) []
 // SetMaxSpawnDepth overrides the default depth cap. Useful for tests
 // that want to exercise deeper chains without rebuilding the whole
 // supervisor.
-func (s *Supervisor) SetMaxSpawnDepth(n int) { s.maxSpawnDepth = n }
+//
+// Mutex-guarded because Spawn reads maxSpawnDepth under s.mu when
+// computing the depth gate; a lock-free write here would race the
+// reader under -race.
+func (s *Supervisor) SetMaxSpawnDepth(n int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.maxSpawnDepth = n
+}
 
 // SetMaxConcurrentChildren overrides the default per-parent
 // concurrency cap. Test-only knob.
-func (s *Supervisor) SetMaxConcurrentChildren(n int) { s.maxConcurrentChildren = n }
+//
+// Mutex-guarded because effectiveSpawnCapLocked reads
+// maxConcurrentChildren under s.mu; a lock-free write here would race
+// concurrent Spawn callers under -race.
+func (s *Supervisor) SetMaxConcurrentChildren(n int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.maxConcurrentChildren = n
+}
 
 // SetMode updates the active frame mode that drives the per-parent
 // spawn cap. cmd/carlos calls this once at session boot with the
@@ -802,7 +837,13 @@ func (s *Supervisor) effectiveSpawnCapLocked() int {
 }
 
 // SetRestartIntensity overrides MaxR + MaxT. Test-only knob.
+//
+// Mutex-guarded because Retry reads restartMaxR / restartMaxT under
+// s.mu when sliding the retry-count window; a lock-free write here
+// would race that reader under -race.
 func (s *Supervisor) SetRestartIntensity(maxR int, maxT time.Duration) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.restartMaxR = maxR
 	s.restartMaxT = maxT
 }

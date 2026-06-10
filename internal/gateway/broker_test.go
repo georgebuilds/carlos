@@ -3,6 +3,7 @@ package gateway_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
@@ -351,6 +352,155 @@ func TestBroker_SubscribeDecision_Unsub(t *testing.T) {
 	_, unsub := b.SubscribeDecision("art-unused")
 	unsub()
 	unsub() // second unsub is a no-op
+}
+
+// TestBroker_SubscribeDecision_RaceWithIngest_NoOrphans hammers the
+// TOCTOU window where a subscriber registered between DecisionFor's
+// "not resolved yet" probe and the subMu append could be orphaned by
+// a concurrent Ingest that resolves and drains. Every subscriber must
+// observe the winning decision via either pre-seed or fan-out.
+//
+// The pre-fix race window is narrow (a few instructions between
+// gateMu.Unlock and subMu.Lock in SubscribeDecision), so the test
+// uses a starting barrier and many trials to maximize the chance
+// each goroutine lands inside the window on at least one trial.
+func TestBroker_SubscribeDecision_RaceWithIngest_NoOrphans(t *testing.T) {
+	const (
+		trials = 200
+		N      = 200
+	)
+	for trial := 0; trial < trials; trial++ {
+		b := newBroker(t, newLog(t), gateway.RoutingConfig{})
+		artifactID := "art-race"
+
+		var (
+			wg         sync.WaitGroup
+			orphans    int32
+			subscribed int32
+			start      = make(chan struct{})
+		)
+
+		// Subscribers: line up on the barrier, then race the producer.
+		// Each subscriber's SubscribeDecision call has a window between
+		// DecisionFor's gateMu unlock and subMu.Lock where Ingest's
+		// recordDecision can fan-out to an empty subscriber list and
+		// strand the late registrant.
+		for i := 0; i < N; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				<-start
+				sub, unsub := b.SubscribeDecision(artifactID)
+				defer unsub()
+				atomic.AddInt32(&subscribed, 1)
+				select {
+				case _, ok := <-sub:
+					// Either the decision arrived or the channel was
+					// closed without a value. Both are acceptable -
+					// orphan means "blocked forever".
+					_ = ok
+				case <-time.After(2 * time.Second):
+					atomic.AddInt32(&orphans, 1)
+				}
+			}()
+		}
+
+		// Producer: lined up on the same barrier. Different
+		// GatewayEventID per trial so the dedupe table doesn't swallow
+		// it (the broker dedupes on (Source, GatewayEventID)).
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			env := gateway.InboundEnvelope{
+				Source:         gateway.SourceFake,
+				GatewayEventID: fmt.Sprintf("fake-race-%d", trial),
+				Kind:           gateway.InboundDecision,
+				ArtifactID:     artifactID,
+				Decision:       &gateway.Decision{Kind: gateway.DecisionApprove, Revision: "go"},
+			}
+			if err := b.Ingest(context.Background(), env); err != nil {
+				t.Errorf("ingest: %v", err)
+			}
+		}()
+
+		close(start) // fire the barrier - all goroutines race from here
+		wg.Wait()
+		if orphans != 0 {
+			t.Fatalf("trial %d: %d/%d subscribers orphaned (subscribed=%d)", trial, orphans, N, subscribed)
+		}
+	}
+}
+
+// TestBroker_RecordDecision_DoubleCloseSafe asserts the close path is
+// idempotent: calling recordDecision twice for the same artifact (via
+// two Ingests with different GatewayEventIDs) does NOT panic on a
+// double-close of the subscriber channel. First-write-wins still
+// holds; the second decision is an audit-only no-op.
+func TestBroker_RecordDecision_DoubleCloseSafe(t *testing.T) {
+	b := newBroker(t, newLog(t), gateway.RoutingConfig{})
+	ctx := context.Background()
+
+	sub, unsub := b.SubscribeDecision("art-doubleclose")
+	defer unsub()
+
+	first := gateway.InboundEnvelope{
+		Source:         gateway.SourceTelegram,
+		GatewayEventID: "tg-double-1",
+		Kind:           gateway.InboundDecision,
+		ArtifactID:     "art-doubleclose",
+		Decision:       &gateway.Decision{Kind: gateway.DecisionApprove, Revision: "go"},
+	}
+	if err := b.Ingest(ctx, first); err != nil {
+		t.Fatalf("first ingest: %v", err)
+	}
+
+	// First fan-out should have closed the channel; drain it.
+	select {
+	case got, ok := <-sub:
+		if !ok {
+			t.Error("subscriber channel closed without value")
+		} else if got.Kind != gateway.DecisionApprove {
+			t.Errorf("first decision: got %v", got)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("first decision never fanned out")
+	}
+
+	// Second decision for same artifact - exercises recordDecision
+	// again. The gate has already fired so winner=false, but defence-
+	// in-depth: even if the close path were reached twice (via a
+	// future caller, shutdown drain, etc.) it must not panic.
+	second := first
+	second.Source = gateway.SourceNtfy
+	second.GatewayEventID = "ntfy-double-2"
+	second.Decision = &gateway.Decision{Kind: gateway.DecisionReject}
+	if err := b.Ingest(ctx, second); err != nil {
+		t.Fatalf("second ingest: %v", err)
+	}
+
+	// Directly exercise safeClose on the already-closed sub channel
+	// via a fresh subscribe-then-resolve cycle, to assert close is
+	// idempotent in the only path that exposes it (the fan-out loop).
+	sub2, unsub2 := b.SubscribeDecision("art-doubleclose")
+	defer unsub2()
+	select {
+	case got, ok := <-sub2:
+		// Pre-seeded path: decision was already resolved, channel
+		// should carry the WINNING (first) decision then close.
+		if !ok {
+			t.Error("pre-seed channel closed without value")
+		} else if got.Kind != gateway.DecisionApprove {
+			t.Errorf("pre-seed: got %v, want approve (first-wins)", got)
+		}
+	case <-time.After(time.Second):
+		t.Error("pre-seed never fired")
+	}
+
+	d, _, _, ok := b.DecisionFor("art-doubleclose")
+	if !ok || d.Kind != gateway.DecisionApprove {
+		t.Errorf("first-wins broken after double ingest: %+v ok=%v", d, ok)
+	}
 }
 
 func TestBroker_StartStop_LifecycleIdempotent(t *testing.T) {

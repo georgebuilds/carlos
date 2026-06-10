@@ -3,6 +3,7 @@ package usershell
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 )
@@ -473,6 +474,126 @@ func TestManager_Output_Empty(t *testing.T) {
 	defer m.Close()
 	if got := m.Output("no-such"); got != nil {
 		t.Errorf("unknown id should return nil; got %v", got)
+	}
+}
+
+// TestSubmit_ConcurrentSubmitsRaceFree pounds Submit from many
+// goroutines simultaneously, mixing queued and promoted jobs across
+// both modes. The regression target is the data-race window in
+// Submit: pre-fix, Submit took the lock to mint a job + store a
+// CancelFunc, then dropped it; the goroutine reading job.cancel in
+// Cancel() could race with startLocked overwriting it. We exercise
+// the concurrent-Submit + concurrent-Cancel surface under `-race`
+// so the detector flags the read/write conflict.
+//
+// We also assert Submit returns a usable Job for every call (no
+// silent drops) and the Manager eventually finalizes them so the
+// queue + runJob pathways drain cleanly.
+func TestSubmit_ConcurrentSubmitsRaceFree(t *testing.T) {
+	const submits = 200
+
+	// Use a runner that completes instantly so jobs flow through
+	// the full Submit → startLocked → runJob → finalize path
+	// rather than piling up in StateRunning forever.
+	fr := &fakeRunner{output: "", exit: 0}
+	m := New(Options{Runner: fr, BackgroundParallelism: 4})
+	defer m.Close()
+
+	var wg sync.WaitGroup
+	idsMu := sync.Mutex{}
+	ids := make([]string, 0, submits)
+	for i := range submits {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			mode := Foreground
+			if i%2 == 0 {
+				mode = Background
+			}
+			j, err := m.Submit(context.Background(), "noop", mode)
+			if err != nil {
+				t.Errorf("Submit[%d]: %v", i, err)
+				return
+			}
+			idsMu.Lock()
+			ids = append(ids, j.ID)
+			idsMu.Unlock()
+			// Half the submits race a Cancel against the
+			// startLocked path — this is the surface that
+			// pre-fix dropped the original CancelFunc on the
+			// floor while installing a fresh one.
+			if i%2 == 0 {
+				_ = m.Cancel(j.ID)
+			}
+		}(i)
+	}
+	wg.Wait()
+
+	if len(ids) != submits {
+		t.Fatalf("submitted job count: want %d got %d", submits, len(ids))
+	}
+
+	// Wait for every submitted job to reach a terminal state so
+	// the per-job runJob goroutines have drained. Either Done
+	// (the natural path) or Cancelled (raced with Cancel) is
+	// acceptable here — we're checking lifecycle drainage, not
+	// the exact outcome.
+	for _, id := range ids {
+		deadline := time.Now().Add(5 * time.Second)
+		for time.Now().Before(deadline) {
+			snap, err := m.Get(id)
+			if err == nil && snap.State.IsTerminal() {
+				break
+			}
+			time.Sleep(time.Millisecond)
+		}
+		snap, _ := m.Get(id)
+		if !snap.State.IsTerminal() {
+			t.Errorf("job %s did not terminate: %v", id, snap.State)
+		}
+	}
+}
+
+// TestSubmit_QueuedJobNeverPromoted_NoLeak exercises the queued-
+// then-cancelled-without-running path that pre-fix would orphan
+// Submit's CancelFunc forever (since startLocked never runs and
+// thus never overwrites job.cancel). Post-fix, Submit doesn't
+// mint a cancel at all, so there's nothing to leak. We verify
+// behaviorally: cancelling a pending job and then waiting for
+// Done on the queue head doesn't trip the race detector.
+func TestSubmit_QueuedJobNeverPromoted_NoLeak(t *testing.T) {
+	br := newBlockingRunner("", 0)
+	m := New(Options{Runner: br})
+	defer m.Close()
+
+	// First job occupies the fg slot (blocked).
+	head, _ := m.Submit(context.Background(), "head", Foreground)
+	if err := waitForState(t, m, head.ID, StateRunning, time.Second); err != nil {
+		t.Fatal(err)
+	}
+
+	// Queue a batch behind it, then cancel each before promotion.
+	queued := make([]*Job, 0, 10)
+	for range 10 {
+		j, err := m.Submit(context.Background(), "queued", Foreground)
+		if err != nil {
+			t.Fatal(err)
+		}
+		queued = append(queued, j)
+	}
+	for _, j := range queued {
+		if err := m.Cancel(j.ID); err != nil {
+			t.Errorf("cancel pending: %v", err)
+		}
+		if j.State() != StateCancelled {
+			t.Errorf("queued job %s: want Cancelled, got %v", j.ID, j.State())
+		}
+	}
+
+	// Release the head; it should complete cleanly.
+	br.release()
+	if err := waitForState(t, m, head.ID, StateDone, 2*time.Second); err != nil {
+		t.Fatal(err)
 	}
 }
 

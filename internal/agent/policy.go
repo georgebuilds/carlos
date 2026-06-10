@@ -245,6 +245,14 @@ func (l *LayeredApprover) ApproveToolCall(name string, input []byte) bool {
 // is the current session's frame name; subtrees maps every frame name
 // to its on-disk subtree root (typically frame.PathsFor(home,name).Root).
 // Pass a nil/empty map to disable the check entirely.
+//
+// INVARIANT: the stored frameSubtrees map MUST NOT be mutated in
+// place after the swap below. crossFrameTarget snapshots the map
+// pointer under RLock and then iterates it WITHOUT the lock held -
+// safe only because every writer (today: this function) installs a
+// freshly-allocated copy, so the in-flight reader keeps iterating
+// the old immutable map. If a future caller adds an in-place
+// modifier, the iteration becomes a data race.
 func (l *LayeredApprover) SetFrameSubtrees(active string, subtrees map[string]string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
