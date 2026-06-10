@@ -76,6 +76,13 @@ type Note struct {
 	// if no frontmatter was present). Reserved for future incremental
 	// re-parsing; not used in v0 query paths.
 	bodyOffset int
+	// headerLines is the number of newlines consumed by the
+	// frontmatter block (0 when no frontmatter is present). Body line
+	// N (1-indexed) corresponds to file line (headerLines + N), which
+	// is the coordinate system Heading.Line and Link.Line already use.
+	// bodySnippet uses it to translate body-relative offsets into the
+	// file-relative line numbers callers expect.
+	headerLines int
 }
 
 // Heading is one `#`-prefixed line in the source.

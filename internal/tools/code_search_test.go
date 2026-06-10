@@ -265,6 +265,33 @@ func TestSplitOwnerRepo_RejectsBadInput(t *testing.T) {
 	}
 }
 
+// TestSplitOwnerRepo_RejectsTrailingSegments is the regression for the
+// silent-drop bug at code_search.go:270-281. SplitN(s, "/", 3) was
+// returning ("owner","repo",true) for inputs like
+// "owner/repo/issues/12" — the trailing /issues/12 vanished and the
+// indexer fan-out built nonsense URLs from the truncated input. The
+// fix uses an unbounded Split + a strict 2-segment check, so any
+// deep-link path is rejected as a malformed owner/repo coordinate.
+func TestSplitOwnerRepo_RejectsTrailingSegments(t *testing.T) {
+	cases := []string{
+		"owner/repo/issues/12",
+		"owner/repo/pulls/3",
+		"owner/repo/blob/main/README.md",
+		"https://github.com/owner/repo/issues",
+		"github.com/owner/repo/issues",
+	}
+	for _, in := range cases {
+		if _, _, ok := splitOwnerRepo(in); ok {
+			t.Errorf("splitOwnerRepo(%q) should reject trailing segments; returned ok=true", in)
+		}
+	}
+	// Trailing slash on a clean owner/repo still accepted.
+	o, r, ok := splitOwnerRepo("owner/repo/")
+	if !ok || o != "owner" || r != "repo" {
+		t.Errorf("splitOwnerRepo(\"owner/repo/\") = (%q,%q,%v), want (owner, repo, true)", o, r, ok)
+	}
+}
+
 func TestExcerpt_RespectsCap(t *testing.T) {
 	long := strings.Repeat("a", 1000)
 	got := excerpt(long, 100)

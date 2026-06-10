@@ -138,8 +138,9 @@ func (t *BashTool) Execute(ctx context.Context, input []byte) ([]byte, error) {
 
 	var buf bytes.Buffer
 	var runErr error
+	ptyDiscarded := 0
 	if t.PTY {
-		runErr = t.runPTY(execCtx, cmd, &buf, maxLen)
+		ptyDiscarded, runErr = t.runPTY(execCtx, cmd, &buf, maxLen)
 	} else {
 		cmd.Stdout = &buf
 		cmd.Stderr = &buf
@@ -173,8 +174,18 @@ func (t *BashTool) Execute(ctx context.Context, input []byte) ([]byte, error) {
 	out := buf.Bytes()
 	truncated := 0
 	if len(out) > maxLen {
+		// Non-PTY path: cmd writes directly into buf via Stdout/Stderr,
+		// so any overflow lives in the buffer and the discard count is
+		// the buffer overshoot minus the cap.
 		truncated = len(out) - maxLen
 		out = out[:maxLen]
+	}
+	// PTY mode tracks discarded bytes inside cappedWriter so we get an
+	// honest count (the buffer is capped at write-time, so len(out) can
+	// never exceed maxLen for the PTY path). Either path can contribute,
+	// never both — pick the non-zero one.
+	if ptyDiscarded > 0 {
+		truncated += ptyDiscarded
 	}
 
 	var result bytes.Buffer
@@ -192,17 +203,18 @@ func (t *BashTool) Execute(ctx context.Context, input []byte) ([]byte, error) {
 }
 
 // runPTY starts cmd attached to a pseudoterminal and copies its output
-// into buf, capped at maxLen + a small overflow buffer so the truncation
-// math in Execute stays consistent with non-PTY mode. ctx cancel SIGKILLs
-// the whole process group via the same -pid trick used elsewhere.
+// into buf, capped at maxLen bytes. Bytes past the cap are counted and
+// returned as `discarded` so Execute can render a single truthful
+// truncation marker. ctx cancel SIGKILLs the whole process group via
+// the same -pid trick used elsewhere.
 //
 // We rely on github.com/creack/pty for the cross-platform ptmx/grantpt
 // dance. The library has zero transitive dependencies (only stdlib +
 // build-tagged per-OS syscalls), so the supply-chain cost is negligible.
-func (t *BashTool) runPTY(ctx context.Context, cmd *exec.Cmd, buf *bytes.Buffer, maxLen int) error {
-	f, err := pty.Start(cmd)
-	if err != nil {
-		return fmt.Errorf("bash: pty start: %w", err)
+func (t *BashTool) runPTY(ctx context.Context, cmd *exec.Cmd, buf *bytes.Buffer, maxLen int) (discarded int, err error) {
+	f, ptyErr := pty.Start(cmd)
+	if ptyErr != nil {
+		return 0, fmt.Errorf("bash: pty start: %w", ptyErr)
 	}
 	defer f.Close()
 
@@ -220,70 +232,51 @@ func (t *BashTool) runPTY(ctx context.Context, cmd *exec.Cmd, buf *bytes.Buffer,
 		}
 	}()
 
-	// Copy with a cap: we don't need to read past maxLen + a small
-	// overflow because Execute truncates anyway, but we *do* need to
-	// keep draining so the child doesn't block on a full PTY buffer.
-	// Use a discarding tail after the cap is hit.
-	cw := &cappedWriter{buf: buf, max: maxLen + 1024}
+	// Copy with a cap: we don't need to read past maxLen because Execute
+	// owns the truncation marker, but we *do* need to keep draining so
+	// the child doesn't block on a full PTY buffer. cappedWriter
+	// silently discards bytes past the cap and records the count so
+	// Execute can report the true overflow figure.
+	cw := &cappedWriter{buf: buf, max: maxLen}
 	_, _ = io.Copy(cw, f)
 	waitErr := cmd.Wait()
 	close(done)
-	return waitErr
+	return cw.Discarded(), waitErr
 }
 
 // cappedWriter writes up to `max` bytes into buf, then silently
-// discards the rest. Necessary in PTY mode so we never block the child
-// on a stalled io.Copy.
+// discards the rest while counting the discarded byte total. Necessary
+// in PTY mode so we never block the child on a stalled io.Copy.
 //
-// When the cap is first reached, cappedWriter appends a one-shot
-// truncation marker mirroring the non-PTY path's convention so the model
-// can tell "command finished" apart from "output was cut". The marker is
-// emitted exactly once and its bytes do NOT count toward `max` (they sit
-// after the cap as a sentinel).
+// The writer does NOT append its own truncation marker — Execute owns
+// the single marker so PTY and non-PTY modes produce identical
+// "[truncated, N more bytes]" tails, with N reflecting the actual
+// dropped bytes rather than an inflated count that includes overflow-
+// buffer bytes or a hand-stamped sentinel.
 type cappedWriter struct {
-	buf         *bytes.Buffer
-	max         int
-	markerWrote bool
-}
-
-// truncationMarker is the sentinel cappedWriter writes once on overflow.
-// Chosen to match the non-PTY path's style (`\n[truncated, ...]\n`) so
-// downstream log readers and the model see the same shape regardless of
-// PTY mode. The cap is interpolated rather than the discarded byte count
-// because cappedWriter can't faithfully report the true discarded total
-// across subsequent writes without recording it for a marker we've
-// promised to emit only once.
-func truncationMarker(cap int) string {
-	return fmt.Sprintf("\n[truncated, output capped at %d bytes]\n", cap)
+	buf       *bytes.Buffer
+	max       int
+	discarded int
 }
 
 func (w *cappedWriter) Write(p []byte) (int, error) {
 	remaining := w.max - w.buf.Len()
 	if remaining <= 0 {
-		w.writeMarkerOnce()
+		w.discarded += len(p)
 		return len(p), nil
 	}
 	if len(p) <= remaining {
 		return w.buf.Write(p)
 	}
 	w.buf.Write(p[:remaining])
-	w.writeMarkerOnce()
+	w.discarded += len(p) - remaining
 	return len(p), nil
 }
 
-// writeMarkerOnce appends the truncation sentinel to buf the first time
-// the cap is exceeded. Subsequent calls are no-ops so repeated overflows
-// don't duplicate the marker. The marker bytes sit beyond `max` and are
-// not counted against the cap, so a follow-on Write that finds
-// `buf.Len() > max` still routes to the discard path rather than
-// re-triggering the marker (markerWrote stays true).
-func (w *cappedWriter) writeMarkerOnce() {
-	if w.markerWrote {
-		return
-	}
-	w.markerWrote = true
-	w.buf.WriteString(truncationMarker(w.max))
-}
+// Discarded reports the number of bytes Write was asked to consume past
+// the cap. Combined with the in-buf bytes this equals the total output
+// the child produced.
+func (w *cappedWriter) Discarded() int { return w.discarded }
 
 // Compile-time check: BashTool implements Tool.
 var _ Tool = (*BashTool)(nil)

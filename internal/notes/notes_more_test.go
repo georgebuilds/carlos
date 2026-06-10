@@ -889,7 +889,7 @@ func TestMatchesWhere_Empty(t *testing.T) {
 
 // TestBodySnippet_NoMatch returns zero.
 func TestBodySnippet_NoMatch(t *testing.T) {
-	sn, ln, cnt := bodySnippet("hello world", "missing")
+	sn, ln, cnt := bodySnippet("hello world", "missing", 0)
 	if sn != "" || ln != 0 || cnt != 0 {
 		t.Errorf("got %q ln %d cnt %d", sn, ln, cnt)
 	}
@@ -898,7 +898,7 @@ func TestBodySnippet_NoMatch(t *testing.T) {
 // TestBodySnippet_Multiple counts every hit.
 func TestBodySnippet_MultipleHits(t *testing.T) {
 	body := "foo bar foo baz foo qux foo zap"
-	_, _, cnt := bodySnippet(body, "foo")
+	_, _, cnt := bodySnippet(body, "foo", 0)
 	if cnt != 4 {
 		t.Errorf("want 4 hits, got %d", cnt)
 	}

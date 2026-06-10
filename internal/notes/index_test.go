@@ -526,6 +526,128 @@ func TestSectionBodyExtraction(t *testing.T) {
 	}
 }
 
+// TestSearchMatchLineIsFileRelativeWithFrontmatter is the regression for
+// the bodySnippet body-vs-file coordinate bug: a body-only match must
+// report Match.Line in file-relative coordinates so a consumer opening
+// the file at that line lands ON the match, not inside the frontmatter.
+//
+// Layout (file-relative line numbers in comments):
+//
+//	1: ---
+//	2: title: frontmatter-line-test
+//	3: ---
+//	4: (blank)
+//	5: filler line one
+//	6: filler line two
+//	7: filler line three
+//	8: filler line four
+//	9: targetword sits here   <-- body line 6, file line 9
+//
+// Body-relative count: skip headerLines (3) → body line 6 = file line 9.
+func TestSearchMatchLineIsFileRelativeWithFrontmatter(t *testing.T) {
+	dir := t.TempDir()
+	body := strings.Join([]string{
+		"---",
+		"title: frontmatter-line-test",
+		"---",
+		"",
+		"filler line one",
+		"filler line two",
+		"filler line three",
+		"filler line four",
+		"targetword sits here",
+	}, "\n") + "\n"
+	if err := os.WriteFile(filepath.Join(dir, "fm.md"), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	c := NewCache(nil)
+	v, err := c.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hits, err := v.Search("targetword", SearchOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hits) == 0 {
+		t.Fatal("expected one hit for targetword")
+	}
+	// File line 9 is where `targetword` lives. The bug had Line=6
+	// (body-relative) which would open vim inside the frontmatter.
+	if hits[0].Line != 9 {
+		t.Errorf("Match.Line: want 9 (file-relative), got %d", hits[0].Line)
+	}
+
+	// Sanity check the byte-level coordinate: the line we report,
+	// extracted directly from the file, must contain the query.
+	raw, err := os.ReadFile(filepath.Join(dir, "fm.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(string(raw), "\n")
+	if hits[0].Line < 1 || hits[0].Line > len(lines) {
+		t.Fatalf("reported line %d out of range (file has %d lines)", hits[0].Line, len(lines))
+	}
+	if !strings.Contains(lines[hits[0].Line-1], "targetword") {
+		t.Errorf("file-line %d = %q does not contain match", hits[0].Line, lines[hits[0].Line-1])
+	}
+}
+
+// TestSearchMatchLineNoFrontmatter pins the trivial no-header case so a
+// future "always add headerLines" implementation doesn't drift the
+// no-frontmatter path off by some constant offset.
+func TestSearchMatchLineNoFrontmatter(t *testing.T) {
+	dir := t.TempDir()
+	body := strings.Join([]string{
+		"# header",
+		"",
+		"filler one",
+		"targetword on line four",
+	}, "\n") + "\n"
+	if err := os.WriteFile(filepath.Join(dir, "plain.md"), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	c := NewCache(nil)
+	v, err := c.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hits, err := v.Search("targetword", SearchOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hits) == 0 {
+		t.Fatal("expected one hit for targetword")
+	}
+	if hits[0].Line != 4 {
+		t.Errorf("Match.Line: want 4, got %d", hits[0].Line)
+	}
+}
+
+// TestBodySnippetEmptyQuery guards the degenerate q="" case. The bug:
+// strings.Index(lower, "") == 0 and strings.Count(lower, "") ==
+// len(lower)+1, so a direct caller passing an empty query would otherwise
+// get a max-score garbage snippet covering the head of the body.
+func TestBodySnippetEmptyQuery(t *testing.T) {
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("bodySnippet(\"\") panicked: %v", r)
+		}
+	}()
+	sn, ln, cnt := bodySnippet("hello world\nsecond line\n", "", 0)
+	if sn != "" {
+		t.Errorf("snippet: want empty, got %q", sn)
+	}
+	if ln != 0 {
+		t.Errorf("line: want 0, got %d", ln)
+	}
+	if cnt != 0 {
+		t.Errorf("count: want 0, got %d", cnt)
+	}
+}
+
 // copyDir is a tiny recursive copy used by MaybeRefresh tests.
 func copyDir(t *testing.T, src, dst string) {
 	t.Helper()

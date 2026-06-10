@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"syscall"
 )
 
 // Paths is the per-frame directory layout under ~/.carlos/frames/<name>/.
@@ -138,19 +139,22 @@ func migrateDir(src, dst string) (moved, skipped int, firstErr error) {
 		}
 		if err := os.Rename(srcPath, dstPath); err != nil {
 			// Cross-device fallback (rename across mount points fails
-			// with EXDEV). Fall back to copy+delete for regular files;
-			// directories that hit EXDEV are surfaced as errors since a
-			// recursive copy is heavier than this slice wants to own.
+			// with EXDEV). Fall back to copy+delete for regular files
+			// ONLY on EXDEV; any other failure (permission denied,
+			// ENOSPC, etc.) is surfaced as an error rather than silently
+			// retried with copy. Directories that hit EXDEV are also
+			// surfaced as errors since a recursive copy is heavier than
+			// this slice wants to own.
+			if !isCrossDeviceErr(err) {
+				firstErr = firstError(firstErr, fmt.Errorf("frame: rename %s -> %s: %w", srcPath, dstPath, err))
+				continue
+			}
 			if e.IsDir() {
-				if cerr := firstError(firstErr, fmt.Errorf("frame: rename %s -> %s: %w", srcPath, dstPath, err)); cerr != nil {
-					firstErr = cerr
-				}
+				firstErr = firstError(firstErr, fmt.Errorf("frame: rename %s -> %s: %w", srcPath, dstPath, err))
 				continue
 			}
 			if cerr := copyFile(srcPath, dstPath); cerr != nil {
-				if ferr := firstError(firstErr, fmt.Errorf("frame: copy %s -> %s: %w", srcPath, dstPath, cerr)); ferr != nil {
-					firstErr = ferr
-				}
+				firstErr = firstError(firstErr, fmt.Errorf("frame: copy %s -> %s: %w", srcPath, dstPath, cerr))
 				continue
 			}
 			_ = os.Remove(srcPath)
@@ -197,4 +201,23 @@ func firstError(prior, next error) error {
 		return prior
 	}
 	return next
+}
+
+// isCrossDeviceErr reports whether err is an EXDEV ("invalid cross-device
+// link") error from os.Rename. The standard library wraps these in
+// *os.LinkError on Unix; we also accept a bare syscall.EXDEV match for
+// safety. On Windows EXDEV is defined but os.Rename surfaces a different
+// error for cross-volume moves, so this will simply return false there
+// and the caller will treat the rename failure as a hard error - which
+// is the right call since the legacy migration only affects existing
+// $HOME/.carlos installs.
+func isCrossDeviceErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	var linkErr *os.LinkError
+	if errors.As(err, &linkErr) && errors.Is(linkErr.Err, syscall.EXDEV) {
+		return true
+	}
+	return errors.Is(err, syscall.EXDEV)
 }

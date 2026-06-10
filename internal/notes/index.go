@@ -655,7 +655,7 @@ func scoreNote(n *Note, q string) (float64, string, int) {
 		}
 	}
 
-	snippet, line, bodyHits := bodySnippet(n.body, q)
+	snippet, line, bodyHits := bodySnippet(n.body, q, n.headerLines)
 	if bodyHits > 0 {
 		score += 1.0
 		extra := float64(bodyHits-1) * 0.1
@@ -668,8 +668,14 @@ func scoreNote(n *Note, q string) (float64, string, int) {
 		return 0, "", 0
 	}
 	if snippet == "" {
-		// Fallback: first non-empty paragraph.
+		// Fallback: first non-empty paragraph. firstParagraph returns
+		// a body-relative line; shift it into file-relative coordinates
+		// so callers opening the file at Match.Line land on the
+		// snippet's first line, not inside the frontmatter.
 		snippet, line = firstParagraph(n.body)
+		if line > 0 {
+			line += n.headerLines
+		}
 	}
 	return score, snippet, line
 }
@@ -677,7 +683,19 @@ func scoreNote(n *Note, q string) (float64, string, int) {
 // bodySnippet returns (snippet, line, count). Snippet is ~200 chars
 // centered on the first occurrence of q. count reports total body hits
 // so the caller can use it as an additional scoring signal.
-func bodySnippet(body, q string) (string, int, int) {
+//
+// The returned line is FILE-relative: the frontmatter headerLines are
+// added on top of the body-relative count so a caller opening the file
+// at the reported line lands on the matched body text, not inside the
+// YAML block. Match.Line / Link.Line / Heading.Line all share this
+// coordinate system.
+func bodySnippet(body, q string, headerLines int) (string, int, int) {
+	// Defensive empty-query guard. strings.Index("", "") == 0 and
+	// strings.Count(x, "") == len(x)+1, which would otherwise return a
+	// max-score garbage snippet for a future caller passing q="".
+	if q == "" {
+		return "", 0, 0
+	}
 	lower := strings.ToLower(body)
 	idx := strings.Index(lower, q)
 	if idx < 0 {
@@ -711,7 +729,7 @@ func bodySnippet(body, q string) (string, int, int) {
 	if len(snippet) > cap+40 {
 		snippet = snippet[:cap+40]
 	}
-	line := strings.Count(body[:idx], "\n") + 1
+	line := strings.Count(body[:idx], "\n") + 1 + headerLines
 	return snippet, line, count
 }
 

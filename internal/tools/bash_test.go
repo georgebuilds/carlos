@@ -51,6 +51,43 @@ func TestBash_OutputTruncation(t *testing.T) {
 	if !bytes.Contains(out, []byte("[truncated,")) {
 		t.Errorf("expected truncation marker, got: %q", out)
 	}
+	// Exactly one truncation marker. Previously the PTY path could
+	// double-emit (cw's internal marker + Execute's external marker).
+	if c := bytes.Count(out, []byte("[truncated,")); c != 1 {
+		t.Errorf("expected exactly one truncation marker, got %d: %q", c, out)
+	}
+	// Discarded byte count must match real output - cap. `yes x | head -c 4096`
+	// produces 4096 bytes; cap is 256 → discard count = 4096 - 256 = 3840.
+	wantDiscard := 4096 - 256
+	wantMarker := []byte("[truncated, " + itoaTest(wantDiscard) + " more bytes]")
+	if !bytes.Contains(out, wantMarker) {
+		t.Errorf("truncation marker should report %d discarded bytes; got: %q", wantDiscard, out)
+	}
+}
+
+// itoaTest is a tiny helper to keep the truncation assertion sting-free
+// without pulling strconv into the test imports.
+func itoaTest(n int) string {
+	if n == 0 {
+		return "0"
+	}
+	neg := false
+	if n < 0 {
+		neg = true
+		n = -n
+	}
+	var b [20]byte
+	i := len(b)
+	for n > 0 {
+		i--
+		b[i] = byte('0' + n%10)
+		n /= 10
+	}
+	if neg {
+		i--
+		b[i] = '-'
+	}
+	return string(b[i:])
 }
 
 func TestBash_Timeout(t *testing.T) {
@@ -151,12 +188,13 @@ func TestBash_PTYTimeout(t *testing.T) {
 	}
 }
 
-// TestCappedWriter_OverflowEmitsMarkerOnce drives the PTY-mode capped
-// sink directly: write past the cap in chunks, confirm the buffer ends
-// with exactly `cap` bytes of payload + the truncation sentinel, and
-// confirm a follow-on Write past the cap does NOT duplicate the marker.
-// This is the regression test for the silent-discard bug at bash.go:227.
-func TestCappedWriter_OverflowEmitsMarkerOnce(t *testing.T) {
+// TestCappedWriter_OverflowCountsDiscarded drives the PTY-mode capped
+// sink directly: write past the cap in chunks, confirm the buffer holds
+// exactly `cap` bytes of payload (no internal marker — Execute owns the
+// single marker), and that Discarded() reports the actual overflow.
+// Regression test for the double-counted + double-marker bug at
+// bash.go:174-184, 256-286.
+func TestCappedWriter_OverflowCountsDiscarded(t *testing.T) {
 	const cap = 32
 	var buf bytes.Buffer
 	cw := &cappedWriter{buf: &buf, max: cap}
@@ -188,24 +226,25 @@ func TestCappedWriter_OverflowEmitsMarkerOnce(t *testing.T) {
 
 	wantPayload := bytes.Repeat([]byte("A"), 20)
 	wantPayload = append(wantPayload, bytes.Repeat([]byte("B"), 12)...)
-	wantMarker := truncationMarker(cap)
-	want := append(append([]byte{}, wantPayload...), []byte(wantMarker)...)
 
-	if !bytes.Equal(buf.Bytes(), want) {
-		t.Errorf("buffer mismatch\n got: %q\nwant: %q", buf.Bytes(), want)
+	if !bytes.Equal(buf.Bytes(), wantPayload) {
+		t.Errorf("buffer mismatch\n got: %q\nwant: %q", buf.Bytes(), wantPayload)
 	}
-	if got := len(buf.Bytes()); got != cap+len(wantMarker) {
-		t.Errorf("buffer length = %d, want %d (cap %d + marker %d)", got, cap+len(wantMarker), cap, len(wantMarker))
+	if got := len(buf.Bytes()); got != cap {
+		t.Errorf("buffer length = %d, want %d (cap)", got, cap)
 	}
-	if c := bytes.Count(buf.Bytes(), []byte(wantMarker)); c != 1 {
-		t.Errorf("marker appeared %d times, want exactly 1", c)
+	if bytes.Contains(buf.Bytes(), []byte("truncated")) {
+		t.Errorf("cappedWriter should not write its own marker; Execute owns the single marker: %q", buf.Bytes())
+	}
+	// Discarded must equal "everything past the cap" = 100 - 32 = 68.
+	if got := cw.Discarded(); got != 100-cap {
+		t.Errorf("Discarded = %d, want %d", got, 100-cap)
 	}
 }
 
-// TestCappedWriter_NoMarkerWhenWithinCap confirms cappedWriter stays
-// silent when the cap is never reached - the marker only fires on real
-// overflow so we don't decorate well-bounded output with noise.
-func TestCappedWriter_NoMarkerWhenWithinCap(t *testing.T) {
+// TestCappedWriter_NoDiscardedWhenWithinCap confirms cappedWriter stays
+// silent and reports zero discards when the cap is never reached.
+func TestCappedWriter_NoDiscardedWhenWithinCap(t *testing.T) {
 	const cap = 64
 	var buf bytes.Buffer
 	cw := &cappedWriter{buf: &buf, max: cap}
@@ -220,12 +259,14 @@ func TestCappedWriter_NoMarkerWhenWithinCap(t *testing.T) {
 	if bytes.Contains(buf.Bytes(), []byte("truncated")) {
 		t.Errorf("unexpected truncation marker on under-cap write: %q", buf.Bytes())
 	}
+	if got := cw.Discarded(); got != 0 {
+		t.Errorf("Discarded = %d, want 0 under cap", got)
+	}
 }
 
-// TestCappedWriter_ExactFillNoMarker confirms a write that fills the
-// buffer to exactly `cap` (no overflow) does not emit the marker.
-// Boundary case: marker should only fire when bytes actually overflow.
-func TestCappedWriter_ExactFillNoMarker(t *testing.T) {
+// TestCappedWriter_ExactFillNoDiscarded confirms a write that fills the
+// buffer to exactly `cap` (no overflow) does not register as discarded.
+func TestCappedWriter_ExactFillNoDiscarded(t *testing.T) {
 	const cap = 16
 	var buf bytes.Buffer
 	cw := &cappedWriter{buf: &buf, max: cap}
@@ -237,16 +278,19 @@ func TestCappedWriter_ExactFillNoMarker(t *testing.T) {
 	if !bytes.Equal(buf.Bytes(), payload) {
 		t.Errorf("buffer = %q, want %q", buf.Bytes(), payload)
 	}
-	if bytes.Contains(buf.Bytes(), []byte("truncated")) {
-		t.Errorf("unexpected marker on exact-fill write: %q", buf.Bytes())
+	if got := cw.Discarded(); got != 0 {
+		t.Errorf("Discarded = %d after exact-fill, want 0", got)
 	}
 
-	// Now overflow by one byte across a second Write — marker should fire.
+	// Now overflow by one byte across a second Write — discard counter
+	// should increment by exactly 1 and buf stays at cap bytes.
 	if _, err := cw.Write([]byte("y")); err != nil {
 		t.Fatalf("Write: %v", err)
 	}
-	wantMarker := truncationMarker(cap)
-	if !bytes.HasSuffix(buf.Bytes(), []byte(wantMarker)) {
-		t.Errorf("expected buffer to end with marker, got: %q", buf.Bytes())
+	if got := buf.Len(); got != cap {
+		t.Errorf("buffer length after overflow = %d, want %d", got, cap)
+	}
+	if got := cw.Discarded(); got != 1 {
+		t.Errorf("Discarded after 1-byte overflow = %d, want 1", got)
 	}
 }

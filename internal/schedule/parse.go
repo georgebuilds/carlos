@@ -216,8 +216,11 @@ func parseTime(raw string) (int, int, error) {
 	case "midnight":
 		return 0, 0, nil
 	}
-	// am/pm form: "9am" / "9:30pm" / "12pm".
-	if strings.HasSuffix(t, "am") || strings.HasSuffix(t, "pm") {
+	// am/pm form: "9am" / "9:30pm" / "12pm". Gate on a digit/space
+	// boundary so words like "team" / "spam" / "eveningpm" — which
+	// also end in "am"/"pm" — don't fall into the 12-hour parser and
+	// surface a misleading hour-atoi error.
+	if hasAMPMSuffix(t) {
 		pm := strings.HasSuffix(t, "pm")
 		body := strings.TrimSuffix(strings.TrimSuffix(t, "am"), "pm")
 		body = strings.TrimSpace(body)
@@ -245,6 +248,21 @@ func parseTime(raw string) (int, int, error) {
 		return 0, 0, fmt.Errorf("24-hour clock: hour must be 0..23, got %d", h)
 	}
 	return h, m, nil
+}
+
+// hasAMPMSuffix reports whether t ends in "am"/"pm" with a digit or
+// whitespace immediately before the suffix. Rejects "team" / "spam" /
+// "eveningpm" / "am" alone while still admitting "9am", "12pm",
+// "9:30am", and the whitespace-tolerant "9 am".
+func hasAMPMSuffix(t string) bool {
+	if !strings.HasSuffix(t, "am") && !strings.HasSuffix(t, "pm") {
+		return false
+	}
+	if len(t) < 3 {
+		return false
+	}
+	c := t[len(t)-3]
+	return (c >= '0' && c <= '9') || c == ' ' || c == '\t'
 }
 
 func splitHourMinute(s string) (int, int, error) {

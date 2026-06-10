@@ -3,6 +3,8 @@ package frame
 import (
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -152,5 +154,67 @@ func TestMigrate_NoLegacyDirsIsNoOp(t *testing.T) {
 	}
 	if report.HasMovement() || len(report.Errors) > 0 {
 		t.Errorf("expected clean no-op; got %+v", report)
+	}
+}
+
+// TestMigrate_NonEXDEVRenameFailureIsSurfaced regression-covers the
+// previous bug where any os.Rename failure (EACCES, ENOSPC, ...) silently
+// fell back to copy+remove and inflated the moved counter, masking the
+// legitimate failure. Only EXDEV ("invalid cross-device link") should
+// trigger the copy fallback now; everything else must be reported in
+// report.Errors and leave the moved counter at zero.
+//
+// Mechanism: make the legacy directory read+execute only (0o500). The
+// initial ReadDir succeeds (it needs r+x), but os.Rename of the entries
+// out requires write on the parent directory and fails with EACCES.
+// Without the fix, the copy path also succeeds (copyFile reads the file
+// + writes the destination), but os.Remove(srcPath) silently fails on
+// the read-only parent and the entry is still counted as moved - the
+// exact masking the fix prevents.
+func TestMigrate_NonEXDEVRenameFailureIsSurfaced(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX directory permission semantics not available on Windows")
+	}
+	if os.Geteuid() == 0 {
+		t.Skip("root bypasses directory write permission checks")
+	}
+	home := t.TempDir()
+	legacy := filepath.Join(home, ".carlos", "research")
+	if err := os.MkdirAll(legacy, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(legacy, "alpha.md"), []byte("a"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// Read+execute only: ReadDir works, Rename out of the dir fails.
+	if err := os.Chmod(legacy, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		// Restore write so t.TempDir's cleanup can drain the tree.
+		_ = os.Chmod(legacy, 0o700)
+	})
+
+	report, err := Migrate(home, "personal")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.ResearchMoved != 0 {
+		t.Errorf("ResearchMoved = %d, want 0 (rename failed, no fallback should mask it)", report.ResearchMoved)
+	}
+	if len(report.Errors) == 0 {
+		t.Fatal("expected at least one error in report.Errors; got none")
+	}
+	// The surfaced error must describe the rename failure, not a copy
+	// failure - the copy path must not be reached for non-EXDEV errors.
+	found := false
+	for _, e := range report.Errors {
+		if e != nil && strings.Contains(e.Error(), "rename") && strings.Contains(e.Error(), "alpha.md") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected a rename error mentioning alpha.md; got %v", report.Errors)
 	}
 }

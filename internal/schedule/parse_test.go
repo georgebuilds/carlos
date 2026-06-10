@@ -106,6 +106,59 @@ func TestParseNatural_Invalid(t *testing.T) {
 	}
 }
 
+// TestParseTime_AMPMBoundary pins the fix for the bug where parseTime
+// would match any string ending in "am"/"pm" — including words like
+// "team" or "spam" — and then surface a misleading "hour: …" atoi
+// error. The boundary is now a digit or whitespace immediately before
+// the suffix.
+func TestParseTime_AMPMBoundary(t *testing.T) {
+	// These strings end in "am"/"pm" but are NOT times. The previous
+	// implementation routed them through the 12-hour parser and
+	// surfaced an atoi error mentioning "hour"; the fix rejects them
+	// the same way any other non-time would be rejected.
+	bad := []string{
+		"team",
+		"spam",
+		"am",
+		"pm",
+		"eveningpm",
+	}
+	for _, in := range bad {
+		t.Run("bad/"+in, func(t *testing.T) {
+			if _, _, err := parseTime(in); err == nil {
+				t.Fatalf("parseTime(%q): expected error, got nil", in)
+			}
+		})
+	}
+
+	// Confirm legitimate 12-hour inputs still parse correctly so we
+	// haven't tightened past the documented surface.
+	good := []struct {
+		in     string
+		wantH  int
+		wantM  int
+	}{
+		{"9am", 9, 0},
+		{"12pm", 12, 0},
+		{"12am", 0, 0},
+		{"9:30am", 9, 30},
+		{"12:00am", 0, 0},
+		{"11:59pm", 23, 59},
+		{"9 am", 9, 0}, // whitespace-tolerant: TrimSpace inside parseTime
+	}
+	for _, c := range good {
+		t.Run("good/"+c.in, func(t *testing.T) {
+			h, m, err := parseTime(c.in)
+			if err != nil {
+				t.Fatalf("parseTime(%q): unexpected error %v", c.in, err)
+			}
+			if h != c.wantH || m != c.wantM {
+				t.Fatalf("parseTime(%q): got (%d, %d) want (%d, %d)", c.in, h, m, c.wantH, c.wantM)
+			}
+		})
+	}
+}
+
 // TestParseCron_AllFieldForms covers the cron grammar systematically.
 func TestParseCron_AllFieldForms(t *testing.T) {
 	cases := []struct {

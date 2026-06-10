@@ -114,6 +114,12 @@ func parseFile(abs, rel string, info os.FileInfo) (*Note, error) {
 	n.bodyOffset = bodyStart(raw)
 	body := raw[n.bodyOffset:]
 	n.body = string(body)
+	// headerLines mirrors the count parseInline derives locally so
+	// downstream consumers (bodySnippet) can translate body-relative
+	// offsets into file-relative line numbers without re-counting.
+	if n.bodyOffset > 0 {
+		n.headerLines = bytes.Count(raw[:n.bodyOffset], []byte{'\n'})
+	}
 
 	inlineLinks, inlineTags := parseInline(body, n.bodyOffset, raw)
 	n.Links = inlineLinks

@@ -267,14 +267,22 @@ func fillCodeSearchTemplate(tmpl, owner, repo string) string {
 
 // splitOwnerRepo accepts "owner/repo" or the legacy github URL form
 // "github.com/owner/repo". Trailing slashes are tolerated.
+//
+// Rejects any input that carries trailing path segments beyond
+// owner/repo (e.g. "owner/repo/issues/12"). The previous SplitN(..., 3)
+// silently dropped extras; that would let a GitHub deep-link feed the
+// fan-out fetcher a repo name it never typed and produce nonsense
+// indexer URLs.
 func splitOwnerRepo(s string) (owner, repo string, ok bool) {
 	s = strings.TrimSpace(s)
-	s = strings.TrimSuffix(s, "/")
 	s = strings.TrimPrefix(s, "https://")
 	s = strings.TrimPrefix(s, "http://")
 	s = strings.TrimPrefix(s, "github.com/")
-	parts := strings.SplitN(s, "/", 3)
-	if len(parts) < 2 || parts[0] == "" || parts[1] == "" {
+	// Strip trailing slashes before counting so "owner/repo/" still
+	// reads as 2 segments.
+	s = strings.TrimRight(s, "/")
+	parts := strings.Split(s, "/")
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
 		return "", "", false
 	}
 	return parts[0], parts[1], true
