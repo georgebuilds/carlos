@@ -492,6 +492,15 @@ func (m *Model) renderFooter(w int) string {
 		hintLine := lipgloss.NewStyle().Foreground(colorSubtle).Render(m.footerHint)
 		return hintLine + "\n" + row
 	}
+	// Mouse-capture state hint. Capture starts OFF (so text selection
+	// works in Ghostty/iTerm2/etc out of the box); when the user has
+	// toggled it ON with Alt+M to get wheel scroll back, show a dim
+	// line so the cost (loss of click-drag selection) is visible and
+	// the toggle is discoverable in reverse.
+	if !m.mouseOff {
+		hint := lipgloss.NewStyle().Foreground(colorSubtle).Render("mouse capture on (wheel scroll) · alt+m to release for text selection")
+		return hint + "\n" + row
+	}
 	return row
 }
 

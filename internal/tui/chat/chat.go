@@ -728,7 +728,16 @@ func New(log agent.EventLog, agentID string, source TextSource, opts ...Option) 
 // model for now (we don't carry state out). The OpenManageRequested
 // helper is the typed read of the post-exit flag for slice 7g.
 func (m *Model) Run() (tea.Model, error) {
-	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
+	// Mouse capture starts OFF so the terminal's native click-and-drag
+	// text selection works out of the box — field report from Ghostty:
+	// carlos's responses could not be selected for copy/paste because
+	// bubbletea was eating the drag events. The Alt+M toggle still
+	// turns capture ON to restore viewport wheel-scroll for users
+	// who prefer it; PgUp/PgDn handles the scroll affordance either
+	// way, and an inline footer hint surfaces the toggle when capture
+	// is on so the trade-off is discoverable.
+	m.mouseOff = true
+	p := tea.NewProgram(m, tea.WithAltScreen())
 	return p.Run()
 }
 
