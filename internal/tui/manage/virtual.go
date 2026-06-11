@@ -37,6 +37,13 @@ func (w Window) ScrollTo(idx int) Window {
 	if idx >= w.Total {
 		idx = w.Total - 1
 	}
+	// An empty window (Total == 0) yields idx == -1 above; pinning Top to
+	// that would leave a negative scroll origin, which breaks Bottom() /
+	// Contains() and the renderer's slice math. Clamp to a valid top.
+	if idx < 0 {
+		w.Top = 0
+		return w
+	}
 	if idx < w.Top {
 		w.Top = idx
 		return w
