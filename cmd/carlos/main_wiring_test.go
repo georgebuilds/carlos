@@ -900,6 +900,37 @@ func TestRunMemory_SearchFrameFlagMissingValue(t *testing.T) {
 	}
 }
 
+func TestRunMemory_SearchUnframedFlag(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+	r, w, _ := os.Pipe()
+	orig := os.Stdout
+	os.Stdout = w
+	err := runMemory([]string{"search", "--unframed", "anything"})
+	w.Close()
+	os.Stdout = orig
+	_, _ = io.Copy(io.Discard, r)
+	if err != nil {
+		t.Fatalf("runMemory --unframed: %v", err)
+	}
+}
+
+func TestRunMemory_SearchUnframedAndFrameMutuallyExclusive(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+	if err := runMemory([]string{"search", "-f", "work", "--unframed", "alpha"}); err == nil {
+		t.Error("expected error combining -f with --unframed")
+	}
+}
+
+func TestRunMemory_SearchEmptyFrameNameRejected(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+	if err := runMemory([]string{"search", "-f", "", "alpha"}); err == nil {
+		t.Error("expected error for empty -f value")
+	}
+}
+
 // --- runApprovals ---------------------------------------------------
 
 func TestRunApprovals_NoArgs(t *testing.T) {

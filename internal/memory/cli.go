@@ -28,21 +28,21 @@ import (
 // `memory search <query>`; we keep the surface here so the foreground
 // agent's change is a one-liner.
 func RunSearch(query string, limit int) error {
-	return RunSearchTo(os.Stdout, query, limit, "", "")
+	return RunSearchTo(os.Stdout, query, limit, "", AnyFrames())
 }
 
-// RunSearchInFrame is the frame-aware variant. Empty frame returns the
-// cross-frame behaviour (every hit). Phase F-13.
-func RunSearchInFrame(query, frame string, limit int) error {
-	return RunSearchTo(os.Stdout, query, limit, "", frame)
+// RunSearchInFrame is the frame-aware variant. The FrameFilter
+// argument is required - construct via AnyFrames() / InFrame(name)
+// / Unframed().
+func RunSearchInFrame(query string, filter FrameFilter, limit int) error {
+	return RunSearchTo(os.Stdout, query, limit, "", filter)
 }
 
 // RunSearchTo is the testable variant of RunSearch. It accepts an
 // io.Writer (for capture in tests) and an explicit dbPath ("" falls
-// back to the resolution rules in RunSearch). The frame argument
-// scopes the FTS5 query to one frame's summaries; empty returns every
-// frame's hits.
-func RunSearchTo(out io.Writer, query string, limit int, dbPath, frame string) error {
+// back to the resolution rules in RunSearch). The filter argument
+// scopes the FTS5 query - see FrameFilter for the rules.
+func RunSearchTo(out io.Writer, query string, limit int, dbPath string, filter FrameFilter) error {
 	if strings.TrimSpace(query) == "" {
 		return errors.New("memory: search: empty query")
 	}
@@ -59,7 +59,7 @@ func RunSearchTo(out io.Writer, query string, limit int, dbPath, frame string) e
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	hits, err := store.SearchInFrame(ctx, query, frame, limit)
+	hits, err := store.SearchInFrame(ctx, query, filter, limit)
 	if err != nil {
 		return err
 	}
@@ -78,8 +78,8 @@ func RunSearchTo(out io.Writer, query string, limit int, dbPath, frame string) e
 //	<RFC3339>  [<agent-id first 8 chars>]  [<frame>]  <text first 200 chars>
 //
 // Newlines inside the summary are collapsed to spaces so the line
-// stays scannable. Empty frame is suppressed (legacy single-shelf
-// rows still render compactly).
+// stays scannable. Empty frame is suppressed (legacy / unframed rows
+// still render compactly).
 func formatSearchHit(h Summary) string {
 	short := h.AgentID
 	if len(short) > 8 {

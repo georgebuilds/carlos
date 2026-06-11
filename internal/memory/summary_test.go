@@ -42,7 +42,7 @@ func TestAppendSummary_AndSearch(t *testing.T) {
 		t.Errorf("second id should be > first; got %d <= %d", id2, id1)
 	}
 
-	hits, err := s.SearchInFrame(ctx, "FTS5", memory.AnyFrame, 10)
+	hits, err := s.SearchInFrame(ctx, "FTS5", memory.AnyFrames(), 10)
 	if err != nil {
 		t.Fatalf("SearchInFrame: %v", err)
 	}
@@ -62,7 +62,7 @@ func TestAppendSummary_AndSearch(t *testing.T) {
 func TestSearch_NoMatchesReturnsEmpty(t *testing.T) {
 	s, _ := newStore(t)
 	ctx := context.Background()
-	hits, err := s.SearchInFrame(ctx, "nothingmatchesthis", memory.AnyFrame, 10)
+	hits, err := s.SearchInFrame(ctx, "nothingmatchesthis", memory.AnyFrames(), 10)
 	if err != nil {
 		t.Fatalf("SearchInFrame: %v", err)
 	}
@@ -75,7 +75,7 @@ func TestSearch_NoMatchesReturnsEmpty(t *testing.T) {
 // (an empty MATCH would crash FTS5).
 func TestSearch_EmptyQueryRejected(t *testing.T) {
 	s, _ := newStore(t)
-	if _, err := s.SearchInFrame(context.Background(), "   ", memory.AnyFrame, 10); err == nil {
+	if _, err := s.SearchInFrame(context.Background(), "   ", memory.AnyFrames(), 10); err == nil {
 		t.Error("expected error on empty query")
 	}
 }
@@ -95,7 +95,7 @@ func TestSearch_DefaultLimit(t *testing.T) {
 			t.Fatalf("seed: %v", err)
 		}
 	}
-	hits, err := s.SearchInFrame(ctx, "keyword", memory.AnyFrame, 0) // 0 → default
+	hits, err := s.SearchInFrame(ctx, "keyword", memory.AnyFrames(), 0) // 0 → default
 	if err != nil {
 		t.Fatalf("SearchInFrame: %v", err)
 	}
@@ -121,7 +121,7 @@ func TestRecentSummaries_OrderedByClosedAtDesc(t *testing.T) {
 			t.Fatalf("seed: %v", err)
 		}
 	}
-	hits, err := s.RecentInFrame(ctx, memory.AnyFrame, 10)
+	hits, err := s.RecentInFrame(ctx, memory.AnyFrames(), 10)
 	if err != nil {
 		t.Fatalf("RecentInFrame: %v", err)
 	}
@@ -146,7 +146,7 @@ func TestRecentSummaries_Limit(t *testing.T) {
 			t.Fatalf("seed: %v", err)
 		}
 	}
-	hits, err := s.RecentInFrame(ctx, memory.AnyFrame, 2)
+	hits, err := s.RecentInFrame(ctx, memory.AnyFrames(), 2)
 	if err != nil {
 		t.Fatalf("RecentInFrame: %v", err)
 	}
@@ -195,7 +195,7 @@ func TestSearch_SubstringTokenMatch(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	hits, err := s.SearchInFrame(ctx, "gpu", memory.AnyFrame, 5)
+	hits, err := s.SearchInFrame(ctx, "gpu", memory.AnyFrames(), 5)
 	if err != nil {
 		t.Fatalf("SearchInFrame: %v", err)
 	}
@@ -236,7 +236,7 @@ func TestSearch_BadFTS5QueryReturnsErrBadQuery(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := s.SearchInFrame(ctx, tc.query, memory.AnyFrame, 10)
+			_, err := s.SearchInFrame(ctx, tc.query, memory.AnyFrames(), 10)
 			if err == nil {
 				t.Fatalf("query %q: expected error, got nil", tc.query)
 			}
@@ -258,7 +258,7 @@ func TestSearch_BadFTS5QueryInFrameReturnsErrBadQuery(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
-	_, err := s.SearchInFrame(ctx, `"unclosed`, "personal", 10)
+	_, err := s.SearchInFrame(ctx, `"unclosed`, memory.InFrame("personal"), 10)
 	if err == nil {
 		t.Fatal("expected error on bad FTS5 query")
 	}
@@ -277,7 +277,7 @@ func TestSearch_HappyPathStillWorks(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
-	hits, err := s.SearchInFrame(ctx, "carlos", memory.AnyFrame, 10)
+	hits, err := s.SearchInFrame(ctx, "carlos", memory.AnyFrames(), 10)
 	if err != nil {
 		t.Fatalf("SearchInFrame: %v", err)
 	}

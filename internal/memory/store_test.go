@@ -106,7 +106,7 @@ func TestPersistenceAcrossReopen(t *testing.T) {
 	}
 	defer s2.Close()
 
-	hits, err := s2.RecentInFrame(ctx, memory.AnyFrame, 10)
+	hits, err := s2.RecentInFrame(ctx, memory.AnyFrames(), 10)
 	if err != nil {
 		t.Fatalf("RecentInFrame: %v", err)
 	}

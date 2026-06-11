@@ -15,6 +15,19 @@
 // database is intentional (DESIGN § Memory): one *sql.DB handle, one
 // WAL, one fsync recipe. Opening this package against an existing
 // SQLiteEventLog database is a no-op (CREATE TABLE IF NOT EXISTS).
+//
+// Frame storage contract (post-rewrite):
+//
+//   - summaries.frame is TEXT NULL with `CHECK (frame IS NULL OR
+//     length(frame) > 0)`. NULL means "unframed" (legacy rows + rows
+//     written outside any active frame); a non-empty string is the
+//     active frame name at conversation close. The empty string is
+//     illegal at storage so the on-disk shape can never mean two
+//     things at once.
+//   - The Go-side filter is the typed FrameFilter sum
+//     (AnyFrames / InFrame / Unframed). See summary.go.
+//   - migrateSummariesFrame in store.go handles the three legacy
+//     shapes: no column, NOT NULL column, already-nullable column.
 package memory
 
 // schemaSQL applies the three memory tables (summaries + user_model)
@@ -28,11 +41,11 @@ package memory
 // do NOT add update / delete triggers: summaries are append-only at v0
 // (mirrors the events table). Phase 7 follow-up adds compaction.
 //
-// Phase F-13: summaries.frame stores the active frame at conversation
-// close. Empty string is the legacy single-shelf value; the migration
-// in OpenStore stamps existing rows with "" so /memory search defaults
-// remain stable. Cross-frame search is opt-in (search supplies frame=""
-// to bypass the filter).
+// Frame column: TEXT NULL with a CHECK constraint that rejects empty
+// strings. NULL means "unframed" (legacy or no-active-frame rows);
+// non-empty means the named active frame at conversation close. The
+// migration in store.go upgrades NOT-NULL-with-default-empty legacy
+// databases to this shape, mapping the legacy "" rows to NULL.
 const schemaSQL = `
 CREATE TABLE IF NOT EXISTS summaries (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -41,12 +54,12 @@ CREATE TABLE IF NOT EXISTS summaries (
   text        TEXT NOT NULL,
   tokens      INTEGER NOT NULL DEFAULT 0,
   source_seq  INTEGER NOT NULL DEFAULT 0,
-  frame       TEXT NOT NULL DEFAULT ''
+  frame       TEXT,
+  CHECK (frame IS NULL OR length(frame) > 0)
 );
 CREATE INDEX IF NOT EXISTS summaries_by_closed_at ON summaries(closed_at DESC);
--- summaries_by_frame is created by migrateSummariesFrame after the
--- ALTER TABLE has run on legacy databases, so we don't try to index a
--- column that does not yet exist.
+-- summaries_by_frame is created by ensureFrameIndex after the
+-- migration in case a legacy ALTER TABLE just added the column.
 
 CREATE VIRTUAL TABLE IF NOT EXISTS summaries_fts USING fts5(
   text,

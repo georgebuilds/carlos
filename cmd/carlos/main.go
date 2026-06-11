@@ -518,6 +518,61 @@ func parseLeadingFrameFlag(args []string) (string, []string, error) {
 	return "", args, nil
 }
 
+// parseLeadingFrameFilter is the FrameFilter-typed cousin of
+// parseLeadingFrameFlag, used by `memory search` where all three
+// query intents (any, named-with-legacy, unframed-only) are valid.
+// Recognized forms (any leading position; the function consumes a
+// single flag and returns):
+//
+//   - no flag: memory.AnyFrames()
+//   - "-f <name>" / "--frame <name>" (name non-empty):
+//     memory.InFrame(name)
+//   - "--unframed": memory.Unframed()
+//
+// Error conditions:
+//
+//   - "-f" / "--frame" missing its value
+//   - "-f \"\"" / "--frame \"\"" (empty name) - explicit error pointing
+//     the user at --unframed
+//   - both "-f" and "--unframed" together - mutually exclusive
+//
+// Returns the filter, the remaining args (with the recognized flag
+// stripped), and any parse error.
+func parseLeadingFrameFilter(args []string) (memory.FrameFilter, []string, error) {
+	if len(args) == 0 {
+		return memory.AnyFrames(), args, nil
+	}
+	// We accept one frame-related flag at the head. Two passes are
+	// not needed because callers compose flags in a fixed leading
+	// position for `memory search`.
+	switch args[0] {
+	case "-f", "--frame":
+		if len(args) < 2 {
+			return memory.FrameFilter{}, nil, errors.New("--frame requires a name (e.g. personal, work)")
+		}
+		name := args[1]
+		if name == "" {
+			return memory.FrameFilter{}, nil, errors.New("memory search: -f requires a non-empty frame name; pass --unframed for legacy/unframed rows")
+		}
+		// Reject the combo on the trailing args too: --unframed after
+		// -f is the mutually-exclusive case.
+		for _, a := range args[2:] {
+			if a == "--unframed" {
+				return memory.FrameFilter{}, nil, errors.New("memory search: -f and --unframed are mutually exclusive")
+			}
+		}
+		return memory.InFrame(name), args[2:], nil
+	case "--unframed":
+		for _, a := range args[1:] {
+			if a == "-f" || a == "--frame" {
+				return memory.FrameFilter{}, nil, errors.New("memory search: -f and --unframed are mutually exclusive")
+			}
+		}
+		return memory.Unframed(), args[1:], nil
+	}
+	return memory.AnyFrames(), args, nil
+}
+
 // parsePleaseArgs strips recognized leading flags from args and
 // returns the options plus the prompt. The prompt is a SINGLE
 // positional argument; multi-word prompts must be quoted by the
@@ -1215,11 +1270,12 @@ func runMemory(args []string) error {
 	switch args[0] {
 	case "search":
 		rest := args[1:]
-		// Phase F-13: -f|--frame scopes the query to one frame's
-		// summaries. Empty (no flag) returns cross-frame hits which is
-		// the legacy behaviour and the most useful default for `memory
-		// search` invoked from a script.
-		frameArg, rest, ferr := parseLeadingFrameFlag(rest)
+		// -f|--frame scopes the query to one frame's summaries (plus
+		// legacy unframed rows that fall through). --unframed scopes
+		// to legacy/unframed-only. No flag returns the full corpus
+		// across frames, which is the most useful default for
+		// `memory search` invoked from a script.
+		filter, rest, ferr := parseLeadingFrameFilter(rest)
 		if ferr != nil {
 			return ferr
 		}
@@ -1227,7 +1283,7 @@ func runMemory(args []string) error {
 		if strings.TrimSpace(query) == "" {
 			return errors.New("memory search: query required")
 		}
-		return memory.RunSearchInFrame(query, frameArg, 10)
+		return memory.RunSearchInFrame(query, filter, 10)
 	default:
 		return fmt.Errorf("memory: unknown subcommand %q (expected: search)", args[0])
 	}

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	_ "modernc.org/sqlite"
 )
@@ -96,6 +97,11 @@ func (s *Store) DB() *sql.DB { return s.db }
 // applySchema runs the memory-schema CREATE statements + WAL pragmas
 // against db. Idempotent. Errors are wrapped with the offending
 // statement type for diagnostics.
+//
+// Order matters: pragmas first (so WAL is on), then migrate any
+// existing summaries table to the nullable-frame shape, then run the
+// CREATE-IF-NOT-EXISTS schema (which creates summaries fresh if it
+// did not already exist), then create the frame index.
 func applySchema(db *sql.DB) error {
 	// Pragmas first so the schema CREATEs run under WAL. The DSN already
 	// applies these on connections we own; for caller-supplied handles
@@ -103,14 +109,15 @@ func applySchema(db *sql.DB) error {
 	if _, err := db.Exec(walPragmasSQL); err != nil {
 		return fmt.Errorf("memory: apply pragmas: %w", err)
 	}
-	if _, err := db.Exec(schemaSQL); err != nil {
-		return fmt.Errorf("memory: apply schema: %w", err)
-	}
-	// Phase F-13 migration: add summaries.frame to legacy databases.
-	// CREATE TABLE IF NOT EXISTS won't touch an existing summaries table
-	// that predates the frame column, so we probe + ALTER explicitly.
+	// Migrate an existing summaries table to the nullable-frame shape
+	// BEFORE schemaSQL runs. The migration is a no-op on fresh DBs
+	// (the table does not exist yet) and on already-migrated DBs (the
+	// frame column is already nullable).
 	if err := migrateSummariesFrame(db); err != nil {
 		return fmt.Errorf("memory: migrate summaries.frame: %w", err)
+	}
+	if _, err := db.Exec(schemaSQL); err != nil {
+		return fmt.Errorf("memory: apply schema: %w", err)
 	}
 	if err := ensureFrameIndex(db); err != nil {
 		return fmt.Errorf("memory: ensure frame index: %w", err)
@@ -118,18 +125,40 @@ func applySchema(db *sql.DB) error {
 	return nil
 }
 
-// migrateSummariesFrame adds the `frame` column to an existing
-// summaries table when it's missing. Idempotent: a second run on the
-// already-migrated database is a no-op. The matching frame index is
-// covered by schemaSQL's CREATE INDEX IF NOT EXISTS, so we only need
-// the column add here.
-func migrateSummariesFrame(db *sql.DB) error {
+// summariesFrameState describes the on-disk shape of summaries.frame
+// that the migration must reconcile. Three legitimate states:
+//
+//   - frameStateAbsent: the summaries table exists but has no `frame`
+//     column at all. The simplest legacy shape, predates Phase F-13.
+//   - frameStateNotNull: the summaries table has `frame TEXT NOT NULL
+//     DEFAULT ''` (current production shape). Legacy unframed rows
+//     stamped with "" must be mapped to NULL.
+//   - frameStateNullable: already migrated; no-op.
+//
+// A fourth state (table does not exist yet) is also a no-op since
+// schemaSQL will CREATE it with the nullable shape directly.
+type summariesFrameState int
+
+const (
+	frameStateNoTable summariesFrameState = iota
+	frameStateAbsent
+	frameStateNotNull
+	frameStateNullable
+)
+
+// inspectSummariesFrame probes `PRAGMA table_info(summaries)` to decide
+// which migration branch (if any) applies. The PRAGMA returns one row
+// per column with cid/name/type/notnull/dflt_value/pk; we only care
+// about the `name == "frame"` row and its `notnull` flag.
+func inspectSummariesFrame(db *sql.DB) (summariesFrameState, error) {
 	rows, err := db.Query(`PRAGMA table_info(summaries)`)
 	if err != nil {
-		return err
+		return frameStateNoTable, err
 	}
 	defer rows.Close()
+	sawAny := false
 	for rows.Next() {
+		sawAny = true
 		var (
 			cid     int
 			name    string
@@ -139,20 +168,126 @@ func migrateSummariesFrame(db *sql.DB) error {
 			pk      int
 		)
 		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
-			return err
+			return frameStateNoTable, err
 		}
 		if name == "frame" {
-			return nil
+			if notnull == 1 {
+				return frameStateNotNull, rows.Err()
+			}
+			return frameStateNullable, rows.Err()
 		}
 	}
 	if err := rows.Err(); err != nil {
+		return frameStateNoTable, err
+	}
+	if !sawAny {
+		// PRAGMA table_info on a non-existent table returns zero rows;
+		// schemaSQL will create the table next.
+		return frameStateNoTable, nil
+	}
+	return frameStateAbsent, nil
+}
+
+// migrateSummariesFrame brings any pre-existing `summaries` table to
+// the nullable-frame shape. Idempotent in every state:
+//
+//   - frameStateNoTable: nothing to do. schemaSQL will create the
+//     table with the right shape.
+//   - frameStateAbsent: `ALTER TABLE summaries ADD COLUMN frame TEXT`.
+//     Nullable, no default, so existing rows get NULL on read.
+//   - frameStateNotNull: table-recreate dance inside a transaction.
+//     Maps legacy "" frame values to NULL via NULLIF, drops the old
+//     table + trigger, renames the new one in place, recreates the
+//     trigger + indexes, and rebuilds the FTS5 index from the
+//     reconstituted summaries table.
+//   - frameStateNullable: no-op; already migrated.
+//
+// All paths leave the database in a state where summaries.frame is
+// `TEXT` (nullable) with the empty-string-rejecting CHECK constraint
+// (the CHECK is added by the recreate path; ALTER ADD COLUMN cannot
+// add a table-level CHECK, but the storage-side empty value is only
+// produced by callers we control, so the integrity guarantee comes
+// from the typed FrameFilter API on top).
+func migrateSummariesFrame(db *sql.DB) error {
+	state, err := inspectSummariesFrame(db)
+	if err != nil {
 		return err
 	}
-	if _, err := db.Exec(`ALTER TABLE summaries ADD COLUMN frame TEXT NOT NULL DEFAULT ''`); err != nil {
+	switch state {
+	case frameStateNoTable, frameStateNullable:
+		return nil
+	case frameStateAbsent:
+		if _, err := db.Exec(`ALTER TABLE summaries ADD COLUMN frame TEXT`); err != nil {
+			return err
+		}
+		return nil
+	case frameStateNotNull:
+		return recreateSummariesNullable(db)
+	}
+	return fmt.Errorf("memory: unknown summaries.frame state %d", state)
+}
+
+// recreateSummariesNullable swaps a NOT-NULL `frame` column for a
+// nullable one via the canonical SQLite "create new table, copy,
+// drop, rename" dance. Wraps the work in a transaction so a crash
+// mid-migration leaves the original table untouched. The FTS5 index
+// is rebuilt at the end (the new table has the same id space, but
+// dropping summaries cleared the FTS5 backing rows).
+func recreateSummariesNullable(db *sql.DB) error {
+	tx, err := db.Begin()
+	if err != nil {
 		return err
 	}
-	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS summaries_by_frame ON summaries(frame, closed_at DESC)`)
-	return err
+	steps := []string{
+		`CREATE TABLE summaries_new (
+		  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+		  agent_id    TEXT NOT NULL,
+		  closed_at   INTEGER NOT NULL,
+		  text        TEXT NOT NULL,
+		  tokens      INTEGER NOT NULL DEFAULT 0,
+		  source_seq  INTEGER NOT NULL DEFAULT 0,
+		  frame       TEXT,
+		  CHECK (frame IS NULL OR length(frame) > 0)
+		)`,
+		`INSERT INTO summaries_new (id, agent_id, closed_at, text, tokens, source_seq, frame)
+		 SELECT id, agent_id, closed_at, text, tokens, source_seq, NULLIF(frame, '') FROM summaries`,
+		`DROP TRIGGER IF EXISTS summaries_ai`,
+		`DROP INDEX IF EXISTS summaries_by_closed_at`,
+		`DROP INDEX IF EXISTS summaries_by_frame`,
+		`DROP TABLE summaries`,
+		`ALTER TABLE summaries_new RENAME TO summaries`,
+		`CREATE INDEX IF NOT EXISTS summaries_by_closed_at ON summaries(closed_at DESC)`,
+		`CREATE INDEX IF NOT EXISTS summaries_by_frame ON summaries(frame, closed_at DESC)`,
+		`CREATE TRIGGER IF NOT EXISTS summaries_ai AFTER INSERT ON summaries BEGIN
+		  INSERT INTO summaries_fts(rowid, text) VALUES (new.id, new.text);
+		END`,
+		`INSERT INTO summaries_fts(summaries_fts) VALUES('rebuild')`,
+	}
+	for _, stmt := range steps {
+		if _, err := tx.Exec(stmt); err != nil {
+			_ = tx.Rollback()
+			return fmt.Errorf("memory: recreate summaries (step %q): %w", migrationStepLabel(stmt), err)
+		}
+	}
+	return tx.Commit()
+}
+
+// migrationStepLabel returns a short label for stmt to embed in error
+// messages. Keeps the wrap short instead of dumping a multi-line SQL
+// blob into the caller's terminal. The label is the first non-empty
+// line of stmt, trimmed and capped at 64 chars.
+func migrationStepLabel(stmt string) string {
+	for _, line := range strings.Split(stmt, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		if len(trimmed) > 64 {
+			return trimmed[:64]
+		}
+		return trimmed
+	}
+	return stmt
 }
 
 // ensureFrameIndex creates summaries_by_frame on fresh databases (where

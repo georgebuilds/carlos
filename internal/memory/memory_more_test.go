@@ -134,7 +134,7 @@ func TestRunSearch_HomeFallback(t *testing.T) {
 	// Capture stdout via RunSearchTo using an empty dbPath so the
 	// resolution rule kicks in.
 	var buf bytes.Buffer
-	if err := RunSearchTo(&buf, "alphahomesignal", 10, "", ""); err != nil {
+	if err := RunSearchTo(&buf, "alphahomesignal", 10, "", AnyFrames()); err != nil {
 		t.Fatalf("RunSearchTo: %v", err)
 	}
 	if !strings.Contains(buf.String(), "alphahomesignal") {
@@ -159,7 +159,7 @@ func TestRunSearch_EnvOverride(t *testing.T) {
 
 	t.Setenv("CARLOS_STATE_DB", dbPath)
 	var buf bytes.Buffer
-	if err := RunSearchTo(&buf, "envsignal", 10, "", ""); err != nil {
+	if err := RunSearchTo(&buf, "envsignal", 10, "", AnyFrames()); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(buf.String(), "envsignal") {
@@ -195,7 +195,7 @@ func TestRunSearchInFrame_TopLevel(t *testing.T) {
 	}
 	_ = store.Close()
 	t.Setenv("CARLOS_STATE_DB", dbPath)
-	if err := RunSearchInFrame("nothingnothing", "work", 5); err != nil {
+	if err := RunSearchInFrame("nothingnothing", InFrame("work"), 5); err != nil {
 		t.Errorf("RunSearchInFrame: %v", err)
 	}
 }
@@ -235,6 +235,64 @@ func TestResolveDBPath_Home(t *testing.T) {
 	want := filepath.Join(dir, ".carlos", "state.db")
 	if got != want {
 		t.Errorf("got %q want %q", got, want)
+	}
+}
+
+// TestResolveDBPath_NoHomeNoEnv drives the error branch: clear HOME
+// and CARLOS_STATE_DB so os.UserHomeDir returns "" or an error and
+// the function surfaces a useful diagnostic.
+func TestResolveDBPath_NoHomeNoEnv(t *testing.T) {
+	t.Setenv("HOME", "")
+	t.Setenv("CARLOS_STATE_DB", "")
+	_, err := resolveDBPath("")
+	if err == nil {
+		t.Error("expected error when neither HOME nor env supplied")
+	}
+}
+
+// TestRunSearchTo_ResolveError exercises the resolveDBPath error
+// propagation through RunSearchTo.
+func TestRunSearchTo_ResolveError(t *testing.T) {
+	t.Setenv("HOME", "")
+	t.Setenv("CARLOS_STATE_DB", "")
+	var buf bytes.Buffer
+	err := RunSearchTo(&buf, "alpha", 10, "", AnyFrames())
+	if err == nil {
+		t.Error("expected error when path cannot be resolved")
+	}
+}
+
+// TestRunSearchTo_OpenStoreError exercises the OpenStore failure path
+// by pointing at a path whose parent is a file (mkdir fails).
+func TestRunSearchTo_OpenStoreError(t *testing.T) {
+	dir := t.TempDir()
+	conflict := filepath.Join(dir, "regular-file")
+	if err := os.WriteFile(conflict, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(conflict, "sub", "state.db")
+	var buf bytes.Buffer
+	err := RunSearchTo(&buf, "alpha", 10, target, AnyFrames())
+	if err == nil {
+		t.Error("expected OpenStore error when parent dir cannot be created")
+	}
+}
+
+// TestRunSearchTo_SearchInFrameError exercises the SearchInFrame error
+// path: pass a zero-value FrameFilter so the read API returns
+// ErrInvalidFrameFilter and RunSearchTo propagates it.
+func TestRunSearchTo_SearchInFrameError(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "state.db")
+	store, err := OpenStore(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = store.Close()
+	var buf bytes.Buffer
+	err = RunSearchTo(&buf, "alpha", 10, dbPath, FrameFilter{})
+	if err == nil {
+		t.Error("expected invalid-filter error to propagate")
 	}
 }
 
@@ -433,10 +491,10 @@ func TestStore_NilReceivers(t *testing.T) {
 	if _, err := s.AppendSummary(ctx, Summary{AgentID: "a", Text: "x"}); err == nil {
 		t.Error("AppendSummary nil receiver should error")
 	}
-	if _, err := s.SearchInFrame(ctx, "x", AnyFrame, 10); err == nil {
+	if _, err := s.SearchInFrame(ctx, "x", AnyFrames(), 10); err == nil {
 		t.Error("SearchInFrame nil receiver should error")
 	}
-	if _, err := s.RecentInFrame(ctx, AnyFrame, 10); err == nil {
+	if _, err := s.RecentInFrame(ctx, AnyFrames(), 10); err == nil {
 		t.Error("RecentInFrame nil receiver should error")
 	}
 	if _, _, err := s.GetFact(ctx, "k"); err == nil {
@@ -487,7 +545,7 @@ func TestAppendSummary_ZeroTimeStampsNow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	hits, err := s.RecentInFrame(ctx, AnyFrame, 10)
+	hits, err := s.RecentInFrame(ctx, AnyFrames(), 10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -507,7 +565,7 @@ func TestSearchInFrame_NoRows(t *testing.T) {
 	if _, err := s.AppendSummary(ctx, Summary{AgentID: "a", Text: "alpha", Frame: "work"}); err != nil {
 		t.Fatal(err)
 	}
-	out, err := s.SearchInFrame(ctx, "alpha", "personal", 10)
+	out, err := s.SearchInFrame(ctx, "alpha", InFrame("personal"), 10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -519,7 +577,7 @@ func TestSearchInFrame_NoRows(t *testing.T) {
 // TestRecentInFrame_EmptyResults - frame with no rows yields empty.
 func TestRecentInFrame_Empty(t *testing.T) {
 	s := newMemStore(t)
-	out, err := s.RecentInFrame(context.Background(), "empty-frame", 10)
+	out, err := s.RecentInFrame(context.Background(), InFrame("empty-frame"), 10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -531,7 +589,7 @@ func TestRecentInFrame_Empty(t *testing.T) {
 // TestRecentInFrame_DefaultLimit covers the limit<=0 branch.
 func TestRecentInFrame_DefaultLimit(t *testing.T) {
 	s := newMemStore(t)
-	out, err := s.RecentInFrame(context.Background(), "", 0)
+	out, err := s.RecentInFrame(context.Background(), AnyFrames(), 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -541,7 +599,7 @@ func TestRecentInFrame_DefaultLimit(t *testing.T) {
 // TestSearchInFrame_EmptyQueryRejected.
 func TestSearchInFrame_EmptyQuery(t *testing.T) {
 	s := newMemStore(t)
-	if _, err := s.SearchInFrame(context.Background(), "", "work", 10); err == nil {
+	if _, err := s.SearchInFrame(context.Background(), "", InFrame("work"), 10); err == nil {
 		t.Error("expected error")
 	}
 }

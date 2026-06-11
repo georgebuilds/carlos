@@ -2,6 +2,7 @@ package memory
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
@@ -13,6 +14,12 @@ import (
 // quote, bare operator, etc.). Callers may errors.Is against this to
 // render a user-fixable hint instead of a generic "database error".
 var ErrBadQuery = errors.New("memory: bad FTS5 query syntax")
+
+// ErrInvalidFrameFilter is returned by the read APIs when a caller
+// passes a zero-value FrameFilter. The zero value is intentionally
+// invalid so an uninitialized filter (e.g. a struct field never set)
+// fails loudly rather than silently behaving like "any frame".
+var ErrInvalidFrameFilter = errors.New("memory: invalid FrameFilter - construct via AnyFrames/InFrame/Unframed")
 
 // isFTS5SyntaxError sniffs the error string returned by
 // modernc.org/sqlite for the two shapes FTS5 actually emits:
@@ -44,8 +51,14 @@ func isFTS5SyntaxError(err error) bool {
 // stamps this. ClosedAt is the wall-clock close time in UTC ms;
 // SourceSeq is the last events.seq covered by the summary (so a
 // future incremental summarizer can pick up where the previous one
-// stopped). Frame is the active frame at conversation close (Phase
-// F-13); empty string is the legacy single-shelf value.
+// stopped).
+//
+// Frame is the active frame at conversation close. The struct uses a
+// plain string for ergonomic display; the storage layer maps "" to
+// SQL NULL (unframed) and any non-empty string to a CHECK-constrained
+// non-empty column. Callers therefore see a consistent "" both for
+// rows that predate frames and for rows written outside any active
+// frame.
 type Summary struct {
 	ID        int64
 	AgentID   string
@@ -63,6 +76,11 @@ type Summary struct {
 // Returns the new row id. Empty AgentID or empty Text return errors
 // - both are required for a useful summary, and silently inserting a
 // blank row would pollute the FTS index.
+//
+// Frame storage rule: an empty sum.Frame is stored as SQL NULL
+// (unframed); a non-empty sum.Frame is stored verbatim. The empty
+// string never lands in the column - the table's CHECK constraint
+// would reject it - so on-disk values are unambiguous.
 func (s *Store) AppendSummary(ctx context.Context, sum Summary) (int64, error) {
 	if s == nil {
 		return 0, errors.New("memory: nil store")
@@ -78,10 +96,11 @@ func (s *Store) AppendSummary(ctx context.Context, sum Summary) (int64, error) {
 		closedAt = time.Now().UTC()
 	}
 	closedAt = closedAt.UTC().Truncate(time.Millisecond)
+	frame := sql.NullString{String: sum.Frame, Valid: sum.Frame != ""}
 	res, err := s.db.ExecContext(ctx,
 		`INSERT INTO summaries(agent_id, closed_at, text, tokens, source_seq, frame)
 		 VALUES (?, ?, ?, ?, ?, ?)`,
-		sum.AgentID, closedAt.UnixMilli(), sum.Text, sum.Tokens, sum.SourceSeq, sum.Frame,
+		sum.AgentID, closedAt.UnixMilli(), sum.Text, sum.Tokens, sum.SourceSeq, frame,
 	)
 	if err != nil {
 		return 0, fmt.Errorf("memory: insert summary: %w", err)
@@ -93,31 +112,121 @@ func (s *Store) AppendSummary(ctx context.Context, sum Summary) (int64, error) {
 	return id, nil
 }
 
-// AnyFrame is the explicit sentinel for "do not filter on frame" in
-// the read paths (SearchInFrame, RecentInFrame). It is the empty
-// string by design: legacy databases stamp the frame column with ""
-// for rows that predate frames, and the same value names "I want
-// every row, including legacy ones." Callers must pass either an
-// active-frame name OR this sentinel - there is no silent default.
-const AnyFrame = ""
+// FrameFilter selects which summary rows the read API returns. It is
+// a closed sum type: construct via AnyFrames() / InFrame(name) /
+// Unframed(). The zero value is intentionally an invalid filter so an
+// uninitialized FrameFilter passed by mistake fails fast with
+// ErrInvalidFrameFilter instead of silently behaving like "any
+// frame".
+//
+// Filter semantics:
+//
+//   - AnyFrames(): no filter; every row (named + unframed) matches.
+//     Used by the `carlos memory search` CLI when invoked without
+//     -f / --unframed so a script gets the full corpus.
+//   - InFrame(name): the named frame's rows PLUS legacy unframed
+//     rows (frame IS NULL) fall through. Mirrors the audit-required
+//     contract that summaries written before frames remain reachable
+//     under any active frame.
+//   - Unframed(): only frame IS NULL rows. Lets a user (or operator)
+//     surface the legacy / no-frame corpus without dragging in a
+//     specific named frame's rows.
+type FrameFilter struct {
+	kind frameKind
+	name string
+}
+
+// frameKind is the FrameFilter discriminator. Kept unexported so
+// callers cannot construct an invalid filter literal.
+type frameKind uint8
+
+const (
+	frameInvalid frameKind = iota
+	frameAny
+	frameNamed
+	frameUnframed
+)
+
+// AnyFrames returns a FrameFilter that matches every summary row,
+// regardless of frame. This is the default for the `carlos memory
+// search` CLI when no -f / --unframed flag is supplied.
+func AnyFrames() FrameFilter { return FrameFilter{kind: frameAny} }
+
+// InFrame returns a FrameFilter that matches rows stamped under the
+// named frame plus legacy unframed rows (frame IS NULL). Panics if
+// name is empty because the empty string is not a valid frame name;
+// callers wanting unframed-only rows must use Unframed().
+func InFrame(name string) FrameFilter {
+	if name == "" {
+		panic("memory: InFrame requires non-empty name; use AnyFrames() or Unframed()")
+	}
+	return FrameFilter{kind: frameNamed, name: name}
+}
+
+// Unframed returns a FrameFilter that matches only rows with NULL
+// frame (legacy + no-active-frame). Lets operators inspect the
+// untagged corpus without pulling in any named frame's rows.
+func Unframed() FrameFilter { return FrameFilter{kind: frameUnframed} }
+
+// predicate returns the SQL fragment and bind args to AND into a
+// WHERE clause. An empty fragment means "no filter"; callers compose
+// the surrounding query. Returns (frag="", args=nil, ok=true) for
+// AnyFrames; an unconstrained args slice for Unframed; a single arg
+// for InFrame. Returns ok=false for the zero value so callers can
+// raise ErrInvalidFrameFilter.
+func (f FrameFilter) predicate() (frag string, args []any, ok bool) {
+	switch f.kind {
+	case frameAny:
+		return "", nil, true
+	case frameNamed:
+		return "(frame = ? OR frame IS NULL)", []any{f.name}, true
+	case frameUnframed:
+		return "frame IS NULL", nil, true
+	}
+	return "", nil, false
+}
+
+// composeSearchSQL returns the SQL for the FTS5-matching summary
+// query under the given filter fragment. The filter fragment may be
+// empty (AnyFrames) - in that case only the FTS5 subquery + ORDER +
+// LIMIT clauses appear in the WHERE.
+func composeSearchSQL(filterFrag string) string {
+	var where strings.Builder
+	where.WriteString("WHERE id IN (SELECT rowid FROM summaries_fts WHERE summaries_fts MATCH ?)")
+	if filterFrag != "" {
+		where.WriteString(" AND ")
+		where.WriteString(filterFrag)
+	}
+	return `SELECT id, agent_id, closed_at, text, tokens, source_seq, frame
+		  FROM summaries
+		 ` + where.String() + `
+		 ORDER BY closed_at DESC
+		 LIMIT ?`
+}
+
+// composeRecentSQL returns the SQL for the order-by-closed-at recall
+// query under the given filter fragment. Empty fragment yields an
+// unfiltered SELECT.
+func composeRecentSQL(filterFrag string) string {
+	var where string
+	if filterFrag != "" {
+		where = "WHERE " + filterFrag
+	}
+	return `SELECT id, agent_id, closed_at, text, tokens, source_seq, frame
+		  FROM summaries
+		 ` + where + `
+		 ORDER BY closed_at DESC
+		 LIMIT ?`
+}
 
 // SearchInFrame runs an FTS5 MATCH against the summaries index and
 // returns rows ordered by closed_at DESC (newest first). If limit
 // <= 0 we default to 10.
 //
-// Frame semantics (Phase F-13, hardened post-audit):
-//
-//   - frame == AnyFrame: no filter; every match across every frame is
-//     returned. Used by the `carlos memory search` CLI when invoked
-//     without -f / --frame so a script gets the full corpus.
-//   - frame != AnyFrame: predicate is `frame = ? OR frame = ''`. Rows
-//     stamped under the active frame surface; rows stamped under a
-//     different frame are hidden; legacy rows (frame = "") fall through
-//     so they remain reachable across the frames cutover.
-//
-// The frame argument is explicit and required - there is no silent
-// default. Callers in the agent loop pass the active-at-recall-time
-// frame; the CLI passes its -f flag value (which may be AnyFrame).
+// Frame semantics are encoded by the FrameFilter argument (see
+// AnyFrames / InFrame / Unframed for the rules). A zero-value
+// FrameFilter returns ErrInvalidFrameFilter rather than silently
+// matching anything.
 //
 // The query is passed straight to FTS5 - callers may use the full
 // FTS5 query grammar (quoted phrases, AND/OR/NOT, NEAR/N, prefix*).
@@ -125,7 +234,7 @@ const AnyFrame = ""
 //
 // The summaries_by_frame index makes the per-frame scan cheap even
 // on large stores.
-func (s *Store) SearchInFrame(ctx context.Context, query, frame string, limit int) ([]Summary, error) {
+func (s *Store) SearchInFrame(ctx context.Context, query string, filter FrameFilter, limit int) ([]Summary, error) {
 	if s == nil {
 		return nil, errors.New("memory: nil store")
 	}
@@ -135,33 +244,17 @@ func (s *Store) SearchInFrame(ctx context.Context, query, frame string, limit in
 	if limit <= 0 {
 		limit = 10
 	}
-	if frame == AnyFrame {
-		rows, err := s.db.QueryContext(ctx, `
-			SELECT id, agent_id, closed_at, text, tokens, source_seq, frame
-			  FROM summaries
-			 WHERE id IN (SELECT rowid FROM summaries_fts WHERE summaries_fts MATCH ?)
-			 ORDER BY closed_at DESC
-			 LIMIT ?`,
-			query, limit,
-		)
-		if err != nil {
-			if isFTS5SyntaxError(err) {
-				return nil, fmt.Errorf("%w: %v", ErrBadQuery, err)
-			}
-			return nil, fmt.Errorf("memory: search: %w", err)
-		}
-		defer rows.Close()
-		return scanSummaries(rows)
+	frag, args, ok := filter.predicate()
+	if !ok {
+		return nil, ErrInvalidFrameFilter
 	}
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, agent_id, closed_at, text, tokens, source_seq, frame
-		  FROM summaries
-		 WHERE (frame = ? OR frame = '')
-		   AND id IN (SELECT rowid FROM summaries_fts WHERE summaries_fts MATCH ?)
-		 ORDER BY closed_at DESC
-		 LIMIT ?`,
-		frame, query, limit,
-	)
+	// Bind order matches composeSearchSQL: FTS5 MATCH first, then any
+	// filter args (currently 0 or 1), then LIMIT.
+	bind := make([]any, 0, 2+len(args))
+	bind = append(bind, query)
+	bind = append(bind, args...)
+	bind = append(bind, limit)
+	rows, err := s.db.QueryContext(ctx, composeSearchSQL(frag), bind...)
 	if err != nil {
 		if isFTS5SyntaxError(err) {
 			return nil, fmt.Errorf("%w: %v", ErrBadQuery, err)
@@ -176,41 +269,24 @@ func (s *Store) SearchInFrame(ctx context.Context, query, frame string, limit in
 // by the agent boot / recall path to seed working memory ("here's
 // what we last talked about") without invoking FTS5.
 //
-// Frame semantics mirror SearchInFrame exactly:
-//
-//   - frame == AnyFrame: no filter; every frame's rows are returned.
-//   - frame != AnyFrame: predicate is `frame = ? OR frame = ''` so the
-//     active frame's rows + legacy rows surface, but rows stamped
-//     under a different frame are hidden.
-//
-// The frame argument is explicit and required - no silent default.
-func (s *Store) RecentInFrame(ctx context.Context, frame string, limit int) ([]Summary, error) {
+// Frame semantics mirror SearchInFrame exactly - the same FrameFilter
+// kinds and the same legacy-fallthrough rule. A zero-value filter
+// returns ErrInvalidFrameFilter.
+func (s *Store) RecentInFrame(ctx context.Context, filter FrameFilter, limit int) ([]Summary, error) {
 	if s == nil {
 		return nil, errors.New("memory: nil store")
 	}
 	if limit <= 0 {
 		limit = 10
 	}
-	if frame == AnyFrame {
-		rows, err := s.db.QueryContext(ctx, `
-			SELECT id, agent_id, closed_at, text, tokens, source_seq, frame
-			  FROM summaries
-			 ORDER BY closed_at DESC
-			 LIMIT ?`, limit,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("memory: recent summaries: %w", err)
-		}
-		defer rows.Close()
-		return scanSummaries(rows)
+	frag, args, ok := filter.predicate()
+	if !ok {
+		return nil, ErrInvalidFrameFilter
 	}
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, agent_id, closed_at, text, tokens, source_seq, frame
-		  FROM summaries
-		 WHERE frame = ? OR frame = ''
-		 ORDER BY closed_at DESC
-		 LIMIT ?`, frame, limit,
-	)
+	bind := make([]any, 0, 1+len(args))
+	bind = append(bind, args...)
+	bind = append(bind, limit)
+	rows, err := s.db.QueryContext(ctx, composeRecentSQL(frag), bind...)
 	if err != nil {
 		return nil, fmt.Errorf("memory: recent summaries: %w", err)
 	}
@@ -220,7 +296,8 @@ func (s *Store) RecentInFrame(ctx context.Context, frame string, limit int) ([]S
 
 // scanSummaries is the shared row-scan loop for Search and
 // RecentSummaries. Both queries select the same column list in the
-// same order - keep them in lockstep.
+// same order - keep them in lockstep. NULL frame columns hydrate to
+// Summary.Frame = "".
 func scanSummaries(rows interface {
 	Next() bool
 	Scan(dest ...any) error
@@ -231,11 +308,15 @@ func scanSummaries(rows interface {
 		var (
 			sum     Summary
 			closeMs int64
+			frame   sql.NullString
 		)
-		if err := rows.Scan(&sum.ID, &sum.AgentID, &closeMs, &sum.Text, &sum.Tokens, &sum.SourceSeq, &sum.Frame); err != nil {
+		if err := rows.Scan(&sum.ID, &sum.AgentID, &closeMs, &sum.Text, &sum.Tokens, &sum.SourceSeq, &frame); err != nil {
 			return nil, fmt.Errorf("memory: scan summary: %w", err)
 		}
 		sum.ClosedAt = time.UnixMilli(closeMs).UTC()
+		if frame.Valid {
+			sum.Frame = frame.String
+		}
 		out = append(out, sum)
 	}
 	if err := rows.Err(); err != nil {

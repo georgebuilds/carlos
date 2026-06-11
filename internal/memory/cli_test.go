@@ -29,7 +29,7 @@ func TestRunSearchTo_HappyPath(t *testing.T) {
 	_ = store.Close()
 
 	var buf bytes.Buffer
-	if err := memory.RunSearchTo(&buf, "memory", 10, dbPath, ""); err != nil {
+	if err := memory.RunSearchTo(&buf, "memory", 10, dbPath, memory.AnyFrames()); err != nil {
 		t.Fatalf("RunSearchTo: %v", err)
 	}
 	out := buf.String()
@@ -50,7 +50,7 @@ func TestRunSearchTo_NoMatches(t *testing.T) {
 	_ = store.Close()
 
 	var buf bytes.Buffer
-	if err := memory.RunSearchTo(&buf, "nothingmatchesthis", 10, dbPath, ""); err != nil {
+	if err := memory.RunSearchTo(&buf, "nothingmatchesthis", 10, dbPath, memory.AnyFrames()); err != nil {
 		t.Fatalf("RunSearchTo: %v", err)
 	}
 	if !strings.Contains(buf.String(), "no matches.") {
@@ -67,7 +67,7 @@ func TestRunSearchTo_EmptyQueryRejected(t *testing.T) {
 	_ = store.Close()
 
 	var buf bytes.Buffer
-	if err := memory.RunSearchTo(&buf, "   ", 10, dbPath, ""); err == nil {
+	if err := memory.RunSearchTo(&buf, "   ", 10, dbPath, memory.AnyFrames()); err == nil {
 		t.Error("expected error on empty query")
 	}
 }
