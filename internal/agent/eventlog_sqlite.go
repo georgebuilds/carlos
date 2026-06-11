@@ -136,21 +136,17 @@ func (l *SQLiteEventLog) Append(ctx context.Context, ev Event) (int64, error) {
 // publish delivers ev to every subscriber registered for ev.AgentID. A
 // channel that is full (cap 64) gets the event dropped silently - the
 // subscriber is expected to fall back to Read() if it cares about a gap.
+//
+// Holds subMu for the whole fan-out so unsub can close the channel
+// safely under the same lock without racing a concurrent send. The
+// per-subscriber send is non-blocking (select + default), so the lock
+// is held for O(N_subs) microseconds - the table is small (the chat
+// view + the manage view + apply handler in production) and a full
+// channel never stalls us.
 func (l *SQLiteEventLog) publish(ev Event) {
 	l.subMu.Lock()
-	chans := l.subs[ev.AgentID]
-	if len(chans) == 0 {
-		l.subMu.Unlock()
-		return
-	}
-	// Snapshot under lock; deliver outside so a slow non-blocking send
-	// doesn't pin the subscriber table.
-	out := make([]chan Event, 0, len(chans))
-	for c := range chans {
-		out = append(out, c)
-	}
-	l.subMu.Unlock()
-	for _, c := range out {
+	defer l.subMu.Unlock()
+	for c := range l.subs[ev.AgentID] {
 		select {
 		case c <- ev:
 		default:
@@ -189,8 +185,14 @@ func (l *SQLiteEventLog) Read(ctx context.Context, agentID string, fromSeq int64
 
 // Subscribe registers a per-process channel that receives every event
 // appended for agentID, starting from the call. Returns the channel and an
-// unsubscribe func; callers MUST call unsubscribe to free the slot, even
-// if they drain via close.
+// unsubscribe func; callers MUST call unsubscribe to free the slot.
+//
+// Channel lifecycle: the returned channel IS closed on unsubscribe, so
+// consumers reading with `ev, ok := <-ch` see ok == false and can
+// return cleanly, and consumers ranging over the channel exit the loop.
+// unsub is idempotent: a second call after the first is a safe no-op
+// (no double-close panic), so a defer + an explicit cancel can both
+// fire without coordination.
 //
 // Buffer = 64. If the consumer falls behind, Append drops events to it
 // (the log is the authoritative state; Subscribe is a live-update
@@ -206,15 +208,22 @@ func (l *SQLiteEventLog) Subscribe(agentID string) (<-chan Event, func(), error)
 	l.subMu.Unlock()
 	unsub := func() {
 		l.subMu.Lock()
-		if m, ok := l.subs[agentID]; ok {
-			delete(m, ch)
-			if len(m) == 0 {
-				delete(l.subs, agentID)
-			}
+		defer l.subMu.Unlock()
+		m, ok := l.subs[agentID]
+		if !ok {
+			return
 		}
-		l.subMu.Unlock()
-		// Don't close ch - consumer may still be draining. GC will
-		// reclaim it once references drop.
+		if _, present := m[ch]; !present {
+			// Already unsubscribed - keep idempotent so a defer +
+			// an explicit cancel can both fire without panicking
+			// on a double close(ch).
+			return
+		}
+		delete(m, ch)
+		close(ch)
+		if len(m) == 0 {
+			delete(l.subs, agentID)
+		}
 	}
 	return ch, unsub, nil
 }

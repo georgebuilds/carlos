@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -418,6 +419,162 @@ func TestSubscribe_DropsOnFullChannel(t *testing.T) {
 			}
 			return
 		}
+	}
+}
+
+// TestSubscribe_UnsubClosesChannel pins the new contract: unsub closes
+// the returned channel, so a consumer reading with `ev, ok := <-ch`
+// observes ok == false and can return cleanly without leaning on a
+// separate ctx.Done() signal.
+func TestSubscribe_UnsubClosesChannel(t *testing.T) {
+	log := openLog(t)
+	ch, unsub, err := log.Subscribe("closer")
+	if err != nil {
+		t.Fatalf("subscribe: %v", err)
+	}
+	unsub()
+	select {
+	case ev, ok := <-ch:
+		if ok {
+			t.Errorf("ok = true after unsub; want closed channel, got ev=%+v", ev)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("read from unsubscribed channel hung; expected close-driven ok=false")
+	}
+}
+
+// TestSubscribe_DoubleUnsubIdempotent confirms unsub is safe to call
+// more than once. The fix guards against the obvious double-close
+// panic so a defer + an explicit cancel can both fire without
+// coordination.
+func TestSubscribe_DoubleUnsubIdempotent(t *testing.T) {
+	log := openLog(t)
+	_, unsub, err := log.Subscribe("twice")
+	if err != nil {
+		t.Fatalf("subscribe: %v", err)
+	}
+	// Two back-to-back calls must not panic.
+	unsub()
+	unsub()
+	// A third for good measure (covers the second `present` check).
+	unsub()
+}
+
+// TestSubscribe_SendDuringUnsubRaceClean stresses the publish + unsub
+// interleaving the fix was written for: one goroutine hammers Append
+// while another loops Subscribe + unsub. Before the fix, publish
+// could race a concurrent close(ch) and panic with "send on closed
+// channel"; run with `go test -race` to catch any regression in
+// either direction (race detector OR a real panic).
+func TestSubscribe_SendDuringUnsubRaceClean(t *testing.T) {
+	log := openLog(t)
+	ctx := context.Background()
+
+	const writers = 4
+	const subscribers = 4
+	const duration = 200 * time.Millisecond
+
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+
+	// Publisher goroutines: pound Append for the duration.
+	for w := 0; w < writers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+				_, _ = log.Append(ctx, agent.Event{
+					AgentID: "race", TS: time.Now().UTC().Truncate(time.Millisecond),
+					Type: agent.EvtHeartbeat, Payload: []byte(`{}`),
+				})
+			}
+		}()
+	}
+
+	// Subscriber/unsubscriber goroutines: churn the sub table so
+	// publish frequently encounters a channel that is about to be
+	// closed.
+	for s := 0; s < subscribers; s++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+				ch, unsub, err := log.Subscribe("race")
+				if err != nil {
+					t.Errorf("subscribe: %v", err)
+					return
+				}
+				// Drain whatever lands until the channel closes or we
+				// proactively unsub.
+				go func() {
+					for range ch {
+					}
+				}()
+				unsub()
+			}
+		}()
+	}
+
+	time.Sleep(duration)
+	close(stop)
+	wg.Wait()
+}
+
+// TestSubscribe_DropPreservedAfterFix re-asserts the buffer-full drop
+// behaviour the original contract guarantees: a subscriber that never
+// reads its channel must not back up Append. The drop is silent (no
+// error), and Append returns quickly even after the buffer is well
+// past full.
+func TestSubscribe_DropPreservedAfterFix(t *testing.T) {
+	log := openLog(t)
+	ch, unsub, err := log.Subscribe("dropper")
+	if err != nil {
+		t.Fatalf("subscribe: %v", err)
+	}
+	defer unsub()
+
+	// 200 appends with no reader; the publish path's select-default
+	// must drop everything past buffer cap.
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 0; i < 200; i++ {
+			if _, err := log.Append(context.Background(), agent.Event{
+				AgentID: "dropper", TS: time.Now().UTC().Truncate(time.Millisecond),
+				Type: agent.EvtHeartbeat, Payload: []byte(`{}`),
+			}); err != nil {
+				t.Errorf("append %d: %v", i, err)
+				return
+			}
+		}
+	}()
+
+	select {
+	case <-done:
+		// happy path: publish never blocked even though nobody read ch.
+	case <-time.After(2 * time.Second):
+		t.Fatal("Append blocked on a full subscriber channel; drop contract regressed")
+	}
+
+	// The channel should have queued ~buffer-cap events before the
+	// drops kicked in; we just need at least one to prove delivery
+	// happened up to the cap. Use a non-blocking read to avoid
+	// hanging if the count somehow lands at zero (which would itself
+	// be a regression).
+	select {
+	case <-ch:
+	default:
+		t.Error("no events queued at all; publish appears to have dropped from event 0")
 	}
 }
 
