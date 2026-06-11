@@ -114,6 +114,13 @@ type Context struct {
 	Combined   string
 	TotalBytes int64
 	Truncated  bool
+
+	// Warnings carries non-fatal load warnings (e.g. include-expansion
+	// failures) for the caller to surface inside the UI. This package
+	// must NOT write these to stderr - emitting them during context
+	// loading can interleave with the TUI's first frame paint. The
+	// caller owns when and how to display them.
+	Warnings []string
 }
 
 // Discover walks from cwd upward and returns every project-context file
@@ -214,7 +221,8 @@ func isGitRoot(dir string) bool {
 // missing file doesn't abort the whole load; the enclosing file is
 // also marked LoadedFile.Partial=true, gets a trailing
 // "[project context: include expand failed - ...]" summary stub, and
-// the underlying warnings are mirrored to stderr.
+// the underlying warnings are collected on Context.Warnings for the
+// caller to surface (never written to stderr by this package).
 func Load(files []DiscoveredFile) (*Context, error) {
 	// Sort for output ordering: shallowest level FIRST (parent context
 	// comes before child context, so closest-to-cwd conventions land
@@ -257,12 +265,14 @@ func Load(files []DiscoveredFile) (*Context, error) {
 		// already mirrored as an inline `[project context: include ...]`
 		// stub by expandIncludes (read failures, depth caps, cycles); we
 		// add a trailing summary stub here so the failure is unmissable
-		// in the model's reading order and log to stderr for the operator.
+		// in the model's reading order, and collect the warnings on the
+		// returned Context so the caller can surface them in the UI
+		// (never written to stderr - see Context.Warnings).
 		partial := len(warnings) > 0
 		var failureStub string
 		if partial {
 			for _, w := range warnings {
-				fmt.Fprintf(os.Stderr, "projectctx: include expand %s: %s\n", df.RelPath, w)
+				ctx.Warnings = append(ctx.Warnings, fmt.Sprintf("projectctx: include expand %s: %s", df.RelPath, w))
 			}
 			// Join warnings into a single line so the trailing stub is one
 			// compact marker rather than a multi-line dump.

@@ -390,6 +390,85 @@ func TestLoad_IncludeExpansionErrorEmitsStub(t *testing.T) {
 	}
 }
 
+func TestLoad_IncludeWarningsCollectedNotStderr(t *testing.T) {
+	// A failed @-include must surface its warning on Context.Warnings so
+	// the caller can render it inside the TUI. This package must NOT write
+	// it to stderr (that interleaves with the first frame paint). We can't
+	// portably capture os.Stderr here, so the load-bearing assertion is
+	// that the warning lands in Context.Warnings; the absence of any
+	// os.Stderr write is additionally guarded by a source-level grep in
+	// the package's check command.
+	root := t.TempDir()
+	markGitRoot(t, root)
+	writeFile(t, filepath.Join(root, "AGENTS.md"),
+		"PREFIX\n@./missing.md\nSUFFIX\n")
+
+	ctx, err := LoadFromCwd(root)
+	if err != nil {
+		t.Fatalf("LoadFromCwd: %v", err)
+	}
+	if ctx == nil {
+		t.Fatal("ctx is nil")
+	}
+
+	if len(ctx.Warnings) == 0 {
+		t.Fatalf("Context.Warnings: want >=1 on include failure, got 0")
+	}
+
+	var found bool
+	for _, w := range ctx.Warnings {
+		if strings.HasPrefix(w, "projectctx: include expand AGENTS.md:") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("Context.Warnings missing expected 'projectctx: include expand AGENTS.md: ...' entry; got %v", ctx.Warnings)
+	}
+}
+
+func TestLooksLikePath(t *testing.T) {
+	// looksLikePath gates which `@token` lines are treated as includes.
+	// Exercise every accept/reject branch so the include heuristic stays
+	// pinned (the warning path under test only fires for accepted paths).
+	cases := []struct {
+		in   string
+		want bool
+	}{
+		{"docs/file.md", true},  // contains a slash
+		{"./local.md", true},    // dot-prefixed relative
+		{"~/global.md", true},   // home-prefixed
+		{"NOTES.md", true},      // .md extension
+		{"readme.txt", true},    // .txt extension
+		{"spec.markdown", true}, // .markdown extension
+		{"SPEC.MD", true},       // case-insensitive extension match
+		{"georgebuilds", false}, // bare handle, no path markers
+		{"example.com", false},  // email-domain-like, not a doc
+	}
+	for _, c := range cases {
+		if got := looksLikePath(c.in); got != c.want {
+			t.Errorf("looksLikePath(%q) = %v, want %v", c.in, got, c.want)
+		}
+	}
+}
+
+func TestLoad_NoWarningsOnHappyPath(t *testing.T) {
+	// A clean expansion must leave Context.Warnings empty - we don't want
+	// spurious entries surfaced in the TUI on a healthy load.
+	root := t.TempDir()
+	markGitRoot(t, root)
+	writeFile(t, filepath.Join(root, "AGENTS.md"), "main\n@./inc.md\ntail\n")
+	writeFile(t, filepath.Join(root, "inc.md"), "INCLUDED\n")
+
+	ctx, err := LoadFromCwd(root)
+	if err != nil {
+		t.Fatalf("LoadFromCwd: %v", err)
+	}
+	if len(ctx.Warnings) != 0 {
+		t.Errorf("Context.Warnings: want empty on clean expansion, got %v", ctx.Warnings)
+	}
+}
+
 func TestLoad_IncludeExpansionHappyPathNotPartial(t *testing.T) {
 	// Sanity check: a successful expansion must NOT set Partial and must
 	// NOT emit a trailing 'include expand failed' stub. Guards the new
