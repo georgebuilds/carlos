@@ -24,24 +24,41 @@ import (
 // regex.
 var includeRe = regexp.MustCompile(`^\s*@(\S+)\s*$`)
 
+// includeWarn is a single include-expansion problem.
+//
+// user is the human-facing line surfaced on Context.Warnings (and from
+// there into the TUI). inContext reports whether expandIncludes also
+// left a stub in the expanded content for this failure: a missing target
+// is surfaced to the user but deliberately kept OUT of the model context
+// (it is almost always a stale local pointer the model can't act on, e.g.
+// a CLAUDE.md that says @AGENTS.md when no AGENTS.md was ever created), so
+// it sets inContext=false; an unreadable-but-present include keeps its
+// stub so the model still sees the gap.
+type includeWarn struct {
+	user      string
+	inContext bool
+}
+
 // expandIncludes recursively resolves `@<path>` directives in content.
 //
 // baseDir is the directory of the file that wrote the include - paths
-// are resolved relative to it (matches Claude Code semantics). `~` is
-// home-expanded. depth/maxDepth bound recursion. seenPaths is the
+// are resolved relative to it (matches Claude Code semantics). fromFile
+// is the display name of the file being expanded, used to phrase
+// warnings ("<fromFile> references <target>, which doesn't exist"). `~`
+// is home-expanded. depth/maxDepth bound recursion. seenPaths is the
 // resolution stack used for cycle detection: an include of a path
 // already on the stack is replaced with
 // "[project context: cycle detected - <path>]" rather than re-expanded.
 //
 // Returned warnings are advisory; callers can log them but the expanded
-// content is always safe to use (failed includes are replaced inline
-// with descriptive stubs).
-func expandIncludes(content, baseDir string, depth, maxDepth int, seenPaths map[string]bool) (string, []string) {
+// content is always safe to use (failed includes are either replaced
+// inline with descriptive stubs or, for missing targets, dropped).
+func expandIncludes(content, baseDir, fromFile string, depth, maxDepth int, seenPaths map[string]bool) (string, []includeWarn) {
 	if depth > maxDepth {
 		return fmt.Sprintf("[project context: include depth %d exceeds cap %d]", depth, maxDepth), nil
 	}
 
-	var warnings []string
+	var warnings []includeWarn
 	var out strings.Builder
 	inFence := false
 
@@ -75,9 +92,26 @@ func expandIncludes(content, baseDir string, depth, maxDepth int, seenPaths map[
 		}
 		data, err := os.ReadFile(incPath)
 		if err != nil {
+			if os.IsNotExist(err) {
+				// Missing target: surface a clear, user-facing warning but
+				// keep it OUT of the model context. Drop the @line entirely
+				// instead of writing a stub - the model can't act on a stale
+				// local pointer, and the user sees it in the TUI instead.
+				warnings = append(warnings, includeWarn{
+					user:      fmt.Sprintf("Your %s references %s, which doesn't exist", fromFile, m[1]),
+					inContext: false,
+				})
+				continue
+			}
+			// Present but unreadable (permissions, a directory, IO): keep
+			// the inline stub so the model still sees the gap, and surface
+			// the detail to the user.
 			stub := fmt.Sprintf("[project context: include failed - %s: %v]\n", m[1], err)
 			out.WriteString(stub)
-			warnings = append(warnings, fmt.Sprintf("include %s: %v", incPath, err))
+			warnings = append(warnings, includeWarn{
+				user:      fmt.Sprintf("%s includes %s, which couldn't be read: %v", fromFile, m[1], err),
+				inContext: true,
+			})
 			continue
 		}
 
@@ -85,7 +119,7 @@ func expandIncludes(content, baseDir string, depth, maxDepth int, seenPaths map[
 		// poison each other (only a true cycle along the current
 		// resolution path should trip the guard).
 		seenPaths[incPath] = true
-		expanded, subWarnings := expandIncludes(string(data), filepath.Dir(incPath), depth+1, maxDepth, seenPaths)
+		expanded, subWarnings := expandIncludes(string(data), filepath.Dir(incPath), filepath.Base(incPath), depth+1, maxDepth, seenPaths)
 		delete(seenPaths, incPath)
 
 		out.WriteString(expanded)

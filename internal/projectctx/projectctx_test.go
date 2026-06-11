@@ -322,15 +322,32 @@ func TestExpandIncludesMissingFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadFromCwd: %v", err)
 	}
-	if !strings.Contains(ctx.Combined, "include failed") {
-		t.Errorf("missing include should emit failure stub:\n%s", ctx.Combined)
+	// A missing include target is a stale-pointer problem the model can't
+	// act on, so it must NOT leak a stub into the model context...
+	if strings.Contains(ctx.Combined, "include failed") {
+		t.Errorf("missing include should not emit an in-context stub:\n%s", ctx.Combined)
+	}
+	// ...but the user must see a clear, self-contained warning.
+	want := "Your AGENTS.md references ./nope.md, which doesn't exist"
+	if !containsWarning(ctx.Warnings, want) {
+		t.Errorf("Context.Warnings missing %q; got %v", want, ctx.Warnings)
 	}
 }
 
-func TestLoad_IncludeExpansionErrorEmitsStub(t *testing.T) {
-	// When an @-include fails (here: target file doesn't exist), the
-	// loader must surface the failure rather than silently writing
-	// partial content:
+// containsWarning reports whether any warning equals want.
+func containsWarning(warnings []string, want string) bool {
+	for _, w := range warnings {
+		if w == want {
+			return true
+		}
+	}
+	return false
+}
+
+func TestLoad_UnreadableIncludeEmitsStub(t *testing.T) {
+	// When an @-include is present but UNREADABLE (here: the target is a
+	// directory, which os.ReadFile rejects with a non-IsNotExist error),
+	// the loader keeps the failure in the model context:
 	//   - the inline `[project context: include failed - ...]` stub from
 	//     expandIncludes is preserved
 	//   - a trailing `[project context: include expand failed - ...]`
@@ -339,10 +356,14 @@ func TestLoad_IncludeExpansionErrorEmitsStub(t *testing.T) {
 	//   - the LoadedFile is flagged Partial=true so callers can surface
 	//     the degraded state
 	//   - the overall Load call does not return an error or panic
+	// (A *missing* target takes a different path - see TestLoad_MissingInclude.)
 	root := t.TempDir()
 	markGitRoot(t, root)
+	if err := os.Mkdir(filepath.Join(root, "adir"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
 	writeFile(t, filepath.Join(root, "AGENTS.md"),
-		"PREFIX-CONTENT\n@./missing.md\nSUFFIX-CONTENT\n")
+		"PREFIX-CONTENT\n@./adir\nSUFFIX-CONTENT\n")
 
 	ctx, err := LoadFromCwd(root)
 	if err != nil {
@@ -364,7 +385,7 @@ func TestLoad_IncludeExpansionErrorEmitsStub(t *testing.T) {
 	}
 
 	// Inline stub from expandIncludes (the per-line marker).
-	if !strings.Contains(ctx.Combined, "[project context: include failed - ./missing.md") {
+	if !strings.Contains(ctx.Combined, "[project context: include failed - ./adir") {
 		t.Errorf("missing inline include-failed stub:\n%s", ctx.Combined)
 	}
 	// Trailing summary stub appended by Load.
@@ -390,14 +411,16 @@ func TestLoad_IncludeExpansionErrorEmitsStub(t *testing.T) {
 	}
 }
 
-func TestLoad_IncludeWarningsCollectedNotStderr(t *testing.T) {
-	// A failed @-include must surface its warning on Context.Warnings so
-	// the caller can render it inside the TUI. This package must NOT write
-	// it to stderr (that interleaves with the first frame paint). We can't
-	// portably capture os.Stderr here, so the load-bearing assertion is
-	// that the warning lands in Context.Warnings; the absence of any
-	// os.Stderr write is additionally guarded by a source-level grep in
-	// the package's check command.
+func TestLoad_MissingInclude(t *testing.T) {
+	// A *missing* @-include target (the common stale-pointer case, e.g. a
+	// CLAUDE.md that says @AGENTS.md when no AGENTS.md exists) must:
+	//   - surface a clear, self-contained warning on Context.Warnings so
+	//     the caller can render it in the TUI (never written to stderr -
+	//     that interleaves with the first frame paint; a source-level grep
+	//     in the package check guards the no-stderr invariant)
+	//   - keep the failure OUT of the model context: no inline stub and no
+	//     trailing summary stub, since the model can't act on it
+	//   - keep the surrounding content intact
 	root := t.TempDir()
 	markGitRoot(t, root)
 	writeFile(t, filepath.Join(root, "AGENTS.md"),
@@ -411,19 +434,21 @@ func TestLoad_IncludeWarningsCollectedNotStderr(t *testing.T) {
 		t.Fatal("ctx is nil")
 	}
 
-	if len(ctx.Warnings) == 0 {
-		t.Fatalf("Context.Warnings: want >=1 on include failure, got 0")
+	// Clear, self-contained warning for the TUI.
+	want := "Your AGENTS.md references ./missing.md, which doesn't exist"
+	if !containsWarning(ctx.Warnings, want) {
+		t.Errorf("Context.Warnings missing %q; got %v", want, ctx.Warnings)
 	}
 
-	var found bool
-	for _, w := range ctx.Warnings {
-		if strings.HasPrefix(w, "projectctx: include expand AGENTS.md:") {
-			found = true
-			break
-		}
+	// Nothing about the missing include leaks into the model context.
+	if strings.Contains(ctx.Combined, "include failed") ||
+		strings.Contains(ctx.Combined, "include expand failed") {
+		t.Errorf("missing include leaked a stub into model context:\n%s", ctx.Combined)
 	}
-	if !found {
-		t.Errorf("Context.Warnings missing expected 'projectctx: include expand AGENTS.md: ...' entry; got %v", ctx.Warnings)
+
+	// Surrounding content is preserved.
+	if !strings.Contains(ctx.Combined, "PREFIX") || !strings.Contains(ctx.Combined, "SUFFIX") {
+		t.Errorf("surrounding content lost around missing include:\n%s", ctx.Combined)
 	}
 }
 

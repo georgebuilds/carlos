@@ -258,25 +258,31 @@ func Load(files []DiscoveredFile) (*Context, error) {
 		}
 
 		seen := map[string]bool{df.Path: true}
-		expanded, warnings := expandIncludes(string(raw), filepath.Dir(df.Path), 0, MaxIncludeDepth, seen)
+		expanded, warnings := expandIncludes(string(raw), filepath.Dir(df.Path), df.RelPath, 0, MaxIncludeDepth, seen)
 
-		// Surface include-expansion failures so the model sees a clearly-
-		// marked stub instead of silent partial content. Each warning is
-		// already mirrored as an inline `[project context: include ...]`
-		// stub by expandIncludes (read failures, depth caps, cycles); we
-		// add a trailing summary stub here so the failure is unmissable
-		// in the model's reading order, and collect the warnings on the
-		// returned Context so the caller can surface them in the UI
-		// (never written to stderr - see Context.Warnings).
+		// Surface include-expansion failures. Every warning is collected on
+		// the returned Context (self-contained, human-readable) so the
+		// caller can render it in the TUI - never written to stderr, see
+		// Context.Warnings. We additionally add a trailing in-context
+		// summary stub, but ONLY for failures expandIncludes kept in the
+		// model context (unreadable includes); a missing-target include is
+		// surfaced to the user only, so a file whose sole problem is a
+		// missing include adds nothing to the model's reading order.
 		partial := len(warnings) > 0
 		var failureStub string
 		if partial {
+			var inContext []string
 			for _, w := range warnings {
-				ctx.Warnings = append(ctx.Warnings, fmt.Sprintf("projectctx: include expand %s: %s", df.RelPath, w))
+				ctx.Warnings = append(ctx.Warnings, w.user)
+				if w.inContext {
+					inContext = append(inContext, w.user)
+				}
 			}
-			// Join warnings into a single line so the trailing stub is one
-			// compact marker rather than a multi-line dump.
-			failureStub = fmt.Sprintf("[project context: include expand failed - %s: %s]\n", df.RelPath, strings.Join(warnings, "; "))
+			if len(inContext) > 0 {
+				// Join into a single line so the trailing stub is one
+				// compact marker rather than a multi-line dump.
+				failureStub = fmt.Sprintf("[project context: include expand failed - %s: %s]\n", df.RelPath, strings.Join(inContext, "; "))
+			}
 		}
 
 		header := fmt.Sprintf("# [project context: %s]\n\n", df.RelPath)
