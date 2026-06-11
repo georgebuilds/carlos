@@ -1130,9 +1130,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 		// Any non-submit keystroke clears a stale status echo so the
-		// footer reflects current state.
+		// footer reflects current state. The startup-notice banner is
+		// dismissed the same way: once the user starts typing they've
+		// seen it, so reclaim the footer space.
 		if m.status != "" {
 			m.status = ""
+		}
+		if len(m.startupNotices) > 0 {
+			m.startupNotices = nil
 		}
 		var cmd tea.Cmd
 		m.ta, cmd = m.ta.Update(msg)

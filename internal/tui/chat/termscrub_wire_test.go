@@ -60,6 +60,33 @@ func TestPostUpdateScrub_KeepsRealTextAroundLeak(t *testing.T) {
 	}
 }
 
+// TestStartupNotices_DismissedOnKeystroke confirms the footer banner is
+// cleared once the user starts typing, reclaiming the footer space.
+func TestStartupNotices_DismissedOnKeystroke(t *testing.T) {
+	log := openTempLog(t)
+	const agentID = "01HV0000000000000000000009"
+	seedAgent(t, log, agentID, "dismiss", "claude-4.7-sonnet")
+
+	notices := []string{"Your CLAUDE.md references AGENTS.md, which doesn't exist"}
+	m := New(log, agentID, NewMemTextSource(), WithStartupNotices(notices))
+	m = drive(t, m, 100, 30)
+
+	if !strings.Contains(m.View(), notices[0]) {
+		t.Fatalf("precondition: notice should render before any keystroke")
+	}
+
+	// A single typed rune dismisses the banner.
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("h")})
+	m = updated.(*Model)
+
+	if len(m.startupNotices) != 0 {
+		t.Errorf("startupNotices should be cleared after a keystroke; got %v", m.startupNotices)
+	}
+	if strings.Contains(m.View(), notices[0]) {
+		t.Errorf("dismissed notice still in View:\n%s", m.View())
+	}
+}
+
 // TestWithStartupNotices_RendersInView confirms the notices passed via
 // WithStartupNotices surface in the rendered View output (the footer
 // banner), and that a nil slice renders nothing.
