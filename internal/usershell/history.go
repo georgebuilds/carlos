@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -107,7 +108,15 @@ func (h *History) Add(cmd string) error {
 	h.cursor = len(h.entries)
 	entries := append([]string(nil), h.entries...)
 	h.mu.Unlock()
-	return h.persist(entries)
+	if err := h.persist(entries); err != nil {
+		// Documented contract: persist failures must not propagate.
+		// The in-memory entry already landed above, so up/down still
+		// cycles within the session. Surface the disk failure via
+		// slog.Warn instead of swallowing it silently.
+		slog.Warn("usershell: history persist failed; in-memory entry retained",
+			"path", h.path, "err", err)
+	}
+	return nil
 }
 
 // persist writes the entries slice to disk via temp+rename. After
