@@ -250,6 +250,97 @@ func TestFinalAssistantText_MultiIterationConcat(t *testing.T) {
 	}
 }
 
+// recordingSnapshotApprover satisfies agent.Approver AND the
+// `SnapshotAtFrame() agent.Approver` shape the chatglue Loop type-
+// asserts at the start of each turn. Counts snapshot calls + records
+// the per-turn approver actually consulted by agent.Run.
+type recordingSnapshotApprover struct {
+	snapshotsTaken int
+	calls          int // counts ApproveToolCall on the outer (non-snapshot) wrapper
+	per            *perTurnApprover
+}
+
+type perTurnApprover struct {
+	calls int
+}
+
+func (p *perTurnApprover) ApproveToolCall(string, []byte) bool {
+	p.calls++
+	return true
+}
+
+func (r *recordingSnapshotApprover) ApproveToolCall(string, []byte) bool {
+	r.calls++
+	return true
+}
+
+func (r *recordingSnapshotApprover) SnapshotAtFrame() agent.Approver {
+	r.snapshotsTaken++
+	r.per = &perTurnApprover{}
+	return r.per
+}
+
+// Capture-at-issue wire-up: handleUserMessage must call
+// SnapshotAtFrame on the configured Approver (when supported) so a
+// mid-turn frame switch can't mutate the in-flight tool-call frame
+// out from under the approver. Pin for frames audit §3.
+func TestLoop_HandleUserMessage_SnapshotsApprover(t *testing.T) {
+	log := openTestLog(t)
+	const id = "agent-snap"
+	seedAgent(t, log, id)
+
+	rec := &recordingSnapshotApprover{}
+	l := NewLoop(Config{
+		Provider: scriptedProvider("ok"),
+		Approver: rec,
+	}, log, newMemSource(), id)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := l.Start(ctx); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer l.Stop()
+	time.Sleep(50 * time.Millisecond)
+	appendUserMessage(t, log, id, "hi")
+	_ = waitForAssistant(t, log, id, "ok")
+
+	if rec.snapshotsTaken < 1 {
+		t.Fatalf("handleUserMessage must call SnapshotAtFrame at turn start; snapshotsTaken=%d", rec.snapshotsTaken)
+	}
+	// The outer (live) approver must NOT be consulted during the turn:
+	// once the snapshot is taken, all in-flight approver calls go
+	// through the snapshot — even though scripted provider has no
+	// tool calls, this still pins that the outer's ApproveToolCall
+	// stayed at zero (no accidental fallthrough).
+	if rec.calls != 0 {
+		t.Errorf("outer (live) approver must not be consulted post-snapshot; calls=%d", rec.calls)
+	}
+}
+
+// Backwards compatibility: an Approver that does NOT implement the
+// SnapshotAtFrame shape must continue to work unchanged. handleUserMessage
+// type-asserts; a non-matching approver falls through to direct use.
+func TestLoop_HandleUserMessage_PlainApproverStillWorks(t *testing.T) {
+	log := openTestLog(t)
+	const id = "agent-plain"
+	seedAgent(t, log, id)
+
+	plain := agent.AutoApprover{}
+	l := NewLoop(Config{
+		Provider: scriptedProvider("ok"),
+		Approver: plain,
+	}, log, newMemSource(), id)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := l.Start(ctx); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer l.Stop()
+	time.Sleep(50 * time.Millisecond)
+	appendUserMessage(t, log, id, "hi")
+	_ = waitForAssistant(t, log, id, "ok") // turn completes without panic
+}
+
 func TestLoop_NonUserEventsIgnored(t *testing.T) {
 	log := openTestLog(t)
 	const id = "agent-cg-4"

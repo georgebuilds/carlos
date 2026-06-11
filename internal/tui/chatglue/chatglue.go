@@ -172,11 +172,22 @@ func (l *Loop) handleUserMessage(ctx context.Context, _ agent.Event) {
 	}
 
 	writer := &textSourceWriter{source: l.source, agentID: l.agentID}
+	// Capture-at-issue: if the configured approver supports per-turn
+	// frame snapshots, freeze the cross-frame state at the start of
+	// this turn so a mid-turn Ctrl+F (which mutates the approver via
+	// SetFrameSubtrees on the same instance) can't relabel an
+	// already-issued tool call as cross-frame. The next user message
+	// goes through a fresh Loop (rebuilt by swapLoop) and takes its
+	// own snapshot. See frames audit §3, internal/agent/policy.go.
+	turnApprover := l.cfg.Approver
+	if snap, ok := turnApprover.(interface{ SnapshotAtFrame() agent.Approver }); ok {
+		turnApprover = snap.SnapshotAtFrame()
+	}
 	opts := agent.LoopOptions{
 		Model:         l.cfg.Model,
 		System:        l.cfg.System,
 		TextSink:      writer,
-		Approver:      l.cfg.Approver,
+		Approver:      turnApprover,
 		Budget:        l.cfg.Budget,
 		MaxIterations: l.cfg.MaxIterations,
 		Tools:         buildToolSpecs(l.cfg.Tools),
