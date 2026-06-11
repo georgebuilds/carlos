@@ -53,6 +53,7 @@ import (
 
 	"github.com/georgebuilds/carlos/internal/frame"
 	"github.com/georgebuilds/carlos/internal/theme"
+	"github.com/georgebuilds/carlos/internal/tui/termscrub"
 )
 
 // errFramePickerCancelled is the sentinel returned when the user esc's or
@@ -96,7 +97,7 @@ func stdinIsTTY() bool {
 func RunInlineFramePicker(cmdName, prompt string, frames *frame.Config) (string, error) {
 	pal := loadPickerPalette()
 	model := newInlinePickerModel(cmdName, prompt, frames, pal)
-	prog := tea.NewProgram(model)
+	prog := tea.NewProgram(model, tea.WithFilter(termscrub.FilterTerminalLeaks))
 	final, err := prog.Run()
 	if err != nil {
 		return "", fmt.Errorf("inline frame picker: %w", err)

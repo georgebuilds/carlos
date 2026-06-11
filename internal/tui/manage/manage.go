@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/georgebuilds/carlos/internal/agent"
+	"github.com/georgebuilds/carlos/internal/tui/termscrub"
 )
 
 // Model is the top-level bubbletea Model for the manage TUI. It owns:
@@ -108,7 +109,7 @@ func New(src SnapshotSource, log agent.EventLog, sup VerbDispatcher) *Model {
 // Run is the convenience entry point for callers that just want to
 // drop into the manage surface. Mirrors chat.Model.Run.
 func (m *Model) Run() (tea.Model, error) {
-	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
+	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion(), tea.WithFilter(termscrub.FilterTerminalLeaks))
 	return p.Run()
 }
 

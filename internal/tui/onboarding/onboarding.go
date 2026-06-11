@@ -12,6 +12,7 @@ import (
 	"github.com/georgebuilds/carlos/internal/config"
 	"github.com/georgebuilds/carlos/internal/frame"
 	"github.com/georgebuilds/carlos/internal/theme"
+	"github.com/georgebuilds/carlos/internal/tui/termscrub"
 )
 
 // Screen identifies the current step in the five-screen flow. Order
@@ -318,7 +319,7 @@ func rememberRail(cols, rows int) string {
 // Returns the populated config on completion, or (nil, ErrAborted) if
 // the user ctrl-c'd at any screen.
 func (f *Flow) Run() (*config.Config, error) {
-	p := tea.NewProgram(f, tea.WithAltScreen())
+	p := tea.NewProgram(f, tea.WithAltScreen(), tea.WithFilter(termscrub.FilterTerminalLeaks))
 	final, err := p.Run()
 	if err != nil {
 		return nil, err

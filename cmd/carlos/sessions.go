@@ -32,6 +32,7 @@ import (
 	"github.com/georgebuilds/carlos/internal/agent"
 	"github.com/georgebuilds/carlos/internal/config"
 	"github.com/georgebuilds/carlos/internal/theme"
+	"github.com/georgebuilds/carlos/internal/tui/termscrub"
 )
 
 // errPickerCancelled is the sentinel callers (runDefault) treat as
@@ -60,7 +61,7 @@ func runSessionPicker(ctx context.Context) (string, error) {
 
 	pal := loadPickerPalette()
 	m := newSessionPickerModel(sessions, pal)
-	p := tea.NewProgram(m, tea.WithAltScreen())
+	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithFilter(termscrub.FilterTerminalLeaks))
 	final, err := p.Run()
 	if err != nil {
 		return "", err
