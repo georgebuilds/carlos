@@ -90,37 +90,37 @@
     <ol>
       <li>
         <div class="card straight">
-          <h3>1. decompose</h3>
+          <h3>decompose</h3>
           <p>Model splits the question into sub-questions and an answer schema. The schema is what verify will audit coverage against later.</p>
         </div>
       </li>
       <li>
         <div class="card straight">
-          <h3>2. search</h3>
+          <h3>search</h3>
           <p><code>web_search</code> fans out across configured backends (Brave, SearXNG, DuckDuckGo HTML). Result list with stable <code>sN</code> IDs that follow each candidate through the rest of the pipeline.</p>
         </div>
       </li>
       <li>
         <div class="card straight">
-          <h3>3. fetch</h3>
+          <h3>fetch</h3>
           <p><code>web_fetch</code> resolves each candidate URL. HTML to text via <code>golang.org/x/net/html</code>. Refuses non-<code>http(s)</code>, private and loopback addresses (config-gated), non-text content types, and robots-disallowed paths (override available). HEAD-then-GET; 5 MiB raw and 256 KiB extracted caps; 5-redirect ceiling; 5-minute robots cache.</p>
         </div>
       </li>
       <li>
         <div class="card straight">
-          <h3>4. read</h3>
+          <h3>read</h3>
           <p>Each fetched page is chunked into <code>Passage</code>s with stable <code>pN</code> IDs. These IDs are the ground truth verify will trust.</p>
         </div>
       </li>
       <li>
         <div class="card straight">
-          <h3>5. synthesize</h3>
+          <h3>synthesize</h3>
           <p>Model writes the report. Prompt forces inline <code>[pN]</code> citations so verify can audit coverage claim-by-claim.</p>
         </div>
       </li>
       <li>
         <div class="card straight">
-          <h3>6. verify</h3>
+          <h3>verify</h3>
           <p>Independent pass checks that every claim cites a real <code>pN</code> and that the cited passage supports the claim. The citation auditor (<code>internal/research/citations.go</code>) flags hallucinated or misattributed cites.</p>
         </div>
       </li>
