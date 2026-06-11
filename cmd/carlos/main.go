@@ -141,24 +141,29 @@ func applyTheme(cfg *config.Config) {
 	onboarding.ApplyPalette(p)
 }
 
-func main() {
-	args := os.Args[1:]
-	// Phase R - session resume flags. Strip before the verb switch
-	// so `carlos -c` / `carlos -r` land in the default chat path
-	// instead of falling through to the help case. The flag is
-	// ignored when followed by a verb (`carlos -c onboard` runs
-	// onboarding); the default chat path is where it has meaning.
-	resumeMode := ""
+// stripResumeMode pulls a leading -c/--continue or -r/--resume flag off
+// the argument list and reports which resume mode it selected.
+//
+// Phase R - session resume flags. Stripped before the verb switch so
+// `carlos -c` / `carlos -r` land in the default chat path instead of
+// falling through to the help case. The flag is only meaningful in the
+// leading position; `carlos -c onboard` strips the -c and then runs
+// onboarding (the mode is ignored by every non-default verb). Returns
+// "" and the args untouched when no resume flag is present.
+func stripResumeMode(args []string) (mode string, rest []string) {
 	if len(args) > 0 {
 		switch args[0] {
 		case "-c", "--continue":
-			resumeMode = "continue"
-			args = args[1:]
+			return "continue", args[1:]
 		case "-r", "--resume":
-			resumeMode = "resume"
-			args = args[1:]
+			return "resume", args[1:]
 		}
 	}
+	return "", args
+}
+
+func main() {
+	resumeMode, args := stripResumeMode(os.Args[1:])
 	if len(args) > 0 {
 		switch args[0] {
 		case "version", "-v", "--version":
