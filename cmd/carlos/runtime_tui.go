@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -141,6 +142,18 @@ func runDefault(cfg *config.Config, sessionID string) error {
 	}
 	defer log.Close()
 
+	// Best-effort diagnostics sink: rare connection/prune warnings go to
+	// ~/.carlos/carlos.log so they never corrupt the alt-screen frame.
+	// Falls back to io.Discard when home is unresolved or the file can't
+	// be opened. User-facing startup messages go in `notices` instead and
+	// render as TUI banner lines via chat.WithStartupNotices.
+	diagWriter, diagCleanup := openDiagLog(home)
+	defer diagCleanup()
+	// Keep usershell's warning sink off the terminal frame too.
+	prevUsershellLog := usershell.SetErrLog(diagWriter)
+	defer usershell.SetErrLog(prevUsershellLog)
+	var notices []string
+
 	d, err := buildDispatchForFrame(cfg, pleaseOptions{}, activeFrameForDispatch(cfg, ""))
 	if err != nil {
 		return err
@@ -150,7 +163,7 @@ func runDefault(cfg *config.Config, sessionID string) error {
 	defer cancel()
 
 	if report, err := agent.Recover(ctx, log); err == nil && len(report.Orphaned) > 0 {
-		fmt.Fprintf(os.Stderr, "carlos: recovered %d orphaned agent(s) from prior session\n", len(report.Orphaned))
+		notices = append(notices, fmt.Sprintf("recovered %d orphaned agent(s) from prior session", len(report.Orphaned)))
 	}
 
 	// Phase R: fresh session per invocation by default. -c/-r flag
@@ -166,7 +179,7 @@ func runDefault(cfg *config.Config, sessionID string) error {
 		}
 		defaultAgentID = minted
 	}
-	if err := ensureDefaultAgent(ctx, log, defaultAgentID, d.name, d.model, cfg.UserName); err != nil {
+	if err := ensureDefaultAgent(ctx, log, defaultAgentID, d.name, d.model, cfg.UserName, diagWriter); err != nil {
 		return err
 	}
 
@@ -192,10 +205,10 @@ func runDefault(cfg *config.Config, sessionID string) error {
 	// "<server>__<tool>" namespace. Failures don't block boot - the
 	// user sees the warning on stderr and the rest of the catalog
 	// keeps wiring up. Sessions are closed on session end via defer.
-	_, mcpClose, mcpCount := wireMCP(ctx, os.Stderr, cfg.MCP, cfg.Frames.Active, baseReg)
+	_, mcpClose, mcpCount := wireMCP(ctx, diagWriter, cfg.MCP, cfg.Frames.Active, baseReg)
 	defer mcpClose()
 	if mcpCount > 0 {
-		fmt.Fprintf(os.Stderr, "carlos: mcp: registered %d tool(s) from %d server(s)\n", mcpCount, len(cfg.MCP.Servers))
+		notices = append(notices, fmt.Sprintf("mcp: registered %d tool(s) from %d server(s)", mcpCount, len(cfg.MCP.Servers)))
 	}
 	sup := agent.NewSupervisor(log, d.provider, baseReg)
 	sup.Run(ctx)
@@ -284,6 +297,7 @@ func runDefault(cfg *config.Config, sessionID string) error {
 		chatCwd = cwd
 		if pc, err := projectctx.LoadFromCwd(cwd); err == nil && pc != nil {
 			chatProjectCtx = pc.Combined
+			notices = append(notices, pc.Warnings...)
 		}
 	}
 
@@ -301,7 +315,7 @@ func runDefault(cfg *config.Config, sessionID string) error {
 	// startup so the user knows their CARLOS_FRAME / -f was ignored
 	// instead of silently booting under the wrong frame.
 	if frameOK && resolution.Warning != "" {
-		fmt.Fprintf(os.Stderr, "carlos: %s; using %s (%s)\n", resolution.Warning, resolution.Frame, resolution.Reason)
+		notices = append(notices, fmt.Sprintf("%s; using %s (%s)", resolution.Warning, resolution.Frame, resolution.Reason))
 	}
 	// Phase F live-swap state. liveLoop holds the currently-running
 	// chatglue.Loop; liveDispatch mirrors d so /whoami reflects the
@@ -727,6 +741,8 @@ func runDefault(cfg *config.Config, sessionID string) error {
 				},
 			)))
 		}
+		opts = append(opts, chat.WithStartupNotices(notices))
+		opts = append(opts, chat.WithDiagWriter(diagWriter))
 		m := chat.New(log, defaultAgentID, src, opts...)
 		if _, err := m.Run(); err != nil {
 			return fmt.Errorf("chat: %w", err)
@@ -736,7 +752,7 @@ func runDefault(cfg *config.Config, sessionID string) error {
 		// id and re-enter the chat loop on the same iteration so the
 		// new transcript backfills inline.
 		if picked := m.ResumeRequested(); picked != "" {
-			if err := ensureDefaultAgent(ctx, log, picked, d.name, d.model, cfg.UserName); err != nil {
+			if err := ensureDefaultAgent(ctx, log, picked, d.name, d.model, cfg.UserName, diagWriter); err != nil {
 				return fmt.Errorf("resume %s: %w", picked, err)
 			}
 			loopMu.Lock()
@@ -774,6 +790,26 @@ func runDefault(cfg *config.Config, sessionID string) error {
 	}
 }
 
+// openDiagLog opens <home>/.carlos/carlos.log for append as a
+// best-effort diagnostics sink while the TUI owns the terminal. It
+// returns the writer plus a cleanup func the caller must defer. On ANY
+// error (including an empty home) it returns (io.Discard, no-op): it
+// NEVER returns os.Stderr, because a stray write to stderr corrupts the
+// alt-screen frame the chat program is painting. The cleanup is always
+// safe to call - it's a no-op when the writer is io.Discard.
+func openDiagLog(home string) (io.Writer, func()) {
+	noop := func() {}
+	if home == "" {
+		return io.Discard, noop
+	}
+	path := filepath.Join(home, ".carlos", "carlos.log")
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		return io.Discard, noop
+	}
+	return f, func() { _ = f.Close() }
+}
+
 // ensureDefaultAgent seeds the agent row + state-change event for the
 // stable default-mode agent id (first run), OR refreshes the row's
 // state + heartbeat (subsequent runs). The refresh path matters
@@ -788,7 +824,7 @@ func runDefault(cfg *config.Config, sessionID string) error {
 // state machine, so there's no legal Transition out of it. The chat
 // agent isn't a sub-agent with a meaningful lifecycle - it's a
 // conversation handle. Direct projection edits are the right hammer.
-func ensureDefaultAgent(ctx context.Context, log *agent.SQLiteEventLog, id, provider, model, userName string) error {
+func ensureDefaultAgent(ctx context.Context, log *agent.SQLiteEventLog, id, provider, model, userName string, diag io.Writer) error {
 	now := time.Now().UTC()
 	existing, err := log.Read(ctx, id, 0)
 	if err != nil {
@@ -863,9 +899,9 @@ func ensureDefaultAgent(ctx context.Context, log *agent.SQLiteEventLog, id, prov
 	// Failure here is logged, never blocks startup - a janitor pass
 	// should never stop the user from getting a working chat.
 	if pruned, err := log.DeleteEmptyOrphanedAgents(ctx, agent.DefaultOrphanPruneAge); err != nil {
-		fmt.Fprintf(os.Stderr, "carlos: prune empty orphans: %v\n", err)
+		fmt.Fprintf(diag, "carlos: prune empty orphans: %v\n", err)
 	} else if len(pruned) > 0 {
-		fmt.Fprintf(os.Stderr, "carlos: pruned %d empty orphaned session(s)\n", len(pruned))
+		fmt.Fprintf(diag, "carlos: pruned %d empty orphaned session(s)\n", len(pruned))
 	}
 	return nil
 }

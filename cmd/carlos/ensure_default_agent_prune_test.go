@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -49,8 +51,16 @@ func TestEnsureDefaultAgent_PrunesEmptyOrphansOnNewAgent(t *testing.T) {
 
 	// Create the new chat session. After this call, the seeded
 	// orphans should be gone and the fresh agent should be present.
-	if err := ensureDefaultAgent(ctx, log, "fresh", "anthropic", "claude-opus-4-7", "george"); err != nil {
+	// The prune diagnostic must land in the supplied diag buffer (an
+	// off-terminal sink), never on stderr where it would corrupt the
+	// alt-screen frame.
+	var diag bytes.Buffer
+	if err := ensureDefaultAgent(ctx, log, "fresh", "anthropic", "claude-opus-4-7", "george", &diag); err != nil {
 		t.Fatalf("ensureDefaultAgent: %v", err)
+	}
+
+	if got := diag.String(); !strings.Contains(got, "pruned 2 empty orphaned session(s)") {
+		t.Errorf("prune diagnostic missing from diag buffer; got %q", got)
 	}
 
 	for _, id := range []string{"orph-1", "orph-2"} {
@@ -82,7 +92,8 @@ func TestEnsureDefaultAgent_DoesNotPruneOnResume(t *testing.T) {
 
 	// First call: creates "chat-a" (also fires prune, but there are
 	// no orphans seeded yet, so it's a no-op).
-	if err := ensureDefaultAgent(ctx, log, "chat-a", "anthropic", "claude-opus-4-7", "george"); err != nil {
+	var diag bytes.Buffer
+	if err := ensureDefaultAgent(ctx, log, "chat-a", "anthropic", "claude-opus-4-7", "george", &diag); err != nil {
 		t.Fatalf("ensureDefaultAgent create: %v", err)
 	}
 
@@ -104,7 +115,7 @@ func TestEnsureDefaultAgent_DoesNotPruneOnResume(t *testing.T) {
 
 	// Second call with the SAME id — exercises the resume branch
 	// (existing events present). Prune must NOT fire.
-	if err := ensureDefaultAgent(ctx, log, "chat-a", "anthropic", "claude-opus-4-7", "george"); err != nil {
+	if err := ensureDefaultAgent(ctx, log, "chat-a", "anthropic", "claude-opus-4-7", "george", &diag); err != nil {
 		t.Fatalf("ensureDefaultAgent resume: %v", err)
 	}
 
