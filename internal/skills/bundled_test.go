@@ -84,6 +84,25 @@ func TestDecodeBundleSkillBytes_NoFrontmatterErrors(t *testing.T) {
 	}
 }
 
+// TestDecodeBundleSkillBytes_FailsValidate: frontmatter present but the
+// decoded skill fails Validate (missing description) → error.
+func TestDecodeBundleSkillBytes_FailsValidate(t *testing.T) {
+	// name present, description missing → Validate rejects.
+	_, err := decodeBundleSkillBytes([]byte("---\nname: x\n---\nbody\n"))
+	if err == nil {
+		t.Fatal("expected validate error for missing description")
+	}
+}
+
+// TestDecodeBundleSkillBytes_MalformedFrontmatter: an unterminated
+// frontmatter block surfaces the SplitFrontmatter error.
+func TestDecodeBundleSkillBytes_MalformedFrontmatter(t *testing.T) {
+	_, err := decodeBundleSkillBytes([]byte("---\nname: x\n(never terminates)"))
+	if err == nil {
+		t.Fatal("expected error for unterminated frontmatter")
+	}
+}
+
 // TestDecodeBundleSkillBytes_HappyPath ensures the happy path
 // produces a populated *Skill with Name + Description + Body.
 func TestDecodeBundleSkillBytes_HappyPath(t *testing.T) {

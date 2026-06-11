@@ -228,6 +228,192 @@ func TestSkill_LoadSkillTooManyFiles(t *testing.T) {
 	}
 }
 
+// TestSkill_WriteSkillNil: WriteSkill rejects a nil *Skill before any IO.
+func TestSkill_WriteSkillNil(t *testing.T) {
+	if err := skills.WriteSkill(t.TempDir(), nil); err == nil {
+		t.Error("want error for nil skill")
+	}
+}
+
+// TestSkill_WriteSkillRejectsCrowdedDir: WriteSkill enforces the
+// file-count cap on the DESTINATION directory so a previously-polluted
+// dir can't smuggle a write past the guard. Regression for the
+// dest-dir cap branch in WriteSkill.
+func TestSkill_WriteSkillRejectsCrowdedDir(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "crowded")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < skills.MaxFilesPerSkill+2; i++ {
+		_ = os.WriteFile(filepath.Join(dir, "junk-"+pad(i)+".txt"), []byte("x"), 0o600)
+	}
+	err := skills.WriteSkill(dir, minimalSkill())
+	if err == nil {
+		t.Fatal("want error writing into an over-capacity directory")
+	}
+	if !strings.Contains(err.Error(), "exceeds cap") {
+		t.Errorf("error should mention the cap, got %q", err.Error())
+	}
+}
+
+// TestSkill_WriteSkillMkdirFails: when the target dir's parent is a
+// regular file, MkdirAll fails and WriteSkill surfaces the error
+// without leaving partial state. Exercises the mkdir error branch.
+func TestSkill_WriteSkillMkdirFails(t *testing.T) {
+	base := t.TempDir()
+	// Create a regular file, then try to write a skill UNDER it.
+	fileAsParent := filepath.Join(base, "iamafile")
+	if err := os.WriteFile(fileAsParent, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(fileAsParent, "child-skill")
+	err := skills.WriteSkill(dir, minimalSkill())
+	if err == nil {
+		t.Fatal("want mkdir error when parent is a file")
+	}
+	if !strings.Contains(err.Error(), "mkdir") {
+		t.Errorf("error should mention mkdir, got %q", err.Error())
+	}
+}
+
+// TestSkill_WriteSkillOpenTmpFails: when SKILL.md.tmp already exists as
+// a DIRECTORY, opening it for write fails and WriteSkill surfaces the
+// error. Exercises the open-tmp error branch.
+func TestSkill_WriteSkillOpenTmpFails(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "tmp-collision")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Pre-create SKILL.md.tmp as a directory so OpenFile(O_WRONLY) fails.
+	if err := os.MkdirAll(filepath.Join(dir, "SKILL.md.tmp"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	err := skills.WriteSkill(dir, minimalSkill())
+	if err == nil {
+		t.Fatal("want open-tmp error when tmp path is a directory")
+	}
+	// The real SKILL.md must not have been created.
+	if _, err := os.Stat(filepath.Join(dir, "SKILL.md")); !os.IsNotExist(err) {
+		t.Errorf("SKILL.md should not exist after open-tmp failure: %v", err)
+	}
+}
+
+// TestSkill_WriteSkillBodyWithoutTrailingNewline: a body that lacks a
+// trailing newline gets one appended on write (renderSkill newline
+// branch); a body that already ends in newline is left as-is.
+func TestSkill_WriteSkillBodyWithoutTrailingNewline(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "nlfix")
+	s := minimalSkill()
+	s.Body = "no trailing newline" // note: no \n
+	if err := skills.WriteSkill(dir, s); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, "SKILL.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasSuffix(string(raw), "no trailing newline\n") {
+		t.Errorf("expected a trailing newline appended, got %q", string(raw))
+	}
+}
+
+// TestSkill_LoadBundleSkillHappyPath: a single .md file with frontmatter
+// loads as a bundle skill; Path is the file path (not a dir) and the
+// body is preserved.
+func TestSkill_LoadBundleSkillHappyPath(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "calendar-ics.md")
+	content := "---\nname: calendar-ics\ndescription: Use when reading an ICS file\nbackend: ics\n---\n# body\n\nsteps here\n"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s, err := skills.LoadBundleSkill(path)
+	if err != nil {
+		t.Fatalf("LoadBundleSkill: %v", err)
+	}
+	if s.Name != "calendar-ics" {
+		t.Errorf("name: %q", s.Name)
+	}
+	if s.Backend != "ics" {
+		t.Errorf("backend: %q", s.Backend)
+	}
+	if s.Path != path {
+		t.Errorf("path: want %q got %q", path, s.Path)
+	}
+	if !strings.Contains(s.Body, "steps here") {
+		t.Errorf("body lost: %q", s.Body)
+	}
+}
+
+// TestSkill_LoadBundleSkillEmptyPath: an empty path is a hard error.
+func TestSkill_LoadBundleSkillEmptyPath(t *testing.T) {
+	if _, err := skills.LoadBundleSkill(""); err == nil {
+		t.Error("want error for empty path")
+	}
+}
+
+// TestSkill_LoadBundleSkillMissing: a non-existent file errors and the
+// message names the path.
+func TestSkill_LoadBundleSkillMissing(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "ghost.md")
+	_, err := skills.LoadBundleSkill(p)
+	if err == nil {
+		t.Fatal("want error for missing file")
+	}
+	if !strings.Contains(err.Error(), "ghost.md") {
+		t.Errorf("error should name the path, got %q", err.Error())
+	}
+}
+
+// TestSkill_LoadBundleSkillNoFrontmatter: bundle skills have no
+// defensible fallback name, so a frontmatter-less file is rejected
+// rather than guessed.
+func TestSkill_LoadBundleSkillNoFrontmatter(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "naked.md")
+	if err := os.WriteFile(path, []byte("just a body, no frontmatter\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := skills.LoadBundleSkill(path)
+	if err == nil {
+		t.Fatal("want error for missing frontmatter")
+	}
+	if !strings.Contains(err.Error(), "frontmatter") {
+		t.Errorf("error should mention frontmatter, got %q", err.Error())
+	}
+}
+
+// TestSkill_LoadBundleSkillMalformedYAML: frontmatter present but the
+// YAML doesn't unmarshal (or Validate fails) surfaces a path-tagged
+// error. Here we omit the required description so Validate rejects it.
+func TestSkill_LoadBundleSkillFailsValidate(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "no-desc.md")
+	// name present, description missing → Validate rejects.
+	if err := os.WriteFile(path, []byte("---\nname: x\n---\nbody\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := skills.LoadBundleSkill(path)
+	if err == nil {
+		t.Fatal("want validate error for missing description")
+	}
+}
+
+// TestSkill_LoadSkillEmptyDir: LoadSkill with an empty dir string is a
+// hard error before any filesystem touch.
+func TestSkill_LoadSkillEmptyDir(t *testing.T) {
+	if _, err := skills.LoadSkill(""); err == nil {
+		t.Error("want error for empty dir")
+	}
+}
+
+// TestSkill_ValidateNilReceiver: a nil *Skill fails Validate with a
+// stable message rather than panicking.
+func TestSkill_ValidateNilReceiver(t *testing.T) {
+	var s *skills.Skill
+	if err := s.Validate(); err == nil {
+		t.Error("want error for nil skill")
+	}
+}
+
 func minimalSkill() *skills.Skill {
 	return &skills.Skill{
 		Name:        "minimal",

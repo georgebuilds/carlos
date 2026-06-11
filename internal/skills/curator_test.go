@@ -165,6 +165,162 @@ func TestCurator_NilLibrary(t *testing.T) {
 	}
 }
 
+// TestCurator_ArchiveCollisionSurfacesError: when an _archive/<name>/
+// directory already exists, the sweep refuses to overwrite it, keeps
+// the skill in Active, and surfaces the error. Regression for the
+// archiveSkill "dest already exists" guard + the SweepOnce firstErr
+// archive-failure branch.
+func TestCurator_ArchiveCollisionSurfacesError(t *testing.T) {
+	root := t.TempDir()
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	s := mkLibSkill(t, root, "collide", base)
+	s.Status = skills.StatusStale
+	// Pre-create the destination so the rename collides.
+	collisionDir := filepath.Join(root, "_archive", "collide")
+	if err := os.MkdirAll(collisionDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	lib := &skills.Library{Active: []*skills.Skill{s}}
+
+	rep, err := skills.NewCurator().SweepOnce(context.Background(), lib, base.Add(91*24*time.Hour))
+	if err == nil {
+		t.Fatal("want archive-collision error")
+	}
+	// Skill stays in Active (counted active) and is NOT archived.
+	if rep.Archived != 0 {
+		t.Errorf("want 0 archived on collision, got %d", rep.Archived)
+	}
+	if len(lib.Active) != 1 {
+		t.Errorf("collided skill should stay in Active, got %d", len(lib.Active))
+	}
+	if s.Status == skills.StatusArchived {
+		t.Error("skill should NOT be marked archived after a failed move")
+	}
+}
+
+// TestCurator_AlreadyArchivedTallied: a skill already in StatusArchived
+// is tallied in the archived bucket without re-moving it (exercises the
+// default-case archived tally).
+func TestCurator_AlreadyArchivedTallied(t *testing.T) {
+	now := time.Now().UTC()
+	s := &skills.Skill{Name: "done", Description: "Use when done", Status: skills.StatusArchived, Created: now}
+	lib := &skills.Library{Active: []*skills.Skill{s}}
+	rep, err := skills.NewCurator().SweepOnce(context.Background(), lib, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Archived != 1 || rep.Active != 0 {
+		t.Errorf("want 1 archived tally, got %+v", rep)
+	}
+	if len(rep.Transitions) != 0 {
+		t.Errorf("no transition expected for already-archived, got %v", rep.Transitions)
+	}
+}
+
+// TestCurator_AlreadyStaleNotYetArchivedTallied: a stale skill that is
+// idle past the stale threshold but NOT yet past archive is tallied in
+// the stale bucket with no transition.
+func TestCurator_AlreadyStaleTallied(t *testing.T) {
+	root := t.TempDir()
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	s := mkLibSkill(t, root, "still-stale", base)
+	s.Status = skills.StatusStale
+	lib := &skills.Library{Active: []*skills.Skill{s}}
+	// 40 days: past stale (30) but well short of archive (90).
+	rep, err := skills.NewCurator().SweepOnce(context.Background(), lib, base.Add(40*24*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Stale != 1 {
+		t.Errorf("want 1 stale tally, got %+v", rep)
+	}
+	if len(rep.Transitions) != 0 {
+		t.Errorf("no transition expected for already-stale skill, got %v", rep.Transitions)
+	}
+}
+
+// TestCurator_ContextCancelled: a cancelled context aborts the sweep
+// before processing entries.
+func TestCurator_ContextCancelled(t *testing.T) {
+	now := time.Now().UTC()
+	s := &skills.Skill{Name: "x", Description: "Use when x", Created: now}
+	lib := &skills.Library{Active: []*skills.Skill{s}}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := skills.NewCurator().SweepOnce(ctx, lib, now); err == nil {
+		t.Error("want context-cancelled error")
+	}
+}
+
+// TestCurator_NilSkillSkipped: a nil entry in Active is skipped without
+// panicking and is dropped from the survivor set.
+func TestCurator_NilSkillSkipped(t *testing.T) {
+	now := time.Now().UTC()
+	lib := &skills.Library{Active: []*skills.Skill{
+		nil,
+		{Name: "real", Description: "Use when real", Created: now},
+	}}
+	rep, err := skills.NewCurator().SweepOnce(context.Background(), lib, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Active != 1 {
+		t.Errorf("want 1 active, got %+v", rep)
+	}
+	if len(lib.Active) != 1 {
+		t.Errorf("nil entry should be dropped, got %d survivors", len(lib.Active))
+	}
+}
+
+// TestCurator_NoTimestampsTreatedAsFresh: a skill with neither Created
+// nor LastUsed is treated as zero-age (never auto-archived). Exercises
+// the skillIdleAge zero-ref defensive branch.
+func TestCurator_NoTimestampsTreatedAsFresh(t *testing.T) {
+	s := &skills.Skill{Name: "no-ts", Description: "Use when no timestamps"}
+	lib := &skills.Library{Active: []*skills.Skill{s}}
+	rep, err := skills.NewCurator().SweepOnce(context.Background(), lib, time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Active != 1 || rep.Stale != 0 || rep.Archived != 0 {
+		t.Errorf("timestamp-less skill should stay active, got %+v", rep)
+	}
+}
+
+// TestCurator_FutureCreatedClampedToZero: a Created in the future yields
+// zero idle age (now.Before(ref) branch in skillIdleAge).
+func TestCurator_FutureCreatedClampedToZero(t *testing.T) {
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	future := now.Add(48 * time.Hour)
+	s := &skills.Skill{Name: "future", Description: "Use when future", Created: future}
+	lib := &skills.Library{Active: []*skills.Skill{s}}
+	rep, err := skills.NewCurator().SweepOnce(context.Background(), lib, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Active != 1 {
+		t.Errorf("future-created skill should be active (zero age), got %+v", rep)
+	}
+}
+
+// TestCurator_ZeroThresholdsFallBackToDefaults: a Curator with zeroed
+// thresholds uses the package defaults rather than treating everything
+// as instantly stale.
+func TestCurator_ZeroThresholdsFallBackToDefaults(t *testing.T) {
+	root := t.TempDir()
+	now := time.Now().UTC()
+	s := mkLibSkill(t, root, "zero-thresh", now)
+	lib := &skills.Library{Active: []*skills.Skill{s}}
+	cur := &skills.Curator{} // StaleAfter=0, ArchiveAfter=0
+	rep, err := cur.SweepOnce(context.Background(), lib, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Active != 1 {
+		t.Errorf("zeroed thresholds should fall back to defaults; fresh skill stays active, got %+v", rep)
+	}
+}
+
 // mkLibSkill builds a fresh skill on disk under root/<name>/ with the
 // given Created timestamp; returns the loaded *Skill (Path populated).
 func mkLibSkill(t *testing.T, root, name string, created time.Time) *skills.Skill {

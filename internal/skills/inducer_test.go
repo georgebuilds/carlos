@@ -21,6 +21,100 @@ func fakeProviderEmitting(name, body string) providers.Provider {
 	return fake.New(name, script)
 }
 
+// TestInducer_StreamError: an EventError mid-stream propagates out of
+// Induce as a wrapped error (streamText's error branch).
+func TestInducer_StreamError(t *testing.T) {
+	script := fake.Script{
+		{Kind: providers.EventTextDelta, Text: "partial"},
+		{Kind: providers.EventError, Err: context.DeadlineExceeded},
+	}
+	ind := skills.NewInducer(fake.New("x", script))
+	_, err := ind.Induce(context.Background(), "transcript", nil, skills.InducerOptions{})
+	if err == nil {
+		t.Error("want stream error")
+	}
+}
+
+// TestInducer_EmptyResponse: a stream that yields no text is a parse
+// error ("empty response").
+func TestInducer_EmptyResponse(t *testing.T) {
+	ind := skills.NewInducer(fakeProviderEmitting("x", ""))
+	_, err := ind.Induce(context.Background(), "transcript", nil, skills.InducerOptions{})
+	if err == nil {
+		t.Error("want empty-response parse error")
+	}
+}
+
+// TestInducer_UnclosedCodeFence: a fenced block with no closing ```
+// still parses the inner JSON (stripCodeFence returns the remainder).
+func TestInducer_UnclosedCodeFence(t *testing.T) {
+	canned := "```json\n{\"skill\": {\"name\": \"unclosed\", \"description\": \"Use when unclosed\", \"body\": \"x\"}}\n"
+	ind := skills.NewInducer(fakeProviderEmitting("x", canned))
+	prop, err := ind.Induce(context.Background(), "transcript", nil, skills.InducerOptions{})
+	if err != nil {
+		t.Fatalf("Induce: %v", err)
+	}
+	if prop == nil || prop.Name != "unclosed" {
+		t.Errorf("want 'unclosed' proposal, got %+v", prop)
+	}
+}
+
+// TestInducer_FenceWithoutNewline: a string that starts with ``` but has
+// no newline is returned verbatim by stripCodeFence, then fails to parse
+// as JSON.
+func TestInducer_FenceWithoutNewline(t *testing.T) {
+	ind := skills.NewInducer(fakeProviderEmitting("x", "```not json no newline"))
+	_, err := ind.Induce(context.Background(), "transcript", nil, skills.InducerOptions{})
+	if err == nil {
+		t.Error("want parse error for malformed fence")
+	}
+}
+
+// TestInducer_LongRawTruncatedInError: a long malformed response is
+// truncated in the surfaced parse error (truncateForError path). The
+// error must still be non-nil and not echo the entire blob.
+func TestInducer_LongRawTruncatedInError(t *testing.T) {
+	long := "not json " + strings.Repeat("x", 500)
+	ind := skills.NewInducer(fakeProviderEmitting("x", long))
+	_, err := ind.Induce(context.Background(), "transcript", nil, skills.InducerOptions{})
+	if err == nil {
+		t.Fatal("want parse error")
+	}
+	if strings.Contains(err.Error(), strings.Repeat("x", 500)) {
+		t.Error("error should truncate the raw response, not echo it whole")
+	}
+	if !strings.Contains(err.Error(), "...") {
+		t.Error("truncated error should carry an ellipsis")
+	}
+}
+
+// TestInducer_ProviderLabelDefaultModel: when Model is empty the
+// inducer label is just the provider name (no trailing colon).
+func TestInducer_ProviderLabelDefaultModel(t *testing.T) {
+	canned := `{"skill": {"name": "n", "description": "Use when n", "body": "b"}}`
+	ind := skills.NewInducer(fakeProviderEmitting("anthropic", canned))
+	prop, err := ind.Induce(context.Background(), "transcript", nil, skills.InducerOptions{}) // no Model
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prop.InducerName != "anthropic" {
+		t.Errorf("inducer label with default model: want 'anthropic', got %q", prop.InducerName)
+	}
+}
+
+// TestInducer_IntoSkillZeroCreatedDefaultsToNow: a Proposal with a zero
+// Created gets a fresh timestamp at IntoSkill time.
+func TestInducer_IntoSkillZeroCreatedDefaultsToNow(t *testing.T) {
+	p := &skills.Proposal{Name: "n", Description: "Use when n"}
+	s := p.IntoSkill("")
+	if s.Created.IsZero() {
+		t.Error("zero Created should default to now")
+	}
+	if s.JudgeModel != "" {
+		t.Errorf("empty judge model should pass through, got %q", s.JudgeModel)
+	}
+}
+
 // TestInducer_HappyPath: canned JSON parses into a Proposal with the
 // right fields populated.
 func TestInducer_HappyPath(t *testing.T) {

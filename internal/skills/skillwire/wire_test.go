@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/georgebuilds/carlos/internal/agent"
 	"github.com/georgebuilds/carlos/internal/config"
+	"github.com/georgebuilds/carlos/internal/providers"
 	"github.com/georgebuilds/carlos/internal/skills"
 	"github.com/georgebuilds/carlos/internal/skills/skillwire"
 )
@@ -174,6 +176,102 @@ func TestPromoteAccepted_WrongKind(t *testing.T) {
 	_, err = skillwire.PromoteAccepted(ctx, log, ref, skillwire.PromoteParams{Home: t.TempDir()})
 	if err == nil {
 		t.Error("want kind-mismatch error")
+	}
+}
+
+// TestProposeSkill_EmptyAgentID: an empty agentID is rejected before
+// any artifact write.
+func TestProposeSkill_EmptyAgentID(t *testing.T) {
+	log := newLog(t)
+	_, err := skillwire.ProposeSkill(context.Background(), log, "", &skills.Proposal{
+		Name: "x", Description: "Use when x",
+	})
+	if err == nil {
+		t.Error("want empty-agentID error")
+	}
+}
+
+// TestProposeSkill_NilLog: a nil event log is rejected.
+func TestProposeSkill_NilLog(t *testing.T) {
+	_, err := skillwire.ProposeSkill(context.Background(), nil, "a", &skills.Proposal{
+		Name: "x", Description: "Use when x",
+	})
+	if err == nil {
+		t.Error("want nil-log error")
+	}
+}
+
+// TestProposeSkillWithOptions_ReplayInfraErrorStillQueues: when the
+// replay evaluator itself fails (here: a nil Provider makes Evaluate
+// return an error), the proposal is NOT auto-rejected — it falls back
+// to a Skipped report and queues for human review. Regression for the
+// replay-infra-error fallback branch in ProposeSkillWithOptions.
+func TestProposeSkillWithOptions_ReplayInfraErrorStillQueues(t *testing.T) {
+	log := newLog(t)
+	ctx := context.Background()
+	seedAgent(t, ctx, log, "agent-1")
+
+	// An evaluator with a nil Provider: Evaluate returns an error, which
+	// ProposeSkillWithOptions converts into a Skipped report.
+	ev := &skillwire.ReplayEvaluator{} // nil Provider + nil Dispatcher
+	res, err := skillwire.ProposeSkillWithOptions(ctx, log, "agent-1", &skills.Proposal{
+		Name: "infra-fail", Description: "Use when the replay infra dies",
+	}, skillwire.ProposeOptions{
+		Replay:      ev,
+		Transcripts: [][]providers.Message{{{Role: "user", Content: []providers.Block{{Kind: "text", Text: "go test"}}}}},
+	})
+	if err != nil {
+		t.Fatalf("ProposeSkillWithOptions: %v", err)
+	}
+	if res.AutoRejected {
+		t.Error("infra failure should NOT auto-reject")
+	}
+	if res.ReplayReport == nil || !res.ReplayReport.Skipped {
+		t.Errorf("want a Skipped replay report on infra error, got %+v", res.ReplayReport)
+	}
+	// It should still be in the approval queue.
+	pending, err := agent.ListPendingApprovals(ctx, log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pending) != 1 {
+		t.Errorf("want 1 pending (infra-failed replay still queues), got %d", len(pending))
+	}
+}
+
+// TestPromoteAccepted_EmptyRefID: an empty artifact ref ID is rejected.
+func TestPromoteAccepted_EmptyRefID(t *testing.T) {
+	log := newLog(t)
+	_, err := skillwire.PromoteAccepted(context.Background(), log, agent.ArtifactRef{}, skillwire.PromoteParams{Home: t.TempDir()})
+	if err == nil {
+		t.Error("want empty-ref-ID error")
+	}
+}
+
+// TestPromoteAccepted_UnmarshalFailure: a skill_proposal artifact whose
+// blob is not a valid Proposal JSON surfaces an unmarshal error rather
+// than writing a malformed SKILL.md. Exercises the unmarshal-error
+// branch in PromoteAccepted.
+func TestPromoteAccepted_UnmarshalFailure(t *testing.T) {
+	log := newLog(t)
+	ctx := context.Background()
+	seedAgent(t, ctx, log, "agent-1")
+
+	homeDir := t.TempDir()
+	t.Setenv("CARLOS_ARTIFACT_BASE", filepath.Join(homeDir, ".carlos", "artifacts"))
+
+	// Write a skill_proposal-kind artifact whose body is NOT a Proposal
+	// (a bare JSON array can't decode into a struct).
+	ref, err := agent.WriteArtifact(ctx, log, "agent-1", agent.ArtifactKindSkillProposal, []byte(`["not","a","proposal"]`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = skillwire.PromoteAccepted(ctx, log, ref, skillwire.PromoteParams{Home: homeDir})
+	if err == nil {
+		t.Fatal("want unmarshal error")
+	}
+	if !strings.Contains(err.Error(), "unmarshal") {
+		t.Errorf("error should mention unmarshal, got %q", err.Error())
 	}
 }
 

@@ -86,6 +86,39 @@ func TestJudge_NilProposal(t *testing.T) {
 	}
 }
 
+// TestJudge_NeedsRevisionDecision exercises the third valid decision
+// branch in parseJudgeOutput.
+func TestJudge_NeedsRevisionDecision(t *testing.T) {
+	canned := `{"quality": 6, "decision": "needs_revision", "concerns": ["tighten the trigger"]}`
+	j := skills.NewJudge(fakeProviderEmitting("x", canned))
+	score, err := j.Score(context.Background(), &skills.Proposal{Name: "n", Description: "d"}, skills.JudgeOptions{})
+	if err != nil {
+		t.Fatalf("Score: %v", err)
+	}
+	if score.Decision != skills.DecisionNeedsRevision {
+		t.Errorf("want needs_revision, got %q", score.Decision)
+	}
+}
+
+// TestJudge_EmptyResponse: a stream that yields nothing is a parse
+// error.
+func TestJudge_EmptyResponse(t *testing.T) {
+	j := skills.NewJudge(fakeProviderEmitting("x", "   "))
+	_, err := j.Score(context.Background(), &skills.Proposal{Name: "n", Description: "d"}, skills.JudgeOptions{})
+	if err == nil {
+		t.Error("want empty-response parse error")
+	}
+}
+
+// TestJudge_MalformedJSON: garbage surfaces a parse error.
+func TestJudge_MalformedJSON(t *testing.T) {
+	j := skills.NewJudge(fakeProviderEmitting("x", "definitely not json"))
+	_, err := j.Score(context.Background(), &skills.Proposal{Name: "n", Description: "d"}, skills.JudgeOptions{})
+	if err == nil {
+		t.Error("want malformed-JSON error")
+	}
+}
+
 func TestJudge_SelectJudgeProviderHappy(t *testing.T) {
 	got, err := skills.SelectJudgeProvider("anthropic", []string{"anthropic", "openai", "ollama"})
 	if err != nil {
