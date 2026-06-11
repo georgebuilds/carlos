@@ -129,6 +129,17 @@ type transcriptEntry struct {
 	skillName  string // skill name parsed from the skill_use input JSON; empty when isSkill=false or input is malformed
 	subAgentID string // collapse key for entryResearchProgress (slice 11e)
 
+	// Sub-agent fields (tool=="agent"). When isAgent is true the entry
+	// renders as its own bordered card via renderAgentCard instead of
+	// folding into the activity strip with other tool calls. The
+	// objective is parsed best-effort from the agent tool's input JSON;
+	// a parse failure still tags isAgent=true so the row is peeled out
+	// of the strip and the user sees a card with an empty body.
+	isAgent        bool      // call spawns a sub-agent (tool=="agent")
+	agentObjective string    // objective parsed from the agent tool input JSON; empty on parse failure
+	toolCalledAt   time.Time // ev.TS of the EvtToolCall for elapsed display
+	toolResultAt   time.Time // ev.TS of the matching EvtToolResult; zero while running
+
 	// User-shell (Phase U S5) fields. Active when kind == entryUserShell.
 	// shellJobID is the collapse key so EvtUserShellEnd folds into the
 	// row created by EvtUserShellStart instead of appending a fresh row.
@@ -1347,14 +1358,19 @@ func (m *Model) applyEvent(ev agent.Event) {
 			break
 		}
 		entry := transcriptEntry{
-			kind:      entryToolCall,
-			ts:        ev.TS,
-			tool:      tc.Name,
-			toolInput: string(tc.Input),
+			kind:         entryToolCall,
+			ts:           ev.TS,
+			tool:         tc.Name,
+			toolInput:    string(tc.Input),
+			toolCalledAt: ev.TS,
 		}
 		if tc.Name == skillUseToolName {
 			entry.isSkill = true
 			entry.skillName = parseSkillName(tc.Input)
+		}
+		if tc.Name == agentToolName {
+			entry.isAgent = true
+			entry.agentObjective = parseAgentObjective(tc.Input)
 		}
 		m.transcript = append(m.transcript, entry)
 	case agent.EvtToolResult:
@@ -1377,15 +1393,19 @@ func (m *Model) applyEvent(ev agent.Event) {
 			// of an event log truncated mid-turn). Fall back to a
 			// standalone card so the result isn't silently dropped.
 			entry := transcriptEntry{
-				kind:       entryToolCall,
-				ts:         ev.TS,
-				tool:       tr.Name,
-				toolResult: string(tr.Output),
-				hasResult:  true,
-				isError:    tr.IsError,
+				kind:         entryToolCall,
+				ts:           ev.TS,
+				tool:         tr.Name,
+				toolResult:   string(tr.Output),
+				hasResult:    true,
+				isError:      tr.IsError,
+				toolResultAt: ev.TS,
 			}
 			if tr.Name == skillUseToolName {
 				entry.isSkill = true
+			}
+			if tr.Name == agentToolName {
+				entry.isAgent = true
 			}
 			m.transcript = append(m.transcript, entry)
 			break
@@ -1393,6 +1413,7 @@ func (m *Model) applyEvent(ev agent.Event) {
 		m.transcript[idx].toolResult = string(tr.Output)
 		m.transcript[idx].hasResult = true
 		m.transcript[idx].isError = tr.IsError
+		m.transcript[idx].toolResultAt = ev.TS
 	case agent.EvtSteering:
 		var p agent.MessagePayload
 		_ = json.Unmarshal(ev.Payload, &p)

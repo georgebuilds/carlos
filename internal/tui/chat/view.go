@@ -1122,8 +1122,19 @@ func composeTranscript(entries []transcriptEntry, liveText, thinkingRow string, 
 	for i := 0; i < len(entries); {
 		kind := entries[i].kind
 		runEnd := i + 1
-		if isGroupableKind(kind) {
+		// Sub-agent tool calls render as their own bordered card and
+		// must not chain with other tool calls in a strip. They take
+		// the single-entry path below regardless of neighbors.
+		isAgentLead := kind == entryToolCall && entries[i].isAgent
+		if isGroupableKind(kind) && !isAgentLead {
 			for runEnd < len(entries) && entries[runEnd].kind == kind {
+				// Hitting an agent entry hard-breaks the run so the
+				// strip never absorbs sub-agent invocations. The next
+				// outer loop iteration picks the agent entry up as its
+				// own card and resumes strip grouping after it.
+				if kind == entryToolCall && entries[runEnd].isAgent {
+					break
+				}
 				runEnd++
 			}
 		}
@@ -1231,6 +1242,12 @@ func renderEntry(e transcriptEntry, md *glamour.TermRenderer, width int) string 
 		// Renderer is in internal/tui/chat/usershell_render.go.
 		return body.Render(renderUserShellEntry(e, width))
 	case entryToolCall:
+		// Sub-agent calls peel off into their own bordered card —
+		// spawning another carlos is a heavyweight action that
+		// deserves more visual weight than the compact strip.
+		if e.isAgent {
+			return renderAgentCard(e, width)
+		}
 		// Activity strip (Concept A): single indented line in place of
 		// the legacy bordered card. Composition lives in
 		// activity_strip.go; a solo entry is just a 1-entry "group" so

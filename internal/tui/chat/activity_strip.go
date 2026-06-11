@@ -104,6 +104,13 @@ type stripSegment struct {
 // tool name for regular calls and "📚 <skillname>" for skill_use calls
 // (so two skill_use calls for different skills do NOT fold - "calendar
 // then onboarding" reads as two distinct segments, not "skill_use ×2").
+//
+// Sub-agent entries (isAgent==true) are NEVER folded with any neighbor:
+// composeTranscript already peels them out into their own bordered
+// card, so reaching this function with an agent entry mixed in is a
+// defense-in-depth case. We emit the agent entry as its own
+// single-count segment so the strip's appearance for the surrounding
+// non-agent entries remains correct.
 func stripRollup(es []transcriptEntry) []stripSegment {
 	if len(es) == 0 {
 		return nil
@@ -115,10 +122,13 @@ func stripRollup(es []transcriptEntry) []stripSegment {
 		isError: es[0].isError,
 		isSkill: es[0].isSkill,
 	}
+	curIsAgent := es[0].isAgent
 	for i := 1; i < len(es); i++ {
 		e := es[i]
 		label := segmentLabel(e)
-		if label == cur.label && e.isError == cur.isError {
+		// Sub-agent entries break the fold on both sides — they may
+		// not merge with a neighbor regardless of label/error match.
+		if !curIsAgent && !e.isAgent && label == cur.label && e.isError == cur.isError {
 			cur.count++
 			continue
 		}
@@ -129,6 +139,7 @@ func stripRollup(es []transcriptEntry) []stripSegment {
 			isError: e.isError,
 			isSkill: e.isSkill,
 		}
+		curIsAgent = e.isAgent
 	}
 	out = append(out, cur)
 	return out
