@@ -730,7 +730,7 @@ func TestWantsLeadingBlankLine(t *testing.T) {
 // viewport.
 func TestComposeTranscript_FirstUserGetsLeadingBlankLine(t *testing.T) {
 	entries := []transcriptEntry{{kind: entryUserMessage, text: "hello"}}
-	out := composeTranscript(entries, "", "", nil, 80)
+	out := composeTranscript(entries, "", "", nil, nil, 80)
 	if !strings.HasPrefix(out, "\n") {
 		t.Errorf("expected leading blank line; got %q", out)
 	}
@@ -745,7 +745,7 @@ func TestComposeTranscript_FirstNonTurnSkipsBlankLine(t *testing.T) {
 	entries := []transcriptEntry{
 		{kind: entryToolCall, tool: "bash", hasResult: true, toolResult: "ok"},
 	}
-	out := composeTranscript(entries, "", "", nil, 80)
+	out := composeTranscript(entries, "", "", nil, nil, 80)
 	if strings.HasPrefix(out, "\n") {
 		t.Errorf("non-turn opening shouldn't lead with a blank line; got %q", out[:8])
 	}
@@ -760,7 +760,7 @@ func TestComposeTranscript_TurnAfterToolGetsBlankLine(t *testing.T) {
 		{kind: entryToolCall, tool: "bash", hasResult: true, toolResult: "ok"},
 		{kind: entryAssistantMessage, text: "done"},
 	}
-	out := composeTranscript(entries, "", "", nil, 80)
+	out := composeTranscript(entries, "", "", nil, nil, 80)
 	if !strings.Contains(out, "\n\n") {
 		t.Errorf("expected blank line between tool and assistant: %q", out)
 	}
@@ -780,7 +780,7 @@ func TestComposeTranscript_AlternatingTurnsCountGaps(t *testing.T) {
 		{kind: entryToolCall, tool: "read", hasResult: true, toolResult: "a"},
 		{kind: entryToolCall, tool: "grep", hasResult: true, toolResult: "b"},
 	}
-	out := composeTranscript(entries, "", "", nil, 80)
+	out := composeTranscript(entries, "", "", nil, nil, 80)
 	if got := strings.Count(out, "\n\n"); got != 1 {
 		t.Errorf("want exactly 1 blank-line gap; got %d in:\n%s", got, out)
 	}
@@ -802,7 +802,7 @@ func TestComposeTranscript_ThinkingRowGetsBlankLine(t *testing.T) {
 	entries := []transcriptEntry{
 		{kind: entryUserMessage, text: "hey"},
 	}
-	out := composeTranscript(entries, "", "🧢: thinking…", nil, 80)
+	out := composeTranscript(entries, "", "🧢: thinking…", nil, nil, 80)
 	if strings.Count(out, "\n\n") < 1 {
 		t.Errorf("expected blank line before thinking row: %q", out)
 	}
@@ -818,7 +818,7 @@ func TestComposeTranscript_LiveTextGetsBlankLine(t *testing.T) {
 	entries := []transcriptEntry{
 		{kind: entryUserMessage, text: "hey"},
 	}
-	out := composeTranscript(entries, "streaming reply...", "", nil, 80)
+	out := composeTranscript(entries, "streaming reply...", "", nil, nil, 80)
 	// Two blank-line gaps: one before the user (leading), one between
 	// user and live text.
 	if strings.Count(out, "\n\n") < 1 {
@@ -840,7 +840,7 @@ func TestComposeTranscript_RunOfToolsFoldsToStrip(t *testing.T) {
 		{kind: entryToolCall, tool: "read", hasResult: true, toolResult: "z"},
 		{kind: entryAssistantMessage, text: "found 3"},
 	}
-	out := composeTranscript(entries, "", "", nil, 120)
+	out := composeTranscript(entries, "", "", nil, nil, 120)
 
 	if !strings.Contains(out, stripGlyphTool) {
 		t.Errorf("missing ▸ leading glyph: %q", out)

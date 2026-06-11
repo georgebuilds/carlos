@@ -2,6 +2,7 @@ package agent_test
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -417,5 +418,141 @@ func TestSubscribe_DropsOnFullChannel(t *testing.T) {
 			}
 			return
 		}
+	}
+}
+
+// TestLastToolCall_EmptyLog covers the no-rows path: a fresh log with
+// no events for the agent must report ok=false without error.
+func TestLastToolCall_EmptyLog(t *testing.T) {
+	log := openLog(t)
+	ctx := context.Background()
+	name, ok, err := log.LastToolCall(ctx, "ghost")
+	if err != nil {
+		t.Fatalf("LastToolCall: %v", err)
+	}
+	if ok {
+		t.Errorf("ok = true on empty log; want false")
+	}
+	if name != "" {
+		t.Errorf("name = %q on empty log; want empty", name)
+	}
+}
+
+// TestLastToolCall_NonToolEventsIgnored seeds a few non-tool events
+// (heartbeat, state_change) and confirms the helper still reports
+// ok=false because none of them are tool_call rows.
+func TestLastToolCall_NonToolEventsIgnored(t *testing.T) {
+	log := openLog(t)
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Millisecond)
+
+	created, _ := agent.NewStateChangeCreated(agent.AgentCreated{
+		ID: "a", RootID: "a", Title: "x", Model: "m",
+	})
+	if _, err := log.Append(ctx, agent.Event{
+		AgentID: "a", TS: now,
+		Type: agent.EvtStateChange, Payload: created,
+	}); err != nil {
+		t.Fatalf("append created: %v", err)
+	}
+	if _, err := log.Append(ctx, agent.Event{
+		AgentID: "a", TS: now.Add(time.Second),
+		Type: agent.EvtHeartbeat, Payload: []byte(`{}`),
+	}); err != nil {
+		t.Fatalf("append hb: %v", err)
+	}
+
+	name, ok, err := log.LastToolCall(ctx, "a")
+	if err != nil {
+		t.Fatalf("LastToolCall: %v", err)
+	}
+	if ok {
+		t.Errorf("ok = true on non-tool events; want false")
+	}
+	if name != "" {
+		t.Errorf("name = %q; want empty", name)
+	}
+}
+
+// TestLastToolCall_ReturnsMostRecent appends a sequence of tool calls
+// and confirms each subsequent call sees the latest. A trailing tool
+// result must NOT shift the answer back to that result's name; we
+// surface the most recent call, not the most recent observation.
+func TestLastToolCall_ReturnsMostRecent(t *testing.T) {
+	log := openLog(t)
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Millisecond)
+
+	mustAppendToolCall := func(name string, at time.Time) {
+		t.Helper()
+		payload, err := json.Marshal(agent.ToolCall{Name: name})
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		if _, err := log.Append(ctx, agent.Event{
+			AgentID: "a", TS: at,
+			Type: agent.EvtToolCall, Payload: payload,
+		}); err != nil {
+			t.Fatalf("append %s: %v", name, err)
+		}
+	}
+
+	// First tool call: bash.
+	mustAppendToolCall("bash", now)
+	got, ok, err := log.LastToolCall(ctx, "a")
+	if err != nil || !ok || got != "bash" {
+		t.Fatalf("first call: got=%q ok=%v err=%v; want bash/true/nil", got, ok, err)
+	}
+
+	// Second tool call: glob (later seq).
+	mustAppendToolCall("glob", now.Add(time.Second))
+	got, ok, err = log.LastToolCall(ctx, "a")
+	if err != nil || !ok || got != "glob" {
+		t.Fatalf("second call: got=%q ok=%v err=%v; want glob/true/nil", got, ok, err)
+	}
+
+	// A trailing tool_result event for "glob" must NOT shift the
+	// answer; we ask for the last *call*, not the last observation.
+	resultPayload, err := json.Marshal(agent.ToolResult{Name: "glob", Output: []byte("ok")})
+	if err != nil {
+		t.Fatalf("marshal result: %v", err)
+	}
+	if _, err := log.Append(ctx, agent.Event{
+		AgentID: "a", TS: now.Add(2 * time.Second),
+		Type: agent.EvtToolResult, Payload: resultPayload,
+	}); err != nil {
+		t.Fatalf("append result: %v", err)
+	}
+	got, ok, err = log.LastToolCall(ctx, "a")
+	if err != nil || !ok || got != "glob" {
+		t.Errorf("after tool result: got=%q ok=%v err=%v; want still glob/true/nil", got, ok, err)
+	}
+}
+
+// TestLastToolCall_CorruptPayloadFallsThroughSilently confirms the
+// defensive json.Unmarshal branch: a broken payload returns ok=false
+// rather than propagating an error, so a single bad row never poisons
+// the inline child-snapshot path.
+func TestLastToolCall_CorruptPayloadFallsThroughSilently(t *testing.T) {
+	log := openLog(t)
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Millisecond)
+
+	if _, err := log.Append(ctx, agent.Event{
+		AgentID: "a", TS: now,
+		Type: agent.EvtToolCall, Payload: []byte(`{not-json`),
+	}); err != nil {
+		t.Fatalf("append: %v", err)
+	}
+
+	got, ok, err := log.LastToolCall(ctx, "a")
+	if err != nil {
+		t.Fatalf("LastToolCall: %v", err)
+	}
+	if ok {
+		t.Errorf("ok = true on corrupt payload; want false")
+	}
+	if got != "" {
+		t.Errorf("got = %q on corrupt payload; want empty", got)
 	}
 }

@@ -678,9 +678,15 @@ func (s *Supervisor) ActiveChildren(parentID string) int {
 // to the log; reads are best-effort and a child that just terminated
 // may drop out of the slice on the next call.
 type ChildSnapshot struct {
-	AgentID   string
-	State     State
-	Title     string
+	AgentID string
+	State   State
+	Title   string
+	// LastTool is the name of the sub-agent's most recently issued tool
+	// call. Empty until the sub-agent appends its first EvtToolCall (or
+	// when the projection-cache read raced the log). The parent's
+	// bordered agent card surfaces this as "running {tool}" so the
+	// viewer sees the live action signal, not the stale objective.
+	LastTool  string
 	Tokens    int
 	CostCents int
 	StartedAt time.Time
@@ -716,10 +722,16 @@ func (s *Supervisor) SnapshotChildrenOf(ctx context.Context, parentID string) []
 		if err != nil || !ok {
 			continue
 		}
+		// Best-effort: surface the most recent tool call for the
+		// running-card body. A failure here (corrupt payload, DB hiccup)
+		// must not skip the row; we just render the static objective
+		// instead of the live tool name.
+		lastTool, _, _ := s.log.LastToolCall(ctx, id)
 		out = append(out, ChildSnapshot{
 			AgentID:   row.ID,
 			State:     row.State,
 			Title:     row.Title,
+			LastTool:  lastTool,
 			Tokens:    int(row.TokensIn + row.TokensOut),
 			CostCents: int(row.CostCents),
 			StartedAt: row.CreatedAt,

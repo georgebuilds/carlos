@@ -128,14 +128,50 @@ func agentCardState(e transcriptEntry) (state, dur string, color lipgloss.Color)
 // the captured tool result (which is typically the child's error
 // payload, e.g. "context canceled") because it's more informative than
 // the parent's stale objective; falling back to the objective keeps
-// the row populated when the tool returned with no body.
-func agentCardInsight(e transcriptEntry) string {
+// the row populated when the tool returned with no body. For
+// still-in-flight cards we prefer the matching child snapshot's most
+// recent tool call so the body reads as a live action signal; if no
+// match exists (sub-agent not yet acting, or ambiguous title) we fall
+// back to the static objective.
+func agentCardInsight(e transcriptEntry, snaps []ChildSnapshot) string {
 	if e.hasResult && e.isError {
 		if s := strings.TrimSpace(extractAgentErrorText(e.toolResult)); s != "" {
 			return s
 		}
 	}
+	if !e.hasResult {
+		if child, ok := matchAgentChild(e, snaps); ok {
+			if t := strings.TrimSpace(child.LastTool); t != "" {
+				return "running " + t
+			}
+		}
+	}
 	return strings.TrimSpace(e.agentObjective)
+}
+
+// matchAgentChild finds the in-flight ChildSnapshot whose Title equals
+// the entry's objective. Returns ok=false when no unambiguous match
+// exists, duplicate-title concurrent spawns (rare; only orchestrator
+// fan-out with identical objectives) fall back to the static body.
+func matchAgentChild(e transcriptEntry, snaps []ChildSnapshot) (ChildSnapshot, bool) {
+	objective := strings.TrimSpace(e.agentObjective)
+	if objective == "" {
+		return ChildSnapshot{}, false
+	}
+	var (
+		hit   ChildSnapshot
+		count int
+	)
+	for _, s := range snaps {
+		if strings.TrimSpace(s.LastEvent) == objective {
+			hit = s
+			count++
+		}
+	}
+	if count == 1 {
+		return hit, true
+	}
+	return ChildSnapshot{}, false
 }
 
 // extractAgentErrorText reduces a sub-agent's result payload to a
@@ -175,8 +211,10 @@ func firstNonEmptyLine(s string) string {
 // renderAgentCard paints the bordered two-line card. width is the
 // viewport's content width (same value composeTranscript hands to
 // renderToolStrip); we carve out the side margin to align with the
-// strip's left edge.
-func renderAgentCard(e transcriptEntry, width int) string {
+// strip's left edge. snaps is the live sub-agent roster the body line
+// consults to surface "running {tool}" while the sub-agent is in
+// flight; nil or empty is fine and falls back to the static objective.
+func renderAgentCard(e transcriptEntry, width int, snaps []ChildSnapshot) string {
 	totalW := width - agentCardSideMargin*2
 	if totalW < minAgentCardWidth {
 		totalW = minAgentCardWidth
@@ -204,7 +242,7 @@ func renderAgentCard(e transcriptEntry, width int) string {
 	header = clampAgentLine(header, contentW)
 
 	// Body: "↳ {insight}" with insight truncated to fit.
-	insight := agentCardInsight(e)
+	insight := agentCardInsight(e, snaps)
 	arrow := mutedStyle.Render(" ↳ ")
 	arrowW := lipgloss.Width(arrow)
 	bodyBudget := contentW - arrowW

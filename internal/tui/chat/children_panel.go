@@ -36,6 +36,11 @@ type ChildSnapshot struct {
 	AgentID   string
 	State     agent.State
 	LastEvent string
+	// LastTool carries the supervisor's ChildSnapshot.LastTool through
+	// the adapter so the bordered agent card in the transcript can
+	// surface "running {tool}" while the sub-agent is in flight. Not
+	// consumed by the side panel (which has its own LastEvent column).
+	LastTool  string
 	Spend     ChildSpend
 	StartedAt time.Time
 }

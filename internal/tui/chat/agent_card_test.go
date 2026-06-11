@@ -131,7 +131,7 @@ func TestAgentCardRendersRunning(t *testing.T) {
 		agentObjective: "scaffolding webgpu shader module for compute pass",
 		toolCalledAt:   time.Now().Add(-12 * time.Second),
 	}
-	got := renderAgentCard(e, 80)
+	got := renderAgentCard(e, 80, nil)
 	for _, want := range []string{agentCardEmoji, "agent", "running", "scaffolding webgpu shader"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("running card missing %q in:\n%s", want, got)
@@ -152,7 +152,7 @@ func TestAgentCardRendersDone(t *testing.T) {
 		toolResultAt:   call.Add(47 * time.Second),
 		hasResult:      true,
 	}
-	got := renderAgentCard(e, 80)
+	got := renderAgentCard(e, 80, nil)
 	if !strings.Contains(got, "done in") {
 		t.Errorf("done card missing 'done in':\n%s", got)
 	}
@@ -181,7 +181,7 @@ func TestAgentCardRendersFailed(t *testing.T) {
 		hasResult:      true,
 		isError:        true,
 	}
-	got := renderAgentCard(e, 80)
+	got := renderAgentCard(e, 80, nil)
 	if !strings.Contains(got, "failed in") {
 		t.Errorf("failed card missing 'failed in':\n%s", got)
 	}
@@ -209,7 +209,7 @@ func TestAgentCardRendersFailedJSONError(t *testing.T) {
 		hasResult:      true,
 		isError:        true,
 	}
-	got := renderAgentCard(e, 80)
+	got := renderAgentCard(e, 80, nil)
 	if !strings.Contains(got, "depth cap exceeded") {
 		t.Errorf("failed card missing parsed error: %q in:\n%s", "depth cap exceeded", got)
 	}
@@ -230,7 +230,7 @@ func TestAgentCardRendersFailedFallsBackToObjective(t *testing.T) {
 		hasResult:      true,
 		isError:        true,
 	}
-	got := renderAgentCard(e, 80)
+	got := renderAgentCard(e, 80, nil)
 	if !strings.Contains(got, "research X") {
 		t.Errorf("failed card missing objective fallback:\n%s", got)
 	}
@@ -282,7 +282,7 @@ func TestAgentEntryBreaksStripFold(t *testing.T) {
 		{kind: entryToolCall, tool: "read", hasResult: true, toolResult: "x"},
 		{kind: entryToolCall, tool: "write", hasResult: true, toolResult: "y"},
 	}
-	got := composeTranscript(entries, "", "", nil, 100)
+	got := composeTranscript(entries, "", "", nil, nil, 100)
 
 	if !strings.Contains(got, agentCardEmoji) {
 		t.Errorf("expected agent card emoji in output:\n%s", got)
@@ -322,7 +322,7 @@ func TestAgentEntryIsSoloRenderedWhenNoNeighbors(t *testing.T) {
 			toolCalledAt:   time.Now(),
 		},
 	}
-	got := composeTranscript(entries, "", "", nil, 100)
+	got := composeTranscript(entries, "", "", nil, nil, 100)
 	if !strings.Contains(got, agentCardEmoji) {
 		t.Errorf("solo agent entry should render as card:\n%s", got)
 	}
@@ -344,7 +344,7 @@ func TestAgentCardWithLongObjective(t *testing.T) {
 		agentObjective: strings.Repeat("scaffold and audit ", 30), // ~570 chars
 		toolCalledAt:   time.Now(),
 	}
-	got := renderAgentCard(e, 60)
+	got := renderAgentCard(e, 60, nil)
 
 	// Each rendered line must fit within the card's outer width
 	// (inner box plus side margin). We strip ANSI so width math is
@@ -381,14 +381,14 @@ func TestAgentCardElapsedUpdatesAcrossRenders(t *testing.T) {
 
 	// First render at t = call + 3s
 	nowFn = func() time.Time { return call.Add(3 * time.Second) }
-	first := renderAgentCard(e, 80)
+	first := renderAgentCard(e, 80, nil)
 	if !strings.Contains(first, "3s") {
 		t.Errorf("first render missing '3s':\n%s", first)
 	}
 
 	// Second render at t = call + 8s
 	nowFn = func() time.Time { return call.Add(8 * time.Second) }
-	second := renderAgentCard(e, 80)
+	second := renderAgentCard(e, 80, nil)
 	if !strings.Contains(second, "8s") {
 		t.Errorf("second render missing '8s':\n%s", second)
 	}
@@ -490,7 +490,7 @@ func TestRenderAgentCard_NarrowWidth(t *testing.T) {
 		agentObjective: "x",
 		toolCalledAt:   time.Now(),
 	}
-	got := renderAgentCard(e, 20)
+	got := renderAgentCard(e, 20, nil)
 	if got == "" {
 		t.Fatalf("narrow width produced empty render")
 	}
@@ -549,7 +549,7 @@ func TestRenderAgentCard_ContentFloorClamps(t *testing.T) {
 		agentObjective: "x",
 		toolCalledAt:   time.Now(),
 	}
-	got := renderAgentCard(e, 1) // absurdly tight; floors kick in
+	got := renderAgentCard(e, 1, nil) // absurdly tight; floors kick in
 	if got == "" {
 		t.Fatalf("absurd width produced empty card")
 	}
@@ -588,11 +588,208 @@ func TestAgentCardIntegrationApplyAndRender(t *testing.T) {
 	// switch, which is the production seam composeTranscript hands
 	// each entry to for solo rendering.
 	e := firstToolEntry(t, m)
-	out := renderEntry(e, nil, 80)
+	out := renderEntry(e, nil, nil, 80)
 	if !strings.Contains(out, "draft the schema") {
 		t.Errorf("rendered card missing objective:\n%s", out)
 	}
 	if !strings.Contains(out, agentCardEmoji) {
 		t.Errorf("rendered card missing emoji:\n%s", out)
+	}
+}
+
+// TestAgentCardRunningUsesLastTool pins the live-tool body line: a
+// running card whose matching child snapshot has a non-empty LastTool
+// must surface "running {tool}" in the body, NOT the static objective.
+// This is the feature the spec was written for.
+func TestAgentCardRunningUsesLastTool(t *testing.T) {
+	e := transcriptEntry{
+		kind:           entryToolCall,
+		tool:           agentToolName,
+		isAgent:        true,
+		agentObjective: "do thing",
+		toolCalledAt:   time.Now().Add(-3 * time.Second),
+	}
+	snaps := []ChildSnapshot{
+		{AgentID: "child", State: agent.StateRunning, LastEvent: "do thing", LastTool: "bash"},
+	}
+	got := renderAgentCard(e, 80, snaps)
+	if !strings.Contains(got, "running bash") {
+		t.Errorf("expected body to contain 'running bash'; got:\n%s", got)
+	}
+	// The static objective must not surface on the body line when the
+	// live tool is available, otherwise the user sees stale info.
+	// Check the body line specifically: the header has "running"
+	// already, so the body assertion has to scope to "↳ ".
+	if !strings.Contains(got, "↳") {
+		t.Fatalf("rendered card missing body arrow:\n%s", got)
+	}
+	bodyIdx := strings.Index(got, "↳")
+	body := got[bodyIdx:]
+	if strings.Contains(body, "do thing") {
+		t.Errorf("body line still contains the static objective; got body:\n%s", body)
+	}
+}
+
+// TestAgentCardRunningFallsBackToObjectiveWhenNoMatch covers the no-
+// snapshot path: with snaps empty, the body reads as the static
+// objective.
+func TestAgentCardRunningFallsBackToObjectiveWhenNoMatch(t *testing.T) {
+	e := transcriptEntry{
+		kind:           entryToolCall,
+		tool:           agentToolName,
+		isAgent:        true,
+		agentObjective: "do thing",
+		toolCalledAt:   time.Now().Add(-3 * time.Second),
+	}
+	got := renderAgentCard(e, 80, nil)
+	if !strings.Contains(got, "do thing") {
+		t.Errorf("expected body to fall back to objective; got:\n%s", got)
+	}
+}
+
+// TestAgentCardRunningFallsBackWhenLastToolEmpty covers the
+// just-spawned path: the snapshot matches by title but the sub-agent
+// has not yet emitted any tool calls, so LastTool is empty. Body
+// falls back to objective.
+func TestAgentCardRunningFallsBackWhenLastToolEmpty(t *testing.T) {
+	e := transcriptEntry{
+		kind:           entryToolCall,
+		tool:           agentToolName,
+		isAgent:        true,
+		agentObjective: "do thing",
+		toolCalledAt:   time.Now().Add(-3 * time.Second),
+	}
+	snaps := []ChildSnapshot{
+		{AgentID: "child", State: agent.StateRunning, LastEvent: "do thing", LastTool: ""},
+	}
+	got := renderAgentCard(e, 80, snaps)
+	if !strings.Contains(got, "do thing") {
+		t.Errorf("expected body to fall back to objective when LastTool is empty; got:\n%s", got)
+	}
+}
+
+// TestAgentCardRunningSkipsAmbiguousMatch covers the duplicate-title
+// concurrent-spawn edge case: when two children share the same Title
+// (rare orchestrator fan-out), pick neither and fall back to the
+// objective so the body never picks a wrong tool.
+func TestAgentCardRunningSkipsAmbiguousMatch(t *testing.T) {
+	e := transcriptEntry{
+		kind:           entryToolCall,
+		tool:           agentToolName,
+		isAgent:        true,
+		agentObjective: "do thing",
+		toolCalledAt:   time.Now().Add(-3 * time.Second),
+	}
+	snaps := []ChildSnapshot{
+		{AgentID: "child-a", State: agent.StateRunning, LastEvent: "do thing", LastTool: "bash"},
+		{AgentID: "child-b", State: agent.StateRunning, LastEvent: "do thing", LastTool: "glob"},
+	}
+	got := renderAgentCard(e, 80, snaps)
+	if strings.Contains(got, "running bash") || strings.Contains(got, "running glob") {
+		t.Errorf("ambiguous match must not pick either tool; got:\n%s", got)
+	}
+	if !strings.Contains(got, "do thing") {
+		t.Errorf("ambiguous match should fall back to objective; got:\n%s", got)
+	}
+}
+
+// TestAgentCardDoneIgnoresLastTool covers the post-completion path:
+// once hasResult is true, we surface the objective rather than a
+// stale tool name. The card has finished its run; the live signal is
+// no longer relevant.
+func TestAgentCardDoneIgnoresLastTool(t *testing.T) {
+	call := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
+	e := transcriptEntry{
+		kind:           entryToolCall,
+		tool:           agentToolName,
+		isAgent:        true,
+		agentObjective: "do thing",
+		toolCalledAt:   call,
+		toolResultAt:   call.Add(5 * time.Second),
+		hasResult:      true,
+	}
+	snaps := []ChildSnapshot{
+		{AgentID: "child", State: agent.StateDone, LastEvent: "do thing", LastTool: "bash"},
+	}
+	got := renderAgentCard(e, 80, snaps)
+	if strings.Contains(got, "running bash") {
+		t.Errorf("done card should not surface running tool; got:\n%s", got)
+	}
+	if !strings.Contains(got, "do thing") {
+		t.Errorf("done card should surface objective; got:\n%s", got)
+	}
+}
+
+// TestMatchAgentChild walks the matching helper directly across its
+// happy / fallback / ambiguous / empty-objective branches.
+func TestMatchAgentChild(t *testing.T) {
+	cases := []struct {
+		name      string
+		objective string
+		snaps     []ChildSnapshot
+		wantOK    bool
+		wantTool  string
+	}{
+		{
+			name:      "happy single match",
+			objective: "do thing",
+			snaps: []ChildSnapshot{
+				{LastEvent: "do thing", LastTool: "bash"},
+			},
+			wantOK:   true,
+			wantTool: "bash",
+		},
+		{
+			name:      "trims whitespace on both sides",
+			objective: "  do thing  ",
+			snaps: []ChildSnapshot{
+				{LastEvent: "do thing", LastTool: "bash"},
+			},
+			wantOK:   true,
+			wantTool: "bash",
+		},
+		{
+			name:      "no match",
+			objective: "do thing",
+			snaps: []ChildSnapshot{
+				{LastEvent: "other", LastTool: "bash"},
+			},
+			wantOK: false,
+		},
+		{
+			name:      "empty objective never matches",
+			objective: "",
+			snaps: []ChildSnapshot{
+				{LastEvent: "do thing", LastTool: "bash"},
+			},
+			wantOK: false,
+		},
+		{
+			name:      "ambiguous match yields none",
+			objective: "do thing",
+			snaps: []ChildSnapshot{
+				{LastEvent: "do thing", LastTool: "bash"},
+				{LastEvent: "do thing", LastTool: "glob"},
+			},
+			wantOK: false,
+		},
+		{
+			name:      "nil snaps",
+			objective: "do thing",
+			snaps:     nil,
+			wantOK:    false,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			e := transcriptEntry{agentObjective: c.objective}
+			hit, ok := matchAgentChild(e, c.snaps)
+			if ok != c.wantOK {
+				t.Errorf("ok = %v, want %v", ok, c.wantOK)
+			}
+			if c.wantOK && hit.LastTool != c.wantTool {
+				t.Errorf("LastTool = %q, want %q", hit.LastTool, c.wantTool)
+			}
+		})
 	}
 }

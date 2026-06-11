@@ -995,7 +995,7 @@ func (m *Model) rerenderViewport() {
 			thinking = renderThinkingRow(m.thinkingTick, m.thinkingElapsed(), m.vp.Width)
 		}
 		md := m.ensureMarkdown(m.vp.Width)
-		content = composeTranscript(m.transcript, m.source.Get(m.agentID), thinking, md, m.vp.Width)
+		content = composeTranscript(m.transcript, m.source.Get(m.agentID), thinking, md, m.childrenSnap, m.vp.Width)
 	}
 	m.vp.SetContent(content)
 	if wasAtBottom {
@@ -1100,11 +1100,16 @@ func renderBetaBadge() string {
 // indicator row signalling "carlos is thinking between turns". Width
 // is honored via lipgloss styles that wrap at the viewport width.
 //
+// snaps is the live sub-agent roster the agent-card body line consults
+// to surface "running {tool}" while a sub-agent is in flight. nil or
+// empty falls back to the static objective; only the agent-card
+// renderer reads it.
+//
 // The thinking row is mutually exclusive with liveText in practice
 // (isThinking returns false when source.Get returns text) but we
-// don't enforce that here — the caller already decides. composeTranscript
+// don't enforce that here, the caller already decides. composeTranscript
 // just renders what it's asked to.
-func composeTranscript(entries []transcriptEntry, liveText, thinkingRow string, md *glamour.TermRenderer, width int) string {
+func composeTranscript(entries []transcriptEntry, liveText, thinkingRow string, md *glamour.TermRenderer, snaps []ChildSnapshot, width int) string {
 	var sb strings.Builder
 	// Two-or-more consecutive entries of the same groupable kind
 	// (entryToolCall, entryError) get folded into a single bordered
@@ -1145,7 +1150,7 @@ func composeTranscript(entries []transcriptEntry, liveText, thinkingRow string, 
 		case runEnd-i >= 2 && kind == entryError:
 			sb.WriteString(renderErrorCardGroup(entries[i:runEnd], width))
 		default:
-			sb.WriteString(renderEntry(entries[i], md, width))
+			sb.WriteString(renderEntry(entries[i], md, snaps, width))
 			runEnd = i + 1 // single-entry path: advance by one
 		}
 		wrote = true
@@ -1228,8 +1233,10 @@ func isGroupableKind(k entryKind) bool {
 // conversational turns.
 //
 // The "avatar : text" format reads the transcript like a chat log
-// rather than a debug trace.
-func renderEntry(e transcriptEntry, md *glamour.TermRenderer, width int) string {
+// rather than a debug trace. snaps is the live sub-agent roster that
+// the agent-card body line consults for the "running {tool}" signal;
+// nil or empty falls back to the static objective.
+func renderEntry(e transcriptEntry, md *glamour.TermRenderer, snaps []ChildSnapshot, width int) string {
 	body := lipgloss.NewStyle().Width(width).MaxWidth(width)
 	colon := lipgloss.NewStyle().Foreground(colorMuted).Render(":")
 	switch e.kind {
@@ -1242,11 +1249,11 @@ func renderEntry(e transcriptEntry, md *glamour.TermRenderer, width int) string 
 		// Renderer is in internal/tui/chat/usershell_render.go.
 		return body.Render(renderUserShellEntry(e, width))
 	case entryToolCall:
-		// Sub-agent calls peel off into their own bordered card —
+		// Sub-agent calls peel off into their own bordered card,
 		// spawning another carlos is a heavyweight action that
 		// deserves more visual weight than the compact strip.
 		if e.isAgent {
-			return renderAgentCard(e, width)
+			return renderAgentCard(e, width, snaps)
 		}
 		// Activity strip (Concept A): single indented line in place of
 		// the legacy bordered card. Composition lives in

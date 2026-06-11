@@ -3,6 +3,8 @@ package agent
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -588,6 +590,35 @@ func (l *SQLiteEventLog) GetAgent(ctx context.Context, agentID string) (AgentRow
 	r.UpdatedAt = time.UnixMilli(updatedM).UTC()
 	r.LastHeartbeatAt = time.UnixMilli(hbM).UTC()
 	return r, true, nil
+}
+
+// LastToolCall returns the name of the most recent EvtToolCall event
+// recorded for agentID. ok=false means no tool calls have been logged
+// yet (sub-agent just spawned, not yet acting). Used by the inline
+// child-snapshot path to surface a live "current tool" signal on the
+// parent's bordered card.
+//
+// Cheap: covered by the events_by_agent index (agent_id, seq) with a
+// LIMIT 1, degrades to a constant-time index lookup regardless of
+// event-log size.
+func (l *SQLiteEventLog) LastToolCall(ctx context.Context, agentID string) (string, bool, error) {
+	row := l.db.QueryRowContext(ctx,
+		`SELECT payload FROM events WHERE agent_id = ? AND type = ? ORDER BY seq DESC LIMIT 1`,
+		agentID, string(EvtToolCall),
+	)
+	var payload []byte
+	if err := row.Scan(&payload); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", false, nil
+		}
+		return "", false, err
+	}
+	var tc ToolCall
+	if err := json.Unmarshal(payload, &tc); err != nil {
+		// Defensive: corrupt payload should not fail the snapshot.
+		return "", false, nil
+	}
+	return tc.Name, true, nil
 }
 
 // parseState is the inverse of State.String(). Returns (state, true) on

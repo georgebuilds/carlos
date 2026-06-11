@@ -680,6 +680,7 @@ func runDefault(cfg *config.Config, sessionID string) error {
 				AgentID:   s.AgentID,
 				State:     s.State,
 				LastEvent: s.Title,
+				LastTool:  s.LastTool,
 				Spend:     chat.ChildSpend{Tokens: s.Tokens, Cents: s.CostCents},
 				StartedAt: s.StartedAt,
 			})
