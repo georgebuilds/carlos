@@ -214,8 +214,20 @@ func NewLayeredApprover(fallback Approver, allow []string, audit AuditSink) *Lay
 // skipped and the fallback prompts. The decision is recorded with the
 // cross-frame reason so the audit log and /permissions overlay can
 // surface the boundary crossing distinctly.
+//
+// Capture-at-issue (frames audit, mid-conversation switch §3): this
+// method reads the LIVE active frame at call time. The chatglue.Loop
+// turn handler uses SnapshotAtFrame() instead so a mid-turn frame
+// switch can't relabel an already-issued tool call.
 func (l *LayeredApprover) ApproveToolCall(name string, input []byte) bool {
-	if cross := l.crossFrameTarget(name, input); cross != "" {
+	return l.approveWith(l.currentSnapshot(), name, input)
+}
+
+// approveWith is the layered evaluation against an explicit frame
+// snapshot. Called by ApproveToolCall (with the current live snapshot)
+// and by snapshotApprover (with a frozen one).
+func (l *LayeredApprover) approveWith(snap frameSnapshot, name string, input []byte) bool {
+	if cross := crossFrameTargetFor(snap, name, input); cross != "" {
 		ok := l.fallback.ApproveToolCall(name, input)
 		reason := ReasonCrossFrameDeny
 		if ok {
@@ -268,19 +280,34 @@ func (l *LayeredApprover) SetFrameSubtrees(active string, subtrees map[string]st
 	l.frameSubtrees = cp
 }
 
-// crossFrameTarget reports the frame name a write/edit input would
-// land in IF that frame is NOT the active one. Returns "" when the
-// target is in the active frame, when no frame mapping is configured,
-// or when the tool isn't one of the mutating-with-path family.
-func (l *LayeredApprover) crossFrameTarget(name string, input []byte) string {
+// frameSnapshot is an immutable copy of the cross-frame state at one
+// moment in time. The subtrees map is by-reference; the SetFrameSubtrees
+// invariant ("never mutate in place; swap pointers") makes that safe.
+type frameSnapshot struct {
+	active   string
+	subtrees map[string]string
+}
+
+// currentSnapshot reads the live activeFrame + frameSubtrees under
+// RLock and returns them as an immutable snapshot. Callers can hold
+// the result without further locking — see the SetFrameSubtrees
+// invariant for why that's safe.
+func (l *LayeredApprover) currentSnapshot() frameSnapshot {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+	return frameSnapshot{active: l.activeFrame, subtrees: l.frameSubtrees}
+}
+
+// crossFrameTargetFor reports the frame name a write/edit input would
+// land in IF that frame is NOT the snapshot's active one. Pure over
+// the snapshot: no shared state, no lock. Returns "" when the target
+// is in the active frame, when no frame mapping is configured, or
+// when the tool isn't one of the mutating-with-path family.
+func crossFrameTargetFor(snap frameSnapshot, name string, input []byte) string {
 	if name != "write" && name != "edit" {
 		return ""
 	}
-	l.mu.RLock()
-	active := l.activeFrame
-	subtrees := l.frameSubtrees
-	l.mu.RUnlock()
-	if len(subtrees) == 0 {
+	if len(snap.subtrees) == 0 {
 		return ""
 	}
 	var in struct {
@@ -293,8 +320,8 @@ func (l *LayeredApprover) crossFrameTarget(name string, input []byte) string {
 	if err != nil {
 		return ""
 	}
-	for fname, root := range subtrees {
-		if root == "" || fname == active {
+	for fname, root := range snap.subtrees {
+		if root == "" || fname == snap.active {
 			continue
 		}
 		if pathInside(absPath, root) {
@@ -302,6 +329,38 @@ func (l *LayeredApprover) crossFrameTarget(name string, input []byte) string {
 		}
 	}
 	return ""
+}
+
+// SnapshotAtFrame returns an Approver whose cross-frame state is
+// frozen at the current activeFrame + subtrees map. The chatglue.Loop
+// turn handler captures one at the start of each user-message turn so
+// a mid-turn SetFrameSubtrees mutation (driven by Ctrl+F) can't
+// relabel an in-flight tool call as cross-frame.
+//
+// Capture-at-issue (frames audit §3): tool calls already issued under
+// the OLD frame keep evaluating against the OLD subtree map until the
+// turn completes. The NEXT user message goes through a freshly-built
+// Loop (swapLoop) and gets a fresh snapshot. All other layers
+// (builtin, workspace, fallback, audit) still delegate to the parent,
+// so a single TUI prompt source stays canonical.
+func (l *LayeredApprover) SnapshotAtFrame() Approver {
+	return &snapshotApprover{parent: l, frame: l.currentSnapshot()}
+}
+
+// snapshotApprover wraps a LayeredApprover and overrides only the
+// cross-frame check with a captured frame snapshot. All other layers
+// delegate to the parent unchanged so a single TUI prompt surface
+// stays canonical across snapshots.
+type snapshotApprover struct {
+	parent *LayeredApprover
+	frame  frameSnapshot
+}
+
+// ApproveToolCall delegates to the parent's approveWith using the
+// captured snapshot — so the cross-frame decision is locked at the
+// moment SnapshotAtFrame was called.
+func (s *snapshotApprover) ApproveToolCall(name string, input []byte) bool {
+	return s.parent.approveWith(s.frame, name, input)
 }
 
 // pathInside reports whether path is inside root. Both must be

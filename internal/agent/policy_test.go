@@ -394,6 +394,158 @@ func TestPathInside(t *testing.T) {
 	}
 }
 
+// Capture-at-issue (frames audit §3, mid-conversation switch). A
+// SnapshotAtFrame approver freezes the cross-frame state at call time,
+// so a later SetFrameSubtrees on the underlying LayeredApprover does
+// NOT relabel in-flight tool calls evaluated against the snapshot.
+// The next snapshot — taken after the mutation — sees the new state.
+
+// Happy path: a snapshot taken under frame=personal continues to treat
+// /work/* as cross-frame even after the live approver has been switched
+// to active=work. The mid-turn switch must not relabel the in-flight
+// call's frame.
+func TestSnapshotAtFrame_FreezesCrossFrameState(t *testing.T) {
+	rec := &recordingApprover{allow: true}
+	sink := &recordingAuditSink{}
+	la := NewLayeredApprover(rec, []string{"write"}, sink)
+	la.SetFrameSubtrees("personal", map[string]string{
+		"personal": "/home/u/.carlos/frames/personal",
+		"work":     "/home/u/.carlos/frames/work",
+	})
+
+	// Snapshot at the start of a turn under active=personal.
+	snap := la.SnapshotAtFrame()
+
+	// Mid-turn: simulate Ctrl+F → swapLoop calling SetFrameSubtrees
+	// with active=work. The live approver flips; the snapshot must not.
+	la.SetFrameSubtrees("work", map[string]string{
+		"personal": "/home/u/.carlos/frames/personal",
+		"work":     "/home/u/.carlos/frames/work",
+	})
+
+	// The snapshot evaluates a /work/* write as cross-frame (since at
+	// snapshot time active was personal). Without freezing, this would
+	// be intra-frame and skip the cross-frame branch.
+	ok := snap.ApproveToolCall("write", []byte(`{"path":"/home/u/.carlos/frames/work/notes/a.md","content":"x"}`))
+	if !ok {
+		t.Fatal("recording fallback returns true; snapshot should propagate it")
+	}
+	d := sink.snapshot()
+	if len(d) != 1 || d[0].Reason != ReasonCrossFrameAllow {
+		t.Fatalf("snapshot must still see this as cross-frame; got %+v", d)
+	}
+	if !rec.wasCalled() {
+		t.Fatal("snapshot's cross-frame branch must consult the fallback")
+	}
+}
+
+// The LIVE approver, in contrast, immediately reflects the mutation.
+// A second tool call going through the live approver (no snapshot)
+// after the SetFrameSubtrees swap sees /work/* as intra-frame.
+func TestSnapshotAtFrame_LiveApproverReflectsLatestState(t *testing.T) {
+	rec := &recordingApprover{allow: true}
+	sink := &recordingAuditSink{}
+	la := NewLayeredApprover(rec, []string{"write"}, sink)
+	la.SetFrameSubtrees("personal", map[string]string{
+		"personal": "/home/u/.carlos/frames/personal",
+		"work":     "/home/u/.carlos/frames/work",
+	})
+	// User switches frames; live state should follow.
+	la.SetFrameSubtrees("work", map[string]string{
+		"personal": "/home/u/.carlos/frames/personal",
+		"work":     "/home/u/.carlos/frames/work",
+	})
+	// Now a fresh call (no captured snapshot) targeting /work/* should
+	// be intra-frame and short-circuit via builtin-allow.
+	la.ApproveToolCall("write", []byte(`{"path":"/home/u/.carlos/frames/work/notes/a.md","content":"x"}`))
+	d := sink.snapshot()
+	if len(d) != 1 || d[0].Reason != ReasonBuiltinAllow {
+		t.Fatalf("live approver after switch must see /work/* as intra-frame; got %+v", d)
+	}
+	if rec.wasCalled() {
+		t.Fatal("builtin-allow path should not consult the fallback")
+	}
+}
+
+// A second snapshot taken AFTER the SetFrameSubtrees mutation must
+// see the new state — the snapshot mechanism is per-call, not sticky.
+func TestSnapshotAtFrame_SecondSnapshotPicksUpNewState(t *testing.T) {
+	rec := &recordingApprover{allow: true}
+	sink := &recordingAuditSink{}
+	la := NewLayeredApprover(rec, []string{"write"}, sink)
+	la.SetFrameSubtrees("personal", map[string]string{
+		"personal": "/home/u/.carlos/frames/personal",
+		"work":     "/home/u/.carlos/frames/work",
+	})
+	_ = la.SnapshotAtFrame() // first snapshot, discarded
+	la.SetFrameSubtrees("work", map[string]string{
+		"personal": "/home/u/.carlos/frames/personal",
+		"work":     "/home/u/.carlos/frames/work",
+	})
+	// Second snapshot — represents the NEXT turn after a frame swap.
+	snap2 := la.SnapshotAtFrame()
+	snap2.ApproveToolCall("write", []byte(`{"path":"/home/u/.carlos/frames/work/notes/a.md","content":"x"}`))
+	d := sink.snapshot()
+	if len(d) != 1 || d[0].Reason != ReasonBuiltinAllow {
+		t.Fatalf("next-turn snapshot must reflect the new active frame; got %+v", d)
+	}
+}
+
+// A snapshot evaluates non-cross-frame paths through the same
+// builtin/workspace/fallback layers as the live approver. Snapshots
+// only freeze the cross-frame check; everything else must still work.
+func TestSnapshotAtFrame_DelegatesNonFrameLayers(t *testing.T) {
+	rec := &recordingApprover{allow: true}
+	sink := &recordingAuditSink{}
+	la := NewLayeredApprover(rec, []string{}, sink) // empty builtin
+	la.SetFrameSubtrees("personal", map[string]string{
+		"personal": "/home/u/.carlos/frames/personal",
+		"work":     "/home/u/.carlos/frames/work",
+	})
+	snap := la.SnapshotAtFrame()
+	// Intra-frame write — not on builtin allow → must hit the fallback.
+	if !snap.ApproveToolCall("write", []byte(`{"path":"/home/u/.carlos/frames/personal/a.md","content":"x"}`)) {
+		t.Fatal("snapshot intra-frame write should propagate fallback's true")
+	}
+	if !rec.wasCalled() {
+		t.Fatal("snapshot must consult the fallback when no shortcut matches")
+	}
+	d := sink.snapshot()
+	if len(d) != 1 || d[0].Reason != ReasonSessionAllow {
+		t.Fatalf("want ReasonSessionAllow; got %+v", d)
+	}
+}
+
+// Frames audit §2 + sysprompt rebuild. SetFrameSubtrees must accept
+// a new active name plus a fresh subtree map at any time, and the
+// next ApproveToolCall must see the new state. This pins the
+// runtime's swapLoop wire-up at runtime_tui.go:547-553.
+func TestSetFrameSubtrees_RefreshesActiveAfterSwap(t *testing.T) {
+	rec := &recordingApprover{allow: true}
+	sink := &recordingAuditSink{}
+	la := NewLayeredApprover(rec, []string{"write"}, sink)
+	// Initial wire-up at session boot under active=personal.
+	la.SetFrameSubtrees("personal", map[string]string{
+		"personal": "/home/u/.carlos/frames/personal",
+		"work":     "/home/u/.carlos/frames/work",
+	})
+	// Mid-session Ctrl+F: swapLoop calls SetFrameSubtrees with the
+	// new active name + a fresh map (typically the same subtrees, but
+	// the call is what matters).
+	la.SetFrameSubtrees("work", map[string]string{
+		"personal": "/home/u/.carlos/frames/personal",
+		"work":     "/home/u/.carlos/frames/work",
+	})
+	// A write to /personal/* is now cross-frame from work's
+	// perspective. Without the refresh this would be intra-frame
+	// (active still =="personal" in the approver) and short-circuit.
+	la.ApproveToolCall("write", []byte(`{"path":"/home/u/.carlos/frames/personal/a.md","content":"x"}`))
+	d := sink.snapshot()
+	if len(d) != 1 || d[0].Reason != ReasonCrossFrameAllow {
+		t.Fatalf("after swap the new active=work must treat personal as cross-frame; got %+v", d)
+	}
+}
+
 func TestSortStrings(t *testing.T) {
 	in := []string{"banana", "apple", "cherry", ""}
 	sortStrings(in)
