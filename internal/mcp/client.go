@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"os/exec"
 	"strings"
 
@@ -59,7 +58,8 @@ type Session interface {
 type Server struct {
 	Name    string
 	Session Session
-	cmd     *exec.Cmd // the spawned subprocess; nil for tests that inject Session directly
+	cmd     *exec.Cmd      // the spawned subprocess; nil for tests that inject Session directly
+	stderr  *boundedBuffer // captured tail of the subprocess's stderr; nil for tests that inject Session directly
 }
 
 // Connect spawns cfg.Command with cfg.Args, attaches a stdio transport,
@@ -78,11 +78,17 @@ func Connect(ctx context.Context, cfg ServerConfig) (*Server, error) {
 	}
 	cmd := exec.CommandContext(ctx, cfg.Command, cfg.Args...)
 	cmd.Env = expandEnv(cfg.Env)
-	// Forward the server's stderr to the parent so MCP diagnostics
-	// (startup banners, errors) land in the user's terminal alongside
-	// carlos's own warnings. stdout is owned by the SDK's
-	// CommandTransport (newline-delimited JSON) and must not be touched.
-	cmd.Stderr = os.Stderr
+	// Capture the server's stderr into a bounded in-memory buffer rather
+	// than forwarding it to os.Stderr. The children can write to stderr at
+	// any point in a session, and forwarding pastes that output straight
+	// over the live TUI frame (the classic "garbage in the input box").
+	// We keep only the most recent bytes and surface them where they're
+	// actually useful - folded into the connect error on failure, and via
+	// Server.StderrTail for operator inspection. stdout stays owned by the
+	// SDK's CommandTransport (newline-delimited JSON) and must not be
+	// touched.
+	stderr := newBoundedBuffer(defaultStderrCap)
+	cmd.Stderr = stderr
 
 	transport := &sdk.CommandTransport{Command: cmd}
 	client := sdk.NewClient(&sdk.Implementation{
@@ -106,12 +112,22 @@ func Connect(ctx context.Context, cfg ServerConfig) (*Server, error) {
 		// error we ignore, and Wait after the SDK already Wait'd
 		// returns "Wait was already called" which we also ignore.
 		killAndReap(cmd)
+		// The child usually explains itself on stderr before dying (e.g.
+		// "command not found", a Python traceback, a missing-env-var
+		// complaint). Now that we capture rather than forward that output,
+		// fold the tail into the error so the operator isn't left with a
+		// bare "handshake failed". Trim trailing whitespace so the message
+		// doesn't carry a dangling newline from the child's last log line.
+		if tail := strings.TrimRight(stderr.String(), " \t\r\n"); tail != "" {
+			return nil, fmt.Errorf("mcp: connect %q: %w (stderr: %s)", cfg.Name, err, tail)
+		}
 		return nil, fmt.Errorf("mcp: connect %q: %w", cfg.Name, err)
 	}
 	return &Server{
 		Name:    cfg.Name,
 		Session: session,
 		cmd:     cmd,
+		stderr:  stderr,
 	}, nil
 }
 
@@ -204,6 +220,19 @@ func (s *Server) Close() error {
 		return nil
 	}
 	return s.Session.Close()
+}
+
+// StderrTail returns the most recent slice of the subprocess's stderr that
+// we retained while the server has been running. It's the operator-facing
+// counterpart to the stderr we no longer dump onto the TUI: useful for a
+// "why is this server misbehaving" probe without the noise of live
+// forwarding. Returns "" when the buffer is nil (tests that inject Session
+// directly never spawn a subprocess, so there's nothing to capture).
+func (s *Server) StderrTail() string {
+	if s == nil || s.stderr == nil {
+		return ""
+	}
+	return s.stderr.String()
 }
 
 // marshalSchema turns an opaque SDK schema (typically a map[string]any
