@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"sort"
 	"strings"
 	"time"
@@ -22,6 +23,7 @@ import (
 	"github.com/georgebuilds/carlos/internal/schedule"
 	"github.com/georgebuilds/carlos/internal/theme"
 	"github.com/georgebuilds/carlos/internal/tui/slash"
+	"github.com/georgebuilds/carlos/internal/tui/termscrub"
 	"github.com/georgebuilds/carlos/internal/usershell"
 	"github.com/georgebuilds/carlos/internal/workspace"
 )
@@ -247,6 +249,20 @@ type Model struct {
 	// pending)" and similar. Cleared on the next keystroke.
 	status     string
 	statusKind statusKind
+
+	// startupNotices are informational lines surfaced once at startup
+	// (e.g. "recovered 2 orphaned agent(s)", "mcp: registered 5
+	// tool(s)"). Rendered as a small info banner in the footer above
+	// the keybind row so the user sees boot-time results inside the TUI
+	// rather than on stderr (which would corrupt the alt-screen frame).
+	// Nil/empty renders nothing. Set via WithStartupNotices.
+	startupNotices []string
+
+	// diag is a best-effort sink for rare diagnostics that would
+	// otherwise be lost (e.g. a non-fatal prune error in /resume).
+	// Defaults to io.Discard — NEVER os.Stderr, since writing to stderr
+	// corrupts the live alt-screen frame. Set via WithDiagWriter.
+	diag io.Writer
 
 	// quitting is set on ctrl-c; View can short-circuit.
 	quitting bool
@@ -687,6 +703,29 @@ func WithChildrenView(cv ChildrenView) Option {
 	return func(m *Model) { m.childrenView = cv }
 }
 
+// WithStartupNotices surfaces boot-time informational lines inside the
+// TUI instead of on stderr (which would corrupt the alt-screen frame).
+// Each notice is one short line such as "recovered 2 orphaned agent(s)"
+// or "mcp: registered 5 tool(s)"; they render as a small info banner in
+// the footer above the keybind row. A nil or empty slice renders
+// nothing. cmd/carlos.runDefault collects these from startup recovery /
+// mcp registration and passes them here.
+func WithStartupNotices(notices []string) Option {
+	return func(m *Model) { m.startupNotices = notices }
+}
+
+// WithDiagWriter routes rare best-effort diagnostics (e.g. a non-fatal
+// /resume prune error) to w. The default when unset is io.Discard;
+// callers must NOT pass os.Stderr — writing to stderr corrupts the live
+// alt-screen frame. A test harness or a file sink is the intended target.
+func WithDiagWriter(w io.Writer) Option {
+	return func(m *Model) {
+		if w != nil {
+			m.diag = w
+		}
+	}
+}
+
 // New constructs a chat Model bound to the given event log + agent. The
 // TextSource is required (pass NewMemTextSource() if you have nothing
 // else); Slice 1f will plug a real streaming source in.
@@ -718,6 +757,7 @@ func New(log agent.EventLog, agentID string, source TextSource, opts ...Option) 
 		ta:                ta,
 		userName:          "Boss",
 		chatHistoryCursor: -1,
+		diag:              io.Discard,
 	}
 	for _, opt := range opts {
 		opt(m)
@@ -743,7 +783,14 @@ func (m *Model) Run() (tea.Model, error) {
 	// through capture as a force-selection override, so users on
 	// those don't even need the toggle. The footer carries a
 	// permanent alt+m hint so the toggle is always discoverable.
-	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
+	// WithFilter installs the global termscrub input filter so leaked
+	// terminal escape remnants (mouse reports, DSR/DA/OSC replies,
+	// bracketed-paste markers) are scrubbed out of every KeyRunes burst
+	// before the textarea ever sees them. The post-update Scrub in
+	// Update stays as defense-in-depth for sequences the parser splits
+	// across reads and reassembles in the textarea value.
+	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion(),
+		tea.WithFilter(termscrub.FilterTerminalLeaks))
 	return p.Run()
 }
 
@@ -1089,15 +1136,20 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		var cmd tea.Cmd
 		m.ta, cmd = m.ta.Update(msg)
-		// Scrub SGR mouse-report escapes that intermittently leak
-		// into the textarea when the terminal flushes a buffered
-		// mouse event during a bubbletea state transition (e.g.
+		// Defense-in-depth scrub of terminal escape remnants that
+		// leak into the textarea when the terminal flushes a buffered
+		// control sequence during a bubbletea state transition (e.g.
 		// right after an alt+m toggle or while the alt-screen is
-		// tearing down). The leaked bytes look like "[<64;96;7M"
-		// in the input — visible-but-unwanted text the user has to
-		// backspace out by hand. Strip them in-place so the
-		// composer just shows whatever the user actually typed.
-		if cleaned := scrubMouseReportEscapes(m.ta.Value()); cleaned != m.ta.Value() {
+		// tearing down). The global WithFilter (termscrub) catches
+		// clean single-burst leaks before they reach the model; this
+		// post-update pass catches sequences the input parser splits
+		// across reads and reassembles in the textarea value. termscrub
+		// owns the patterns now and covers more than SGR mouse reports:
+		// X11 mouse, DSR cursor-position and DA device-attributes
+		// replies, OSC 10/11 color replies, and bracketed-paste markers.
+		// Strip them in-place so the composer just shows whatever the
+		// user actually typed.
+		if cleaned := termscrub.Scrub(m.ta.Value()); cleaned != m.ta.Value() {
 			m.ta.SetValue(cleaned)
 			m.ta.CursorEnd()
 		}

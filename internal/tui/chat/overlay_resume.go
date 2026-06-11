@@ -19,7 +19,7 @@ package chat
 import (
 	"context"
 	"fmt"
-	"os"
+	"io"
 	"strings"
 	"time"
 
@@ -59,10 +59,15 @@ func (m *Model) openResumePicker() tea.Cmd {
 	// can resume from a session that pre-dates the grace window
 	// even if the same row would have been pruned, because the
 	// only candidates are zero-message + zero-tool orphans — there
-	// is nothing in those rows to resume into. Errors are logged
-	// to stderr and never block the picker.
+	// is nothing in those rows to resume into. Errors go to the
+	// best-effort diag writer (io.Discard by default — never stderr,
+	// which would corrupt the live frame) and never block the picker.
 	if _, err := log.DeleteEmptyOrphanedAgents(ctx, agent.DefaultOrphanPruneAge); err != nil {
-		fmt.Fprintf(os.Stderr, "carlos: prune empty orphans: %v\n", err)
+		w := m.diag
+		if w == nil {
+			w = io.Discard
+		}
+		fmt.Fprintf(w, "carlos: prune empty orphans: %v\n", err)
 	}
 	sessions, err := agent.ListUserSessions(ctx, log, m.agentID)
 	if err != nil {

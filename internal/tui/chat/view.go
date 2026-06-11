@@ -535,6 +535,13 @@ func (m *Model) renderFooter(w int) string {
 		statusStyle := lipgloss.NewStyle().Foreground(statusColor(m.statusKind))
 		return statusStyle.Render(m.status) + "\n" + row
 	}
+	// Startup notices: boot-time informational lines (orphan recovery,
+	// mcp tool registration, ...) surfaced as an accent-tinted banner
+	// above the keybind row so the user sees them inside the TUI rather
+	// than on stderr. One line per notice; empty/nil renders nothing.
+	if banner := m.renderStartupNotices(); banner != "" {
+		return banner + "\n" + row
+	}
 	// Phase F-8 cwd-hint footer: dim line above the keybind row when
 	// the chat has detected an in-band cd into another frame's
 	// territory and the user hasn't muted with Ctrl+L.
@@ -543,6 +550,23 @@ func (m *Model) renderFooter(w int) string {
 		return hintLine + "\n" + row
 	}
 	return row
+}
+
+// renderStartupNotices paints the startup-notice banner: one accent-
+// tinted line per notice, prefixed with a small info glyph so the lines
+// read as system info rather than user/agent content. Returns "" when
+// there are no notices, so the footer falls through to its other
+// branches untouched.
+func (m *Model) renderStartupNotices() string {
+	if len(m.startupNotices) == 0 {
+		return ""
+	}
+	style := lipgloss.NewStyle().Foreground(colorAccent)
+	lines := make([]string, 0, len(m.startupNotices))
+	for _, n := range m.startupNotices {
+		lines = append(lines, style.Render("· "+n))
+	}
+	return strings.Join(lines, "\n")
 }
 
 // renderApprovalBox returns a bordered, accent-colored panel for a
