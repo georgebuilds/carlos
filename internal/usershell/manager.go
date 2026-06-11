@@ -36,13 +36,39 @@ const finalizeAppendEndTimeout = 5 * time.Second
 // errLog is where this package writes warning-level surface for the
 // silent-error sites (setOutcome invalid transition, AppendEnd failure,
 // tty.Close failure, ring-buffer write failure). Tests swap this for a
-// bytes.Buffer to assert the surface fires.
-var errLog io.Writer = os.Stderr
+// bytes.Buffer to assert the surface fires. The default is os.Stderr so
+// non-TUI callers keep their existing behavior; the TUI runtime calls
+// SetErrLog at startup to steer the surface off the terminal frame.
+var (
+	errLogMu sync.Mutex
+	errLog   io.Writer = os.Stderr
+)
+
+// SetErrLog atomically swaps the package warning sink and returns the
+// writer it replaced, so callers can restore the previous one later.
+// The TUI runtime installs a non-terminal sink at startup so job-goroutine
+// warnings (pty close, ring-buffer write, setOutcome/AppendEnd failures)
+// don't paint over the live chat frame; on shutdown it restores the
+// returned writer. A nil w installs io.Discard rather than nil so warnf
+// never writes through a nil interface.
+func SetErrLog(w io.Writer) io.Writer {
+	if w == nil {
+		w = io.Discard
+	}
+	errLogMu.Lock()
+	defer errLogMu.Unlock()
+	prev := errLog
+	errLog = w
+	return prev
+}
 
 // warnf writes a single warning line to errLog using the
 // "carlos usershell: ..." prefix convention shared with internal/daemon.
 func warnf(format string, args ...any) {
-	fmt.Fprintf(errLog, "carlos usershell: "+format+"\n", args...)
+	errLogMu.Lock()
+	w := errLog
+	errLogMu.Unlock()
+	fmt.Fprintf(w, "carlos usershell: "+format+"\n", args...)
 }
 
 // Options configures a Manager. All fields have sane defaults; nil

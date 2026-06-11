@@ -426,6 +426,79 @@ func TestWarnf_PrefixStable(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------
+// SetErrLog: the exported sink-swap the TUI runtime calls at startup.
+// ---------------------------------------------------------------------
+
+// TestSetErrLog_RedirectsWarnf pins that warnf lands on the writer
+// SetErrLog installed, and that SetErrLog hands back the previously
+// installed writer (so the caller can restore it).
+func TestSetErrLog_RedirectsWarnf(t *testing.T) {
+	// Snapshot whatever's installed so we don't leak state into other
+	// tests, regardless of how this one exits.
+	orig := SetErrLog(os.Stderr)
+	defer SetErrLog(orig)
+
+	buf := &safeBuffer{}
+	prev := SetErrLog(buf)
+	if prev != io.Writer(os.Stderr) {
+		t.Errorf("SetErrLog should return the previously installed writer; got %T", prev)
+	}
+
+	warnf("redirect probe %d", 7)
+	if !strings.Contains(buf.String(), "redirect probe 7") {
+		t.Errorf("warnf did not land on the installed sink: %q", buf.String())
+	}
+}
+
+// TestSetErrLog_NilInstallsDiscard verifies a nil writer is coerced to
+// io.Discard rather than nil, so a subsequent warnf neither panics nor
+// surfaces anywhere observable.
+func TestSetErrLog_NilInstallsDiscard(t *testing.T) {
+	orig := SetErrLog(os.Stderr)
+	defer SetErrLog(orig)
+
+	prev := SetErrLog(nil)
+	if prev == nil {
+		t.Fatalf("SetErrLog(nil) should still return the previous writer")
+	}
+
+	// Must not panic — pre-fix a nil interface here would blow up
+	// inside fmt.Fprintf.
+	warnf("discarded probe %d", 9)
+
+	// io.Discard is the installed sink now; round-trip it back out and
+	// confirm that's what was there.
+	got := SetErrLog(orig)
+	if got != io.Writer(io.Discard) {
+		t.Errorf("nil should install io.Discard; got %T", got)
+	}
+}
+
+// TestSetErrLog_RestoreRoundTrip is the prev := SetErrLog(buf); ...;
+// SetErrLog(prev) restore pattern the TUI runtime uses on shutdown.
+func TestSetErrLog_RestoreRoundTrip(t *testing.T) {
+	orig := SetErrLog(os.Stderr)
+	defer SetErrLog(orig)
+
+	buf := &safeBuffer{}
+	prev := SetErrLog(buf)
+
+	warnf("inside scope %d", 1)
+	if !strings.Contains(buf.String(), "inside scope 1") {
+		t.Fatalf("warnf should hit buf while installed: %q", buf.String())
+	}
+
+	// Restore — the writer SetErrLog handed back goes back in.
+	SetErrLog(prev)
+
+	before := buf.String()
+	warnf("after restore %d", 2)
+	if buf.String() != before {
+		t.Errorf("warnf still hitting buf after restore: %q", buf.String())
+	}
+}
+
 // ensure errLog is goroutine-safe via Write paths the tests use.
 var _ io.Writer = (*safeBuffer)(nil)
 
