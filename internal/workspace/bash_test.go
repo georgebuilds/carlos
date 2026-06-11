@@ -258,3 +258,46 @@ func TestIsReadOnly_AllowsGitReadFormsAfterPositionalRejector(t *testing.T) {
 		}
 	}
 }
+
+func TestIsReadOnly_GitConfig_CredentialHelper(t *testing.T) {
+	// `git config` is allowed for benign reads (`git config user.email`)
+	// but must reject anything that reveals credential.* keys or dumps
+	// the whole config. credential.helper=store on Linux holds plaintext
+	// tokens, so even reading which helper is configured is leaky.
+	cases := []struct {
+		cmd  string
+		want bool // want IsReadOnly to return this
+	}{
+		// Should BLOCK: broad dumpers.
+		{"git config --list", false},
+		{"git config -l", false},
+		{"git config --list-all", false},
+		// Should BLOCK: explicit credential.* reads.
+		{"git config --get credential.helper", false},
+		{"git config --get-all credential.helper", false},
+		{"git config --get-urlmatch credential.helper https://github.com/", false},
+		{"git config credential.helper", false},
+		// Should BLOCK: case-insensitive credential.* match.
+		{"git config Credential.Helper", false},
+		{"git config CREDENTIAL.HELPER", false},
+		// Should BLOCK: dotted subkey under credential.
+		{"git config credential.helper.https://github.com", false},
+		// Should BLOCK: regex dumpers (could pattern-match credential.*).
+		{"git config --get-regexp .*", false},
+		{"git config --get-regex credential.helper", false},
+		{"git config --get-regexp credential\\..*", false},
+
+		// Should ALLOW: benign single-key reads.
+		{"git config user.email", true},
+		{"git config --get user.email", true},
+		{"git config user.name", true},
+		{"git config core.editor", true},
+		{"git config --show-origin user.email", true},
+	}
+	for _, c := range cases {
+		got := IsReadOnly(c.cmd)
+		if got != c.want {
+			t.Errorf("IsReadOnly(%q) = %v; want %v", c.cmd, got, c.want)
+		}
+	}
+}

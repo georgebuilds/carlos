@@ -234,7 +234,31 @@ func isReadOnlyGitPositional(tokens []string) bool {
 		}
 		return true
 	case "config":
-		// 1 non-flag positional after `config` is a read
+		// Two-part gate.
+		//
+		// (1) Credential-helper exfiltration block. `credential.helper`
+		// on Linux defaults to `store` for many users, which holds
+		// plaintext tokens in ~/.git-credentials. A read-only-looking
+		// `git config --get credential.helper` reveals which helper
+		// is in use, and `--list` / `--get-regexp` forms can dump
+		// the whole config including credential.* keys. Reject any
+		// positional that names a credential.* key (case-insensitive,
+		// including dotted subkeys like `credential.helper.https://...`)
+		// and reject the broad dumpers `--list`/`-l`/`--list-all` and
+		// the regex getters `--get-regexp`/`--get-regex`. Scoped to
+		// the config case so `-l` etc. don't clobber other git verbs.
+		for i := 2; i < len(tokens); i++ {
+			tok := tokens[i]
+			lower := strings.ToLower(tok)
+			if strings.HasPrefix(lower, "credential.") {
+				return false
+			}
+			switch lower {
+			case "--list", "-l", "--list-all", "--get-regexp", "--get-regex":
+				return false
+			}
+		}
+		// (2) 1 non-flag positional after `config` is a read
 		// (`git config user.email`). 2+ is a write
 		// (`git config user.email VAL`). Flags don't count.
 		positionals := 0
