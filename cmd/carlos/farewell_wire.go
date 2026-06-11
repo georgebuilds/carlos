@@ -90,32 +90,48 @@ func printFarewell(panel *farewell.Panel, userName string) {
 // drag.
 const brewProbeTimeout = 2 * time.Second
 
-// runBrewCheck is the production check-runner: bounded ctx, then
+// runBrewCheck is the production check-runner: it wires the real tap +
+// brew probes into runBrewCheckWith. Pulled apart so the branch logic
+// is unit-testable without hitting the network or shelling out.
+func runBrewCheck(panel *farewell.Panel, currentVersion string) {
+	runBrewCheckWith(panel, currentVersion,
+		func(ctx context.Context, v string) (string, bool) {
+			return farewell.CheckTapUpdate(ctx, v, "")
+		},
+		func(ctx context.Context) bool {
+			return farewell.CheckBrewUpdate(ctx, "carlos")
+		},
+	)
+}
+
+// runBrewCheckWith is the testable seam behind runBrewCheck. Under a
+// bounded ctx it:
 //
-//  1. Probe the homebrew tap directly via raw.githubusercontent.com
-//     and compare the live formula version against the running
-//     binary's version. This is authoritative — independent of
-//     brew's local cache — so it surfaces updates even when the
-//     user hasn't run `brew update` recently or has
-//     HOMEBREW_NO_AUTO_UPDATE set.
-//  2. If the remote probe fails (offline, GitHub raw flaky), fall
-//     back to `brew outdated` which reads brew's local cache.
-//     Better to surface a stale notice than no notice.
+//  1. Probes the homebrew tap (checkTap) and compares the live formula
+//     version against the running binary's version. This is
+//     authoritative — independent of brew's local cache — so it
+//     surfaces updates even when the user hasn't run `brew update`
+//     recently or has HOMEBREW_NO_AUTO_UPDATE set.
+//  2. If the tap probe reports nothing, falls back to checkBrew (`brew
+//     outdated`, which reads brew's local cache). Better to surface a
+//     stale notice than no notice.
 //
 // The message advises `brew update && brew upgrade carlos` — the
-// `brew update` half is important because most users hit this
-// notice in the "I never run `brew update` manually" mode where
-// `brew upgrade` alone would resolve against the same stale local
-// cache that produced the notice.
-func runBrewCheck(panel *farewell.Panel, currentVersion string) {
+// `brew update` half is important because most users hit this notice in
+// the "I never run `brew update` manually" mode where `brew upgrade`
+// alone would resolve against the same stale local cache that produced
+// the notice.
+func runBrewCheckWith(panel *farewell.Panel, currentVersion string,
+	checkTap func(context.Context, string) (string, bool),
+	checkBrew func(context.Context) bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), brewProbeTimeout)
 	defer cancel()
-	if newer, ok := farewell.CheckTapUpdate(ctx, currentVersion, ""); ok {
+	if newer, ok := checkTap(ctx, currentVersion); ok {
 		panel.AddWithDetail("⬆️", "carlos "+newer+" is available",
 			"run `brew update && brew upgrade carlos`")
 		return
 	}
-	if farewell.CheckBrewUpdate(ctx, "carlos") {
+	if checkBrew(ctx) {
 		panel.AddWithDetail("⬆️", "update available",
 			"run `brew update && brew upgrade carlos`")
 	}
@@ -133,10 +149,18 @@ func runBrewCheck(panel *farewell.Panel, currentVersion string) {
 // so unit tests can inject the detector + check function without
 // shelling out to a real brew.
 func checkBrewAtExit(panel *farewell.Panel) {
-	current := versionString()
-	checkBrewAtExitWith(panel, farewell.IsBrewInstall, func(p *farewell.Panel) {
-		runBrewCheck(p, current)
-	})
+	checkBrewAtExitWith(panel, farewell.IsBrewInstall, brewCheckWithVersion(versionString()))
+}
+
+// brewCheckWithVersion binds the running binary's version into a
+// panel-check closure. Extracted so the closure body (the call into
+// runBrewCheck) is reachable from a unit test without faking a Homebrew
+// install — checkBrewAtExit itself can only invoke it on a real Cellar
+// binary, which `go test` never is.
+func brewCheckWithVersion(version string) func(*farewell.Panel) {
+	return func(p *farewell.Panel) {
+		runBrewCheck(p, version)
+	}
 }
 
 // checkBrewAtExitWith is the testable seam behind checkBrewAtExit.

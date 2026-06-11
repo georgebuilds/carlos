@@ -1,10 +1,13 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/creack/pty"
 
 	"github.com/georgebuilds/carlos/internal/config"
 	"github.com/georgebuilds/carlos/internal/farewell"
@@ -270,6 +273,100 @@ func TestStderrTerminalWidth_NonTTYReturnsFalse(t *testing.T) {
 	_, ok := stderrTerminalWidth()
 	if ok {
 		t.Error("stderr should not be a TTY under `go test`")
+	}
+}
+
+// TestStderrTerminalWidth_TTY covers the real-terminal path that the
+// non-TTY tests can't reach: stderr is pointed at a pty slave so
+// term.GetSize succeeds. It exercises both the success return and the
+// w<=0 guard (by sizing the pty to zero columns), and also drives
+// farewellTerminalWidth's clamp branch (120-col TTY clamps to the max).
+func TestStderrTerminalWidth_TTY(t *testing.T) {
+	ptmx, tty, err := pty.Open()
+	if err != nil {
+		t.Skipf("pty unavailable: %v", err)
+	}
+	defer ptmx.Close()
+	defer tty.Close()
+
+	if err := pty.Setsize(tty, &pty.Winsize{Rows: 40, Cols: 120}); err != nil {
+		t.Fatalf("setsize: %v", err)
+	}
+
+	orig := os.Stderr
+	os.Stderr = tty
+	defer func() { os.Stderr = orig }()
+
+	w, ok := stderrTerminalWidth()
+	if !ok || w != 120 {
+		t.Errorf("stderrTerminalWidth on a 120-col pty: got (%d, %v), want (120, true)", w, ok)
+	}
+	// 120 exceeds farewellWidthMax (100), so the clamp branch fires.
+	if got := farewellTerminalWidth(); got != farewellWidthMax {
+		t.Errorf("farewellTerminalWidth on a 120-col pty: got %d, want %d (clamped)", got, farewellWidthMax)
+	}
+
+	// Zero columns drives the err/w<=0 guard back to (0, false).
+	if err := pty.Setsize(tty, &pty.Winsize{Rows: 0, Cols: 0}); err != nil {
+		t.Fatalf("setsize zero: %v", err)
+	}
+	if w, ok := stderrTerminalWidth(); ok || w != 0 {
+		t.Errorf("stderrTerminalWidth on a zero-width pty: got (%d, %v), want (0, false)", w, ok)
+	}
+}
+
+// TestRunBrewCheckWith_TapUpdateQueues covers the authoritative-tap
+// branch: when the tap probe reports a newer version, the panel gets
+// the ⬆️ message and the brew fallback is never consulted.
+func TestRunBrewCheckWith_TapUpdateQueues(t *testing.T) {
+	panel := farewell.New()
+	runBrewCheckWith(panel, "0.1.0",
+		func(context.Context, string) (string, bool) { return "9.9.9", true },
+		func(context.Context) bool {
+			t.Error("brew fallback must not run once the tap reports an update")
+			return false
+		},
+	)
+	msgs := panel.Messages()
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 message, got %d: %+v", len(msgs), msgs)
+	}
+	if !strings.Contains(msgs[0].Text, "9.9.9 is available") {
+		t.Errorf("text missing tap version: %q", msgs[0].Text)
+	}
+	if !strings.Contains(msgs[0].Detail, "brew upgrade carlos") {
+		t.Errorf("detail missing upgrade hint: %q", msgs[0].Detail)
+	}
+}
+
+// TestRunBrewCheckWith_BrewOutdatedQueues covers the fallback branch:
+// the tap probe finds nothing but `brew outdated` reports carlos stale.
+func TestRunBrewCheckWith_BrewOutdatedQueues(t *testing.T) {
+	panel := farewell.New()
+	runBrewCheckWith(panel, "0.1.0",
+		func(context.Context, string) (string, bool) { return "", false },
+		func(context.Context) bool { return true },
+	)
+	msgs := panel.Messages()
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 message, got %d: %+v", len(msgs), msgs)
+	}
+	if !strings.Contains(msgs[0].Text, "update available") {
+		t.Errorf("text missing 'update available': %q", msgs[0].Text)
+	}
+}
+
+// TestBrewCheckWithVersion_InvokesRunBrewCheck drives the closure
+// returned by brewCheckWithVersion (the path checkBrewAtExit can only
+// reach on a real Cellar binary). PATH is nuked and the version is the
+// non-semver "dev" sentinel, so both real probes bail and the panel
+// stays empty — the point is to execute the wiring, not queue a message.
+func TestBrewCheckWithVersion_InvokesRunBrewCheck(t *testing.T) {
+	t.Setenv("PATH", "/nonexistent-dir-for-test")
+	panel := farewell.New()
+	brewCheckWithVersion("dev")(panel)
+	if panel.Len() != 0 {
+		t.Errorf("dev build + no-brew env should not queue a message; got %d", panel.Len())
 	}
 }
 
