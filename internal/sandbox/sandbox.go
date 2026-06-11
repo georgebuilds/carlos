@@ -30,6 +30,31 @@
 // Read-only sub-agents don't need the isolation, and a worktree adds
 // startup cost + disk footprint. Use [Local] for those.
 //
+// # Limits of worktree isolation
+//
+// A [Worktree] changes the default cwd for relative file ops and gates
+// HEAD via [Worktree.Apply] / [Worktree.Discard]. It does NOT enforce
+// filesystem containment.
+//
+//   - Absolute paths the agent emits (e.g. `/etc/hosts`, `$HOME/.ssh/...`)
+//     are honoured as-emitted and reach the host filesystem. The
+//     `resolveBaseDir` helper in `internal/tools/basedir.go` deliberately
+//     does not rewrite them - see its package comment for the "no silent
+//     redirection" policy.
+//   - [Worktree.Discard] reverts the worktree's branch and removes the
+//     checkout. Absolute writes the agent made outside the worktree are
+//     NOT undone.
+//
+// Why: surprising path rewrites are worse than a clearly-scoped escape
+// hatch. A model that explicitly asks for an absolute path is making a
+// user-visible request; the right place to gate it is the permission
+// layer, not a quiet redirect in the tool layer.
+//
+// When this matters: callers that need hard containment (deny any write
+// outside a bounded path) should wrap [Backend.Exec] in a separate
+// sandbox primitive - mount namespace, chroot, seccomp - rather than
+// expect the worktree or the tool-layer base-dir to provide it.
+//
 // # Apply discipline: fast-forward only
 //
 // [Worktree.Apply] uses `git merge --ff-only`. If the parent repo's HEAD
