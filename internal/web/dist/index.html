@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex" />
+  <title>carlos web</title>
+  <script>
+    // theme boot: pin a stored deviation before first paint. No key (or a
+    // garbage value, which gets scrubbed) means system, where tokens.css
+    // tracks the OS on its own. Mirrors src/stores/theme.ts; the store's
+    // boot-agreement test keeps this in sync.
+    try {
+      var t = localStorage.getItem('carlos.theme');
+      if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+      else if (t !== null) localStorage.removeItem('carlos.theme');
+    } catch (e) { /* storage unavailable; stay on system */ }
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet" />
+  <script type="module" crossorigin src="/assets/index-vm1EJ_Iw.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-CnhaiZM9.css">
+</head>
+<body>
+  <div id="app"></div>
+</body>
+</html>

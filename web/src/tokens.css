@@ -1,0 +1,75 @@
+/* carlos web · design tokens
+   Lifted from docs/theme.css :root and the prefers-color-scheme dark block,
+   minus every sketch motif (no wavy rules, rotation, doodles, sketchy borders).
+   Adds two app-only token families per implementation-plan §3.1:
+     - the code-well ground (--code-ground / --code-ink), derived per scheme
+     - semantic --state-* tokens (running / turn / blocked / done / failed / foreign)
+   Component CSS reads semantic tokens only, never raw hex, so the dark flip is
+   total at this layer.
+
+   Theme mechanism: color-scheme + light-dark(). With no data-theme attribute
+   on <html>, `color-scheme: light dark` follows the OS live (and gives native
+   scrollbars/form controls the right scheme for free). An explicit deviation
+   pins color-scheme via :root[data-theme=light|dark]; src/stores/theme.ts
+   owns that attribute. */
+
+:root {
+  color-scheme: light dark;
+
+  --paper:    light-dark(#f4ecd8, #15171c);
+  --paper-hi: light-dark(#fdf7e6, #1c1f27);
+  --paper-lo: light-dark(#ece4d2, #0b0d12);
+  --card:     light-dark(#fdf7e6, #1a1d27);
+
+  --sky:      light-dark(#d8e2ee, #1f2a3c);
+  --sky-soft: light-dark(rgba(216, 226, 238, 0.55), rgba(31, 42, 60, 0.5));
+
+  --navy:      light-dark(#2c4a78, #7aa0d4);
+  --navy-soft: light-dark(rgba(44, 74, 120, 0.14), rgba(122, 160, 212, 0.18));
+  --navy-deep: light-dark(#1f3658, #a8c3e8);
+  --clay:      light-dark(#c64a2c, #e87a55);
+  --clay-soft: light-dark(rgba(198, 74, 44, 0.14), rgba(232, 122, 85, 0.18));
+  --sage:      light-dark(#7a9676, #a3c0a0);
+  --sage-soft: light-dark(rgba(122, 150, 118, 0.20), rgba(163, 192, 160, 0.18));
+  --sun:       light-dark(#e8a635, #f3c886);
+  --sun-soft:  light-dark(rgba(232, 166, 53, 0.18), rgba(243, 200, 134, 0.18));
+
+  --ink:      light-dark(#1b1812, #ece4d2);
+  --ink-soft: light-dark(#3a342a, #c9c1ad);
+  --muted:    light-dark(#6b6357, #8a8170);
+  --subtle:   light-dark(#8a8170, #6b6357);
+  --rule:     light-dark(rgba(27, 24, 18, 0.18), rgba(236, 228, 210, 0.18));
+  --rule-soft:light-dark(rgba(27, 24, 18, 0.10), rgba(236, 228, 210, 0.08));
+  --shadow:   light-dark(rgba(20, 22, 30, 0.10), rgba(0, 0, 0, 0.5));
+  --shadow-soft: light-dark(rgba(20, 22, 30, 0.06), rgba(0, 0, 0, 0.28));
+
+  --focus: var(--navy);
+
+  /* app-only: code-well ground for tool-result previews and approval commands.
+     Light keeps the tuned cap-navy ground at 13:1 against its cream type;
+     dark raises it one perceptual step above the dark page so it reads as a
+     surface (1.23:1, cap navy hue held at ~218 deg). */
+  --code-ground: light-dark(#14253f, #1c2940);
+  --code-ink:    light-dark(#f3ecda, #ece4d2);
+  /* syntax token used by approval command + tool input emphasis */
+  --code-key:    #9ec0ef;
+  --code-trunc:  #a8b6c8;
+
+  /* app-only: semantic state tokens. "your turn" gets a bespoke light value
+     (#8a6314, 4.6:1 on cream); the sun itself fails AA, so it is not reused.
+     Dark gets the sun for free at 11.5:1 on the dark page. */
+  --state-running: light-dark(#2c4a78, #7aa0d4);
+  --state-turn:    light-dark(#8a6314, #f3c886);
+  --state-blocked: light-dark(#c64a2c, #e87a55);
+  --state-done:    light-dark(#7a9676, #a3c0a0);
+  --state-failed:  light-dark(#c64a2c, #e87a55);
+  --state-foreign: light-dark(#8a8170, #6b6357);
+  --state-muted:   light-dark(#6b6357, #8a8170);
+  /* the "your turn" badge ground (paper-hi text rides on it, 5.1:1) */
+  --badge-turn-bg: #8a6314;
+}
+
+/* explicit user deviation pins the scheme; absence of the attribute means
+   "system" and the block above tracks the OS live. */
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"]  { color-scheme: dark; }

@@ -291,6 +291,19 @@ func main() {
 				exit(err)
 			}
 			return
+		case "web":
+			// `carlos web [--port N]` - localhost HTTP + SSE agent
+			// console (Vue SPA over the event log). Needs a complete
+			// config; it serves the same state.db the TUI + daemon use.
+			cfg, err := config.Load(config.DefaultPath())
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "carlos: web needs a config - run `carlos onboard` first (%v)\n", err)
+				os.Exit(1)
+			}
+			if err := runWeb(args[1:], cfg); err != nil {
+				exit(err)
+			}
+			return
 		case "help", "-h", "--help":
 			printUsage()
 			return
@@ -1237,6 +1250,7 @@ Usage:
   carlos gateway add                       interactive wizard to configure ntfy / Telegram / Signal channels
   carlos gateway test <channel>            send a test notification through one gateway channel
                                              (ntfy | telegram | signal | custom)
+  carlos web [--port N]                    serve the localhost web console (default port 7777)
   carlos chat                              [dev-aid, Slice 1e] chat TUI against a temp log
   carlos manage                            [dev-aid, Slice 4]  manage TUI with seeded sample roster
   carlos onboard                           re-run the first-run setup flow
