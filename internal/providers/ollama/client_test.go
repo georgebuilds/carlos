@@ -464,14 +464,48 @@ func TestBuildRequest_UnknownBlockKindRejected(t *testing.T) {
 	_, err := c.Stream(context.Background(), providers.Request{
 		Model: "x",
 		Messages: []providers.Message{
-			{Role: "user", Content: []providers.Block{{Kind: "image", Text: "nope"}}},
+			{Role: "user", Content: []providers.Block{{Kind: "asteroid", Text: "nope"}}},
 		},
 	})
 	if err == nil {
 		t.Fatal("expected error on unknown block kind")
 	}
-	if !strings.Contains(err.Error(), "image") {
+	if !strings.Contains(err.Error(), "asteroid") {
 		t.Errorf("error should name the unknown kind: %v", err)
+	}
+}
+
+// TestBuildRequest_ImageBlockDegradesToPlaceholder: ollama advertises
+// Vision=false, so an image block (e.g. history replayed after a
+// provider switch) must NOT error the turn - it degrades to a visible
+// text placeholder, keeping the rest of the message intact.
+func TestBuildRequest_ImageBlockDegradesToPlaceholder(t *testing.T) {
+	out, err := buildRequest(providers.Request{
+		Model: "x",
+		Messages: []providers.Message{{
+			Role: "user",
+			Content: []providers.Block{
+				{Kind: "text", Text: "look at this:"},
+				providers.ImageBlock("image/png", []byte{0x89, 'P', 'N', 'G'}),
+				{Kind: "text", Text: "what is it?"},
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("image block must degrade, not error: %v", err)
+	}
+	if len(out.Messages) != 1 {
+		t.Fatalf("want 1 wire message, got %d", len(out.Messages))
+	}
+	got := out.Messages[0].Content
+	if !strings.Contains(got, "[image attachment omitted") {
+		t.Errorf("placeholder missing from content: %q", got)
+	}
+	if !strings.Contains(got, "look at this:") || !strings.Contains(got, "what is it?") {
+		t.Errorf("surrounding text lost: %q", got)
+	}
+	if strings.Contains(got, "PNG") {
+		t.Errorf("raw image bytes leaked into text content: %q", got)
 	}
 }
 

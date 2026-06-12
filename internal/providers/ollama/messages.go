@@ -65,8 +65,8 @@ type apiToolCallFun struct {
 
 // apiTool is one tool advertised to the model.
 type apiTool struct {
-	Type     string         `json:"type"` // always "function"
-	Function apiToolSchema  `json:"function"`
+	Type     string        `json:"type"` // always "function"
+	Function apiToolSchema `json:"function"`
 }
 
 type apiToolSchema struct {
@@ -141,6 +141,16 @@ func toAPIMessages(m providers.Message) ([]apiMsg, error) {
 			if b.Text != "" {
 				textParts = append(textParts, b.Text)
 			}
+		case "image":
+			// Ollama advertises Vision=false (capabilities are per-model
+			// there and carlos doesn't probe), so callers shouldn't send
+			// image blocks - but history replayed after a provider switch
+			// legitimately can contain them. Degrade to a visible text
+			// placeholder instead of erroring: failing the whole turn
+			// over an old screenshot would brick the session. The
+			// surrounding newlines keep concat() from smushing the
+			// placeholder into adjacent text fragments.
+			textParts = append(textParts, "\n[image attachment omitted: this provider does not support vision]\n")
 		case "tool_use":
 			args := json.RawMessage(b.ToolInput)
 			if len(args) == 0 {

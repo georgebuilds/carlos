@@ -32,15 +32,48 @@ type MessagesRequest struct {
 //	assistant - {role: assistant, content: "..."?, tool_calls: [...]?}
 //	tool      - {role: tool, tool_call_id: "...", content: "..."}
 //
-// We always send content as a plain string today; multipart content (images)
-// is a separate slice. Assistant turns with tool_calls send content=""
-// alongside the tool_calls array; that's the Chat Completions convention.
+// Content is pre-marshaled JSON: a JSON string for the plain-text case
+// (byte-identical on the wire to the former `Content string` field -
+// that serialization is load-bearing and pinned by
+// TestBuildRequest_TextOnlyWireFormatUnchanged), or a JSON array of
+// content parts when a message carries image blocks. Empty (nil) when
+// the message has no content (assistant tool_calls-only turns); the
+// omitempty drops the key exactly as the string field's omitempty did.
+// Use JSONString / APIContentPart marshaling to populate - never raw
+// fmt-built bytes.
 type APIMsg struct {
-	Role       string        `json:"role"`
-	Content    string        `json:"content,omitempty"`
-	ToolCalls  []APIToolCall `json:"tool_calls,omitempty"`
-	ToolCallID string        `json:"tool_call_id,omitempty"`
-	Name       string        `json:"name,omitempty"`
+	Role       string          `json:"role"`
+	Content    json.RawMessage `json:"content,omitempty"`
+	ToolCalls  []APIToolCall   `json:"tool_calls,omitempty"`
+	ToolCallID string          `json:"tool_call_id,omitempty"`
+	Name       string          `json:"name,omitempty"`
+}
+
+// APIContentPart is one element of a multipart content array - the
+// shape user messages take when they carry images:
+//
+//	{type: "text", text: "..."}
+//	{type: "image_url", image_url: {url: "data:image/png;base64,..."}}
+type APIContentPart struct {
+	Type     string       `json:"type"` // "text" | "image_url"
+	Text     string       `json:"text,omitempty"`
+	ImageURL *APIImageURL `json:"image_url,omitempty"`
+}
+
+// APIImageURL is the image_url payload of an APIContentPart. carlos
+// always embeds the bytes as a data: URL - the bytes live locally and
+// shipping a fetchable URL would be a privacy leak.
+type APIImageURL struct {
+	URL string `json:"url"`
+}
+
+// JSONString marshals s as a JSON string into a RawMessage suitable
+// for APIMsg.Content. Centralized so the plain-text wire bytes stay
+// byte-identical to the old `Content string` serialization (same
+// encoding/json escaping rules, by construction).
+func JSONString(s string) json.RawMessage {
+	b, _ := json.Marshal(s) // marshal of a string cannot fail
+	return b
 }
 
 // APIToolCall mirrors the Chat Completions assistant tool_call shape on
@@ -64,8 +97,8 @@ type APIFunction struct {
 // receives the canonical providers.ToolSpec.Schema verbatim - the schema
 // in our interface IS the JSON Schema.
 type APITool struct {
-	Type     string         `json:"type"` // always "function"
-	Function APIToolFnDecl  `json:"function"`
+	Type     string        `json:"type"` // always "function"
+	Function APIToolFnDecl `json:"function"`
 }
 
 // APIToolFnDecl is the function-declaration payload inside an APITool.

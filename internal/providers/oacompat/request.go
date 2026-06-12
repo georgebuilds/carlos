@@ -1,6 +1,7 @@
 package oacompat
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 
@@ -21,7 +22,7 @@ func BuildRequest(req providers.Request, errPrefix string) (*MessagesRequest, er
 	}
 	if req.System != "" {
 		out.Messages = append(out.Messages, APIMsg{
-			Role: "system", Content: req.System,
+			Role: "system", Content: JSONString(req.System),
 		})
 	}
 	for _, m := range req.Messages {
@@ -58,11 +59,25 @@ func BuildRequest(req providers.Request, errPrefix string) (*MessagesRequest, er
 //     canonical "user" message containing N tool_result blocks fans out to
 //     N role:"tool" wire messages.
 //
+// Content encoding branches on whether the message carries image blocks:
+//
+//   - text-only: content is a plain JSON string (joined text parts) -
+//     byte-identical to the pre-image wire format, which is pinned by
+//     a marshalling regression test;
+//   - any image present: content is a content-parts ARRAY preserving
+//     the canonical block order (text and image_url parts interleaved
+//     exactly as the blocks arrived).
+//
 // Unknown Kind values are rejected - silently dropping them would produce
 // confusing model behavior.
 func toAPIMessages(m providers.Message, errPrefix string) ([]APIMsg, error) {
 	// Partition blocks by category to assemble the right wire shapes.
+	// parts tracks text+image in arrival order for the multipart case;
+	// textParts mirrors just the text so the string case can serialize
+	// exactly as it always has.
 	var textParts []string
+	var parts []APIContentPart
+	var hasImage bool
 	var toolCalls []APIToolCall
 	var toolResults []APIMsg
 
@@ -71,7 +86,23 @@ func toAPIMessages(m providers.Message, errPrefix string) ([]APIMsg, error) {
 		case "text", "":
 			if b.Text != "" {
 				textParts = append(textParts, b.Text)
+				parts = append(parts, APIContentPart{Type: "text", Text: b.Text})
 			}
+		case "image":
+			if len(b.ImageData) == 0 {
+				return nil, fmt.Errorf("%s: image block with no data", errPrefix)
+			}
+			if b.MediaType == "" {
+				return nil, fmt.Errorf("%s: image block with no media type", errPrefix)
+			}
+			hasImage = true
+			parts = append(parts, APIContentPart{
+				Type: "image_url",
+				ImageURL: &APIImageURL{
+					URL: "data:" + b.MediaType + ";base64," +
+						base64.StdEncoding.EncodeToString(b.ImageData),
+				},
+			})
 		case "tool_use":
 			args := string(b.ToolInput)
 			if args == "" {
@@ -89,7 +120,7 @@ func toAPIMessages(m providers.Message, errPrefix string) ([]APIMsg, error) {
 			toolResults = append(toolResults, APIMsg{
 				Role:       "tool",
 				ToolCallID: b.ToolUseID,
-				Content:    string(b.ToolResult),
+				Content:    JSONString(string(b.ToolResult)),
 			})
 		default:
 			return nil, fmt.Errorf("%s: unknown content kind %q", errPrefix, b.Kind)
@@ -105,11 +136,20 @@ func toAPIMessages(m providers.Message, errPrefix string) ([]APIMsg, error) {
 		out = append(out, toolResults...)
 	}
 	// Text + tool_calls share one wire message if both present, OR text
-	// alone, OR tool_calls alone with empty content.
-	if len(textParts) > 0 || len(toolCalls) > 0 {
+	// alone, OR tool_calls alone with empty content. Image-bearing
+	// messages switch content to the parts-array shape; pure-text stays
+	// the plain JSON string the wire has always carried.
+	if len(parts) > 0 || len(toolCalls) > 0 {
 		msg := APIMsg{Role: m.Role}
-		if len(textParts) > 0 {
-			msg.Content = joinText(textParts)
+		switch {
+		case hasImage:
+			// Marshal of []APIContentPart ({string, string, *struct of
+			// string}) cannot fail per encoding/json's type contract -
+			// same invariant chatglue relies on for its tool payloads.
+			enc, _ := json.Marshal(parts)
+			msg.Content = enc
+		case len(textParts) > 0:
+			msg.Content = JSONString(joinText(textParts))
 		}
 		if len(toolCalls) > 0 {
 			msg.ToolCalls = toolCalls

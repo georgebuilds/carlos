@@ -14,6 +14,20 @@ import (
 	"github.com/georgebuilds/carlos/internal/providers"
 )
 
+// contentText decodes an APIMsg.Content that should hold a plain JSON
+// string (the text-only wire shape). Nil/empty content decodes to "".
+func contentText(t *testing.T, raw json.RawMessage) string {
+	t.Helper()
+	if len(raw) == 0 {
+		return ""
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err != nil {
+		t.Fatalf("content is not a JSON string: %v (raw: %s)", err, raw)
+	}
+	return s
+}
+
 // TestBuildRequest_SystemAsFirstMessage pins the wire shape: a non-empty
 // req.System becomes the first {role:"system"} message, then the rest
 // of the canonical messages follow in order.
@@ -38,10 +52,10 @@ func TestBuildRequest_SystemAsFirstMessage(t *testing.T) {
 	if len(out.Messages) != 2 {
 		t.Fatalf("Messages: want 2 got %d", len(out.Messages))
 	}
-	if out.Messages[0].Role != "system" || out.Messages[0].Content != "you are carlos" {
+	if out.Messages[0].Role != "system" || contentText(t, out.Messages[0].Content) != "you are carlos" {
 		t.Errorf("system msg wrong: %+v", out.Messages[0])
 	}
-	if out.Messages[1].Role != "user" || out.Messages[1].Content != "hi" {
+	if out.Messages[1].Role != "user" || contentText(t, out.Messages[1].Content) != "hi" {
 		t.Errorf("user msg wrong: %+v", out.Messages[1])
 	}
 }
@@ -85,7 +99,7 @@ func TestBuildRequest_ToolUseAndTextSameTurn(t *testing.T) {
 		t.Fatalf("want 1 wire msg, got %d", len(out.Messages))
 	}
 	m := out.Messages[0]
-	if m.Role != "assistant" || m.Content != "let me check" {
+	if m.Role != "assistant" || contentText(t, m.Content) != "let me check" {
 		t.Errorf("content/role wrong: %+v", m)
 	}
 	if len(m.ToolCalls) != 1 || m.ToolCalls[0].ID != "call_1" || m.ToolCalls[0].Function.Name != "read" {
@@ -146,7 +160,7 @@ func TestBuildRequest_ToolResultsFanOutToToolMessages(t *testing.T) {
 		if got.ToolCallID != want.id {
 			t.Errorf("msg[%d].ToolCallID = %q want %q", i, got.ToolCallID, want.id)
 		}
-		if got.Content != want.body {
+		if contentText(t, got.Content) != want.body {
 			t.Errorf("msg[%d].Content = %q want %q", i, got.Content, want.body)
 		}
 	}
@@ -172,10 +186,10 @@ func TestBuildRequest_ToolResultsPlusUserText(t *testing.T) {
 	if len(out.Messages) != 2 {
 		t.Fatalf("want 2 msgs, got %d", len(out.Messages))
 	}
-	if out.Messages[0].Role != "tool" || out.Messages[0].Content != "res" {
+	if out.Messages[0].Role != "tool" || contentText(t, out.Messages[0].Content) != "res" {
 		t.Errorf("first should be tool result; got %+v", out.Messages[0])
 	}
-	if out.Messages[1].Role != "user" || out.Messages[1].Content != "ok thanks" {
+	if out.Messages[1].Role != "user" || contentText(t, out.Messages[1].Content) != "ok thanks" {
 		t.Errorf("second should be user text; got %+v", out.Messages[1])
 	}
 }
@@ -197,7 +211,7 @@ func TestBuildRequest_MultipleTextBlocksJoinedWithDoubleNewline(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out.Messages[0].Content != "para1\n\npara2\n\npara3" {
+	if contentText(t, out.Messages[0].Content) != "para1\n\npara2\n\npara3" {
 		t.Errorf("joined content: %q", out.Messages[0].Content)
 	}
 }
@@ -213,7 +227,7 @@ func TestBuildRequest_EmptyMessageEmitsRoleOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(out.Messages) != 1 || out.Messages[0].Role != "user" || out.Messages[0].Content != "" {
+	if len(out.Messages) != 1 || out.Messages[0].Role != "user" || len(out.Messages[0].Content) != 0 {
 		t.Errorf("expected single empty user msg; got %+v", out.Messages)
 	}
 }
@@ -668,7 +682,7 @@ func TestMessagesRequest_JSONMarshalShape(t *testing.T) {
 	req := &MessagesRequest{
 		Model:    "m",
 		Stream:   true,
-		Messages: []APIMsg{{Role: "user", Content: "hi"}},
+		Messages: []APIMsg{{Role: "user", Content: JSONString("hi")}},
 		Tools: []APITool{{
 			Type: "function",
 			Function: APIToolFnDecl{

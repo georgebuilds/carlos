@@ -1,6 +1,7 @@
 package anthropic
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 
@@ -19,12 +20,12 @@ const apiVersion = "2023-06-01"
 
 // messagesRequest is the request body for POST /v1/messages.
 type messagesRequest struct {
-	Model     string      `json:"model"`
-	MaxTokens int         `json:"max_tokens"`
-	System    string      `json:"system,omitempty"`
-	Messages  []apiMsg    `json:"messages"`
-	Tools     []apiTool   `json:"tools,omitempty"`
-	Stream    bool        `json:"stream"`
+	Model     string    `json:"model"`
+	MaxTokens int       `json:"max_tokens"`
+	System    string    `json:"system,omitempty"`
+	Messages  []apiMsg  `json:"messages"`
+	Tools     []apiTool `json:"tools,omitempty"`
+	Stream    bool      `json:"stream"`
 }
 
 // apiMsg is the on-the-wire shape for a single message in the messages
@@ -39,16 +40,29 @@ type apiMsg struct {
 // apiBlock is one content block. Type discriminates on:
 //
 //	text        - {type: text, text: "..."}
+//	image       - {type: image, source: {type: base64, media_type, data}}
 //	tool_use    - {type: tool_use, id, name, input}
 //	tool_result - {type: tool_result, tool_use_id, content}
 type apiBlock struct {
-	Type       string          `json:"type"`
-	Text       string          `json:"text,omitempty"`
-	ID         string          `json:"id,omitempty"`          // tool_use
-	Name       string          `json:"name,omitempty"`        // tool_use
-	Input      json.RawMessage `json:"input,omitempty"`       // tool_use
-	ToolUseID  string          `json:"tool_use_id,omitempty"` // tool_result
-	Content    string          `json:"content,omitempty"`     // tool_result body
+	Type      string          `json:"type"`
+	Text      string          `json:"text,omitempty"`
+	Source    *apiImageSource `json:"source,omitempty"`      // image
+	ID        string          `json:"id,omitempty"`          // tool_use
+	Name      string          `json:"name,omitempty"`        // tool_use
+	Input     json.RawMessage `json:"input,omitempty"`       // tool_use
+	ToolUseID string          `json:"tool_use_id,omitempty"` // tool_result
+	Content   string          `json:"content,omitempty"`     // tool_result body
+}
+
+// apiImageSource is the source payload of an image block. Only the
+// base64 variant is emitted (carlos holds the bytes locally; URL
+// sources would leak a fetch dependency onto Anthropic's side).
+// Supported media types per the Messages API: image/png, image/jpeg,
+// image/gif, image/webp.
+type apiImageSource struct {
+	Type      string `json:"type"` // always "base64"
+	MediaType string `json:"media_type"`
+	Data      string `json:"data"` // std base64 of the raw image bytes
 }
 
 type apiTool struct {
@@ -95,6 +109,18 @@ func toAPIBlocks(in []providers.Block) ([]apiBlock, error) {
 		switch b.Kind {
 		case "text", "":
 			out = append(out, apiBlock{Type: "text", Text: b.Text})
+		case "image":
+			if len(b.ImageData) == 0 {
+				return nil, fmt.Errorf("anthropic: image block with no data")
+			}
+			if b.MediaType == "" {
+				return nil, fmt.Errorf("anthropic: image block with no media type")
+			}
+			out = append(out, apiBlock{Type: "image", Source: &apiImageSource{
+				Type:      "base64",
+				MediaType: b.MediaType,
+				Data:      base64.StdEncoding.EncodeToString(b.ImageData),
+			}})
 		case "tool_use":
 			input := json.RawMessage(b.ToolInput)
 			if len(input) == 0 {

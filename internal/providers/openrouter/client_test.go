@@ -274,14 +274,14 @@ func TestStream_RequestBodyShape(t *testing.T) {
 	if len(got.Messages) != 4 {
 		t.Fatalf("want 4 messages (system+user+assistant+tool), got %d: %+v", len(got.Messages), got.Messages)
 	}
-	if got.Messages[0].Role != "system" || got.Messages[0].Content != "You are carlos." {
+	if got.Messages[0].Role != "system" || string(got.Messages[0].Content) != `"You are carlos."` {
 		t.Errorf("system message: %+v", got.Messages[0])
 	}
-	if got.Messages[1].Role != "user" || got.Messages[1].Content != "run ls" {
+	if got.Messages[1].Role != "user" || string(got.Messages[1].Content) != `"run ls"` {
 		t.Errorf("user message: %+v", got.Messages[1])
 	}
 	asst := got.Messages[2]
-	if asst.Role != "assistant" || asst.Content != "ok" {
+	if asst.Role != "assistant" || string(asst.Content) != `"ok"` {
 		t.Errorf("assistant message: %+v", asst)
 	}
 	if len(asst.ToolCalls) != 1 || asst.ToolCalls[0].ID != "tu-1" ||
@@ -290,7 +290,7 @@ func TestStream_RequestBodyShape(t *testing.T) {
 		t.Errorf("assistant tool_calls: %+v", asst.ToolCalls)
 	}
 	tool := got.Messages[3]
-	if tool.Role != "tool" || tool.ToolCallID != "tu-1" || tool.Content != "file1\nfile2\n" {
+	if tool.Role != "tool" || tool.ToolCallID != "tu-1" || string(tool.Content) != `"file1\nfile2\n"` {
 		t.Errorf("tool message: %+v", tool)
 	}
 	if len(got.Tools) != 1 || got.Tools[0].Type != "function" ||
