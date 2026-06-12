@@ -124,6 +124,66 @@ func ListUserSessions(ctx context.Context, log *SQLiteEventLog, excluded string)
 	return out, nil
 }
 
+// ListChildSnapshots returns one ChildSnapshot per sub-agent whose
+// parent_id is parentID, ordered oldest-first (spawn order), straight
+// from the agents projection table. Unlike Supervisor.SnapshotChildrenOf
+// - which reads the in-memory in-flight children map and therefore goes
+// empty the moment a child terminates - this covers FINISHED children
+// too: a thread that delegated work an hour ago still reports its crew,
+// with final state + spend. The web backend uses it for the crew column
+// (GET /api/threads/{id}/children and the SSE children snapshot).
+//
+// Enrichment mirrors SnapshotChildrenOf: LastTool is best-effort (a
+// failed lookup leaves it empty rather than dropping the row); a row
+// whose state string doesn't parse is skipped, matching ListUserSessions'
+// stance on projection inconsistencies.
+func ListChildSnapshots(ctx context.Context, log *SQLiteEventLog, parentID string) ([]ChildSnapshot, error) {
+	if log == nil || parentID == "" {
+		return nil, nil
+	}
+	rows, err := log.DB().QueryContext(ctx, `
+		SELECT id, state, COALESCE(title,''), tokens_in, tokens_out,
+		       cost_cents, created_at
+		FROM agents
+		WHERE parent_id = ?
+		ORDER BY created_at ASC, id ASC
+	`, parentID)
+	if err != nil {
+		return nil, fmt.Errorf("agent: list children: %w", err)
+	}
+	defer rows.Close()
+
+	var out []ChildSnapshot
+	for rows.Next() {
+		var (
+			snap               ChildSnapshot
+			stateS             string
+			tokIn, tokOut      int64
+			costCents, created int64
+		)
+		if err := rows.Scan(&snap.AgentID, &stateS, &snap.Title, &tokIn, &tokOut, &costCents, &created); err != nil {
+			return nil, err
+		}
+		st, ok := parseState(stateS)
+		if !ok {
+			continue
+		}
+		snap.State = st
+		snap.Tokens = int(tokIn + tokOut)
+		snap.CostCents = int(costCents)
+		snap.StartedAt = time.UnixMilli(created).UTC()
+		out = append(out, snap)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	for i := range out {
+		// Best-effort: an error or absent tool call leaves LastTool "".
+		out[i].LastTool, _, _ = log.LastToolCall(ctx, out[i].AgentID)
+	}
+	return out, nil
+}
+
 // MostRecentUserSession returns the single most-recently-active
 // top-level session - used by `carlos -c` / `--continue`. Returns
 // ErrNoSessions when none exist.

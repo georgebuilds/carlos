@@ -221,6 +221,15 @@ type Supervisor struct {
 	// than *sandbox.Worktree to keep the supervisor free of a sandbox
 	// import (and to keep tests fakeable).
 	worktrees map[string]AgentWorktree
+
+	// childNotifier, when set, is invoked with the PARENT agent id every
+	// time one of its children crosses a lifecycle edge (spawned, running,
+	// terminal). The web backend installs one that publishes a fresh
+	// children snapshot to the SSE hub, so the browser's crew column
+	// updates live instead of waiting for a reconnect. Never called with
+	// an empty parent id. Implementations must be fast and non-blocking -
+	// they run on the spawn/runChild goroutines.
+	childNotifier func(parentID string)
 }
 
 // AgentWorktree is the subset of *sandbox.Worktree the supervisor +
@@ -344,9 +353,15 @@ func (s *Supervisor) Spawn(ctx context.Context, parentID string, contract SpawnC
 		return nil, nil, errors.New("supervisor.Spawn: nil provider (constructor passed nil)")
 	}
 
-	// 3. Spawn-depth cap. computeDepth returns the depth of parentID
-	//    in the projection cache; child depth = parent depth + 1.
-	parentDepth, err := s.computeDepth(ctx, parentID)
+	// 3. Spawn-depth cap. computeDepth(parentID) already returns the
+	//    depth the CHILD would land at (it counts the parent chain up to
+	//    the top-level root: parent==""→0, parent==root→1, …), so it is
+	//    compared against the cap directly. The old code added +1 on top,
+	//    double-counting the root: any spawn under a real top-level agent
+	//    id (a chat thread row) was refused at the default cap of 1, which
+	//    is why the Agent tool historically passed parentID == "" and
+	//    sub-agents landed in the roster as parentless top-level rows.
+	childDepth, err := s.computeDepth(ctx, parentID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("supervisor.Spawn: depth check: %w", err)
 	}
@@ -355,7 +370,7 @@ func (s *Supervisor) Spawn(ctx context.Context, parentID string, contract SpawnC
 	s.mu.Lock()
 	maxDepth := s.maxSpawnDepth
 	s.mu.Unlock()
-	if parentDepth+1 > maxDepth {
+	if childDepth > maxDepth {
 		return nil, nil, ErrSpawnDepthExceeded
 	}
 
@@ -504,6 +519,11 @@ func (s *Supervisor) Spawn(ctx context.Context, parentID string, contract SpawnC
 		childReg = buildChildRegistry(s.baseReg, contract.ToolAllowlist)
 	}
 	go s.runChild(childCtx, child, spawnProvider, childReg, contract, resultCh)
+
+	// Lifecycle edge: a child appeared under parentID. Fired after the
+	// row + children-map registration so a notifier that re-reads the
+	// children set observes the new spawn.
+	s.notifyChild(parentID)
 
 	return &SubAgent{
 		ID:              id,
@@ -738,6 +758,31 @@ func (s *Supervisor) SnapshotChildrenOf(ctx context.Context, parentID string) []
 		})
 	}
 	return out
+}
+
+// SetChildNotifier installs (or, with nil, removes) the callback invoked
+// with a parent agent id whenever one of that parent's children crosses a
+// lifecycle edge (spawned / running / terminal). cmd/carlos's web backend
+// uses it to push live `children` snapshots over SSE. Mutex-guarded so a
+// late SetChildNotifier doesn't race in-flight spawns.
+func (s *Supervisor) SetChildNotifier(fn func(parentID string)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.childNotifier = fn
+}
+
+// notifyChild fires the installed child notifier for parentID, if any.
+// No-op for empty parent ids (top-level spawns have no thread to update).
+func (s *Supervisor) notifyChild(parentID string) {
+	if parentID == "" {
+		return
+	}
+	s.mu.Lock()
+	fn := s.childNotifier
+	s.mu.Unlock()
+	if fn != nil {
+		fn(parentID)
+	}
 }
 
 // SetMaxSpawnDepth overrides the default depth cap. Useful for tests

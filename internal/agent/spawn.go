@@ -241,16 +241,25 @@ func buildChildToolSpecs(reg *tools.Registry, allowlist []string) []providers.To
 func (s *Supervisor) runChild(ctx context.Context, child *runningChild, p providers.Provider, reg *tools.Registry, contract SpawnContract, resultCh chan<- SpawnResult) {
 	defer close(child.done)
 
+	// Lineage for nested spawns: if this child somehow runs the Agent
+	// tool (it must be explicitly allowlisted, and the depth cap still
+	// gates it), the grandchild's parent is THIS child - not whatever
+	// spawn-parent the original caller's ctx carried.
+	ctx = WithSpawnParent(ctx, child.id)
+
 	// 1. spawning → running.
 	if err := s.transition(ctx, child.id, StateRunning); err != nil {
 		// State machine refusal here means we couldn't even start the
 		// loop; bail out with a failed transition and report.
 		_ = s.transition(ctx, child.id, StateFailed)
 		s.cleanupChild(child)
+		s.notifyChild(child.parentID)
 		resultCh <- SpawnResult{AgentID: child.id, Err: fmt.Errorf("supervisor.runChild: transition to running: %w", err)}
 		close(resultCh)
 		return
 	}
+	// Lifecycle edge: spawning → running.
+	s.notifyChild(child.parentID)
 
 	// 2. Run the loop.
 	maxTurns := contract.MaxTurns
@@ -359,6 +368,11 @@ func (s *Supervisor) runChild(ctx context.Context, child *runningChild, p provid
 
 	// 5+6. Cleanup ticker + remove from active children.
 	s.cleanupChild(child)
+
+	// Lifecycle edge: terminal (done / failed). Fired after cleanup so a
+	// notifier that re-reads state observes the final row, not a child
+	// still counted as in-flight.
+	s.notifyChild(child.parentID)
 
 	// 7. Send + close.
 	resultCh <- SpawnResult{

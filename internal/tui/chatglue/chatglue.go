@@ -161,6 +161,15 @@ func (l *Loop) Stop() {
 // (prefixed "carlos:") so the user sees the failure in-line rather
 // than via a stderr leak.
 func (l *Loop) handleUserMessage(ctx context.Context, _ agent.Event) {
+	// Spawn lineage: any sub-agent the model delegates to during this
+	// turn (the Agent tool → Supervisor.Spawn) must be parented to THIS
+	// thread, not spawned as a parentless top-level row. The tool reads
+	// the id back via agent.SpawnParentFromContext. Without this, spawned
+	// agents land in the session roster as top-level chats and per-thread
+	// children queries (the web crew column, the TUI inline panel) can't
+	// find them.
+	ctx = agent.WithSpawnParent(ctx, l.agentID)
+
 	// Stash for the OnToolCall / OnToolResult hooks - they run inside
 	// agent.Run's loop and need a live ctx for their EventLog writes.
 	l.ctx = ctx

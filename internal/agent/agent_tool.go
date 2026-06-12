@@ -125,6 +125,34 @@ func (*AgentTool) Schema() []byte {
 	}`)
 }
 
+// spawnParentKey is the context key WithSpawnParent stores the calling
+// agent's id under. Unexported struct type per the context package's
+// collision-avoidance convention.
+type spawnParentKey struct{}
+
+// WithSpawnParent returns a ctx that carries the agent id that owns any
+// Spawn issued through it. The per-thread loop (chatglue) sets this to
+// its thread id before each agent.Run turn, so tool calls executed
+// inside the turn - the Agent delegation tool in particular - know which
+// thread is the parent. Spawn then records real lineage (parent_id +
+// root_id = the thread), which is what keeps sub-agents out of the
+// top-level session roster and makes per-thread children queries work.
+func WithSpawnParent(ctx context.Context, agentID string) context.Context {
+	if agentID == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, spawnParentKey{}, agentID)
+}
+
+// SpawnParentFromContext returns the spawn-parent agent id installed by
+// WithSpawnParent, or "" when none is set (headless `please` runs and
+// legacy callers - those spawns stay top-level, preserving the old
+// behaviour).
+func SpawnParentFromContext(ctx context.Context) string {
+	id, _ := ctx.Value(spawnParentKey{}).(string)
+	return id
+}
+
 type agentToolInput struct {
 	Objective       string   `json:"objective"`
 	OutputFormat    string   `json:"output_format"`
@@ -140,10 +168,11 @@ type agentToolOutput struct {
 	Error       string       `json:"error,omitempty"`
 }
 
-// Execute parses the input, calls Supervisor.Spawn with parentID == ""
-// (the top-level agent IS the parent of any sub-agent it spawns;
-// nested spawning is gated by depth cap), reads the SpawnResult, and
-// returns the typed output as JSON.
+// Execute parses the input, calls Supervisor.Spawn with the parent id
+// carried by ctx (WithSpawnParent, set per-turn by the chat loop), reads
+// the SpawnResult, and returns the typed output as JSON. A ctx without a
+// spawn parent falls back to parentID == "" - a top-level spawn, the
+// pre-lineage behaviour headless `please` runs still use.
 //
 // The depth cap is the safety net for accidental fan-out: if a child
 // somehow gets this tool too (it shouldn't - parent must explicitly
@@ -178,10 +207,12 @@ func (t *AgentTool) Execute(ctx context.Context, input []byte) ([]byte, error) {
 		MaxTurns:        in.MaxTurns,
 		SuccessCriteria: in.SuccessCriteria,
 	}
-	// parentID == "" - the top-level agent in this process owns the
-	// spawn. Future Phase 4 work threads a real parentID when the
-	// caller is itself a sub-agent (deep chains gated by depth cap).
-	sub, resultCh, err := t.sup.Spawn(ctx, "", contract)
+	// The spawn-parent rides the ctx (WithSpawnParent): the chat loop
+	// installs its thread id per turn, and runChild installs the child's
+	// own id for the (registry-gated) nested case, so lineage is real at
+	// every depth. "" - no parent installed - keeps the legacy top-level
+	// spawn for callers that never wire one (headless `please`).
+	sub, resultCh, err := t.sup.Spawn(ctx, SpawnParentFromContext(ctx), contract)
 	if err != nil {
 		// Cap rejections (depth/concurrency/restart) surface to the
 		// model as a tool_result, not as an infra error - model can
