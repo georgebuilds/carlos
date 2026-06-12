@@ -264,6 +264,14 @@ type Model struct {
 	// corrupts the live alt-screen frame. Set via WithDiagWriter.
 	diag io.Writer
 
+	// firstRenderHook fires exactly once, when the first View()
+	// composes — the closest in-process proxy for "first bubbletea
+	// frame" (the renderer writes the frame to the terminal right
+	// after View returns). Consumed (nil-ed) on fire. Set via
+	// WithFirstRenderHook; cmd/carlos uses it for the CARLOS_BOOT_TRACE
+	// first_frame checkpoint (slice 9f). nil = no-op.
+	firstRenderHook func()
+
 	// quitting is set on ctrl-c; View can short-circuit.
 	quitting bool
 
@@ -724,6 +732,16 @@ func WithDiagWriter(w io.Writer) Option {
 			m.diag = w
 		}
 	}
+}
+
+// WithFirstRenderHook registers fn to run exactly once, at the end of
+// the first View() call — i.e. as the first frame is composed, just
+// before bubbletea's renderer writes it to the terminal. The hook is
+// consumed on fire, so later Views (and chat⇄manage re-entries on a
+// fresh Model) cost a single nil-check. cmd/carlos wires the slice-9f
+// boot trace's first_frame checkpoint through this. A nil fn is a no-op.
+func WithFirstRenderHook(fn func()) Option {
+	return func(m *Model) { m.firstRenderHook = fn }
 }
 
 // New constructs a chat Model bound to the given event log + agent. The

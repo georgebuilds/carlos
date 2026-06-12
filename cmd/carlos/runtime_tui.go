@@ -114,6 +114,12 @@ func runOnboard(force bool, only string) error {
 // Program) is a future polish slice; today's swap-on-/agents loop is
 // the functional bridge.
 func runDefault(cfg *config.Config, sessionID string) error {
+	// Slice 9f: opt-in boot trace (CARLOS_BOOT_TRACE=1). nil when the
+	// env var is unset; every method no-ops on nil. The zero point is
+	// package init (see bootTraceProcessStart); by the time we're here
+	// main() has parsed flags + loaded config, hence the mark's name.
+	trace := bootTraceFromEnv()
+	trace.Mark("config_loaded")
 	// Phase 9 slice 9a: load the user's theme before anything renders.
 	applyTheme(cfg)
 	// Farewell panel collects end-of-session notes (daemon-orphan,
@@ -141,6 +147,7 @@ func runDefault(cfg *config.Config, sessionID string) error {
 		return fmt.Errorf("open state.db: %w", err)
 	}
 	defer log.Close()
+	trace.Mark("db_open")
 
 	// Best-effort diagnostics sink: rare connection/prune warnings go to
 	// ~/.carlos/carlos.log so they never corrupt the alt-screen frame.
@@ -154,10 +161,21 @@ func runDefault(cfg *config.Config, sessionID string) error {
 	defer usershell.SetErrLog(prevUsershellLog)
 	var notices []string
 
+	// Slice 9f: the janitor prune runs on a background goroutine (see
+	// janitor.go). The Wait defer is registered AFTER the log.Close +
+	// diagCleanup defers above, so - defers being LIFO - it runs BEFORE
+	// them: the DB handle and diag sink outlive the goroutine. The
+	// signal-context cancel defer below is registered later still and
+	// therefore fires first, so a prune wedged on a sick DB gets its
+	// query cancelled instead of hanging process exit.
+	var janitorWG sync.WaitGroup
+	defer janitorWG.Wait()
+
 	d, err := buildDispatchForFrame(cfg, pleaseOptions{}, activeFrameForDispatch(cfg, ""))
 	if err != nil {
 		return err
 	}
+	trace.Mark("dispatch_ready")
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
@@ -179,8 +197,17 @@ func runDefault(cfg *config.Config, sessionID string) error {
 		}
 		defaultAgentID = minted
 	}
-	if err := ensureDefaultAgent(ctx, log, defaultAgentID, d.name, d.model, cfg.UserName, diagWriter); err != nil {
+	createdNew, err := ensureDefaultAgent(ctx, log, defaultAgentID, d.name, d.model, cfg.UserName)
+	if err != nil {
 		return err
+	}
+	trace.Mark("agent_ready")
+	if createdNew {
+		// Brand-new thread: kick the empty-orphan janitor in the
+		// background. Same trigger condition as the pre-9f inline
+		// prune (fires exactly as often), just off the boot path so
+		// a large state.db can't delay the first frame.
+		startJanitorPrune(ctx, log, diagWriter, &janitorWG)
 	}
 
 	// Load the skill library before registry construction so the
@@ -743,6 +770,14 @@ func runDefault(cfg *config.Config, sessionID string) error {
 		}
 		opts = append(opts, chat.WithStartupNotices(notices))
 		opts = append(opts, chat.WithDiagWriter(diagWriter))
+		if trace != nil {
+			// Slice 9f: stamp the final boot checkpoint when the chat
+			// composes its first frame. Finish is idempotent, so the
+			// chat<->manage re-entry loop can't double-print.
+			opts = append(opts, chat.WithFirstRenderHook(func() {
+				trace.Finish("first_frame")
+			}))
+		}
 		m := chat.New(log, defaultAgentID, src, opts...)
 		if _, err := m.Run(); err != nil {
 			return fmt.Errorf("chat: %w", err)
@@ -752,8 +787,15 @@ func runDefault(cfg *config.Config, sessionID string) error {
 		// id and re-enter the chat loop on the same iteration so the
 		// new transcript backfills inline.
 		if picked := m.ResumeRequested(); picked != "" {
-			if err := ensureDefaultAgent(ctx, log, picked, d.name, d.model, cfg.UserName, diagWriter); err != nil {
+			createdNew, err := ensureDefaultAgent(ctx, log, picked, d.name, d.model, cfg.UserName)
+			if err != nil {
 				return fmt.Errorf("resume %s: %w", picked, err)
+			}
+			if createdNew {
+				// Picking a zero-event session takes the brand-new
+				// branch, which fired the janitor pre-9f too. Keep
+				// the cadence identical, just async.
+				startJanitorPrune(ctx, log, diagWriter, &janitorWG)
 			}
 			loopMu.Lock()
 			old := liveLoop
@@ -824,11 +866,17 @@ func openDiagLog(home string) (io.Writer, func()) {
 // state machine, so there's no legal Transition out of it. The chat
 // agent isn't a sub-agent with a meaningful lifecycle - it's a
 // conversation handle. Direct projection edits are the right hammer.
-func ensureDefaultAgent(ctx context.Context, log *agent.SQLiteEventLog, id, provider, model, userName string, diag io.Writer) error {
+//
+// Returns created=true when the brand-new branch ran (the id had no
+// events and a fresh row was seeded). Slice 9f: callers use that flag
+// to kick the empty-orphan janitor (startJanitorPrune) in the
+// background - the prune used to run inline here and was the only
+// unbounded pre-frame cost on the boot path.
+func ensureDefaultAgent(ctx context.Context, log *agent.SQLiteEventLog, id, provider, model, userName string) (created bool, err error) {
 	now := time.Now().UTC()
 	existing, err := log.Read(ctx, id, 0)
 	if err != nil {
-		return fmt.Errorf("read existing: %w", err)
+		return false, fmt.Errorf("read existing: %w", err)
 	}
 	if len(existing) > 0 {
 		// Resume path: chat's in-memory projection replays the FULL
@@ -843,34 +891,34 @@ func ensureDefaultAgent(ctx context.Context, log *agent.SQLiteEventLog, id, prov
 		// a conversation handle the user resumes.
 		payload, err := agent.NewStateChangeTransition(agent.StateRunning)
 		if err != nil {
-			return fmt.Errorf("marshal resume transition: %w", err)
+			return false, fmt.Errorf("marshal resume transition: %w", err)
 		}
 		if _, err := log.Append(ctx, agent.Event{
 			AgentID: id, TS: now, Type: agent.EvtStateChange, Payload: payload,
 		}); err != nil {
-			return fmt.Errorf("append resume transition: %w", err)
+			return false, fmt.Errorf("append resume transition: %w", err)
 		}
 		// Keep the projection cache (agents table) in sync so
 		// manage's roster shows the right state too.
 		if err := log.UpdateAgentState(ctx, id, agent.StateRunning, now); err != nil {
-			return fmt.Errorf("refresh agent state: %w", err)
+			return false, fmt.Errorf("refresh agent state: %w", err)
 		}
 		if err := log.UpdateHeartbeat(ctx, id, now); err != nil {
-			return fmt.Errorf("refresh agent heartbeat: %w", err)
+			return false, fmt.Errorf("refresh agent heartbeat: %w", err)
 		}
-		return nil
+		return false, nil
 	}
 	title := "chat with " + userName + " (" + provider + ")"
 	payload, err := agent.NewStateChangeCreated(agent.AgentCreated{
 		ID: id, RootID: id, Title: title, Model: model,
 	})
 	if err != nil {
-		return err
+		return false, err
 	}
 	if _, err := log.Append(ctx, agent.Event{
 		AgentID: id, TS: now, Type: agent.EvtStateChange, Payload: payload,
 	}); err != nil {
-		return err
+		return false, err
 	}
 	// Created leaves the projection in StateSpawning. Append the
 	// transition to Running immediately so the chat header reflects
@@ -879,31 +927,24 @@ func ensureDefaultAgent(ctx context.Context, log *agent.SQLiteEventLog, id, prov
 	// fresh Phase R session showed the wrong badge.
 	trans, err := agent.NewStateChangeTransition(agent.StateRunning)
 	if err != nil {
-		return fmt.Errorf("marshal initial transition: %w", err)
+		return false, fmt.Errorf("marshal initial transition: %w", err)
 	}
 	if _, err := log.Append(ctx, agent.Event{
 		AgentID: id, TS: now, Type: agent.EvtStateChange, Payload: trans,
 	}); err != nil {
-		return fmt.Errorf("append initial transition: %w", err)
+		return false, fmt.Errorf("append initial transition: %w", err)
 	}
 	if err := log.InsertAgent(ctx, agent.AgentRow{
 		ID: id, RootID: id, State: agent.StateRunning, Attempt: 1,
 		Title: title, Model: model, CreatedAt: now, UpdatedAt: now, LastHeartbeatAt: now,
 	}); err != nil {
-		return err
+		return false, err
 	}
-	// Brand-new thread: prune empty orphans (top-level the user never
-	// typed in, plus sub-agents that never made a tool call) older
-	// than the grace window. These accumulate on every abrupt exit
-	// and bury the /resume picker and /agents under stale rows.
-	// Failure here is logged, never blocks startup - a janitor pass
-	// should never stop the user from getting a working chat.
-	if pruned, err := log.DeleteEmptyOrphanedAgents(ctx, agent.DefaultOrphanPruneAge); err != nil {
-		fmt.Fprintf(diag, "carlos: prune empty orphans: %v\n", err)
-	} else if len(pruned) > 0 {
-		fmt.Fprintf(diag, "carlos: pruned %d empty orphaned session(s)\n", len(pruned))
-	}
-	return nil
+	// Brand-new thread. The empty-orphan janitor that used to run
+	// inline here moved to janitor.go (slice 9f); callers kick it in
+	// the background when created=true, preserving the exact same
+	// fire-on-fresh-session cadence without blocking the first frame.
+	return true, nil
 }
 
 // $TMPDIR/carlos-chat-devaid/state.db, seeds a sample agent if the log

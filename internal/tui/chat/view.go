@@ -23,6 +23,15 @@ import (
 // Slice-1e-commit-1 is read-only: there is no input line. Subsequent
 // commits drop a textarea between the transcript and the footer.
 func (m *Model) View() string {
+	// Slice 9f: first-frame checkpoint. Deferred so the stamp lands
+	// after the frame is composed (any markdown/glamour cost in this
+	// first render is included), immediately before the renderer
+	// writes it out. Consumed on fire — every later View pays only
+	// this nil-check.
+	if h := m.firstRenderHook; h != nil {
+		m.firstRenderHook = nil
+		defer h()
+	}
 	if m.quitting {
 		// Bubbletea will Print() the View on quit; leave a clean line.
 		return ""
