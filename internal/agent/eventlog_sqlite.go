@@ -630,6 +630,45 @@ func (l *SQLiteEventLog) LastToolCall(ctx context.Context, agentID string) (stri
 	return tc.Name, true, nil
 }
 
+// RecentCommandsUsed returns the verbs of the most recent EvtCommandUsed
+// events across ALL agents, newest first, capped at limit. Cross-agent
+// on purpose: chat session agent IDs are fresh ULIDs, so a per-agent
+// query would always come back empty on a brand-new session - the
+// Ctrl+P palette wants "what I've been running lately" regardless of
+// which session ran it. Duplicate verbs are NOT collapsed here; the
+// palette dedupes after this call so the recency order is preserved.
+// Rows with corrupt or empty payloads are skipped, never fatal.
+//
+// Cheap: a single index-free type scan would be O(log size), but the
+// events table is keyed by seq (the PK), so ORDER BY seq DESC LIMIT N
+// walks the newest rows first and stops as soon as it has N matches.
+func (l *SQLiteEventLog) RecentCommandsUsed(ctx context.Context, limit int) ([]string, error) {
+	if limit <= 0 {
+		return nil, nil
+	}
+	rows, err := l.db.QueryContext(ctx,
+		`SELECT payload FROM events WHERE type = ? ORDER BY seq DESC LIMIT ?`,
+		string(EvtCommandUsed), limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var payload []byte
+		if err := rows.Scan(&payload); err != nil {
+			return nil, err
+		}
+		var p CommandUsedPayload
+		if err := json.Unmarshal(payload, &p); err != nil || p.Command == "" {
+			continue
+		}
+		out = append(out, p.Command)
+	}
+	return out, rows.Err()
+}
+
 // parseState is the inverse of State.String(). Returns (state, true) on
 // match, (0, false) on miss. Kept local to this file because it's only
 // used by GetAgent's cache-row hydration.

@@ -246,6 +246,7 @@ func TestProjection_Apply_PassiveEventTypes(t *testing.T) {
 		agent.EvtApprovalProposed,
 		agent.EvtApprovalAccepted,
 		agent.EvtApprovalRejected,
+		agent.EvtCommandUsed,
 	} {
 		if err := p.Apply(helperEvent(t, "a", typ, []byte(`{}`))); err != nil {
 			t.Errorf("apply %s: %v", typ, err)

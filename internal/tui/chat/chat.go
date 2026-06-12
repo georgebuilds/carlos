@@ -557,8 +557,8 @@ type Model struct {
 	// first render that needs it and rebuilt when the viewport width
 	// changes. nil means "fall back to plain rendering"; see
 	// internal/tui/chat/markdown.go for the rationale.
-	markdown       *glamour.TermRenderer
-	markdownWidth  int
+	markdown      *glamour.TermRenderer
+	markdownWidth int
 
 	// mouseOff toggles bubbletea's mouse capture. When TRUE we've
 	// emitted tea.DisableMouse so the terminal owns the cursor again
@@ -581,6 +581,19 @@ type Model struct {
 	resumeSessions []resumeSession
 	resumeCursor   int
 	resumeSelected string
+
+	// Ctrl+P command palette state (slice 9k). showPalette gates the
+	// takeover overlay; paletteQuery/paletteCursor are the live query
+	// + selection; paletteItems is the ranked row list (recomputed on
+	// every query edit); paletteMRU is the cross-session recent-verbs
+	// list loaded from the event log on open. All behavior lives in
+	// overlay_palette.go; the fields live here because the Model owns
+	// the only authoritative state slot.
+	showPalette   bool
+	paletteQuery  string
+	paletteCursor int
+	paletteItems  []paletteItem
+	paletteMRU    []string
 }
 
 // FrameUI is the Phase F display + switch contract the chat Model
@@ -1041,6 +1054,17 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return next, cmd
 			}
 		}
+		// Slice 9k: Ctrl+P command palette. Same modal precedence as
+		// the pickers above, gated on no pending approval: the
+		// approval box is modal above everything (View paints it
+		// instead of the palette when both are up), so the keyboard
+		// must stay with the approval prompt too.
+		if m.showPalette && m.pendingApproval == nil {
+			next, cmd, handled := m.handlePaletteKey(msg)
+			if handled {
+				return next, cmd
+			}
+		}
 		// Phase U S6: jobs overlay intercepts navigation + action
 		// keys while open. Ctrl+C still falls through so the user
 		// can quit even while browsing jobs.
@@ -1172,6 +1196,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// since the mode field lives on the active frame.
 			if m.frame.Active != "" {
 				m.openModeSwitcher()
+				return m, nil
+			}
+		case "ctrl+p":
+			// Slice 9k: open the fuzzy command palette. Intercepting
+			// here shadows the bubbles textarea's default LinePrevious
+			// binding for ctrl+p (accepted loss - ↑ still moves the
+			// cursor up a line). Read-only chats have no command
+			// surface, so the key falls through there.
+			if !m.readOnly {
+				m.openCommandPalette()
 				return m, nil
 			}
 		case "ctrl+l":
@@ -2043,6 +2077,12 @@ func resolveShellJobID(mgr *usershell.Manager, arg string) string {
 // a status line so the user can see the verb was recognized. Slice 1f
 // (or whichever later slice owns each verb) wires the rest.
 func (m *Model) dispatchSlash(c slash.Command) tea.Cmd {
+	// Slice 9k: every recognized verb lands one EvtCommandUsed row
+	// here - the single choke point shared by typed input and the
+	// Ctrl+P palette - so the palette's MRU sees both paths exactly
+	// once. Unknown verbs are filtered inside (the error echo below
+	// is not an execution).
+	m.recordCommandUsed(c.Name)
 	switch c.Name {
 	case "exit", "quit", "q":
 		m.quitting = true
@@ -2625,4 +2665,3 @@ func (m *Model) appendUserMessage(text string, atts []agent.Attachment) tea.Cmd 
 		return nil
 	}
 }
-

@@ -230,7 +230,8 @@ func (p *Projection) Apply(ev Event) error {
 	case EvtProviderCall, EvtUserMessage, EvtAssistantMessage, EvtSteering, EvtArtifactRef, EvtSessionReset, EvtResearchPhase,
 		EvtUserShellStart, EvtUserShellEnd,
 		EvtGatewayInbound, EvtGatewayOutbound,
-		EvtApprovalProposed, EvtApprovalAccepted, EvtApprovalRejected:
+		EvtApprovalProposed, EvtApprovalAccepted, EvtApprovalRejected,
+		EvtCommandUsed:
 		row, ok := p.rows[ev.AgentID]
 		if ok {
 			row.UpdatedAt = ev.TS

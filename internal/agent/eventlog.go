@@ -14,7 +14,7 @@ const (
 	EvtToolCall     EventType = "tool_call"
 	EvtToolResult   EventType = "tool_result"
 	EvtTokenUsage   EventType = "token_usage"
-	EvtUserMessage EventType = "user_message"
+	EvtUserMessage  EventType = "user_message"
 	// MessagePayload - see below: declared after the EventType block.
 	// EvtAssistantMessage is the sealed text of one assistant turn,
 	// appended after the provider stream completes. Live tokens are
@@ -82,6 +82,15 @@ const (
 	// inline-capped output for the model context, AND an artifact ref
 	// to the full output blob.
 	EvtUserShellEnd EventType = "user_shell_end"
+
+	// EvtCommandUsed records one executed slash command (typed into the
+	// composer or launched from the Ctrl+P command palette - slice 9k).
+	// Payload shape: CommandUsedPayload. The palette's MRU ranking
+	// reads these back via SQLiteEventLog.RecentCommandsUsed, which
+	// queries ACROSS agents because chat session agent IDs are fresh
+	// ULIDs - a per-agent MRU would always start empty. Projections
+	// treat the type as passive (UpdatedAt bump only).
+	EvtCommandUsed EventType = "command_used"
 )
 
 type Event struct {
@@ -142,6 +151,15 @@ type Attachment struct {
 	Content  string         `json:"content,omitempty"`
 	Path     string         `json:"path,omitempty"`
 	SHA256   string         `json:"sha256,omitempty"`
+}
+
+// CommandUsedPayload is the EvtCommandUsed payload: the slash verb that
+// executed, lower-cased, without the leading "/" (e.g. "frame", not
+// "/frame"). Args are deliberately NOT recorded - the MRU only needs
+// the verb, and command args can carry user content (e.g. /memory
+// queries) that doesn't belong in a frequency signal.
+type CommandUsedPayload struct {
+	Command string `json:"command"`
 }
 
 // ResearchPhasePayload is the EvtResearchPhase payload (slice 11d).

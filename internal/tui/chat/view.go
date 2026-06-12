@@ -50,8 +50,8 @@ func (m *Model) View() string {
 	border := lipgloss.NewStyle().
 		Border(lipgloss.NormalBorder()).
 		BorderForeground(colorAccent).
-		Width(w - 2).
-		Height(h - 2).
+		Width(w-2).
+		Height(h-2).
 		Padding(0, 1)
 
 	// border.GetWidth() is Width set above (w - 2) - the inner area
@@ -145,6 +145,17 @@ func (m *Model) renderInner(innerW, innerH int) string {
 			resumeH = 10
 		}
 		approval = renderResumeOverlay(m, innerW, resumeH)
+		approvalH = lipgloss.Height(approval)
+	} else if m.showPalette {
+		// Slice 9k: Ctrl+P command palette shares the takeover slot.
+		// Sits below the pickers (they can't be open simultaneously -
+		// each open closes through the same key router) and above
+		// jobs/perms/help so a palette opened over them wins the slot.
+		palH := innerH - headerH - footerH - inputH - 1
+		if palH < 8 {
+			palH = 8
+		}
+		approval = renderPaletteOverlay(m, innerW, palH)
 		approvalH = lipgloss.Height(approval)
 	} else if m.showJobs && m.usershell != nil {
 		approval = renderJobsOverlay(
@@ -281,8 +292,10 @@ func (m *Model) renderInput(w int) string {
 	// Sticky chip peek (slice I-2 paste, I-3 image, I-4 mention):
 	// while the cursor touches a chip, a small preview card occupies
 	// the hint-band slot. Slash mode keeps priority on the slot via
-	// the early return above.
-	if att, ok := m.peekAttachment(); ok {
+	// the early return above. Suppressed while the Ctrl+P palette is
+	// up - two dashed-rule cards on screen at once read as clutter,
+	// and the palette owns the keyboard anyway.
+	if att, ok := m.peekAttachment(); ok && !m.showPalette {
 		return strings.Join([]string{m.renderPeek(att, w), sep, m.renderComposerInput(w)}, "\n")
 	}
 	// Chip-aware render (slice I-1): pixel-identical to ta.View()
