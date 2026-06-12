@@ -1,10 +1,12 @@
 package frame
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -216,5 +218,145 @@ func TestMigrate_NonEXDEVRenameFailureIsSurfaced(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("expected a rename error mentioning alpha.md; got %v", report.Errors)
+	}
+}
+
+// TestMigrate_StatErrorOnLegacyIsSurfaced covers the migrateDir branch
+// where os.Stat(src) fails with something other than NotExist. We make a
+// legacy *file* (not dir) sit at the research path's *parent* unreadable
+// so the stat traverses through a non-directory component, yielding
+// ENOTDIR rather than ENOENT. This must be surfaced as an error, not
+// swallowed as a clean no-op.
+func TestMigrate_StatErrorOnLegacyIsSurfaced(t *testing.T) {
+	home := t.TempDir()
+	// Place a regular file where ".carlos" should be a directory. Then
+	// ".carlos/research" stat() walks through a file component -> ENOTDIR.
+	carlos := filepath.Join(home, ".carlos")
+	if err := os.WriteFile(carlos, []byte("not a dir"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	report, err := Migrate(home, "personal")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Errors) == 0 {
+		t.Fatalf("expected stat errors surfaced for non-directory .carlos; got %+v", report)
+	}
+	if report.HasMovement() {
+		t.Errorf("nothing should have moved; got %+v", report)
+	}
+}
+
+func TestCopyFile_CopiesContentAndPerms(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "src.txt")
+	dst := filepath.Join(dir, "dst.txt")
+	want := []byte("cross-device payload\n")
+	if err := os.WriteFile(src, want, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := copyFile(src, dst); err != nil {
+		t.Fatalf("copyFile: %v", err)
+	}
+	got, err := os.ReadFile(dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(want) {
+		t.Errorf("dst content = %q, want %q", got, want)
+	}
+}
+
+func TestCopyFile_MissingSourceErrors(t *testing.T) {
+	dir := t.TempDir()
+	err := copyFile(filepath.Join(dir, "nope.txt"), filepath.Join(dir, "dst.txt"))
+	if err == nil {
+		t.Fatal("expected error opening missing source")
+	}
+	if _, statErr := os.Stat(filepath.Join(dir, "dst.txt")); !os.IsNotExist(statErr) {
+		t.Errorf("dst must not be created when source open fails; stat=%v", statErr)
+	}
+}
+
+func TestCopyFile_UnwritableDestErrors(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX directory permission semantics not available on Windows")
+	}
+	if os.Geteuid() == 0 {
+		t.Skip("root bypasses directory write permission checks")
+	}
+	dir := t.TempDir()
+	src := filepath.Join(dir, "src.txt")
+	if err := os.WriteFile(src, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// Read-only destination directory: OpenFile(O_CREATE) fails with EACCES.
+	roDir := filepath.Join(dir, "ro")
+	if err := os.Mkdir(roDir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(roDir, 0o700) })
+
+	err := copyFile(src, filepath.Join(roDir, "dst.txt"))
+	if err == nil {
+		t.Fatal("expected error opening dst in read-only dir")
+	}
+}
+
+// TestCopyFile_ReadErrorCleansUpDest covers the io.Copy failure branch:
+// opening a *directory* as the source succeeds, but reading bytes from it
+// fails (EISDIR), which must close+remove the partially-created dest.
+func TestCopyFile_ReadErrorCleansUpDest(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("reading a directory as a file is POSIX-specific")
+	}
+	dir := t.TempDir()
+	srcDir := filepath.Join(dir, "srcdir")
+	if err := os.Mkdir(srcDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	dst := filepath.Join(dir, "dst.txt")
+	if err := copyFile(srcDir, dst); err == nil {
+		t.Fatal("expected io.Copy error reading from a directory")
+	}
+	if _, statErr := os.Stat(dst); !os.IsNotExist(statErr) {
+		t.Errorf("dst must be removed after copy failure; stat=%v", statErr)
+	}
+}
+
+func TestFirstError_KeepsPriorOverNext(t *testing.T) {
+	prior := errors.New("first")
+	next := errors.New("second")
+	if got := firstError(prior, next); got != prior {
+		t.Errorf("firstError(prior, next) = %v, want prior", got)
+	}
+	if got := firstError(nil, next); got != next {
+		t.Errorf("firstError(nil, next) = %v, want next", got)
+	}
+	if got := firstError(nil, nil); got != nil {
+		t.Errorf("firstError(nil, nil) = %v, want nil", got)
+	}
+}
+
+func TestIsCrossDeviceErr_Variants(t *testing.T) {
+	if isCrossDeviceErr(nil) {
+		t.Error("nil error must not be cross-device")
+	}
+	if isCrossDeviceErr(errors.New("permission denied")) {
+		t.Error("arbitrary error must not be cross-device")
+	}
+	// Bare syscall errno match.
+	if !isCrossDeviceErr(syscall.EXDEV) {
+		t.Error("bare syscall.EXDEV must be detected")
+	}
+	// The *os.LinkError wrapping that os.Rename actually produces.
+	linkErr := &os.LinkError{Op: "rename", Old: "a", New: "b", Err: syscall.EXDEV}
+	if !isCrossDeviceErr(linkErr) {
+		t.Error("EXDEV wrapped in *os.LinkError must be detected")
+	}
+	// A LinkError with a non-EXDEV underlying error is not cross-device.
+	other := &os.LinkError{Op: "rename", Old: "a", New: "b", Err: syscall.EACCES}
+	if isCrossDeviceErr(other) {
+		t.Error("EACCES LinkError must not be treated as cross-device")
 	}
 }

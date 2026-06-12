@@ -254,6 +254,39 @@ func TestResolveProvider_perFrameOverride(t *testing.T) {
 	}
 }
 
+// TestResolveProvider_overrideBaseURLAndModel covers the remaining
+// ProviderOverride branches (BaseURL and DefaultModel) plus the switch
+// arm where the frame has no Model and falls back to the resolved
+// DefaultModel (here supplied by the override).
+func TestResolveProvider_overrideBaseURLAndModel(t *testing.T) {
+	pantry := map[string]SharedProvider{
+		"openrouter": {APIKey: "sk-shared", BaseURL: "https://shared", DefaultModel: "shared-model"},
+	}
+	f := Frame{
+		Provider: "openrouter",
+		// No frame-level Model -> Model derives from resolved DefaultModel.
+		ProviderOverride: map[string]ProviderOverride{
+			"openrouter": {BaseURL: "https://override", DefaultModel: "override-model"},
+		},
+	}
+	got, ok := ResolveProvider(f, "", pantry)
+	if !ok {
+		t.Fatal("ok=false")
+	}
+	if got.BaseURL != "https://override" {
+		t.Errorf("BaseURL = %q, want override value", got.BaseURL)
+	}
+	if got.DefaultModel != "override-model" {
+		t.Errorf("DefaultModel = %q, want override value", got.DefaultModel)
+	}
+	if got.Model != "override-model" {
+		t.Errorf("Model = %q, want fallback to DefaultModel", got.Model)
+	}
+	if got.APIKey != "sk-shared" {
+		t.Errorf("APIKey = %q, want shared value (override left it empty)", got.APIKey)
+	}
+}
+
 func TestResolveProvider_inheritsDefaultProvider(t *testing.T) {
 	pantry := map[string]SharedProvider{
 		"openrouter": {APIKey: "sk-or"},
@@ -505,6 +538,39 @@ func TestHintMatches_glob(t *testing.T) {
 		if got != c.want {
 			t.Errorf("hintMatches(%q, %q) = %v, want %v", c.hint, c.cwd, got, c.want)
 		}
+	}
+}
+
+// TestResolveActive_cwdMultipleNoActiveUsesDefault covers the
+// fallbackActive -> fallbackDefault branch: multiple cwd-hint candidates
+// with no persisted Active means the decision falls through to Default.
+func TestResolveActive_cwdMultipleNoActiveUsesDefault(t *testing.T) {
+	cfg := &Config{
+		Default: "work",
+		List: []Frame{
+			{Name: "personal", CwdHints: []string{"/Users/george"}},
+			{Name: "work", CwdHints: []string{"/Users/george/Code"}},
+		},
+	}
+	res, ok := ResolveActive(cfg, Input{Cwd: "/Users/george/Code/ludus"})
+	if !ok {
+		t.Fatal("ok=false")
+	}
+	if res.Reason != ReasonCwdHintMultiple {
+		t.Errorf("Reason = %q, want %q", res.Reason, ReasonCwdHintMultiple)
+	}
+	if res.Frame != "work" {
+		t.Errorf("Frame = %q, want fallback-to-default %q", res.Frame, "work")
+	}
+}
+
+// TestFallbackDefault_LastResortPersonalName directly exercises the final
+// branch of fallbackDefault: no Default, no listed frames -> the literal
+// DefaultPersonalName. ResolveActive can't reach this (it requires a
+// non-empty List), so the helper is tested directly.
+func TestFallbackDefault_LastResortPersonalName(t *testing.T) {
+	if got := fallbackDefault(&Config{}); got != DefaultPersonalName {
+		t.Errorf("fallbackDefault(empty) = %q, want %q", got, DefaultPersonalName)
 	}
 }
 

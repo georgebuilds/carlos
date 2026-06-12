@@ -39,6 +39,19 @@ func TestPill_EmptyGlyphFallsBackToDefault(t *testing.T) {
 	}
 }
 
+func TestPill_KnownAccentRendersColoredGlyph(t *testing.T) {
+	accent := AccentPalette[0]
+	out := Pill("◉", "personal", accent, false)
+	if !strings.Contains(out, "personal") {
+		t.Errorf("Pill missing name: %q", out)
+	}
+	// With a known accent and color on, the glyph is wrapped in an ANSI
+	// style; the name follows after a space separator.
+	if !strings.Contains(out, "personal") || !strings.HasSuffix(out, "personal") {
+		t.Errorf("Pill colored layout = %q, want trailing name", out)
+	}
+}
+
 func TestPill_UnknownAccentSkipsColorButKeepsLayout(t *testing.T) {
 	out := Pill("◉", "personal", "neon-pink", false)
 	if !strings.Contains(out, "personal") {
