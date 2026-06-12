@@ -177,7 +177,7 @@ func renderSwitcherGrid(
 		}
 		tile := renderSwitcherTile(
 			name,
-			ui.Glyph,        // active glyph; non-active tiles use DefaultGlyphFor inside
+			ui.Glyph, // active glyph; non-active tiles use DefaultGlyphFor inside
 			ui.Active == name,
 			i == cursor,
 			ui.Active,

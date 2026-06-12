@@ -85,8 +85,8 @@ func TestScoreFromRatio_Boundaries(t *testing.T) {
 		{0.9, 9},   // 1 + 8.1 = 9.1 → 9
 		{0.95, 10}, // 1 + 8.55 = 9.55 → 10
 		{1.0, 10},
-		{1.5, 10},   // clamp high
-		{-0.5, 1},   // clamp low
+		{1.5, 10}, // clamp high
+		{-0.5, 1}, // clamp low
 	}
 	for _, c := range cases {
 		got := scoreFromRatio(c.ratio)

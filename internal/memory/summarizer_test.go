@@ -67,7 +67,7 @@ type fakeProvider struct {
 	gotReq   providers.Request
 }
 
-func (f *fakeProvider) Name() string                        { return "fake" }
+func (f *fakeProvider) Name() string                         { return "fake" }
 func (f *fakeProvider) Capabilities() providers.Capabilities { return providers.Capabilities{} }
 func (f *fakeProvider) Stream(_ context.Context, req providers.Request) (<-chan providers.Event, error) {
 	f.gotReq = req

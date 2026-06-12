@@ -374,10 +374,10 @@ type fakeTool struct {
 	err  error
 }
 
-func (f *fakeTool) Name() string                                       { return f.name }
-func (f *fakeTool) Description() string                                { return "fake" }
-func (f *fakeTool) Schema() []byte                                     { return []byte(`{"type":"object"}`) }
-func (f *fakeTool) Execute(context.Context, []byte) ([]byte, error)    { return f.out, f.err }
+func (f *fakeTool) Name() string                                    { return f.name }
+func (f *fakeTool) Description() string                             { return "fake" }
+func (f *fakeTool) Schema() []byte                                  { return []byte(`{"type":"object"}`) }
+func (f *fakeTool) Execute(context.Context, []byte) ([]byte, error) { return f.out, f.err }
 
 // TestCappedWriter_OverflowDiscards confirms the cappedWriter caps the
 // payload at .max but still reports len(p) so the io.Copy loop never
@@ -552,9 +552,9 @@ Random-key: ignored
 // TestHumanBytes covers the three formatting branches.
 func TestHumanBytes(t *testing.T) {
 	cases := map[int64]string{
-		512:                "512 B",
-		2 * 1024:           "2 KiB",
-		3 * 1024 * 1024:    "3 MiB",
+		512:                    "512 B",
+		2 * 1024:               "2 KiB",
+		3 * 1024 * 1024:        "3 MiB",
 		5 * 1024 * 1024 * 1024: "5120 MiB",
 	}
 	for n, want := range cases {
@@ -586,12 +586,12 @@ func TestRequireTextContentType(t *testing.T) {
 // paragraph, tabs vs newlines.
 func TestNormalizeWhitespace_EdgeCases(t *testing.T) {
 	cases := map[string]string{
-		"":                    "",
-		"   ":                 "",
-		"hello":               "hello",
-		"a\nb":                "a b",
-		"line1\n\nline2":      "line1\n\nline2",
-		"x\t y\n z\n\n\n a":   "x y z\n\na",
+		"":                  "",
+		"   ":               "",
+		"hello":             "hello",
+		"a\nb":              "a b",
+		"line1\n\nline2":    "line1\n\nline2",
+		"x\t y\n z\n\n\n a": "x y z\n\na",
 	}
 	for in, want := range cases {
 		if got := normalizeWhitespace(in); got != want {
@@ -931,13 +931,13 @@ func TestActiveFrame_DefaultsToFrameConfigDefault(t *testing.T) {
 // TestCleanSubtree exercises the normalisation rules.
 func TestCleanSubtree(t *testing.T) {
 	cases := map[string]string{
-		"":          "",
-		"  ":        "",
-		"/work":     "work",
-		"work/":     "work",
+		"":            "",
+		"  ":          "",
+		"/work":       "work",
+		"work/":       "work",
 		"work/notes/": "work/notes",
-		".":         "",
-		"work/./x":  "work/x",
+		".":           "",
+		"work/./x":    "work/x",
 	}
 	for in, want := range cases {
 		if got := cleanSubtree(in); got != want {

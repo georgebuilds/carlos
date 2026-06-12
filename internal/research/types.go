@@ -64,16 +64,16 @@ type Passage struct {
 // partial state of every phase that ran; on failure, callers can still
 // see what was gathered before the abort.
 type Report struct {
-	Question     string                      // the input question, echoed
-	Query        Query                       // includes Sub after decompose
-	Routing      []SubQueryRoute             // model-picked backends + tailored queries (route phase)
-	Sources      []Source                    // every source the engine fetched
-	Passages     []Passage                   // every passage the read phase extracted
-	Synthesis    string                      // markdown body with inline [pN] citations
-	Verification *agent.VerificationReport   // synthesis-quality judge (if Judge configured)
-	Citations    *agent.Audit                // citation coverage audit (if synthesis ran)
-	Concerns     []string                    // free-form issues surfaced during the run
-	Budget       BudgetUsage                 // what we spent
+	Question     string                    // the input question, echoed
+	Query        Query                     // includes Sub after decompose
+	Routing      []SubQueryRoute           // model-picked backends + tailored queries (route phase)
+	Sources      []Source                  // every source the engine fetched
+	Passages     []Passage                 // every passage the read phase extracted
+	Synthesis    string                    // markdown body with inline [pN] citations
+	Verification *agent.VerificationReport // synthesis-quality judge (if Judge configured)
+	Citations    *agent.Audit              // citation coverage audit (if synthesis ran)
+	Concerns     []string                  // free-form issues surfaced during the run
+	Budget       BudgetUsage               // what we spent
 }
 
 // SubQueryRoute is the model's plan for ONE sub-query: which backends
@@ -83,8 +83,8 @@ type Report struct {
 // default plan (every backend, verbatim sub-query) so search has
 // something to consume — never crashes the run.
 type SubQueryRoute struct {
-	SubQuery string           // the original sub-query text, for traceability
-	Searches []PlannedSearch  // 1..N planned backend calls; empty means fallback for this row
+	SubQuery string          // the original sub-query text, for traceability
+	Searches []PlannedSearch // 1..N planned backend calls; empty means fallback for this row
 }
 
 // PlannedSearch is one (backend, tailored query, result cap) tuple
@@ -124,8 +124,8 @@ const (
 	DefaultMaxFetchedBytes  = int64(32 * 1024 * 1024) // 32 MiB
 	DefaultMaxWallClock     = 5 * time.Minute
 
-	DefaultMaxSubQueries    = 5
-	DefaultSourcesPerQuery  = 3
+	DefaultMaxSubQueries   = 5
+	DefaultSourcesPerQuery = 3
 
 	// Caps the route phase enforces over whatever the model proposes.
 	// PerSubQueryCap is the total result ceiling across all backends for

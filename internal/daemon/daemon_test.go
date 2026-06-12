@@ -40,8 +40,8 @@ func (c *fakeClock) Set(t time.Time) {
 // SpawnResult. The Spawn count is the test's primary observable.
 type fakeSpawner struct {
 	count     int32
-	calls     []string                // captured objectives, in order
-	contracts []agent.SpawnContract  // full contracts captured for frame-plumbing tests
+	calls     []string              // captured objectives, in order
+	contracts []agent.SpawnContract // full contracts captured for frame-plumbing tests
 	mu        sync.Mutex
 	err       error
 }
@@ -153,8 +153,8 @@ func TestDaemon_TickFiresDueSchedule(t *testing.T) {
 
 	fs := &fakeSpawner{}
 	d, err := New(Options{
-		ConfigPath:   cfgPath,
-		SocketPath:   shortSock(t),
+		ConfigPath:     cfgPath,
+		SocketPath:     shortSock(t),
 		Spawner:        fs,
 		TickInterval:   50 * time.Millisecond,
 		Now:            clock,
@@ -250,8 +250,8 @@ func TestDaemon_OneShotRemovedAfterFire(t *testing.T) {
 
 	fs := &fakeSpawner{}
 	d, err := New(Options{
-		ConfigPath:   cfgPath,
-		SocketPath:   shortSock(t),
+		ConfigPath:     cfgPath,
+		SocketPath:     shortSock(t),
 		Spawner:        fs,
 		TickInterval:   50 * time.Millisecond,
 		Now:            clock,
@@ -302,8 +302,8 @@ func TestDaemon_StatusOverIPC(t *testing.T) {
 
 	fs := &fakeSpawner{}
 	d, err := New(Options{
-		ConfigPath:   cfgPath,
-		SocketPath:   sock,
+		ConfigPath:     cfgPath,
+		SocketPath:     sock,
 		Spawner:        fs,
 		TickInterval:   1 * time.Second,
 		Now:            clock,
@@ -357,8 +357,8 @@ func TestDaemon_ReloadPicksUpNewSchedule(t *testing.T) {
 
 	fs := &fakeSpawner{}
 	d, err := New(Options{
-		ConfigPath:   cfgPath,
-		SocketPath:   sock,
+		ConfigPath:     cfgPath,
+		SocketPath:     sock,
 		Spawner:        fs,
 		TickInterval:   1 * time.Second,
 		Now:            clock,
@@ -416,8 +416,8 @@ func TestDaemon_StopViaIPC(t *testing.T) {
 
 	fs := &fakeSpawner{}
 	d, err := New(Options{
-		ConfigPath:   cfgPath,
-		SocketPath:   sock,
+		ConfigPath:     cfgPath,
+		SocketPath:     sock,
 		Spawner:        fs,
 		TickInterval:   1 * time.Second,
 		Now:            &fakeClock{now: time.Date(2026, 6, 5, 8, 0, 0, 0, time.Local)},
@@ -463,8 +463,8 @@ func TestDaemon_InvalidScheduleIsSkipped(t *testing.T) {
 
 	fs := &fakeSpawner{}
 	d, err := New(Options{
-		ConfigPath:   cfgPath,
-		SocketPath:   shortSock(t),
+		ConfigPath:     cfgPath,
+		SocketPath:     shortSock(t),
 		Spawner:        fs,
 		TickInterval:   50 * time.Millisecond,
 		Now:            clock,

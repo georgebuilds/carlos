@@ -60,7 +60,7 @@ func (stubSearchBackend) Search(_ context.Context, _ string, _ int) ([]tools.Sea
 // branches we want to exercise.
 type stubProvider struct{}
 
-func (stubProvider) Name() string                       { return "stub" }
+func (stubProvider) Name() string                         { return "stub" }
 func (stubProvider) Capabilities() providers.Capabilities { return providers.Capabilities{} }
 func (stubProvider) Stream(_ context.Context, _ providers.Request) (<-chan providers.Event, error) {
 	return nil, nil

@@ -131,19 +131,19 @@ func TestIsValidName(t *testing.T) {
 	// whitespace, and the 32-char over-the-cap case. Each row is the
 	// silent-failure mode we're closing.
 	for _, no := range []string{
-		"",                            // empty
-		"Personal",                    // capital
-		"PERSONAL",                    // upper
-		"123foo",                      // digit start
-		"-foo",                        // hyphen start
-		"_foo",                        // underscore start
-		"../escape",                   // path escape
-		"work/x",                      // separator
-		"foo bar",                     // space
-		"foo.bar",                     // dot
-		"foo:bar",                     // colon
-		"foo@bar",                     // at
-		strings.Repeat("a", 32),       // 32-char over the cap
+		"",                      // empty
+		"Personal",              // capital
+		"PERSONAL",              // upper
+		"123foo",                // digit start
+		"-foo",                  // hyphen start
+		"_foo",                  // underscore start
+		"../escape",             // path escape
+		"work/x",                // separator
+		"foo bar",               // space
+		"foo.bar",               // dot
+		"foo:bar",               // colon
+		"foo@bar",               // at
+		strings.Repeat("a", 32), // 32-char over the cap
 	} {
 		if IsValidName(no) {
 			t.Errorf("IsValidName(%q) = true, want false", no)
@@ -359,46 +359,46 @@ func TestResolveActive_unknownEnvFallsThrough(t *testing.T) {
 		},
 	}
 	cases := []struct {
-		name      string
-		in        Input
-		wantFrame string
+		name       string
+		in         Input
+		wantFrame  string
 		wantReason string
-		warnSub   string
+		warnSub    string
 	}{
 		{
-			name:      "unknown env falls to flag",
-			in:        Input{Env: "ghost", Flag: "personal"},
-			wantFrame: "personal",
+			name:       "unknown env falls to flag",
+			in:         Input{Env: "ghost", Flag: "personal"},
+			wantFrame:  "personal",
 			wantReason: ReasonFlag,
-			warnSub:   "CARLOS_FRAME=ghost",
+			warnSub:    "CARLOS_FRAME=ghost",
 		},
 		{
-			name:      "unknown env falls to cwd hint",
-			in:        Input{Env: "ghost", Cwd: "/Users/george/Code/ludus/api"},
-			wantFrame: "work",
+			name:       "unknown env falls to cwd hint",
+			in:         Input{Env: "ghost", Cwd: "/Users/george/Code/ludus/api"},
+			wantFrame:  "work",
 			wantReason: ReasonCwdHintExact,
-			warnSub:   "CARLOS_FRAME=ghost",
+			warnSub:    "CARLOS_FRAME=ghost",
 		},
 		{
-			name:      "unknown env falls to persisted active",
-			in:        Input{Env: "ghost"},
-			wantFrame: "work",
+			name:       "unknown env falls to persisted active",
+			in:         Input{Env: "ghost"},
+			wantFrame:  "work",
 			wantReason: ReasonPersistedActive,
-			warnSub:   "CARLOS_FRAME=ghost",
+			warnSub:    "CARLOS_FRAME=ghost",
 		},
 		{
-			name:      "unknown flag falls to persisted",
-			in:        Input{Flag: "phantom"},
-			wantFrame: "work",
+			name:       "unknown flag falls to persisted",
+			in:         Input{Flag: "phantom"},
+			wantFrame:  "work",
 			wantReason: ReasonPersistedActive,
-			warnSub:   "-f phantom",
+			warnSub:    "-f phantom",
 		},
 		{
-			name:      "unknown env AND unknown flag both fall through",
-			in:        Input{Env: "ghost", Flag: "phantom"},
-			wantFrame: "work",
+			name:       "unknown env AND unknown flag both fall through",
+			in:         Input{Env: "ghost", Flag: "phantom"},
+			wantFrame:  "work",
 			wantReason: ReasonPersistedActive,
-			warnSub:   "phantom",
+			warnSub:    "phantom",
 		},
 	}
 	for _, c := range cases {

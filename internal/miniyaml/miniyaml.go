@@ -10,7 +10,7 @@
 //     parents).
 //   - Block-style lists: `- item`, including `- key: value` (lists of maps).
 //   - Scalars: bare strings, double-quoted (with the common escapes), single-
-//     quoted (with `''` for embedded apostrophes), ints (int64), floats
+//     quoted (with `”` for embedded apostrophes), ints (int64), floats
 //     (float64, must contain a `.`), bools (`true`/`false`/`yes`/`no`,
 //     case-insensitive), nulls (`null` / `~` / empty value).
 //   - Flow-style sequences of scalars: `[a, b, c]` on a single line. Flow-

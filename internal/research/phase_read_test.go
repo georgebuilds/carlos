@@ -13,9 +13,9 @@ import (
 // surprise is the read-phase response we want to test.
 func readEngine(readBody, secondReadBody string) *research.Engine {
 	prov := newScriptedProvider("p1",
-		"sub1",     // decompose
-		readBody,   // read for s1
-		secondReadBody, // read for s2 (used if there are 2 sources)
+		"sub1",            // decompose
+		readBody,          // read for s1
+		secondReadBody,    // read for s2 (used if there are 2 sources)
 		"Synthesis. [p1]", // synthesis (only called if read succeeds)
 	)
 	fs := &fakeSearch{

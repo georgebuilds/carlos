@@ -391,7 +391,7 @@ func (badNameAdapter) Send(context.Context, gateway.OutboundEnvelope) (gateway.D
 	return gateway.DeliveryReceipt{}, nil
 }
 func (badNameAdapter) Start(context.Context, gateway.IngestFunc) error { return nil }
-func (badNameAdapter) Stop(context.Context) error                     { return nil }
+func (badNameAdapter) Stop(context.Context) error                      { return nil }
 
 // errStartAdapter returns a non-context error from Start.
 type errStartAdapter struct {
@@ -407,7 +407,7 @@ func (a *errStartAdapter) Send(context.Context, gateway.OutboundEnvelope) (gatew
 	return gateway.DeliveryReceipt{Source: a.name, Status: gateway.StatusDelivered}, nil
 }
 func (a *errStartAdapter) Start(context.Context, gateway.IngestFunc) error { return a.err }
-func (a *errStartAdapter) Stop(context.Context) error                     { return nil }
+func (a *errStartAdapter) Stop(context.Context) error                      { return nil }
 
 // errStopAdapter returns an error from Stop.
 type errStopAdapter struct {

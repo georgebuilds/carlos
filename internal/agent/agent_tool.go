@@ -134,10 +134,10 @@ type agentToolInput struct {
 }
 
 type agentToolOutput struct {
-	AgentID      string       `json:"agent_id"`
-	FinalText    string       `json:"final_text"`
-	ArtifactRef  *ArtifactRef `json:"artifact_ref,omitempty"`
-	Error        string       `json:"error,omitempty"`
+	AgentID     string       `json:"agent_id"`
+	FinalText   string       `json:"final_text"`
+	ArtifactRef *ArtifactRef `json:"artifact_ref,omitempty"`
+	Error       string       `json:"error,omitempty"`
 }
 
 // Execute parses the input, calls Supervisor.Spawn with parentID == ""

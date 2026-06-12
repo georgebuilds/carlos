@@ -13,7 +13,7 @@ import (
 func TestForFrame(t *testing.T) {
 	cfg := Config{
 		Servers: []ServerConfig{
-			{Name: "always", Command: "/bin/echo"},                    // no Frames - available everywhere
+			{Name: "always", Command: "/bin/echo"}, // no Frames - available everywhere
 			{Name: "work-only", Command: "/bin/echo", Frames: []string{"work"}},
 			{Name: "personal", Command: "/bin/echo", Frames: []string{"personal"}},
 			{Name: "either", Command: "/bin/echo", Frames: []string{"work", "personal"}},

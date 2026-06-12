@@ -126,16 +126,16 @@ const (
 // load seeds them; cmd/carlos's startup ApplyPalette overwrites them
 // with the user-configured palette.
 var (
-	styleTagline     lipgloss.Style
-	styleHint        lipgloss.Style
-	stylePrompt      lipgloss.Style
-	styleHeader      lipgloss.Style
-	styleBrand       lipgloss.Style
-	styleDotOn       lipgloss.Style
-	styleDotOff      lipgloss.Style
-	styleDotCurrent  lipgloss.Style
-	styleDotPending  lipgloss.Style
-	styleKey         lipgloss.Style
+	styleTagline    lipgloss.Style
+	styleHint       lipgloss.Style
+	stylePrompt     lipgloss.Style
+	styleHeader     lipgloss.Style
+	styleBrand      lipgloss.Style
+	styleDotOn      lipgloss.Style
+	styleDotOff     lipgloss.Style
+	styleDotCurrent lipgloss.Style
+	styleDotPending lipgloss.Style
+	styleKey        lipgloss.Style
 )
 
 // rebuildStyles regenerates the cached styles from the current color
@@ -168,8 +168,8 @@ func outerBorderStyle(width, height int) lipgloss.Style {
 	return lipgloss.NewStyle().
 		Border(lipgloss.ThickBorder()).
 		BorderForeground(colorAccent).
-		Width(width - 2).
-		Height(height - 4).
+		Width(width-2).
+		Height(height-4).
 		Padding(1, 2)
 }
 

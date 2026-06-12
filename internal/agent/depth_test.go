@@ -12,7 +12,7 @@ import (
 // TestSpawn_DepthCapDefault verifies the default maxSpawnDepth=1
 // rejects a grandchild spawn:
 //
-//   root (depth 0) → child A (depth 1, OK) → child B (depth 2, REJECT)
+//	root (depth 0) → child A (depth 1, OK) → child B (depth 2, REJECT)
 //
 // The rejection must be ErrSpawnDepthExceeded so the eventual Agent
 // tool (Slice 3e) can surface it to the model verbatim.

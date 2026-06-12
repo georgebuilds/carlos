@@ -23,10 +23,10 @@ func TestParseModelArg(t *testing.T) {
 		{"", "", ""},
 		{"openrouter:google/gemini-3.5-flash", "openrouter", "google/gemini-3.5-flash"},
 		{"  anthropic : claude-opus-4-7  ", "anthropic", "claude-opus-4-7"},
-		{"gpt-5", "", "gpt-5"},                               // bare model
-		{"openrouter:", "openrouter", ""},                     // colon with no model
-		{":just-model", "", "just-model"},                     // empty provider
-		{"openai:gpt-5:beta", "openai", "gpt-5:beta"},        // extra colons stay in model
+		{"gpt-5", "", "gpt-5"},                        // bare model
+		{"openrouter:", "openrouter", ""},             // colon with no model
+		{":just-model", "", "just-model"},             // empty provider
+		{"openai:gpt-5:beta", "openai", "gpt-5:beta"}, // extra colons stay in model
 	}
 	for _, tc := range tests {
 		t.Run(tc.in, func(t *testing.T) {
@@ -65,7 +65,7 @@ func TestDisplayModelName(t *testing.T) {
 
 func TestSortedProviderNames(t *testing.T) {
 	in := map[string]struct{ DefaultModel string }{} // shape mirrors config.ProviderConfig
-	_ = in                                            // unused; pin via the real config-keyed helper
+	_ = in                                           // unused; pin via the real config-keyed helper
 }
 
 // TestIsHiddenToolCall pins the suppression policy for carlos_about

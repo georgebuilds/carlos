@@ -90,8 +90,8 @@ func TestAgentTool_MissingObjectiveReturnsInfraError(t *testing.T) {
 	defer cleanup()
 	tool := agent.NewAgentTool(sup)
 	cases := []map[string]any{
-		{"output_format": "x", "tool_allowlist": []string{}},                  // no objective
-		{"objective": "x", "tool_allowlist": []string{}},                      // no output_format
+		{"output_format": "x", "tool_allowlist": []string{}}, // no objective
+		{"objective": "x", "tool_allowlist": []string{}},     // no output_format
 	}
 	for i, c := range cases {
 		in, _ := json.Marshal(c)

@@ -29,7 +29,7 @@ func TestOutboundEnvelope_Validate(t *testing.T) {
 	}
 
 	cases := map[string]gateway.OutboundEnvelope{
-		"unknown kind": {Kind: gateway.OutboundKind("garbage"), Title: "x"},
+		"unknown kind":     {Kind: gateway.OutboundKind("garbage"), Title: "x"},
 		"empty body+title": {Kind: gateway.OutboundNotification},
 		"approval no artifact": {
 			Kind:    gateway.OutboundApprovalRequest,

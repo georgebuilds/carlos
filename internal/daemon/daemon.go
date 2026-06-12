@@ -125,17 +125,17 @@ type fireLogger interface {
 //
 // Lifecycle (Run):
 //
-//	1. Open state.db (single-writer invariant - see eventlog_sqlite.go).
-//	2. Open UDS listener at ~/.carlos/daemon.sock (fail-fast on EADDRINUSE).
-//	3. Load config; build the schedule list.
-//	4. Install SIGHUP (reload) and SIGTERM/SIGINT (graceful shutdown) handlers.
-//	5. Start the supervisor + IPC accept goroutine.
-//	6. Tick loop: every TickInterval, for each Due() schedule, spawn a
-//	   sub-agent and wait for completion before considering it for the
-//	   next tick. One-shot schedules (Once=true) are deleted from
-//	   config after a successful fire.
-//	7. On shutdown: cancel in-flight children, close the listener,
-//	   close state.db, return.
+//  1. Open state.db (single-writer invariant - see eventlog_sqlite.go).
+//  2. Open UDS listener at ~/.carlos/daemon.sock (fail-fast on EADDRINUSE).
+//  3. Load config; build the schedule list.
+//  4. Install SIGHUP (reload) and SIGTERM/SIGINT (graceful shutdown) handlers.
+//  5. Start the supervisor + IPC accept goroutine.
+//  6. Tick loop: every TickInterval, for each Due() schedule, spawn a
+//     sub-agent and wait for completion before considering it for the
+//     next tick. One-shot schedules (Once=true) are deleted from
+//     config after a successful fire.
+//  7. On shutdown: cancel in-flight children, close the listener,
+//     close state.db, return.
 type Daemon struct {
 	opts Options
 

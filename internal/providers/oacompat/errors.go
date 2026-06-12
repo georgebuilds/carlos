@@ -15,8 +15,8 @@ import (
 //     {"error": {"message": "..."}}
 //   - OpenRouter wrapping a downstream provider:
 //     {"error": {"message": "Provider returned error",
-//                "metadata": {"raw": "{...nested envelope...}",
-//                             "provider_name": "Google AI Studio"}}}
+//     "metadata": {"raw": "{...nested envelope...}",
+//     "provider_name": "Google AI Studio"}}}
 //   - Plain {"message": "..."} as a defensive fallback.
 //
 // The OpenRouter path walks one level into metadata.raw and tries to

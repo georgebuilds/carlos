@@ -18,9 +18,9 @@ import (
 // references reach the audit, and budget counters track.
 func TestEngine_EndToEnd_AllPhases(t *testing.T) {
 	prov := newScriptedProvider("p1",
-		"How widely is WebGPU enabled in Safari?\nWhat versions ship with WebGPU support?", // decompose
-		`{"text":"Safari TP supports WebGPU as of 2025.","relevance":9}`, // read s1
-		`{"text":"Safari stable shipped behind a flag in 2026.","relevance":8}`, // read s2
+		"How widely is WebGPU enabled in Safari?\nWhat versions ship with WebGPU support?",           // decompose
+		`{"text":"Safari TP supports WebGPU as of 2025.","relevance":9}`,                             // read s1
+		`{"text":"Safari stable shipped behind a flag in 2026.","relevance":8}`,                      // read s2
 		"Safari now supports WebGPU in technology preview [p1] and rolled into stable in 2026 [p2].", // synthesis
 	)
 	fs := &fakeSearch{
@@ -31,12 +31,12 @@ func TestEngine_EndToEnd_AllPhases(t *testing.T) {
 	}
 	ff := &fakeFetcher{
 		bodies: map[string]string{
-			"https://webkit.org/blog/x":          "WebKit blog body",
-			"https://developer.mozilla.org/x":   "MDN body",
+			"https://webkit.org/blog/x":       "WebKit blog body",
+			"https://developer.mozilla.org/x": "MDN body",
 		},
 		titles: map[string]string{
-			"https://webkit.org/blog/x":          "WebKit Blog",
-			"https://developer.mozilla.org/x":   "MDN",
+			"https://webkit.org/blog/x":       "WebKit Blog",
+			"https://developer.mozilla.org/x": "MDN",
 		},
 	}
 	judge := staticJudge("openai", `{"score": 9, "concerns": [], "decision": "accept"}`)

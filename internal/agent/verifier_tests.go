@@ -52,8 +52,8 @@ type TestRunnerVerifier struct {
 }
 
 const (
-	testRunnerDefaultTimeout   = 5 * time.Minute
-	testRunnerMaxOutputBytes   = 64 * 1024
+	testRunnerDefaultTimeout = 5 * time.Minute
+	testRunnerMaxOutputBytes = 64 * 1024
 )
 
 // NewTestRunnerVerifier returns a TestRunnerVerifier with default

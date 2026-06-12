@@ -97,10 +97,10 @@ func sharedRand() *rand.Rand {
 // retry other 4xx codes - 400/401/403/404 are caller errors and
 // re-issuing the same request will just burn time.
 var retryableStatusCodes = map[int]bool{
-	http.StatusTooManyRequests:     true, // 429
-	http.StatusBadGateway:          true, // 502
-	http.StatusServiceUnavailable:  true, // 503
-	http.StatusGatewayTimeout:      true, // 504
+	http.StatusTooManyRequests:    true, // 429
+	http.StatusBadGateway:         true, // 502
+	http.StatusServiceUnavailable: true, // 503
+	http.StatusGatewayTimeout:     true, // 504
 }
 
 // isRetryableError reports whether err looks like a transient network

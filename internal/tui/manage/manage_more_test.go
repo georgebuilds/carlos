@@ -52,10 +52,10 @@ func TestRosterPaneWidth_ClampsExtremes(t *testing.T) {
 	}{
 		{0, 50},
 		{-1, 50},
-		{80, 50},      // 40% of 80 = 32, below the 50 floor
-		{200, 80},     // 40% of 200 = 80
-		{300, 120},    // 40% of 300 = 120
-		{55, 25},      // termW - 30 = 25 wins over the 50 floor
+		{80, 50},   // 40% of 80 = 32, below the 50 floor
+		{200, 80},  // 40% of 200 = 80
+		{300, 120}, // 40% of 300 = 120
+		{55, 25},   // termW - 30 = 25 wins over the 50 floor
 	}
 	for _, c := range cases {
 		if got := rosterPaneWidth(c.termW); got != c.want {

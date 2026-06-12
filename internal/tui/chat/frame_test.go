@@ -96,11 +96,11 @@ func TestFrameSlash_SwitchPersistsAndUpdatesActive(t *testing.T) {
 
 func TestFrameSlash_SwitchRefreshesInProcessFields(t *testing.T) {
 	m := newFramedModel(t, FrameUI{
-		Active:    "personal",
-		Glyph:     "◉",
-		Accent:    "cream",
-		Mode:      "solo",
-		Available: []string{"personal", "work"},
+		Active:       "personal",
+		Glyph:        "◉",
+		Accent:       "cream",
+		Mode:         "solo",
+		Available:    []string{"personal", "work"},
 		SwitchActive: func(string) error { return nil },
 		LookupFrame: func(name string) (FrameUIUpdate, bool) {
 			if name != "work" {

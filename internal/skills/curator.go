@@ -3,15 +3,15 @@
 // # Lifecycle (SPEC § Skill induction § Instrumentation)
 //
 //   - active   - default. LastUsed within 30 days (or never used but
-//                still within its own 30-day grace window since
-//                Created).
+//     still within its own 30-day grace window since
+//     Created).
 //   - stale    - no use in 30 days. Still in the library; description
-//                still in the startup index, BUT the SKILL.md
-//                frontmatter is marked status: stale so the inducer's
-//                "existing descriptions" prompt can deprioritize.
+//     still in the startup index, BUT the SKILL.md
+//     frontmatter is marked status: stale so the inducer's
+//     "existing descriptions" prompt can deprioritize.
 //   - archived - no use in 90 days (counted from LastUsed; if never
-//                used, from Created). Directory moves to
-//                <root>/_archive/<name>/, removed from active rotation.
+//     used, from Created). Directory moves to
+//     <root>/_archive/<name>/, removed from active rotation.
 //
 // Never hard-delete - archived directories are restorable, and the
 // telemetry slice will compute survival curves from them.

@@ -84,7 +84,7 @@ func TestHandleScheduleSlash_Rm(t *testing.T) {
 func TestHandleScheduleSlash_BadInputs(t *testing.T) {
 	_ = withTempConfig(t)
 	cases := []struct {
-		in       string
+		in        string
 		wantMatch string
 	}{
 		{"", "usage"},

@@ -292,9 +292,9 @@ func (m pleaseStatusModel) View() string {
 // queue. We send a msg on every Write but the model only keeps the
 // last non-empty line, so the cost is bounded.
 type pleaseTextSink struct {
-	mu     sync.Mutex
-	buf    strings.Builder
-	prog   *tea.Program // nil = quiet mode (non-TTY)
+	mu   sync.Mutex
+	buf  strings.Builder
+	prog *tea.Program // nil = quiet mode (non-TTY)
 }
 
 func (s *pleaseTextSink) Write(p []byte) (int, error) {

@@ -109,14 +109,14 @@ func ProposeSkill(ctx context.Context, log *agent.SQLiteEventLog, agentID string
 // ProposeSkillWithOptions is the slice-6f extension of ProposeSkill.
 // The execution order is:
 //
-//	1. (existing) validate inputs.
-//	2. (NEW)      if opts.Replay != nil, run ReplayEvaluator.Evaluate.
-//	              If Decision="reject", append an auto-reject record
-//	              to the eventlog and return WITHOUT queueing.
-//	3. (existing) write the artifact + queue approval.
-//	4. (NEW)      if opts.Replay produced a non-Skipped report, write
-//	              the report as a sibling artifact and append a
-//	              telemetry event linking the two.
+//  1. (existing) validate inputs.
+//  2. (NEW)      if opts.Replay != nil, run ReplayEvaluator.Evaluate.
+//     If Decision="reject", append an auto-reject record
+//     to the eventlog and return WITHOUT queueing.
+//  3. (existing) write the artifact + queue approval.
+//  4. (NEW)      if opts.Replay produced a non-Skipped report, write
+//     the report as a sibling artifact and append a
+//     telemetry event linking the two.
 //
 // Returns a ProposeResult so the caller can branch on AutoRejected
 // without re-running the replay. A successful auto-reject is NOT an
@@ -203,10 +203,10 @@ func ProposeSkillWithOptions(ctx context.Context, log *agent.SQLiteEventLog, age
 // caller can decorate the user-visible reason string.
 func logAutoReject(ctx context.Context, log *agent.SQLiteEventLog, agentID string, p *skills.Proposal, report *ReplayReport, reason string) error {
 	record := struct {
-		Kind     string        `json:"kind"`
+		Kind     string           `json:"kind"`
 		Proposal *skills.Proposal `json:"proposal"`
-		Report   *ReplayReport `json:"report"`
-		Reason   string        `json:"reason"`
+		Report   *ReplayReport    `json:"report"`
+		Reason   string           `json:"reason"`
 	}{
 		Kind:     "skill_proposal_auto_reject",
 		Proposal: p,

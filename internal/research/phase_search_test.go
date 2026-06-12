@@ -34,8 +34,8 @@ func TestSearch_DedupesURLsAcrossSubQueries(t *testing.T) {
 	}
 	eng := &research.Engine{
 		Provider: prov, Model: "m",
-		Search:  fs,
-		Fetcher: ff,
+		Search:          fs,
+		Fetcher:         ff,
 		SourcesPerQuery: 5,
 	}
 	report, err := eng.Run(context.Background(), "q")
@@ -68,8 +68,8 @@ func TestSearch_PerSubQueryErrorIsConcernNotFatal(t *testing.T) {
 	ff := &fakeFetcher{bodies: map[string]string{"https://example.com/b": "beta"}}
 	eng := &research.Engine{
 		Provider: prov, Model: "m",
-		Search:  fs,
-		Fetcher: ff,
+		Search:          fs,
+		Fetcher:         ff,
 		SourcesPerQuery: 5,
 	}
 	report, err := eng.Run(context.Background(), "q")

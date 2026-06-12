@@ -50,8 +50,10 @@ type promptCapturingProvider struct {
 	req providers.Request
 }
 
-func (p *promptCapturingProvider) Name() string                         { return "capture" }
-func (p *promptCapturingProvider) Capabilities() providers.Capabilities { return providers.Capabilities{} }
+func (p *promptCapturingProvider) Name() string { return "capture" }
+func (p *promptCapturingProvider) Capabilities() providers.Capabilities {
+	return providers.Capabilities{}
+}
 
 func (p *promptCapturingProvider) Stream(ctx context.Context, req providers.Request) (<-chan providers.Event, error) {
 	p.mu.Lock()
@@ -274,9 +276,9 @@ func TestSpawn_RestrictedToolRegistry(t *testing.T) {
 // uses as the base registry's "everything" tool.
 type echoToolForSpawn struct{}
 
-func (echoToolForSpawn) Name() string                                       { return "echo" }
-func (echoToolForSpawn) Description() string                                { return "echo" }
-func (echoToolForSpawn) Schema() []byte                                     { return []byte(`{}`) }
+func (echoToolForSpawn) Name() string                                         { return "echo" }
+func (echoToolForSpawn) Description() string                                  { return "echo" }
+func (echoToolForSpawn) Schema() []byte                                       { return []byte(`{}`) }
 func (echoToolForSpawn) Execute(_ context.Context, in []byte) ([]byte, error) { return in, nil }
 
 // TestSpawn_ConcurrencyCap spawns N children that hang, where N

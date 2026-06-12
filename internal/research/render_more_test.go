@@ -114,7 +114,7 @@ func (l *appendErrorLog) Append(_ context.Context, ev agent.Event) (int64, error
 	return int64(len(l.events)), nil
 }
 
-func (l *appendErrorLog) InsertAgent(_ context.Context, _ agent.AgentRow) error { return nil }
+func (l *appendErrorLog) InsertAgent(_ context.Context, _ agent.AgentRow) error    { return nil }
 func (l *appendErrorLog) InsertArtifact(_ context.Context, _ agent.Artifact) error { return nil }
 
 // emitResearchPhase swallowed-error branch. We fail every research-phase

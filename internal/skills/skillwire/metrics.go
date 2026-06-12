@@ -55,21 +55,21 @@ func NewMetrics() *Metrics {
 
 // Report is the printable snapshot.
 type Report struct {
-	TotalProposals   int       `json:"total_proposals"`
-	Accepted         int       `json:"accepted"`
-	Rejected         int       `json:"rejected"`
-	Pending          int       `json:"pending"`
-	AcceptanceRate   float64   `json:"acceptance_rate"`
-	ActiveSkills     int       `json:"active_skills"`
-	StaleSkills      int       `json:"stale_skills"`
-	ArchivedSkills   int       `json:"archived_skills"`
-	TotalReuseCount  int       `json:"total_reuse_count"`
-	Survival30dCount int       `json:"survival_30d_count"`
-	Survival60dCount int       `json:"survival_60d_count"`
-	Survival90dCount int       `json:"survival_90d_count"`
-	Survival30dRatio float64   `json:"survival_30d_ratio"`
-	Survival60dRatio float64   `json:"survival_60d_ratio"`
-	Survival90dRatio float64   `json:"survival_90d_ratio"`
+	TotalProposals   int     `json:"total_proposals"`
+	Accepted         int     `json:"accepted"`
+	Rejected         int     `json:"rejected"`
+	Pending          int     `json:"pending"`
+	AcceptanceRate   float64 `json:"acceptance_rate"`
+	ActiveSkills     int     `json:"active_skills"`
+	StaleSkills      int     `json:"stale_skills"`
+	ArchivedSkills   int     `json:"archived_skills"`
+	TotalReuseCount  int     `json:"total_reuse_count"`
+	Survival30dCount int     `json:"survival_30d_count"`
+	Survival60dCount int     `json:"survival_60d_count"`
+	Survival90dCount int     `json:"survival_90d_count"`
+	Survival30dRatio float64 `json:"survival_30d_ratio"`
+	Survival60dRatio float64 `json:"survival_60d_ratio"`
+	Survival90dRatio float64 `json:"survival_90d_ratio"`
 	// DecodeFailures is the count of approval-event payloads that
 	// failed to JSON-decode during the scan. Surfacing this matters
 	// because under-counts otherwise hide the very failure mode these

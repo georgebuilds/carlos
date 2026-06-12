@@ -4,12 +4,12 @@
 // URL (slice 11a). Three pluggable backends; the factory picks
 // based on environment / config:
 //
-//   1. Brave Search API (env BRAVE_API_KEY) - best quality + has an
-//      explicit "we welcome non-commercial use" stance.
-//   2. SearXNG (env SEARXNG_URL) - self-hosted metasearch; the
-//      privacy-respecting option for users who run their own.
-//   3. DuckDuckGo HTML scrape - no API key, best-effort fallback.
-//      Documented as fragile; HTML can change.
+//  1. Brave Search API (env BRAVE_API_KEY) - best quality + has an
+//     explicit "we welcome non-commercial use" stance.
+//  2. SearXNG (env SEARXNG_URL) - self-hosted metasearch; the
+//     privacy-respecting option for users who run their own.
+//  3. DuckDuckGo HTML scrape - no API key, best-effort fallback.
+//     Documented as fragile; HTML can change.
 //
 // The tool stays a thin adapter over the SearchBackend interface so a
 // future Bing / Kagi / Tavily backend slots in by writing one type.

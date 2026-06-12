@@ -38,8 +38,8 @@ func (m *Model) View() string {
 	border := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(colorAccent).
-		Width(w - 2).
-		Height(h - 2).
+		Width(w-2).
+		Height(h-2).
 		Padding(0, 1)
 
 	inner := m.renderInner(border.GetWidth()-2, border.GetHeight())
@@ -199,8 +199,8 @@ func (m *Model) renderFocusPane(w, h int) string {
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(colorSubtle).
 			Padding(1, 2).
-			Width(w - 2).
-			Height(h - 2).
+			Width(w-2).
+			Height(h-2).
 			Align(lipgloss.Center, lipgloss.Center).
 			Render(hint)
 		return card

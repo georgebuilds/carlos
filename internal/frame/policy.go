@@ -73,17 +73,17 @@ type Input struct {
 //
 // Precedence (highest first):
 //
-//	1. Env (CARLOS_FRAME) - wins when it names a real frame. If the
-//	   named frame is unknown, the env signal is dropped, the resolver
-//	   falls through to the next signal, and the returned Resolution
-//	   carries a Warning the caller should surface to the user.
-//	2. Flag (-f) - same shape as env, slightly lower precedence so
-//	   `CARLOS_FRAME=work carlos -f personal` honors the env. Same
-//	   unknown-name fall-through with a Warning.
-//	3. Cwd-hint match - exact one match wins; multiple matches fall through
-//	   to persisted-active with the candidates surfaced.
-//	4. Persisted active.
-//	5. Default ("personal" when default is empty).
+//  1. Env (CARLOS_FRAME) - wins when it names a real frame. If the
+//     named frame is unknown, the env signal is dropped, the resolver
+//     falls through to the next signal, and the returned Resolution
+//     carries a Warning the caller should surface to the user.
+//  2. Flag (-f) - same shape as env, slightly lower precedence so
+//     `CARLOS_FRAME=work carlos -f personal` honors the env. Same
+//     unknown-name fall-through with a Warning.
+//  3. Cwd-hint match - exact one match wins; multiple matches fall through
+//     to persisted-active with the candidates surfaced.
+//  4. Persisted active.
+//  5. Default ("personal" when default is empty).
 //
 // Returns ok=false only when cfg has no frames at all (a brand-new install
 // before MigrateFromLegacy has run); callers treat that as "run onboarding".

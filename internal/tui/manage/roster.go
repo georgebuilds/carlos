@@ -321,7 +321,7 @@ func stripCSI(s string) string {
 			for j < len(s) {
 				c := s[j]
 				j++
-				if (c >= 0x40 && c <= 0x7e) {
+				if c >= 0x40 && c <= 0x7e {
 					break
 				}
 			}

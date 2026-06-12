@@ -54,7 +54,7 @@ func TestOnboardScreenByName(t *testing.T) {
 		"daemon":    onboarding.ScreenDaemon,
 		"gateway":   onboarding.ScreenGateway,
 		"GATEWAY":   onboarding.ScreenGateway,
-		"  vault ": onboarding.ScreenVault,
+		"  vault ":  onboarding.ScreenVault,
 	}
 	for name, want := range cases {
 		got, ok := onboardScreenByName(name)

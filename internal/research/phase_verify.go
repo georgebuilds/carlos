@@ -9,13 +9,13 @@ import (
 
 // runVerify runs two independent quality signals on the synthesis:
 //
-//   1. CitationAuditor - pure-Go heuristic that scores claim-by-
-//      claim citation coverage. Always runs; cheap; deterministic.
-//   2. Verifier (LLM judge) - only runs when e.Judge is configured.
-//      The judge is intentionally a separate provider (per the
-//      "Too Consistent to Detect" finding); when no separate judge
-//      is available, we skip the LLM pass and rely on the
-//      heuristic alone.
+//  1. CitationAuditor - pure-Go heuristic that scores claim-by-
+//     claim citation coverage. Always runs; cheap; deterministic.
+//  2. Verifier (LLM judge) - only runs when e.Judge is configured.
+//     The judge is intentionally a separate provider (per the
+//     "Too Consistent to Detect" finding); when no separate judge
+//     is available, we skip the LLM pass and rely on the
+//     heuristic alone.
 //
 // Verifier failures (malformed response, provider down, judge ran
 // out of budget) are NOT fatal - the synthesis still ships; the

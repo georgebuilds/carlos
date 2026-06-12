@@ -146,8 +146,8 @@ func TestCompactSlash_HappyPath(t *testing.T) {
 	}
 	apply(entryUserMessage, "what is Go?")
 	apply(entryAssistantMessage, "Go is a statically-typed language.")
-	apply(entryToolCall, "ignored")     // skipped — non-conversational
-	apply(entryStateChange, "ignored")  // skipped — non-conversational
+	apply(entryToolCall, "ignored")    // skipped — non-conversational
+	apply(entryStateChange, "ignored") // skipped — non-conversational
 	apply(entryUserMessage, "tell me about generics")
 	apply(entryAssistantMessage, "Generics landed in 1.18.")
 

@@ -337,11 +337,11 @@ type SharedProvider struct {
 
 // ResolveProvider implements the pantry-with-overrides rule:
 //
-//	1. Pick the frame's Provider name; fall back to defaultProvider when empty.
-//	2. Start with the shared pantry entry for that provider.
-//	3. Apply the frame's ProviderOverride for the same vendor on top.
-//	4. Model = frame.Model when set, else override.DefaultModel, else
-//	   shared.DefaultModel.
+//  1. Pick the frame's Provider name; fall back to defaultProvider when empty.
+//  2. Start with the shared pantry entry for that provider.
+//  3. Apply the frame's ProviderOverride for the same vendor on top.
+//  4. Model = frame.Model when set, else override.DefaultModel, else
+//     shared.DefaultModel.
 //
 // Returns ("", _, false) when neither the frame nor the default names a
 // provider - callers prompt the user / re-run onboarding.

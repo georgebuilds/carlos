@@ -36,13 +36,13 @@
 //
 // # Phase wiring
 //
-// - Phase 4h (this file): API + a list-pending query.
-// - Phase 4 manage TUI: a queue pane that ListPending → renders → on
-//   keypress calls Accept / Reject.
-// - Phase 6 skill induction: every PROPOSAL.md write follows up with
-//   ProposeApproval. Acceptance promotes the skill to active.
-// - Phase 7 plan/preview/apply: every plan write follows up with
-//   ProposeApproval. Acceptance triggers the worktree Apply.
+//   - Phase 4h (this file): API + a list-pending query.
+//   - Phase 4 manage TUI: a queue pane that ListPending → renders → on
+//     keypress calls Accept / Reject.
+//   - Phase 6 skill induction: every PROPOSAL.md write follows up with
+//     ProposeApproval. Acceptance promotes the skill to active.
+//   - Phase 7 plan/preview/apply: every plan write follows up with
+//     ProposeApproval. Acceptance triggers the worktree Apply.
 package agent
 
 import (

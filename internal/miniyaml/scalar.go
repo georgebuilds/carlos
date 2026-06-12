@@ -89,7 +89,7 @@ func parseInt(s string) (int64, bool) {
 
 // tryUnquote reports whether s is a quoted string and, if so, returns
 // the unquoted value.  We support both `"..."` (with backslash escapes)
-// and `'...'` (with `''` as the escape for a literal apostrophe).
+// and `'...'` (with `”` as the escape for a literal apostrophe).
 func tryUnquote(s string) (string, bool) {
 	if len(s) < 2 {
 		return "", false
@@ -145,7 +145,7 @@ func unquoteDouble(inner string) string {
 	return b.String()
 }
 
-// unquoteSingle handles YAML single-quoted strings: `''` is the only
+// unquoteSingle handles YAML single-quoted strings: `”` is the only
 // escape and represents one literal `'`.
 func unquoteSingle(inner string) string {
 	if !strings.Contains(inner, "''") {

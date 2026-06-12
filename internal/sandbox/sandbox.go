@@ -131,9 +131,9 @@ const maxOutputBytes = 8 * 1024
 // supervisor is expected to render output as-is and the cap is a hard
 // safety belt, not a UX feature).
 type capWriter struct {
-	buf      bytes.Buffer
-	max      int
-	dropped  int
+	buf     bytes.Buffer
+	max     int
+	dropped int
 }
 
 func newCapWriter(max int) *capWriter { return &capWriter{max: max} }
@@ -221,4 +221,3 @@ func runCommand(ctx context.Context, dir string, cmd []string, stdin io.Reader) 
 	}
 	return outW.Bytes(), errW.Bytes(), exit, waitErr
 }
-

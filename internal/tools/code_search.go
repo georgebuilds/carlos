@@ -119,10 +119,10 @@ type codeSearchInput struct {
 // decide which entries to read and which to ignore (e.g. a 404 on
 // Codewiki when the repo wasn't indexed yet).
 type codeSearchResult struct {
-	Query    string                  `json:"query,omitempty"`
-	Repo     string                  `json:"repo"`
-	Services []codeSearchServiceHit  `json:"services"`
-	Note     string                  `json:"note,omitempty"`
+	Query    string                 `json:"query,omitempty"`
+	Repo     string                 `json:"repo"`
+	Services []codeSearchServiceHit `json:"services"`
+	Note     string                 `json:"note,omitempty"`
 }
 
 type codeSearchServiceHit struct {

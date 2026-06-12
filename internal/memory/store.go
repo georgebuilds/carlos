@@ -131,7 +131,7 @@ func applySchema(db *sql.DB) error {
 //   - frameStateAbsent: the summaries table exists but has no `frame`
 //     column at all. The simplest legacy shape, predates Phase F-13.
 //   - frameStateNotNull: the summaries table has `frame TEXT NOT NULL
-//     DEFAULT ''` (current production shape). Legacy unframed rows
+//     DEFAULT ”` (current production shape). Legacy unframed rows
 //     stamped with "" must be mapped to NULL.
 //   - frameStateNullable: already migrated; no-op.
 //

@@ -396,9 +396,9 @@ func renderToolStrip(es []transcriptEntry, width int) string {
 	// recovers ~10-20 cells of preview room on mid-width viewports.
 	if len(es) == 1 && es[0].toolInput != "" && !es[0].isSkill {
 		muted := lipgloss.NewStyle().Foreground(colorMuted)
-		const gapLeftMeta = 1   // composeStripLine's minimum LEFT|META separator
-		const gapMetaHint = 2   // fixed pad between meta and hint
-		const previewSep = 3    // " · " between segment and preview
+		const gapLeftMeta = 1 // composeStripLine's minimum LEFT|META separator
+		const gapMetaHint = 2 // fixed pad between meta and hint
+		const previewSep = 3  // " · " between segment and preview
 		previewMax := contentW - lipgloss.Width(left) - lipgloss.Width(meta) - lipgloss.Width(hint) - gapLeftMeta - gapMetaHint - previewSep
 		if previewMax >= 10 {
 			preview := oneLine(es[0].toolInput, previewMax)

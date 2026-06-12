@@ -265,10 +265,10 @@ func TestRouter_WaitForDecisionLogsAcceptFailure(t *testing.T) {
 	}
 
 	cases := []struct {
-		name      string
-		decision  gateway.Decision
-		wantMsg   string
-		wantKind  string
+		name       string
+		decision   gateway.Decision
+		wantMsg    string
+		wantKind   string
 		artifactID string
 	}{
 		{

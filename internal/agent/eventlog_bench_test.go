@@ -77,9 +77,9 @@ func TestEventLogLoadProfile(t *testing.T) {
 
 	// --- Workload definition --------------------------------------------------
 	const (
-		steadyRatePerSec = 100               // sustained
-		steadyDuration   = 2 * time.Second   // 200 events
-		burstSize        = 1000              // simulates 1000 token coalescing flushes back-to-back
+		steadyRatePerSec = 100                  // sustained
+		steadyDuration   = 2 * time.Second      // 200 events
+		burstSize        = 1000                 // simulates 1000 token coalescing flushes back-to-back
 		burstCadence     = 1 * time.Millisecond // ~1000/s
 		numReaders       = 4
 	)

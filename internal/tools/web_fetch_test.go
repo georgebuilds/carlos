@@ -55,7 +55,7 @@ func fastTestRetryPolicy() *retryPolicy {
 func (t *WebFetchTool) routeViaTestServer(srv *httptest.Server) {
 	su, _ := url.Parse(srv.URL)
 	t.Client = &http.Client{
-		Timeout: 3 * time.Second,
+		Timeout:   3 * time.Second,
 		Transport: &rewritingTransport{toScheme: su.Scheme, toHost: su.Host, base: srv.Client().Transport},
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if len(via) >= defaultWebFetchMaxRedirects {
@@ -515,9 +515,9 @@ func TestWebFetch_BatchedHappyPath(t *testing.T) {
 func TestWebFetch_BatchedValidation(t *testing.T) {
 	tool := newWebFetchToolForHost(t)
 	cases := []struct {
-		name       string
-		body       string
-		errFrag    string
+		name    string
+		body    string
+		errFrag string
 	}{
 		{
 			name:    "both url and urls set",

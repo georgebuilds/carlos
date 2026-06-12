@@ -57,7 +57,7 @@ func (p *Provider) WithStopAfter(n int) *Provider {
 	}
 }
 
-func (p *Provider) Name() string                       { return p.name }
+func (p *Provider) Name() string                         { return p.name }
 func (p *Provider) Capabilities() providers.Capabilities { return p.caps }
 
 // LastRequest returns a copy of the most recent providers.Request the

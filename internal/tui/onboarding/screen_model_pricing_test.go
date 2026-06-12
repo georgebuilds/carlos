@@ -46,12 +46,12 @@ func TestModelDropdown_OllamaRendersFreePrice(t *testing.T) {
 // decimals.
 func TestFormatPrice_Variants(t *testing.T) {
 	cases := map[float64]string{
-		0:     "$0",
-		3:     "$3",
-		15:    "$15",
-		0.10:  "$0.10",
-		0.05:  "$0.05",
-		1.25:  "$1.25",
+		0:    "$0",
+		3:    "$3",
+		15:   "$15",
+		0.10: "$0.10",
+		0.05: "$0.05",
+		1.25: "$1.25",
 	}
 	for in, want := range cases {
 		if got := formatPrice(in); got != want {

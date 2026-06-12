@@ -194,4 +194,3 @@ func TestBuildResearchEngine_NilArgs(t *testing.T) {
 		t.Error("expected nil engine when registry is nil")
 	}
 }
-

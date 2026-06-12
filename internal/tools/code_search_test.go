@@ -240,9 +240,9 @@ func TestCodeSearch_QueryRoundTrips(t *testing.T) {
 
 func TestSplitOwnerRepo_AcceptsVariants(t *testing.T) {
 	cases := map[string][2]string{
-		"georgebuilds/carlos":            {"georgebuilds", "carlos"},
-		"georgebuilds/carlos/":           {"georgebuilds", "carlos"},
-		"github.com/georgebuilds/carlos": {"georgebuilds", "carlos"},
+		"georgebuilds/carlos":                    {"georgebuilds", "carlos"},
+		"georgebuilds/carlos/":                   {"georgebuilds", "carlos"},
+		"github.com/georgebuilds/carlos":         {"georgebuilds", "carlos"},
 		"https://github.com/georgebuilds/carlos": {"georgebuilds", "carlos"},
 	}
 	for in, want := range cases {

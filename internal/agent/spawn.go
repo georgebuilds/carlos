@@ -15,21 +15,21 @@
 //     registers the agent in s.children.
 //  3. Spawn launches a goroutine that:
 //     a. Transitions the agent spawning→running (state_change
-//        kind=transition + UpdateAgentState).
+//     kind=transition + UpdateAgentState).
 //     b. Calls agent.Run with the child's restricted tool registry,
-//        AutoApprover (subagents bypass user prompts - see KNOWN
-//        LIMITATION below), MaxIterations = contract.MaxTurns (or 25
-//        default), MaxWallClock honored via the context deadline.
+//     AutoApprover (subagents bypass user prompts - see KNOWN
+//     LIMITATION below), MaxIterations = contract.MaxTurns (or 25
+//     default), MaxWallClock honored via the context deadline.
 //     c. On Run completion, classifies success vs failure:
-//        - clean return → state_change to=done
-//        - error or context.Canceled → state_change to=failed
+//     - clean return → state_change to=done
+//     - error or context.Canceled → state_change to=failed
 //     d. Persists the final assistant turn to disk
-//        (~/.carlos/runs/<session>/agents/<id>.final.json) - a
-//        minimal write Slice 3d will replace with the proper artifact
-//        helper.
+//     (~/.carlos/runs/<session>/agents/<id>.final.json) - a
+//     minimal write Slice 3d will replace with the proper artifact
+//     helper.
 //     e. Stops the heartbeat ticker.
 //     f. Removes the agent from s.children (releasing a concurrency
-//        slot for the parent's next Spawn).
+//     slot for the parent's next Spawn).
 //     g. Sends SpawnResult on the channel and closes it.
 //
 // KNOWN LIMITATION (v0): subagents bypass user prompts via

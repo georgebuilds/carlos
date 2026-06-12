@@ -19,13 +19,13 @@ import (
 // scripted stream on each Stream() call. Lets us simulate the multi-turn
 // loop: turn 1 emits a tool_use; turn 2 emits text + end_turn.
 type sequenceProvider struct {
-	mu     sync.Mutex
+	mu      sync.Mutex
 	scripts [][]providers.Event
-	calls  int
+	calls   int
 	lastReq providers.Request
 }
 
-func (p *sequenceProvider) Name() string                       { return "seq" }
+func (p *sequenceProvider) Name() string                         { return "seq" }
 func (p *sequenceProvider) Capabilities() providers.Capabilities { return providers.Capabilities{} }
 
 func (p *sequenceProvider) Stream(ctx context.Context, req providers.Request) (<-chan providers.Event, error) {
@@ -57,9 +57,9 @@ func (p *sequenceProvider) Stream(ctx context.Context, req providers.Request) (<
 // can assert the loop wired the input through correctly.
 type echoTool struct{}
 
-func (echoTool) Name() string         { return "echo" }
-func (echoTool) Description() string  { return "echoes input" }
-func (echoTool) Schema() []byte       { return []byte(`{"type":"object"}`) }
+func (echoTool) Name() string        { return "echo" }
+func (echoTool) Description() string { return "echoes input" }
+func (echoTool) Schema() []byte      { return []byte(`{"type":"object"}`) }
 func (echoTool) Execute(_ context.Context, in []byte) ([]byte, error) {
 	return []byte("echoed: " + string(in)), nil
 }
@@ -454,8 +454,10 @@ type errorThenWedgeProvider struct {
 	streamDone chan struct{}
 }
 
-func (p *errorThenWedgeProvider) Name() string                         { return "wedge" }
-func (p *errorThenWedgeProvider) Capabilities() providers.Capabilities { return providers.Capabilities{} }
+func (p *errorThenWedgeProvider) Name() string { return "wedge" }
+func (p *errorThenWedgeProvider) Capabilities() providers.Capabilities {
+	return providers.Capabilities{}
+}
 
 func (p *errorThenWedgeProvider) Stream(ctx context.Context, _ providers.Request) (<-chan providers.Event, error) {
 	// Buffer cap small enough that producing more than cap events

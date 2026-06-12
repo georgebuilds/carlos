@@ -189,4 +189,3 @@ func TestGrep_SchemaIsValidJSON(t *testing.T) {
 		}
 	}
 }
-

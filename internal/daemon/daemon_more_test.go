@@ -703,7 +703,7 @@ func TestResolveFrameForFire_ProviderBuilderErrorFallsBack(t *testing.T) {
 // non-nil instance without spinning up a real backend.
 type fakeProvider struct{ name string }
 
-func (f *fakeProvider) Name() string                     { return f.name }
+func (f *fakeProvider) Name() string                         { return f.name }
 func (f *fakeProvider) Capabilities() providers.Capabilities { return providers.Capabilities{} }
 func (f *fakeProvider) Stream(context.Context, providers.Request) (<-chan providers.Event, error) {
 	ch := make(chan providers.Event)

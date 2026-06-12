@@ -4,7 +4,7 @@
 // SearchBackend interface defined in web_search.go. Hits the public
 // REST search endpoint:
 //
-//   https://{lang}.wikipedia.org/w/rest.php/v1/search/page
+//	https://{lang}.wikipedia.org/w/rest.php/v1/search/page
 //
 // The response is well-shaped JSON (no HTML scraping), and excerpts
 // come pre-marked with <span class="searchmatch"> wrappers around the

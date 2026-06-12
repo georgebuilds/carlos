@@ -75,7 +75,7 @@ type routePlanEnvelope struct {
 // RoutingEnabled toggle:
 //   - nil    → auto: true if Search is *tools.MultiBackend, else false
 //   - *true  → always route (even with a single backend; just tailors
-//              query strings)
+//     query strings)
 //   - *false → skip the LLM call entirely; default-plan straight away
 func (e *Engine) runRoute(ctx context.Context, report *Report) (err error) {
 	t0 := e.beginPhase("route")
@@ -470,4 +470,3 @@ func proportionalReduce(searches []PlannedSearch, cap int) []PlannedSearch {
 func normaliseSubQuery(s string) string {
 	return strings.ToLower(strings.TrimSpace(s))
 }
-

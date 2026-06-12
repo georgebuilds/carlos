@@ -49,13 +49,13 @@ func PathsFor(home, frameName string) Paths {
 // failed move does not abort the rest, but every failure is appended
 // so the caller can surface them.
 type MigrationReport struct {
-	ResearchMoved   int
-	JobsMoved       int
-	WorktreesMoved  int
-	ResearchSkipped int
-	JobsSkipped     int
+	ResearchMoved    int
+	JobsMoved        int
+	WorktreesMoved   int
+	ResearchSkipped  int
+	JobsSkipped      int
 	WorktreesSkipped int
-	Errors          []error
+	Errors           []error
 }
 
 // HasMovement reports whether the migration actually did anything. Used

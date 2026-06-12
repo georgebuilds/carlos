@@ -322,4 +322,3 @@ func renderSkill(s *Skill) ([]byte, error) {
 	}
 	return buf.Bytes(), nil
 }
-

@@ -25,7 +25,7 @@ func (r *fakeRows) Next() bool {
 }
 
 func (r *fakeRows) Scan(dest ...any) error { return r.scanErr }
-func (r *fakeRows) Err() error              { return r.finalErr }
+func (r *fakeRows) Err() error             { return r.finalErr }
 
 // TestScanSummaries_ScanError covers the Scan-error branch: a row
 // surfaces, Scan fails, the wrapped error reaches the caller.

@@ -387,7 +387,6 @@ func TestYAMLShape(t *testing.T) {
 	}
 }
 
-
 // TestLoad_MigratesLegacyConfigToPersonalFrame verifies the Phase F
 // migration: a pre-frames YAML loads with a synthetic personal frame
 // derived from default_provider + that providers entries default_model.

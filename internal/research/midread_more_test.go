@@ -57,7 +57,7 @@ func TestRunRead_PerSourceErrorContinues(t *testing.T) {
 			"sub1", // decompose
 			// 2nd call will error
 			`{"text":"second","relevance":7}`, // read s2
-			"synth body cites [p1]",            // synthesize
+			"synth body cites [p1]",           // synthesize
 		},
 		failOn: 2,
 	}

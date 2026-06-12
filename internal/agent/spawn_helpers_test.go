@@ -17,9 +17,9 @@ import (
 // Minimal stub tool for the helper tests.
 type stubHelperTool struct{ name string }
 
-func (s stubHelperTool) Name() string                          { return s.name }
-func (s stubHelperTool) Description() string                   { return "stub " + s.name }
-func (s stubHelperTool) Schema() []byte                        { return []byte(`{"type":"object"}`) }
+func (s stubHelperTool) Name() string                                    { return s.name }
+func (s stubHelperTool) Description() string                             { return "stub " + s.name }
+func (s stubHelperTool) Schema() []byte                                  { return []byte(`{"type":"object"}`) }
 func (s stubHelperTool) Execute(context.Context, []byte) ([]byte, error) { return []byte("ok"), nil }
 
 var _ tools.Tool = stubHelperTool{}

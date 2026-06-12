@@ -202,7 +202,7 @@ func TestUnquoteDouble_AllEscapes(t *testing.T) {
 	}
 }
 
-// TestUnquoteSingle_NoEscape preserves a literal-no-`''` single-quoted
+// TestUnquoteSingle_NoEscape preserves a literal-no-`”` single-quoted
 // value via the fast path.
 func TestUnquoteSingle_NoEscape(t *testing.T) {
 	got, err := Unmarshal([]byte("k: 'plain'\n"))

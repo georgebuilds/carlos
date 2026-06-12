@@ -69,10 +69,10 @@ type gatewayModel struct {
 	choice       int // index for radio-style pickers
 
 	// ntfy field state.
-	ntfyField   ntfyField
-	ntfyServer  string
-	ntfyTopic   string
-	ntfyKey     string
+	ntfyField  ntfyField
+	ntfyServer string
+	ntfyTopic  string
+	ntfyKey    string
 
 	// telegram field state.
 	tgField    telegramField

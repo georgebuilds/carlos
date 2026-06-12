@@ -9,5 +9,5 @@ type Gateway interface {
 
 type CLI struct{}
 
-func (CLI) Name() string                       { return "cli" }
-func (CLI) Run(ctx context.Context) error      { <-ctx.Done(); return ctx.Err() }
+func (CLI) Name() string                  { return "cli" }
+func (CLI) Run(ctx context.Context) error { <-ctx.Done(); return ctx.Err() }

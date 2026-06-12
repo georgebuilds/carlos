@@ -48,18 +48,18 @@ type notesGetInput struct {
 // notesGetResponse is the success envelope. We omit Body when empty so
 // the default-no-body response stays small.
 type notesGetResponse struct {
-	Path        string           `json:"path"`
-	Vault       string           `json:"vault"`
-	Title       string           `json:"title"`
-	Frontmatter map[string]any   `json:"frontmatter"`
-	Outline     []outlineEntry   `json:"outline"`
-	Tags        []string         `json:"tags"`
-	LinksOut    int              `json:"links_out"`
-	LinksIn     int              `json:"links_in"`
-	Size        int64            `json:"size"`
-	Modified    string           `json:"modified"`
-	Section     string           `json:"section,omitempty"`
-	Body        string           `json:"body,omitempty"`
+	Path        string         `json:"path"`
+	Vault       string         `json:"vault"`
+	Title       string         `json:"title"`
+	Frontmatter map[string]any `json:"frontmatter"`
+	Outline     []outlineEntry `json:"outline"`
+	Tags        []string       `json:"tags"`
+	LinksOut    int            `json:"links_out"`
+	LinksIn     int            `json:"links_in"`
+	Size        int64          `json:"size"`
+	Modified    string         `json:"modified"`
+	Section     string         `json:"section,omitempty"`
+	Body        string         `json:"body,omitempty"`
 }
 
 type outlineEntry struct {

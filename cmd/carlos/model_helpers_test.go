@@ -118,8 +118,8 @@ func TestModelCompletionsFor_AfterColonReturnsModels(t *testing.T) {
 		t.Fatalf("expected ≥2 entries (default + curated); got %v", got)
 	}
 	wantContains := []string{
-		"anthropic:claude-opus-4-7",        // configured default
-		"anthropic:claude-sonnet-4-6",      // curated workhorse
+		"anthropic:claude-opus-4-7",   // configured default
+		"anthropic:claude-sonnet-4-6", // curated workhorse
 	}
 	for _, want := range wantContains {
 		found := false

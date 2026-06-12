@@ -8,11 +8,11 @@
 //
 // CitationAuditor scans an artifact body for two things:
 //
-//   1. Citations - every URL, file path, and bracketed numeric ref
-//      that looks like a source pointer.
-//   2. Claims - every sentence that carries factual signal (numbers,
-//      dates, "according to" phrases, proper nouns capitalised
-//      mid-sentence).
+//  1. Citations - every URL, file path, and bracketed numeric ref
+//     that looks like a source pointer.
+//  2. Claims - every sentence that carries factual signal (numbers,
+//     dates, "according to" phrases, proper nouns capitalised
+//     mid-sentence).
 //
 // It then matches claims to citations by proximity: a claim is
 // "supported" if there is at least one citation within ±1 sentence of
@@ -115,6 +115,7 @@ var urlRE = regexp.MustCompile(`https?://[^\s)\]}>"'` + "`" + `]+`)
 // pathRE matches POSIX-ish file paths used as citations. We accept:
 //   - absolute paths starting with /
 //   - dot-relative paths starting with ./ or ../
+//
 // We do NOT accept bare relative names like "foo.txt" because too
 // many false positives - names of things in regular prose.
 var pathRE = regexp.MustCompile(`(?:^|[\s(\[])((?:/|\.{1,2}/)[A-Za-z0-9_./\-]+)`)
@@ -192,9 +193,9 @@ func (c *CitationAuditor) Audit(content []byte) Audit {
 	//    sentences have any citation in them; record proximity to
 	//    nearest sentence with a citation.
 	type info struct {
-		text       string
-		isClaim    bool
-		hasCite    bool
+		text    string
+		isClaim bool
+		hasCite bool
 	}
 	rows := make([]info, len(sentences))
 	for i, s := range sentences {

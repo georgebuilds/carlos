@@ -58,16 +58,16 @@ func TestParseFormulaVersion_AcceptsWhitespaceVariations(t *testing.T) {
 
 func TestNormalizeSemver(t *testing.T) {
 	cases := map[string]string{
-		"0.7.18":         "0.7.18",
-		"v0.7.18":        "0.7.18",
-		"v0.7.18+dirty":  "0.7.18",
-		"v0.7.18-rc1":    "0.7.18",
-		"  v0.7.18  ":    "0.7.18",
-		"dev":            "",   // non-numeric
-		"abc1234":        "",   // commit hash
-		"v0.7":           "0.7",
-		"":               "",
-		"v":              "",
+		"0.7.18":        "0.7.18",
+		"v0.7.18":       "0.7.18",
+		"v0.7.18+dirty": "0.7.18",
+		"v0.7.18-rc1":   "0.7.18",
+		"  v0.7.18  ":   "0.7.18",
+		"dev":           "", // non-numeric
+		"abc1234":       "", // commit hash
+		"v0.7":          "0.7",
+		"":              "",
+		"v":             "",
 	}
 	for in, want := range cases {
 		if got := normalizeSemver(in); got != want {
@@ -81,16 +81,16 @@ func TestSemverGreater(t *testing.T) {
 		a, b string
 		want bool
 	}{
-		{"0.7.18", "0.7.17", true},  // patch newer
-		{"0.7.17", "0.7.18", false}, // patch older
-		{"0.8.0", "0.7.99", true},   // minor newer
-		{"1.0.0", "0.9.99", true},   // major newer
-		{"0.7.18", "0.7.18", false}, // equal
-		{"v0.7.18", "0.7.17", true}, // mixed v-prefix
+		{"0.7.18", "0.7.17", true},         // patch newer
+		{"0.7.17", "0.7.18", false},        // patch older
+		{"0.8.0", "0.7.99", true},          // minor newer
+		{"1.0.0", "0.9.99", true},          // major newer
+		{"0.7.18", "0.7.18", false},        // equal
+		{"v0.7.18", "0.7.17", true},        // mixed v-prefix
 		{"v0.7.18+dirty", "0.7.18", false}, // build metadata stripped
-		{"0.8", "0.7.18", true},     // shorter side wins on segment compare
-		{"dev", "0.7.18", false},    // non-semver → false
-		{"0.7.18", "dev", false},    // non-semver → false
+		{"0.8", "0.7.18", true},            // shorter side wins on segment compare
+		{"dev", "0.7.18", false},           // non-semver → false
+		{"0.7.18", "dev", false},           // non-semver → false
 	}
 	for _, tc := range cases {
 		got := semverGreater(tc.a, tc.b)

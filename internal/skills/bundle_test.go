@@ -58,8 +58,8 @@ func TestLoadLibrary_bundleDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 	files := map[string]string{
-		"INDEX.md":   "name: calendar\ndescription: entry point\n",
-		"caldav.md":  "name: calendar-caldav\ndescription: speak caldav\nbackend: caldav\n",
+		"INDEX.md":    "name: calendar\ndescription: entry point\n",
+		"caldav.md":   "name: calendar-caldav\ndescription: speak caldav\nbackend: caldav\n",
 		"ics-file.md": "name: calendar-ics-file\ndescription: read/write ics\nbackend: ics\n",
 	}
 	for n, fm := range files {

@@ -51,9 +51,9 @@ import (
 type VerificationDecision string
 
 const (
-	VerificationAccept         VerificationDecision = "accept"
-	VerificationNeedsRevision  VerificationDecision = "needs_revision"
-	VerificationReject         VerificationDecision = "reject"
+	VerificationAccept        VerificationDecision = "accept"
+	VerificationNeedsRevision VerificationDecision = "needs_revision"
+	VerificationReject        VerificationDecision = "reject"
 )
 
 // VerificationReport is the post-verification record. It is itself

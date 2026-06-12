@@ -16,16 +16,16 @@ import (
 
 func TestIsShellSubmission(t *testing.T) {
 	cases := map[string]bool{
-		"!ls":       true,
-		"  !ls":     true,
-		"\t!cargo":  true,
-		"!":         false, // empty after the bang
-		"! ":        false,
-		"":          false,
-		"ls":        false,
-		"hello!":    false,
-		"!\n":       false,
-		"\t  ! ls":  true,
+		"!ls":      true,
+		"  !ls":    true,
+		"\t!cargo": true,
+		"!":        false, // empty after the bang
+		"! ":       false,
+		"":         false,
+		"ls":       false,
+		"hello!":   false,
+		"!\n":      false,
+		"\t  ! ls": true,
 	}
 	for in, want := range cases {
 		if got := isShellSubmission(in); got != want {
@@ -36,13 +36,13 @@ func TestIsShellSubmission(t *testing.T) {
 
 func TestHasShellPrefix(t *testing.T) {
 	cases := map[string]bool{
-		"!":     true,
-		"! ":    true,
-		"!ls":   true,
-		"  !":   true,
-		"ls":    false,
-		"":      false,
-		"hi!":   false,
+		"!":   true,
+		"! ":  true,
+		"!ls": true,
+		"  !": true,
+		"ls":  false,
+		"":    false,
+		"hi!": false,
 	}
 	for in, want := range cases {
 		if got := hasShellPrefix(in); got != want {

@@ -613,7 +613,7 @@ func TestAppendSummary_NamedFrame_StoresString(t *testing.T) {
 }
 
 // TestMigration_LegacyEmptyToNull stands up a current-production-shape
-// summaries table (frame TEXT NOT NULL DEFAULT '') with a few rows,
+// summaries table (frame TEXT NOT NULL DEFAULT ”) with a few rows,
 // closes the DB, reopens via OpenStore (which runs the migration),
 // and confirms the empty-string frame rows now read back as NULL.
 func TestMigration_LegacyEmptyToNull(t *testing.T) {

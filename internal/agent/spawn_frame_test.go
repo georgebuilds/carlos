@@ -93,10 +93,12 @@ func (p *frameWriteProvider) Stream(ctx context.Context, req providers.Request) 
 // constant byte slice.
 type fakeWriteTool struct{}
 
-func (fakeWriteTool) Name() string                                      { return "write" }
-func (fakeWriteTool) Description() string                               { return "fake write" }
-func (fakeWriteTool) Schema() []byte                                    { return []byte(`{}`) }
-func (fakeWriteTool) Execute(_ context.Context, in []byte) ([]byte, error) { return []byte(`{"ok":true}`), nil }
+func (fakeWriteTool) Name() string        { return "write" }
+func (fakeWriteTool) Description() string { return "fake write" }
+func (fakeWriteTool) Schema() []byte      { return []byte(`{}`) }
+func (fakeWriteTool) Execute(_ context.Context, in []byte) ([]byte, error) {
+	return []byte(`{"ok":true}`), nil
+}
 
 // recordingApproverTSF (test-side fake) captures every ApproveToolCall
 // invocation so the test can assert (a) it was called (i.e. the builtin

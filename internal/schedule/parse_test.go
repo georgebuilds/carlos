@@ -139,9 +139,9 @@ func TestParseTime_AMPMBoundary(t *testing.T) {
 	// Confirm legitimate 12-hour inputs still parse correctly so we
 	// haven't tightened past the documented surface.
 	good := []struct {
-		in     string
-		wantH  int
-		wantM  int
+		in    string
+		wantH int
+		wantM int
 	}{
 		{"9am", 9, 0},
 		{"12pm", 12, 0},
@@ -179,16 +179,16 @@ func TestParseCron_AllFieldForms(t *testing.T) {
 		{"0 12 * * MON,WED,FRI", true},
 		{"0 0 1 JAN *", true},
 		{"0 0 * * sun", true},
-		{"60 0 * * *", false},   // minute out of range
-		{"* 24 * * *", false},   // hour out of range
-		{"* * 32 * *", false},   // dom out of range
-		{"* * * 13 *", false},   // month out of range
-		{"* * * * 7", false},    // dow out of range
-		{"5-1 * * * *", false},  // range backwards
-		{"*/0 * * * *", false},  // step zero
-		{"a * * * *", false},    // non-numeric
-		{"* * * *", false},      // too few fields
-		{"* * * * * *", false},  // too many
+		{"60 0 * * *", false},  // minute out of range
+		{"* 24 * * *", false},  // hour out of range
+		{"* * 32 * *", false},  // dom out of range
+		{"* * * 13 *", false},  // month out of range
+		{"* * * * 7", false},   // dow out of range
+		{"5-1 * * * *", false}, // range backwards
+		{"*/0 * * * *", false}, // step zero
+		{"a * * * *", false},   // non-numeric
+		{"* * * *", false},     // too few fields
+		{"* * * * * *", false}, // too many
 	}
 	for _, c := range cases {
 		t.Run(c.spec, func(t *testing.T) {

@@ -444,4 +444,3 @@ func (m *Model) cancelHighlightedJob() (tea.Model, tea.Cmd, bool) {
 		}
 	}, true
 }
-

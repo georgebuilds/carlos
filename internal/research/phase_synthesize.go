@@ -9,15 +9,15 @@ import (
 // synthesizeSystem is the system prompt for the writing phase. Three
 // constraints, in order of importance:
 //
-//   1. "Cite by ID using [pN] notation" - the citation auditor in the
-//      verify phase looks for [pN] patterns; without this the
-//      coverage score is meaningless.
-//   2. "Use ONLY information from the supplied passages" - bounds
-//      hallucination; the verifier can spot violations later but the
-//      prompt-side rule discourages them up front.
-//   3. "If the passages don't cover an aspect, say so explicitly" -
-//      ensures gaps in the research surface in the report rather than
-//      being smoothed over.
+//  1. "Cite by ID using [pN] notation" - the citation auditor in the
+//     verify phase looks for [pN] patterns; without this the
+//     coverage score is meaningless.
+//  2. "Use ONLY information from the supplied passages" - bounds
+//     hallucination; the verifier can spot violations later but the
+//     prompt-side rule discourages them up front.
+//  3. "If the passages don't cover an aspect, say so explicitly" -
+//     ensures gaps in the research surface in the report rather than
+//     being smoothed over.
 const synthesizeSystem = `You write structured research reports from supplied passages. Every factual claim must be cited inline as [pN] where N matches a passage ID from the supplied list. Use ONLY information from the supplied passages - do not introduce facts the passages don't support. If the passages don't cover an aspect of the question, say so explicitly rather than guessing. Output clean markdown.`
 
 // synthesizeUserTemplate is the user-message scaffold. %s = the

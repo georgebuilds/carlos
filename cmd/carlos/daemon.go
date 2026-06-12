@@ -23,8 +23,8 @@ import (
 	"time"
 
 	"github.com/georgebuilds/carlos/internal/config"
-	"github.com/georgebuilds/carlos/internal/farewell"
 	"github.com/georgebuilds/carlos/internal/daemon"
+	"github.com/georgebuilds/carlos/internal/farewell"
 	"github.com/georgebuilds/carlos/internal/frame"
 	"github.com/georgebuilds/carlos/internal/providers"
 	"github.com/georgebuilds/carlos/internal/providers/anthropic"

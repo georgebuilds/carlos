@@ -190,12 +190,12 @@ func TestExtractInputField(t *testing.T) {
 		field string
 		want  string
 	}{
-		"present":   {[]byte(`{"path":"/a/b"}`), "path", "/a/b"},
-		"trim":      {[]byte(`{"path":"  /x  "}`), "path", "/x"},
-		"missing":   {[]byte(`{"path":"/a"}`), "cmd", ""},
-		"non-str":   {[]byte(`{"n":42}`), "n", ""},
-		"empty":     {nil, "path", ""},
-		"bad-json":  {[]byte(`not json`), "path", ""},
+		"present":  {[]byte(`{"path":"/a/b"}`), "path", "/a/b"},
+		"trim":     {[]byte(`{"path":"  /x  "}`), "path", "/x"},
+		"missing":  {[]byte(`{"path":"/a"}`), "cmd", ""},
+		"non-str":  {[]byte(`{"n":42}`), "n", ""},
+		"empty":    {nil, "path", ""},
+		"bad-json": {[]byte(`not json`), "path", ""},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {

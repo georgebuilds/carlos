@@ -199,7 +199,7 @@ func newGatedProvider() *gatedProvider {
 	}
 }
 
-func (p *gatedProvider) Name() string                          { return "gated" }
+func (p *gatedProvider) Name() string                         { return "gated" }
 func (p *gatedProvider) Capabilities() providers.Capabilities { return providers.Capabilities{} }
 
 func (p *gatedProvider) Stream(ctx context.Context, req providers.Request) (<-chan providers.Event, error) {

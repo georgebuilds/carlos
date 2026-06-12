@@ -1286,4 +1286,3 @@ func waitFor(t *testing.T, d time.Duration, cond func() bool, msg string) {
 	}
 	t.Fatal(msg)
 }
-

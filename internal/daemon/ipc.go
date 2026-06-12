@@ -6,7 +6,7 @@
 // user-facing CLIs that manage the platform unit and talk to the
 // running daemon over a Unix domain socket at ~/.carlos/daemon.sock.
 //
-// IPC protocol
+// # IPC protocol
 //
 // The CLI dials the UDS and writes one newline-delimited JSON
 // request; the daemon writes one newline-delimited JSON reply and
@@ -80,12 +80,12 @@ type Response struct {
 	Msg string `json:"msg,omitempty"`
 
 	// Status-specific fields.
-	Schedules        []ScheduleStatus  `json:"schedules,omitempty"`
-	NextFireAt       *time.Time        `json:"next_fire_at,omitempty"`
-	StartedAt        *time.Time        `json:"started_at,omitempty"`
-	LastReloadAt     *time.Time        `json:"last_reload_at,omitempty"`
-	LastReloadStatus *ReloadStatus     `json:"last_reload_status,omitempty"`
-	ActiveCount      int               `json:"active_count,omitempty"`
+	Schedules        []ScheduleStatus `json:"schedules,omitempty"`
+	NextFireAt       *time.Time       `json:"next_fire_at,omitempty"`
+	StartedAt        *time.Time       `json:"started_at,omitempty"`
+	LastReloadAt     *time.Time       `json:"last_reload_at,omitempty"`
+	LastReloadStatus *ReloadStatus    `json:"last_reload_status,omitempty"`
+	ActiveCount      int              `json:"active_count,omitempty"`
 }
 
 // ReloadStatus is the outcome of the most recent Reload attempt. Nil on

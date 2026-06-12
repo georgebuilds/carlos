@@ -620,7 +620,7 @@ type counterAdapter struct {
 	stopOnce  sync.Once
 }
 
-func (a *counterAdapter) Name() gateway.Source               { return a.name }
+func (a *counterAdapter) Name() gateway.Source                               { return a.name }
 func (a *counterAdapter) OutboundCapabilities() gateway.OutboundCapabilities { return a.caps }
 func (a *counterAdapter) Send(_ context.Context, env gateway.OutboundEnvelope) (gateway.DeliveryReceipt, error) {
 	a.mu.Lock()

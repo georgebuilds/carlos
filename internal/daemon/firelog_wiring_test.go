@@ -344,4 +344,3 @@ func seedFireLog(t *testing.T, path, name string, slot time.Time) {
 		t.Fatalf("seedFireLog: close: %v", err)
 	}
 }
-

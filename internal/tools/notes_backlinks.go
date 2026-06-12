@@ -44,11 +44,11 @@ type notesBacklinksInput struct {
 }
 
 type notesBacklinksResponse struct {
-	Target    string           `json:"target"`
-	Vault     string           `json:"vault"`
-	Title     string           `json:"title"`
-	Backlinks []backlinkEntry  `json:"backlinks"`
-	Total     int              `json:"total"`
+	Target    string          `json:"target"`
+	Vault     string          `json:"vault"`
+	Title     string          `json:"title"`
+	Backlinks []backlinkEntry `json:"backlinks"`
+	Total     int             `json:"total"`
 }
 
 type backlinkEntry struct {

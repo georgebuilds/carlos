@@ -243,7 +243,7 @@ func TestRunSearch_EmptyRouting_LegacyFallback(t *testing.T) {
 	// Routing not populated → legacy default: one Search per sub-query
 	// with the verbatim query string and SourcesPerQuery max.
 	solo := &recordingBackend{
-		name: "solo",
+		name:    "solo",
 		results: []tools.SearchResult{{Rank: 1, URL: "https://example.com/s"}},
 	}
 	eng := &Engine{Search: solo, SourcesPerQuery: 4}
@@ -300,7 +300,7 @@ func TestRunSearch_AllPlannedFail_NoSourcesError(t *testing.T) {
 
 func TestRunSearch_ZeroMaxResultsFallsBackToSourcesPerQuery(t *testing.T) {
 	solo := &recordingBackend{
-		name: "solo",
+		name:    "solo",
 		results: []tools.SearchResult{{Rank: 1, URL: "https://example.com/s"}},
 	}
 	eng := &Engine{Search: solo, SourcesPerQuery: 7}

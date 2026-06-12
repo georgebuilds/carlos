@@ -88,8 +88,8 @@ func TestRunSearch_PicksTopAndDedupes(t *testing.T) {
 // runVerify branch where the budget is exhausted before the judge call.
 func TestRunVerify_BudgetExhaustedSkipsJudge(t *testing.T) {
 	prov := newScriptedProvider("p1",
-		"sub1",                                  // decompose
-		`{"text":"x","relevance":7}`,            // read
+		"sub1",                       // decompose
+		`{"text":"x","relevance":7}`, // read
 		"synthesis [p1] - claim that requires a citation", // synthesize
 	)
 	fs := &fakeSearch{defaultResults: []tools.SearchResult{{Rank: 1, URL: "https://a.example.com"}}}
@@ -230,8 +230,8 @@ func TestRunRead_NoPassagesErrors(t *testing.T) {
 // original question as a single sub-query.
 func TestRunDecompose_FallbackOnEmpty(t *testing.T) {
 	prov := newScriptedProvider("p1",
-		"",                              // decompose returns nothing parseable
-		`{"text":"x","relevance":7}`,    // read s1
+		"",                           // decompose returns nothing parseable
+		`{"text":"x","relevance":7}`, // read s1
 		"synth body [p1]",
 	)
 	fs := &fakeSearch{defaultResults: []tools.SearchResult{{Rank: 1, URL: "https://a.example.com"}}}

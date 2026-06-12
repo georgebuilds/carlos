@@ -13,10 +13,10 @@ type parser struct {
 	pos   int
 }
 
-func (p *parser) eof() bool       { return p.pos >= len(p.lines) }
-func (p *parser) peek() line      { return p.lines[p.pos] }
-func (p *parser) advance()        { p.pos++ }
-func (p *parser) hasMore() bool   { return p.pos < len(p.lines) }
+func (p *parser) eof() bool     { return p.pos >= len(p.lines) }
+func (p *parser) peek() line    { return p.lines[p.pos] }
+func (p *parser) advance()      { p.pos++ }
+func (p *parser) hasMore() bool { return p.pos < len(p.lines) }
 func (p *parser) lookback() *line { // for error messages
 	if p.pos == 0 {
 		return nil
