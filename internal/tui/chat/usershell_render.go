@@ -188,7 +188,9 @@ func annotatePaths(s string) string {
 			}
 		}
 		url += core
-		return fmt.Sprintf("\x1b]8;;%s\x1b\\%s\x1b]8;;\x1b\\", url, match)
+		// Shared OSC 8 emitter (linkify.go) - same sequence shape this
+		// function shipped with; the transcript linkifier reuses it.
+		return osc8(url, match)
 	})
 }
 

@@ -1297,7 +1297,10 @@ func renderEntry(e transcriptEntry, md *glamour.TermRenderer, snaps []ChildSnaps
 		// displayChips substitutes chip markers with their plain
 		// sigil+nickname form (slice I-1) BEFORE the wrap + style
 		// pass - replayed history shows the chip, never ‹p:ID›.
-		return renderAvatarBlock("👤", colon, displayChips(e.text, e.attachments), colorUser, width)
+		// linkifyText runs LAST (slice 9l) so paths/URLs the user
+		// typed become OSC 8 hyperlinks without the wrap pass ever
+		// slicing an injected escape.
+		return linkifyText(renderAvatarBlock("👤", colon, displayChips(e.text, e.attachments), colorUser, width))
 	case entryAssistantMessage:
 		return renderAssistantMarkdown(e.text, width, md)
 	case entryUserShell:

@@ -73,6 +73,10 @@ func renderAssistantMarkdown(text string, width int, md *glamour.TermRenderer) s
 	if body == "" {
 		return renderAvatarBlockPlain(text, width)
 	}
+	// OSC 8 hyperlinks (slice 9l) go in AFTER glamour: glamour re-wraps
+	// text and splits a pre-injected escape mid-sequence (verified).
+	// Post-render the line layout is final, so links never wrap.
+	body = linkifyText(body)
 	return foldAvatarOntoMarkdown(body)
 }
 
@@ -178,10 +182,12 @@ func stripVisibleLeadingMargin(line string, maxCells int) string {
 // renderAvatarBlockPlain is the fallback used when glamour is
 // unavailable or the markdown rendered to nothing. It mirrors the
 // pre-glamour avatar layout exactly so a glamour failure degrades
-// invisibly — same shape, no fancy styling.
+// invisibly — same shape, no fancy styling. Linkified after the wrap
+// (slice 9l) so wordWrap's byte-level hard-break for overlong words
+// can never split an injected escape.
 func renderAvatarBlockPlain(text string, width int) string {
 	colon := lipgloss.NewStyle().Foreground(colorMuted).Render(":")
-	return renderAvatarBlock("🧢", colon, text, colorAgent, width)
+	return linkifyText(renderAvatarBlock("🧢", colon, text, colorAgent, width))
 }
 
 // trimPerLineRight removes trailing spaces/tabs from each line
