@@ -8,3 +8,9 @@ ignore:
   # unit-testable. Underlying logic lives in internal/agent + internal/
   # research where it is covered.
   - "cmd/carlos/runtime_headless.go"
+  # Top-level CLI verb dispatch. main() is a switch where every arm calls
+  # os.Exit / exit(err) or launches a TUI/program, plus build-info version
+  # stamping - the same entry-point category as the two runtime files
+  # above. Pure sub-helpers (e.g. stripResumeMode) are pulled out and
+  # unit-tested in cmd/carlos.
+  - "cmd/carlos/main.go"
