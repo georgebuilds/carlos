@@ -61,6 +61,7 @@ func runSessionPicker(ctx context.Context) (string, error) {
 
 	pal := loadPickerPalette()
 	m := newSessionPickerModel(sessions, pal)
+	m.log = log
 	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithFilter(termscrub.FilterTerminalLeaks))
 	final, err := p.Run()
 	if err != nil {
@@ -112,22 +113,36 @@ type sessionPickerModel struct {
 	filtered []int // indices into all that match the current filter
 	cursor   int   // index into filtered
 
-	filter      string
-	filterMode  bool // true while the user is typing into the filter
-	cancelled   bool
-	chosen      string
+	filter     string
+	filterMode bool // true while the user is typing into the filter
+	cancelled  bool
+	chosen     string
 
 	width  int
 	height int
 	pal    theme.Palette
 	now    func() time.Time
+
+	// Delete-key state. The picker can hard-delete the focused
+	// session: the first 'x' arms a confirm (deleteArmed = the
+	// focused all-index), a second 'x' on the same row applies it,
+	// any other navigation disarms. status carries the result/error
+	// line shown in the footer area after an attempt.
+	log         *agent.SQLiteEventLog
+	deleteArmed int    // all-index armed for deletion, -1 when disarmed
+	status      string // transient result/error line, "" when none
+
+	// deleteOverride lets tests inject a delete stub in place of
+	// agent.DeleteSession (which needs a live log). nil in production.
+	deleteOverride func(context.Context, *agent.SQLiteEventLog, string, bool) (int, error)
 }
 
 func newSessionPickerModel(sessions []agent.Session, pal theme.Palette) sessionPickerModel {
 	m := sessionPickerModel{
-		all: sessions,
-		pal: pal,
-		now: time.Now,
+		all:         sessions,
+		pal:         pal,
+		now:         time.Now,
+		deleteArmed: -1,
 	}
 	m.refilter()
 	return m
@@ -175,26 +190,33 @@ func (m sessionPickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.cancelled = true
 			return m, tea.Quit
 		case "up", "k":
+			m.disarmDelete()
 			if m.cursor > 0 {
 				m.cursor--
 			}
 			return m, nil
 		case "down", "j":
+			m.disarmDelete()
 			if m.cursor < len(m.filtered)-1 {
 				m.cursor++
 			}
 			return m, nil
 		case "g", "home":
+			m.disarmDelete()
 			m.cursor = 0
 			return m, nil
 		case "G", "end":
+			m.disarmDelete()
 			if len(m.filtered) > 0 {
 				m.cursor = len(m.filtered) - 1
 			}
 			return m, nil
 		case "/":
+			m.disarmDelete()
 			m.filterMode = true
 			return m, nil
+		case "x", "d":
+			return m.handleDeleteKey(), nil
 		case "enter":
 			return m.commitSelection()
 		}
@@ -210,6 +232,95 @@ func (m sessionPickerModel) commitSelection() (tea.Model, tea.Cmd) {
 	}
 	m.chosen = m.all[m.filtered[m.cursor]].ID
 	return m, tea.Quit
+}
+
+// focusedIndex returns the all-index of the currently focused row, or
+// -1 when the filtered list is empty.
+func (m sessionPickerModel) focusedIndex() int {
+	if len(m.filtered) == 0 || m.cursor < 0 || m.cursor >= len(m.filtered) {
+		return -1
+	}
+	return m.filtered[m.cursor]
+}
+
+// disarmDelete clears any pending delete-confirm. Called on navigation
+// so an armed 'x' doesn't linger and fire on a row the user moved away
+// from. Leaves any prior status line in place - it's informational.
+func (m *sessionPickerModel) disarmDelete() {
+	m.deleteArmed = -1
+}
+
+// handleDeleteKey implements the two-press delete-confirm on the
+// focused row. The first press arms the focused row (status shows the
+// confirm prompt); a second press on the SAME armed row applies the
+// deletion via agent.DeleteSession(force=false) and folds the result
+// into the model. Pressing on a different (re-focused) row re-arms.
+//
+// Returns the updated model. No bubbletea Cmd is needed - the delete
+// is a synchronous in-memory + SQLite call that completes before the
+// next render.
+func (m sessionPickerModel) handleDeleteKey() tea.Model {
+	idx := m.focusedIndex()
+	if idx < 0 {
+		return m
+	}
+	if m.deleteArmed != idx {
+		// First press on this row: arm + prompt.
+		m.deleteArmed = idx
+		title := m.all[idx].Title
+		if title == "" {
+			title = "(untitled)"
+		}
+		m.status = fmt.Sprintf("delete %q? press x again to confirm, any other key cancels", title)
+		return m
+	}
+	// Second press on the armed row: apply.
+	id := m.all[idx].ID
+	n, err := m.deleteFn()(context.Background(), m.log, id, false)
+	return m.applyDeleteResult(idx, n, err)
+}
+
+// deleteFn returns the function used to delete a session. Indirected so
+// tests can swap in a stub without a live SQLite log; defaults to the
+// real agent.DeleteSession.
+func (m sessionPickerModel) deleteFn() func(context.Context, *agent.SQLiteEventLog, string, bool) (int, error) {
+	if m.deleteOverride != nil {
+		return m.deleteOverride
+	}
+	return agent.DeleteSession
+}
+
+// applyDeleteResult folds a DeleteSession outcome into the model:
+// on success it removes the all-index row, refilters, clamps the
+// cursor, and reports the row count; on error it maps the guard
+// sentinels to a friendly status line and leaves the list intact.
+// Always disarms. Pure (no I/O) so it is directly unit-testable.
+func (m sessionPickerModel) applyDeleteResult(idx, n int, err error) sessionPickerModel {
+	m.deleteArmed = -1
+	if err != nil {
+		switch {
+		case errors.Is(err, agent.ErrSessionLive):
+			m.status = "can't delete: session is live in another process, close it first"
+		case errors.Is(err, agent.ErrNotTopLevel):
+			m.status = "can't delete: that row is a sub-agent, not a session"
+		case errors.Is(err, agent.ErrSessionNotFound):
+			m.status = "can't delete: session not found (already gone?)"
+		default:
+			m.status = "delete failed: " + scrubProviderName(err)
+		}
+		return m
+	}
+	if idx >= 0 && idx < len(m.all) {
+		deleted := m.all[idx]
+		m.all = append(m.all[:idx], m.all[idx+1:]...)
+		title := deleted.Title
+		if title == "" {
+			title = "(untitled)"
+		}
+		m.status = fmt.Sprintf("deleted %q (%d agent row%s)", title, n, pluralS(n))
+	}
+	m.refilter()
+	return m
 }
 
 // refilter recomputes m.filtered from m.filter (case-insensitive
@@ -275,6 +386,13 @@ func (m sessionPickerModel) View() string {
 
 	body := strings.Join(rows, "\n")
 
+	// Transient status line (delete confirm / result / error) sits just
+	// under the list so it's the last thing the eye lands on before the
+	// footer keymap.
+	if m.status != "" {
+		body += "\n\n" + lipgloss.NewStyle().Foreground(m.pal.Accent).Render(m.status)
+	}
+
 	footer := m.renderFooter()
 
 	pane := lipgloss.JoinVertical(
@@ -331,6 +449,7 @@ func (m sessionPickerModel) renderFooter() string {
 		key.Render("↑/↓") + body.Render(" navigate"),
 		key.Render("enter") + body.Render(" resume"),
 		key.Render("/") + body.Render(" filter"),
+		key.Render("x") + body.Render(" delete"),
 		key.Render("esc") + body.Render(" cancel"),
 	}
 	return body.Render(" ") + strings.Join(parts, body.Render("  ·  "))

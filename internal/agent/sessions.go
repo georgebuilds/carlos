@@ -43,6 +43,19 @@ type Session struct {
 // a friendly "no sessions yet - start one with `carlos`" hint.
 var ErrNoSessions = errors.New("agent: no user sessions found")
 
+// Errors returned by DeleteSession.
+var (
+	// ErrSessionNotFound: no agent with that id exists.
+	ErrSessionNotFound = errors.New("agent: session not found")
+	// ErrSessionLive: the session's heartbeat is fresh, so a process is
+	// actively driving it. Deleting would pull the log out from under a
+	// running loop; detach or close that surface first.
+	ErrSessionLive = errors.New("agent: session is live")
+	// ErrNotTopLevel: the id refers to a sub-agent. Deletion operates on
+	// whole threads; sub-agents go with their parent thread's lineage.
+	ErrNotTopLevel = errors.New("agent: not a top-level session")
+)
+
 // ListUserSessions returns every top-level agent (parent_id IS NULL),
 // sorted by updated_at descending so the most recently active session
 // is first. Excludes excluded if non-empty (lets the in-chat /resume
@@ -123,6 +136,88 @@ func MostRecentUserSession(ctx context.Context, log *SQLiteEventLog) (Session, e
 		return Session{}, ErrNoSessions
 	}
 	return sessions[0], nil
+}
+
+// DeleteSession permanently removes a top-level thread and its entire
+// lineage - every sub-agent sharing the thread's root_id, plus all of
+// their events and artifacts - in one transaction. It is the
+// user-initiated counterpart to DeleteEmptyOrphanedAgents (the janitor):
+// unlike that path, it deletes non-empty conversations on request.
+//
+// Guards (checked before any deletion):
+//   - the id must exist, else ErrSessionNotFound;
+//   - it must be a top-level session (parent_id IS NULL), else
+//     ErrNotTopLevel - sub-agents are only removed via their parent;
+//   - unless force is set, its heartbeat must be stale, else
+//     ErrSessionLive, so a thread some OTHER live process is driving is
+//     never deleted out from under it. A caller that owns the thread (a
+//     TUI deleting its own session after confirmation, or a web backend
+//     that has just detached the loop) passes force=true: it knows no
+//     foreign process holds the thread, so the fresh heartbeat is its own.
+//
+// Returns the number of agent rows removed (the thread plus its
+// sub-agents). The whole tree shares root_id = the top-level id, which is
+// how the cascade finds the lineage.
+func DeleteSession(ctx context.Context, log *SQLiteEventLog, id string, force bool) (int, error) {
+	db := log.DB()
+
+	var parentID sql.NullString
+	var lastHeartbeatMs int64
+	err := db.QueryRowContext(ctx,
+		`SELECT parent_id, last_heartbeat_at FROM agents WHERE id = ?`, id).
+		Scan(&parentID, &lastHeartbeatMs)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, ErrSessionNotFound
+	}
+	if err != nil {
+		return 0, fmt.Errorf("agent: delete session: lookup: %w", err)
+	}
+	if parentID.Valid && parentID.String != "" {
+		return 0, ErrNotTopLevel
+	}
+	if !force {
+		if last := time.UnixMilli(lastHeartbeatMs).UTC(); !last.IsZero() && time.Since(last) < StalenessTolerance {
+			return 0, ErrSessionLive
+		}
+	}
+
+	// Best-effort lineage size for the caller's confirmation copy ("deleted
+	// the thread + N sub-agents"). Ignored on error - it is cosmetic, never
+	// load-bearing, so it adds no error branch to the delete path.
+	n := 0
+	_ = db.QueryRowContext(ctx, `SELECT COUNT(*) FROM agents WHERE root_id = ?`, id).Scan(&n)
+
+	if err := deleteLineageTx(ctx, db, id); err != nil {
+		return 0, err
+	}
+	return n, nil
+}
+
+// deleteLineageTx removes every row of the thread tree (root_id == id) -
+// artifacts, events, then the agent rows - in one transaction. Split from
+// DeleteSession so the guard logic and the cascade can be tested
+// independently. SQLite checks foreign keys at statement end, not per row,
+// so a single `DELETE FROM agents WHERE root_id = ?` removes a parent and
+// its children together without a deferral pragma (verified for depth >1).
+func deleteLineageTx(ctx context.Context, db *sql.DB, id string) error {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("agent: delete session: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	// artifacts + events reference agents, so delete them while the agent
+	// rows still exist, then the agents themselves.
+	for _, stmt := range []string{
+		`DELETE FROM artifacts WHERE agent_id IN (SELECT id FROM agents WHERE root_id = ?)`,
+		`DELETE FROM events    WHERE agent_id IN (SELECT id FROM agents WHERE root_id = ?)`,
+		`DELETE FROM agents    WHERE root_id = ?`,
+	} {
+		if _, err := tx.ExecContext(ctx, stmt, id); err != nil {
+			return fmt.Errorf("agent: delete session: %w", err)
+		}
+	}
+	return tx.Commit()
 }
 
 // firstUserMessage scans the events table for the EARLIEST

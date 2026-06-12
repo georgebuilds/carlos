@@ -238,6 +238,15 @@ func main() {
 				exit(err)
 			}
 			return
+		case "sessions":
+			// `carlos sessions list|rm <id>` - user-initiated chat
+			// session management. `rm` hard-deletes a thread and its
+			// whole sub-agent lineage via agent.DeleteSession, after a
+			// confirmation (skippable with -y for scripts).
+			if err := runSessions(args[1:]); err != nil {
+				exit(err)
+			}
+			return
 		case "research-internal":
 			// Phase 11 slice 11c - DEV-AID smoke harness for the
 			// research orchestrator engine. The user-facing
@@ -1216,6 +1225,8 @@ Usage:
   carlos approvals list                    list pending approvals (Phase 4h)
   carlos approvals accept <id> [note...]   accept a pending approval by artifact id
   carlos approvals reject <id> <reason...> reject a pending approval with a reason
+  carlos sessions list                     list past chat sessions (most recent first)
+  carlos sessions rm <id> [-y]             permanently delete a session and its sub-agents
   carlos daemon run                        run the background daemon (called by launchd/systemd)
   carlos daemon enable                     install + start the per-user daemon unit
   carlos daemon disable                    stop + uninstall the per-user daemon unit
