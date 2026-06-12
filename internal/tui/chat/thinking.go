@@ -150,7 +150,13 @@ func renderThinkingRow(tick int, elapsed time.Duration, width int) string {
 // One dot wears the accent (bright), the other two are subtle so the
 // "wave" reads at a glance without forcing the eye to track motion.
 func renderThinkingDots(tick int) string {
-	frame := (tick / thinkingFrameTicks) % len(thinkingFrames)
+	// Reduced motion (slice 9b convention): freeze on the first frame.
+	// The row still reads as "thinking" via the label; it just stops
+	// pulsing.
+	frame := 0
+	if !reducedMotion {
+		frame = (tick / thinkingFrameTicks) % len(thinkingFrames)
+	}
 	pattern := thinkingFrames[frame]
 	bright := lipgloss.NewStyle().Foreground(colorAccent).Bold(true)
 	dim := lipgloss.NewStyle().Foreground(colorMuted)

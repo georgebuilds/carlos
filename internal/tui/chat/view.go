@@ -1046,7 +1046,9 @@ func (m *Model) rerenderViewport() {
 			thinking = renderThinkingRow(m.thinkingTick, m.thinkingElapsed(), m.vp.Width)
 		}
 		md := m.ensureMarkdown(m.vp.Width)
-		content = composeTranscript(m.transcript, m.source.Get(m.agentID), thinking, md, m.childrenSnap, m.vp.Width)
+		// liveReveal gates the streaming buffer behind the typewriter
+		// cursor (slice 9b); sealed transcript entries render in full.
+		content = composeTranscript(m.transcript, m.liveReveal(m.source.Get(m.agentID)), thinking, md, m.childrenSnap, m.vp.Width)
 	}
 	m.vp.SetContent(content)
 	if wasAtBottom {

@@ -237,6 +237,12 @@ type Model struct {
 	agentID string
 	source  TextSource
 
+	// typeRevealed is the typewriter reveal cursor (slice 9b): how many
+	// runes of the live TextSource buffer are visible right now.
+	// Advanced with catch-up pacing by advanceTypewriter on every
+	// textTickMsg; reset to 0 when the buffer empties (turn sealed).
+	typeRevealed int
+
 	// Replay-derived state. Apply on every event so the projection stays
 	// current; transcript is the rendered side-effect.
 	proj       *agent.Projection
@@ -1386,6 +1392,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// supervisor event. The faster 250ms tick takes over once at
 		// least one child is live and stops on the next empty snapshot.
 		m.thinkingTick++
+		m.advanceTypewriter()
 		if m.childrenView != nil && len(m.childrenSnap) == 0 {
 			snap := m.childrenView.Snapshot()
 			if len(snap) > 0 {

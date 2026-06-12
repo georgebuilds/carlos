@@ -210,6 +210,27 @@ func detectVariant(opts Options, env func(string) string) Variant {
 	return Dark
 }
 
+// ReducedMotion reports whether the user asked TUI surfaces to skip
+// animation. The convention mirrors NO_COLOR (handled in [Load] above):
+// the `PREFERS_REDUCED_MOTION` environment variable is treated as a
+// boolean - any non-empty value (even "0") means "reduce motion".
+//
+// Consumers today: the chat typewriter reveal on streaming assistant
+// text (disabled - text appears as it arrives) and the thinking-row
+// dot animation (renders a static variant). New animated surfaces
+// should gate on this same helper.
+//
+// Deliberately independent of NO_COLOR: motion and color are separate
+// accessibility axes, and neither implies the other.
+//
+// env is a lookup hook for tests; nil falls back to os.Getenv.
+func ReducedMotion(env func(string) string) bool {
+	if env == nil {
+		env = os.Getenv
+	}
+	return env("PREFERS_REDUCED_MOTION") != ""
+}
+
 // parseColor accepts "#rrggbb", "#rgb", or a decimal 0-255 ANSI index
 // and returns the lipgloss.Color. Returns ok=false on any other input.
 //
