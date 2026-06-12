@@ -30,12 +30,13 @@ import (
 //go:embed assets/carlos-portrait.png
 var portraitPNG []byte
 
-// portraitSmallPNG is a hand-tuned-for-small-render variant of the mascot.
-// Today it ships as a byte-identical placeholder copy of portraitPNG so
-// the build is happy. When the user drops a regenerated low-res variant
-// at assets/carlos-portrait-small.png (e.g. 128×128 with simplified
-// detail and higher edge contrast for half-block sampling), the rail's
-// half-block fallback picks it up automatically - see RenderRailCells.
+// portraitSmallPNG is a tuned-for-small-render variant of the mascot
+// (slice 9i): the canonical 128×128 portrait area-averaged down to the
+// rail's 18×18 half-block sample grid, sharpened and contrast/saturation
+// boosted for legibility, alpha-hardened for a crisp silhouette, then
+// nearest-neighbor upscaled back to 128×128 so each sampled cell is
+// uniform. The rail's half-block fallback picks it up because its bytes
+// differ from portraitPNG - see RenderRailCells / portraitHasSmall.
 //
 //go:embed assets/carlos-portrait-small.png
 var portraitSmallPNG []byte

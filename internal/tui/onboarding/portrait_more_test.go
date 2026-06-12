@@ -28,20 +28,20 @@ func TestBytesEqual(t *testing.T) {
 	}
 }
 
-// TestPortraitHasSmall exercises the byte-equality short-circuit used to
-// decide whether a hand-tuned small variant is present. Today the
-// placeholder is byte-identical to the main, so the answer is false.
+// TestPortraitHasSmall pins that a real tuned small variant ships (slice
+// 9i installed one: area-averaged + sharpened + alpha-hardened for the
+// 18x18 half-block sample grid). If this regresses to false, the small
+// asset was overwritten with a byte-identical copy of the main portrait
+// and the rail fallback silently loses the tuned rendering.
 func TestPortraitHasSmall(t *testing.T) {
-	// We exercise the function but do not pin the answer absolutely,
-	// because if a contributor later drops a real small variant the
-	// answer flips to true. The function MUST be callable without
-	// crashing and MUST return a deterministic bool.
-	_ = portraitHasSmall()
+	if !portraitHasSmall() {
+		t.Error("portraitHasSmall() = false; expected the tuned small variant (bytes must differ from carlos-portrait.png)")
+	}
 }
 
 // TestDecodePortraitForRail exercises the cached decode path. Returns a
 // valid image for both the small-variant-present and not-present cases
-// (today: not-present because the placeholder is byte-identical).
+// (today: present, so this takes the small-variant branch).
 func TestDecodePortraitForRail(t *testing.T) {
 	img, err := decodePortraitForRail()
 	if err != nil {
@@ -57,8 +57,6 @@ func TestDecodePortraitForRail(t *testing.T) {
 }
 
 // TestDecodePortraitSmall directly exercises the small-variant decoder.
-// Today the small PNG bytes equal the main portrait, but the decoder
-// must still produce a valid image.
 func TestDecodePortraitSmall(t *testing.T) {
 	img, err := decodePortraitSmall()
 	if err != nil {
