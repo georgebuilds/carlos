@@ -1,0 +1,981 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex">
+<title>carlos web · mockup A · press box</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+<style>
+/* ── carlos web · direction A · "press box"
+   Three-pane console on warm cream. Dense, calm, rectilinear.
+   Sandlot palette without the sketch chrome: no wavy rules, no rotated
+   cards, no doodles. Inter micro-labels carry the chrome; Caveat survives
+   only as a motif (topbar wordmark, empty-state headline). */
+
+:root {
+  --paper:    #f4ecd8;
+  --paper-hi: #fdf7e6;
+  --paper-lo: #ece4d2;
+  --sky:      #d8e2ee;
+  --sky-soft: rgba(216, 226, 238, 0.55);
+  --navy:      #2c4a78;
+  --navy-deep: #1f3658;
+  --navy-soft: rgba(44, 74, 120, 0.12);
+  --clay:      #c64a2c;
+  --clay-soft: rgba(198, 74, 44, 0.12);
+  --sage:      #7a9676;
+  --sage-soft: rgba(122, 150, 118, 0.20);
+  --sun:       #e8a635;
+  --sun-soft:  rgba(232, 166, 53, 0.20);
+  --ink:      #1b1812;
+  --ink-soft: #3a342a;
+  --muted:    #6b6357;
+  --subtle:   #8a8170;
+  --rule:     rgba(27, 24, 18, 0.16);
+  --rule-soft: rgba(27, 24, 18, 0.08);
+  --code-bg:  #14253f;
+  --code-ink: #f3ecda;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body { height: 100%; }
+
+body {
+  font-family: 'Inter', -apple-system, sans-serif;
+  font-size: 14px;
+  color: var(--ink);
+  background: var(--paper);
+  overflow: hidden;
+}
+
+/* paper grain: texture stays, sketch lines go */
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  pointer-events: none; z-index: 999;
+  opacity: 0.05;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='240' height='240' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+button { font-family: inherit; cursor: pointer; }
+
+.app {
+  display: grid;
+  grid-template-rows: 52px 1fr;
+  height: 100vh;
+}
+
+/* ───────────── top bar ───────────── */
+.topbar {
+  display: flex; align-items: center; gap: 16px;
+  padding: 0 18px;
+  border-bottom: 1px solid var(--rule);
+  background: var(--paper-hi);
+}
+.mark {
+  display: inline-flex; align-items: baseline; gap: 9px;
+  text-decoration: none; color: var(--ink);
+}
+.mark .cap { font-size: 18px; transform: translateY(2px); }
+.mark .name { font-family: 'Caveat', cursive; font-weight: 700; font-size: 26px; line-height: 1; color: var(--navy); }
+.mark .sub {
+  font-size: 10.5px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--muted); background: var(--navy-soft); border-radius: 4px; padding: 3px 7px;
+  transform: translateY(-3px);
+}
+.topbar .spacer { flex: 1; }
+.conn { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+.conn .dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--sage);
+  animation: pulse 2.4s ease-in-out infinite;
+}
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+.conn code { font-family: 'JetBrains Mono', monospace; font-size: 11.5px; color: var(--ink-soft); }
+.ver { font-size: 11.5px; color: var(--subtle); }
+.flip {
+  font-size: 12px; color: var(--navy); background: none; border: 1px solid var(--rule);
+  border-radius: 6px; padding: 5px 10px; text-decoration: none;
+}
+.flip:hover { background: var(--navy-soft); }
+
+/* ───────────── three panes ───────────── */
+.panes {
+  display: grid;
+  grid-template-columns: 292px 1fr 320px;
+  min-height: 0;
+}
+
+/* ───────────── roster ───────────── */
+.roster {
+  border-right: 1px solid var(--rule);
+  display: flex; flex-direction: column;
+  min-height: 0;
+  background: var(--paper);
+}
+.roster-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 14px 16px 10px;
+}
+.roster-head .label {
+  font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--muted);
+}
+.roster-head .count {
+  font-family: 'JetBrains Mono', monospace; font-size: 11px;
+  color: var(--muted); background: var(--paper-lo); border-radius: 10px; padding: 2px 8px;
+}
+.roster-head .spacer { flex: 1; }
+.btn-new {
+  font-size: 12px; font-weight: 600; color: var(--paper-hi);
+  background: var(--navy); border: none; border-radius: 6px; padding: 6px 12px;
+}
+.btn-new:hover { background: var(--navy-deep); }
+
+.thread-list { overflow-y: auto; flex: 1; padding: 2px 8px 16px; }
+
+.group-head {
+  display: flex; align-items: center; gap: 7px;
+  padding: 10px 8px 6px;
+  margin-top: 6px;
+  cursor: pointer; user-select: none;
+  border-radius: 6px;
+}
+.group-head .chev {
+  width: 12px; text-align: center;
+  font-size: 8px; color: var(--subtle);
+  transition: transform 0.15s ease;
+}
+.group-head.collapsed .chev { transform: rotate(-90deg); }
+.group-head .g-name {
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--muted);
+}
+.group-head:hover .g-name { color: var(--ink-soft); }
+.group-head .g-count { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--subtle); }
+.group-head .g-badges { margin-left: auto; display: flex; gap: 5px; }
+.badge {
+  font-size: 9px; font-weight: 600; letter-spacing: 0.02em;
+  border-radius: 9px; padding: 2.5px 8px;
+  color: var(--paper-hi); white-space: nowrap;
+}
+.badge.b-running { background: var(--navy); }
+.badge.b-blocked { background: var(--clay); }
+.badge.b-turn { background: #8a6314; }
+
+.thread {
+  position: relative;
+  border-radius: 8px;
+  padding: 11px 12px 10px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  margin-bottom: 2px;
+}
+.thread:hover { background: var(--paper-hi); }
+.thread.active {
+  background: var(--paper-hi);
+  border-color: var(--rule);
+  box-shadow: 0 2px 6px rgba(20, 22, 30, 0.06);
+}
+.thread .t-title {
+  font-weight: 600; font-size: 13.5px; line-height: 1.35;
+  padding-right: 78px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.thread .t-state {
+  position: absolute; top: 12px; right: 12px;
+  font-size: 9.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+  line-height: 1.2;
+  color: var(--state-c, var(--muted));
+}
+.thread .t-preview {
+  font-size: 12px; color: var(--muted); line-height: 1.45;
+  margin-top: 3px;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.thread .t-meta {
+  display: flex; align-items: center; gap: 7px;
+  margin-top: 7px;
+  font-size: 11px; color: var(--subtle);
+}
+.thread .t-frame {
+  font-family: 'JetBrains Mono', monospace; font-size: 10px;
+  color: var(--ink-soft); background: var(--paper-lo);
+  border-radius: 4px; padding: 1.5px 6px;
+}
+.thread .t-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--state-c, var(--subtle)); flex: none; }
+.thread .t-dot.live { animation: pulse 1.6s ease-in-out infinite; }
+
+.thread[data-state="running"]         { --state-c: var(--navy); }
+.thread[data-state="awaiting_input"]  { --state-c: #8a6314; }
+.thread[data-state="blocked"]         { --state-c: var(--clay); }
+.thread[data-state="done"]            { --state-c: var(--sage); }
+.thread[data-state="failed"]          { --state-c: var(--clay); }
+.thread[data-state="foreign"]         { --state-c: var(--subtle); }
+
+/* ───────────── transcript ───────────── */
+.stage {
+  display: flex; flex-direction: column;
+  min-height: 0; min-width: 0;
+  background: var(--paper-hi);
+}
+.stage-head {
+  display: flex; align-items: center; gap: 12px;
+  padding: 13px 22px;
+  border-bottom: 1px solid var(--rule-soft);
+}
+.stage-head .s-title { font-weight: 600; font-size: 15px; }
+.stage-head .s-state {
+  font-size: 10px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--state-c, var(--muted));
+}
+.stage-head .spacer { flex: 1; }
+.stage-head .s-id {
+  font-family: 'JetBrains Mono', monospace; font-size: 10.5px; color: var(--subtle);
+}
+
+.guard-banner {
+  display: flex; align-items: center; gap: 10px;
+  margin: 14px 22px 0;
+  padding: 10px 14px;
+  background: var(--paper-lo);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  font-size: 12.5px; color: var(--ink-soft);
+}
+.guard-banner .g-tag {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--muted); flex: none;
+}
+
+.scroll { flex: 1; overflow-y: auto; padding: 20px 22px 12px; min-height: 0; }
+.feed { max-width: 720px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+
+.msg-user { align-self: flex-end; max-width: 78%; }
+.msg-user .bubble {
+  background: var(--sky-soft);
+  border: 1px solid rgba(44, 74, 120, 0.14);
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 14px; line-height: 1.55; color: var(--ink);
+}
+.msg-user .who {
+  text-align: right; font-size: 10.5px; color: var(--subtle); margin-top: 4px;
+}
+
+.msg-asst { align-self: stretch; max-width: 92%; }
+.msg-asst .who {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--navy); margin-bottom: 5px;
+}
+.msg-asst .who::before { content: '🧢'; font-size: 13px; }
+.msg-asst .body { font-size: 14px; line-height: 1.62; color: var(--ink); white-space: pre-wrap; }
+.msg-asst .body .caret {
+  display: inline-block; width: 7px; height: 15px;
+  background: var(--navy); vertical-align: text-bottom; margin-left: 2px;
+  animation: blink 0.9s step-start infinite;
+}
+@keyframes blink { 50% { opacity: 0; } }
+
+.msg-asst.error .body { color: var(--clay); }
+.msg-asst.error .who { color: var(--clay); }
+
+.tool-card {
+  align-self: stretch; max-width: 92%;
+  position: relative;
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  font-family: 'JetBrains Mono', monospace;
+  overflow: hidden;
+}
+.tool-card .tc-tag {
+  position: absolute; top: 10px; right: 12px;
+  font-size: 9px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase;
+  color: var(--muted); pointer-events: none;
+}
+.tool-card.err .tc-tag { color: var(--clay); }
+.tool-card .tc-head {
+  display: flex; align-items: center; gap: 9px;
+  padding: 9px 13px;
+  cursor: pointer;
+}
+.tool-card .tc-name { font-size: 12px; font-weight: 500; color: var(--navy); }
+.tool-card .tc-input {
+  font-size: 11.5px; color: var(--ink-soft);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  flex: 1; padding-right: 48px;
+}
+.tool-card .tc-out {
+  display: none;
+  border-top: 1px solid var(--rule-soft);
+  background: var(--code-bg); color: var(--code-ink);
+  font-size: 11.5px; line-height: 1.6;
+  padding: 10px 13px;
+  white-space: pre-wrap; word-break: break-word;
+  max-height: 220px; overflow-y: auto;
+}
+.tool-card.open .tc-out { display: block; }
+.tool-card .tc-trunc {
+  display: inline-block; margin-top: 6px;
+  font-size: 10px; color: #a8b6c8; font-style: italic;
+}
+
+.evt-line {
+  align-self: center;
+  font-size: 11px; color: var(--subtle);
+  display: flex; align-items: center; gap: 10px;
+  width: 100%; max-width: 560px;
+}
+.evt-line::before, .evt-line::after {
+  content: ''; flex: 1; height: 1px; background: var(--rule-soft);
+}
+
+.empty-state {
+  margin: 80px auto 0; text-align: center; max-width: 380px;
+}
+.empty-state .big { font-family: 'Caveat', cursive; font-weight: 700; font-size: 30px; color: var(--navy); }
+.empty-state p { font-size: 13px; color: var(--muted); margin-top: 8px; line-height: 1.6; }
+
+/* ───────────── approval banner ───────────── */
+.approval {
+  margin: 0 22px 12px;
+  max-width: 720px; align-self: center; width: calc(100% - 44px);
+  margin-left: auto; margin-right: auto;
+  background: var(--clay-soft);
+  border: 1px solid rgba(198, 74, 44, 0.35);
+  border-radius: 10px;
+  padding: 13px 16px;
+}
+.approval .a-head {
+  display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px;
+}
+.approval .a-tag { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--clay); }
+.approval .a-reason { font-size: 11.5px; color: var(--muted); }
+.approval .a-cmd {
+  font-family: 'JetBrains Mono', monospace; font-size: 12.5px;
+  background: var(--code-bg); color: var(--code-ink);
+  border-radius: 6px; padding: 9px 12px;
+  margin-bottom: 10px;
+  white-space: pre-wrap; word-break: break-word;
+}
+.approval .a-cmd .tool { color: #9ec0ef; }
+.approval .a-btns { display: flex; gap: 8px; }
+.approval button {
+  border-radius: 6px; padding: 7px 14px; font-size: 12.5px; font-weight: 600;
+  border: 1px solid var(--rule);
+}
+.approval .deny { background: var(--paper-hi); color: var(--clay); border-color: rgba(198, 74, 44, 0.4); }
+.approval .deny:hover { background: var(--clay-soft); }
+.approval .allow { background: var(--navy); color: var(--paper-hi); border-color: var(--navy); }
+.approval .allow:hover { background: var(--navy-deep); }
+.approval .always { background: var(--paper-hi); color: var(--ink-soft); }
+.approval .always:hover { background: var(--paper-lo); }
+.approval .a-kbd { margin-left: auto; font-size: 11px; color: var(--subtle); align-self: center; }
+.approval kbd {
+  font-family: 'JetBrains Mono', monospace; font-size: 10px;
+  background: var(--paper-hi); border: 1px solid var(--rule); border-radius: 4px;
+  padding: 1px 5px;
+}
+
+/* ───────────── composer ───────────── */
+.composer {
+  border-top: 1px solid var(--rule-soft);
+  padding: 14px 22px 16px;
+}
+.composer-inner {
+  max-width: 720px; margin: 0 auto;
+  display: flex; gap: 10px; align-items: flex-end;
+}
+.composer textarea {
+  flex: 1; resize: none;
+  font-family: 'Inter', sans-serif; font-size: 14px; line-height: 1.5;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 9px;
+  padding: 11px 14px;
+  min-height: 44px; max-height: 140px;
+  outline: none;
+}
+.composer textarea:focus { border-color: var(--navy); box-shadow: 0 0 0 3px var(--navy-soft); }
+.composer textarea:disabled { background: var(--paper-lo); color: var(--subtle); cursor: not-allowed; }
+.composer .send {
+  background: var(--navy); color: var(--paper-hi);
+  border: none; border-radius: 9px;
+  font-size: 13px; font-weight: 600;
+  padding: 12px 18px;
+}
+.composer .send:hover { background: var(--navy-deep); }
+.composer .send:disabled { background: var(--paper-lo); color: var(--subtle); cursor: not-allowed; }
+.composer .hint {
+  max-width: 720px; margin: 7px auto 0;
+  font-size: 11px; color: var(--subtle);
+}
+
+/* ───────────── detail rail ───────────── */
+.rail {
+  border-left: 1px solid var(--rule);
+  overflow-y: auto;
+  padding: 16px 16px 24px;
+  background: var(--paper);
+  display: flex; flex-direction: column; gap: 14px;
+}
+.rail-card {
+  background: var(--paper-hi);
+  border: 1px solid var(--rule);
+  border-radius: 9px;
+  padding: 13px 14px;
+  position: relative;
+}
+.rail-card .rc-tag {
+  position: absolute; top: 12px; right: 13px;
+  font-size: 9px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase;
+  color: var(--muted); pointer-events: none;
+}
+.rail-card h3 {
+  font-size: 13px; font-weight: 600;
+  color: var(--ink); margin-bottom: 9px; line-height: 1.35;
+  padding-right: 76px;
+}
+.kv { display: grid; grid-template-columns: 84px 1fr; gap: 5px 10px; font-size: 12px; }
+.kv dt { color: var(--subtle); }
+.kv dd { color: var(--ink-soft); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kv dd.mono { font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+.kv dd .state-word { color: var(--state-c, var(--ink-soft)); font-weight: 600; }
+
+.rail-card .attach-row { margin-top: 11px; display: flex; gap: 8px; }
+.btn-ghost {
+  flex: 1;
+  background: var(--paper); color: var(--ink-soft);
+  border: 1px solid var(--rule); border-radius: 6px;
+  font-size: 12px; font-weight: 600; padding: 7px 0;
+}
+.btn-ghost:hover { background: var(--paper-lo); }
+.btn-ghost.primary { background: var(--navy); border-color: var(--navy); color: var(--paper-hi); }
+.btn-ghost.primary:hover { background: var(--navy-deep); }
+
+.crew-item {
+  display: flex; align-items: center; gap: 9px;
+  padding: 8px 2px;
+}
+.crew-item + .crew-item { border-top: 1px solid var(--rule-soft); }
+.crew-item .c-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.crew-item .c-body { flex: 1; min-width: 0; }
+.crew-item .c-title {
+  font-size: 12px; font-weight: 500; color: var(--ink);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.crew-item .c-sub { font-size: 10.5px; color: var(--subtle); font-family: 'JetBrains Mono', monospace; }
+.crew-item .c-cost { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--muted); }
+.crew-empty { font-size: 12px; color: var(--subtle); padding: 4px 2px; }
+
+.rail-note { font-size: 11px; color: var(--subtle); line-height: 1.55; padding: 0 4px; }
+
+/* ───────────── toast ───────────── */
+.toast {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(8px);
+  background: var(--ink); color: var(--paper-hi);
+  font-size: 12.5px; border-radius: 8px; padding: 10px 16px;
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.2s, transform 0.2s;
+  z-index: 1000;
+  max-width: 480px;
+  box-shadow: 0 8px 24px rgba(20, 22, 30, 0.3);
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.toast code { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--sun); }
+
+::-webkit-scrollbar { width: 10px; }
+::-webkit-scrollbar-thumb { background: var(--rule); border-radius: 5px; border: 2px solid transparent; background-clip: content-box; }
+::-webkit-scrollbar-track { background: transparent; }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <a class="mark" href="#">
+      <span class="cap">🧢</span>
+      <span class="name">carlos</span>
+      <span class="sub">web</span>
+    </a>
+    <div class="spacer"></div>
+    <div class="conn"><span class="dot"></span> live · <code>127.0.0.1:7777</code></div>
+    <span class="ver">direction A · locked 2026-06-12</span>
+    <a class="flip" href="_web-mockup-nightgame.html">direction B (archived)</a>
+  </div>
+
+  <div class="panes">
+    <aside class="roster">
+      <div class="roster-head">
+        <span class="label">threads</span>
+        <span class="count" id="thread-count">6</span>
+        <span class="spacer"></span>
+        <button class="btn-new" id="btn-new">+ new</button>
+      </div>
+      <div class="thread-list" id="thread-list"></div>
+    </aside>
+
+    <main class="stage" id="stage"></main>
+
+    <aside class="rail" id="rail"></aside>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+// ───────────────────────── fake wire data ─────────────────────────
+// Shapes follow web-spec §8 (wire vocabulary) and §8.2 (thread summary).
+
+const STATE_WORDS = {
+  running: 'running', awaiting_input: 'your turn', blocked: 'needs a call',
+  done: 'done', failed: 'failed', foreign: 'in the TUI',
+};
+
+// server-persisted (web_groups); collapse state is per-browser (localStorage)
+const GROUPS = [
+  { id: 'g-web', name: 'carlos web' },
+  { id: 'g-anneal', name: 'anneal' },
+  { id: 'g-house', name: 'around the house' },
+];
+const collapsedGroups = new Set(['g-house']);
+
+const THREADS = [
+  {
+    id: '01JXQF8MWN', title: 'web: W-1 server skeleton', state: 'running', group: 'g-web',
+    attached: true, frame: 'carlos', model: 'claude-fable-5', backend: 'carlos',
+    userMsgs: 6, updated: '2m ago',
+    preview: 'wire the SSE backfill, splice, then go live. gap repair per F3.',
+    streaming: true,
+    events: [
+      { kind: 'user_message', text: 'start W-1: the server skeleton plus the read path. follow the spec ordering: subscribe first, backfill, splice, then live. gap repair is not optional.' },
+      { kind: 'assistant_message', text: 'On it. Plan: auth middleware first, then GET /threads over ListUserSessions, then the stream handler. The splice is the part worth being careful with, so I will write the overflow regression test before the handler itself.' },
+      { kind: 'tool_call', name: 'Read', input: 'internal/agent/eventlog.go', output: '119: type EventLog interface {\n120:     Append(ctx context.Context, e Event) (int64, error)\n121:     Read(ctx context.Context, agentID string, fromSeq int64, limit int) ([]Event, error)\n122:     Subscribe(agentID string) (<-chan Event, func())\n123:     Close() error\n124: }', truncated: false },
+      { kind: 'tool_call', name: 'Bash', input: 'go test ./internal/web/... -run TestStreamBackfillSplice -count=1', output: 'ok   github.com/georgebuilds/carlos/internal/web   0.41s', truncated: false },
+      { kind: 'state', text: 'state: running · turn 6' },
+    ],
+    streamText: 'The splice dedupe holds the last backfilled seq and drops anything at or below it from the subscription buffer. With the overflow test forcing a 64-deep channel drop, the gap repair path re-reads seqs 88 through 91 and emits them in order before resuming live. Backfill, splice, and gap repair are all green. Next: the heartbeat comment line every 25s, then curl verification against the session you made this morning.',
+    children: [
+      { title: 'explore: eventlog seams', state: 'done', lastTool: 'Read', tokens: '48k', cost: '$0.31' },
+      { title: 'write: sse handler tests', state: 'running', lastTool: 'Bash', tokens: '112k', cost: '$0.74' },
+    ],
+  },
+  {
+    id: '01JXQE2K7P', title: 'anneal: slice 7d preflight', state: 'blocked', group: 'g-anneal',
+    attached: true, frame: 'anneal', model: 'claude-fable-5', backend: 'carlos',
+    userMsgs: 3, updated: '11m ago',
+    preview: 'preflight notes written. GO issued. wants to push the notes commit.',
+    approval: {
+      requestId: 'req_8841', tool: 'Bash', input: 'git push origin main',
+      reason: 'fallback prompt · write action outside the read-only allowlist',
+    },
+    events: [
+      { kind: 'user_message', text: 'run the slice 7d preflight. verify the symbolic dispatch premises against uop/ and write the notes file. GO or STOP at the end.' },
+      { kind: 'tool_call', name: 'Bash', input: 'go test ./uop/... -run TestSymbolicDispatch -count=1', output: 'ok   anneal/uop   2.83s\nok   anneal/rewrite   1.12s', truncated: false },
+      { kind: 'tool_call', name: 'Write', input: 'notes/slice-7d-preflight.md', output: 'wrote 184 lines', truncated: false },
+      { kind: 'assistant_message', text: 'Preflight clean. All three premises held: the dispatch table covers N=2,4,8, the rewrite path stays reflection-free, and max-abs-diff against the oracle is 3.2e-6 at N=8. GO. Notes are committed locally; pushing them now.' },
+    ],
+    children: [],
+  },
+  {
+    id: '01JXQCT4RH', title: 'research: WebGPU timestamp queries', state: 'done', group: 'g-house',
+    attached: false, frame: 'personal', model: 'claude-fable-5', backend: 'carlos',
+    userMsgs: 2, updated: '1h ago',
+    preview: 'report written to the vault. wgpu exposes them behind a feature flag.',
+    events: [
+      { kind: 'user_message', text: 'research: can anneal get GPU kernel timings via WebGPU timestamp queries without CGO? check wgpu-native and Dawn.' },
+      { kind: 'research', text: 'research: sweep done · 14 sources · 3 verified claims · 4m 12s' },
+      { kind: 'assistant_message', text: 'Short answer: yes, behind a feature flag. Both wgpu-native and Dawn expose timestamp-query when the adapter supports it, and the zero-CGO bindings already surface the feature bits. The catch is quantization: Metal rounds to microseconds unless you request unfiltered timing. Full report with citations is in the vault under personal/research/webgpu-timestamps.md.' },
+    ],
+    children: [
+      { title: 'sweep: wgpu-native docs', state: 'done', lastTool: 'WebFetch', tokens: '61k', cost: '$0.42' },
+      { title: 'sweep: dawn source', state: 'done', lastTool: 'WebFetch', tokens: '55k', cost: '$0.38' },
+      { title: 'verify: metal quantization', state: 'done', lastTool: 'WebSearch', tokens: '23k', cost: '$0.17' },
+    ],
+  },
+  {
+    id: '01JXQB9XVC', title: 'vault: weekly dashboard sweep', state: 'awaiting_input', group: 'g-house',
+    attached: true, frame: 'personal', model: 'claude-fable-5', backend: 'carlos',
+    userMsgs: 4, updated: '26m ago',
+    preview: 'dashboard regenerated. 3 stale todos found, asked which to archive.',
+    events: [
+      { kind: 'user_message', text: 'sweep the vault dashboard. regenerate the unified todo view and flag anything stale.' },
+      { kind: 'tool_call', name: 'Read', input: '/Volumes/nas/vault/dashboard.md', output: '# dashboard\n\n## work\n- [ ] ludus: review PR #214\n- [ ] ludus: AI feature spike notes\n\n## personal\n- [ ] carlos: W-0 runtime extraction\n- [ ] kino: OFX importer edge cases ...', truncated: true },
+      { kind: 'assistant_message', text: 'Dashboard regenerated. Three todos have not moved in over a month: "kino: OFX importer edge cases", "degu: thumbnail cache invalidation", and "packrat: OSM region diffing". Want me to archive them to the someday list, or keep any of them hot?' },
+    ],
+    children: [],
+  },
+  {
+    id: '01JXQ9KD2M', title: 'chat with george (anthropic)', state: 'foreign',
+    attached: false, frame: 'carlos', model: 'claude-fable-5', backend: 'carlos',
+    userMsgs: 18, updated: 'live now',
+    preview: 'this is your TUI session. heartbeat is fresh, so attach is guarded.',
+    ownedBy: 'tui', heartbeatAge: '4s',
+    events: [
+      { kind: 'user_message', text: 'what is left on the frames audit checklist?' },
+      { kind: 'assistant_message', text: 'Two boxes open: the mid-conversation Ctrl+F switch with a sub-agent in flight, and the cwd-hint fallback when the vault is unmounted. Everything else is checked off as of Tuesday.' },
+      { kind: 'state', text: 'transcript shown read-only · live events stay in the owning process (spec F3)' },
+    ],
+    children: [],
+  },
+  {
+    id: '01JXQ7VN8B', title: 'chore: bump goreleaser to v2', state: 'failed', group: 'g-web',
+    attached: false, frame: 'carlos', model: 'claude-fable-5', backend: 'carlos',
+    userMsgs: 1, updated: '3h ago',
+    preview: 'release dry-run failed: deprecated archive format key.',
+    events: [
+      { kind: 'user_message', text: 'bump goreleaser to v2 and run the release dry-run.' },
+      { kind: 'tool_call', name: 'Bash', input: 'goreleaser release --snapshot --clean', error: true, output: 'error: yaml: unmarshal errors:\n  line 12: field format not found in type config.Archive\n(deprecated in v2: use formats)', truncated: false },
+      { kind: 'assistant_message', error: true, text: 'The dry-run failed: .goreleaser.yaml line 12 uses the v1 "format" key, which v2 renamed to "formats". I stopped rather than edit the release config without you looking at it first, since this file gates what ships.' },
+    ],
+    children: [],
+  },
+];
+
+// ───────────────────────── state ─────────────────────────
+let activeId = THREADS[0].id;
+let streamTimer = null;
+let newThreadCounter = 0;
+
+const $ = (sel, el = document) => el.querySelector(sel);
+
+function thread(id) { return THREADS.find(t => t.id === id); }
+
+// ───────────────────────── roster ─────────────────────────
+function threadEl(t) {
+  const el = document.createElement('div');
+  el.className = 'thread' + (t.id === activeId ? ' active' : '');
+  el.dataset.state = t.state;
+  const live = (t.state === 'running' || t.state === 'foreign') ? ' live' : '';
+  el.innerHTML = `
+    <div class="t-title">${esc(t.title)}</div>
+    <div class="t-state">${STATE_WORDS[t.state]}</div>
+    <div class="t-preview">${esc(t.preview)}</div>
+    <div class="t-meta">
+      <span class="t-dot${live}"></span>
+      <span class="t-frame">${esc(t.frame)}</span>
+      <span>${t.userMsgs} msgs · ${t.updated}</span>
+    </div>`;
+  el.addEventListener('click', () => { activeId = t.id; renderAll(); });
+  return el;
+}
+
+function rollupBadges(members) {
+  const n = s => members.filter(t => t.state === s).length;
+  let out = '';
+  if (n('running')) out += `<span class="badge b-running">${n('running')} running</span>`;
+  if (n('blocked')) out += `<span class="badge b-blocked">${n('blocked')} needs a call</span>`;
+  if (n('awaiting_input')) out += `<span class="badge b-turn">${n('awaiting_input')} your turn</span>`;
+  return out;
+}
+
+function renderRoster() {
+  const list = $('#thread-list');
+  list.innerHTML = '';
+  $('#thread-count').textContent = THREADS.length;
+
+  // ungrouped threads first: a fresh thread is always immediately visible
+  for (const t of THREADS.filter(t => !t.group)) list.appendChild(threadEl(t));
+
+  for (const g of GROUPS) {
+    const members = THREADS.filter(t => t.group === g.id);
+    if (!members.length) continue;
+    const closed = collapsedGroups.has(g.id);
+    const head = document.createElement('div');
+    head.className = 'group-head' + (closed ? ' collapsed' : '');
+    head.innerHTML = `
+      <span class="chev">&#9660;</span>
+      <span class="g-name">${esc(g.name)}</span>
+      <span class="g-count">${members.length}</span>
+      <span class="g-badges">${closed ? rollupBadges(members) : ''}</span>`;
+    head.addEventListener('click', () => {
+      if (collapsedGroups.has(g.id)) collapsedGroups.delete(g.id); else collapsedGroups.add(g.id);
+      renderRoster();
+    });
+    list.appendChild(head);
+    if (!closed) for (const t of members) list.appendChild(threadEl(t));
+  }
+}
+
+// ───────────────────────── transcript ─────────────────────────
+function renderStage() {
+  const t = thread(activeId);
+  const stage = $('#stage');
+  clearInterval(streamTimer);
+
+  const guard = t.ownedBy === 'tui' ? `
+    <div class="guard-banner">
+      <span class="g-tag">heads up</span>
+      <span>This thread is live in your TUI session (heartbeat ${t.heartbeatAge} fresh). The transcript below is the persisted log, read-only. Live deltas stay in the owning process.</span>
+    </div>` : '';
+
+  const feed = t.events.length ? t.events.map(renderEvent).join('') : `
+    <div class="empty-state">
+      <div class="big">fresh thread.</div>
+      <p>No events yet. Say something below and carlos picks it up; the whole turn streams back here as it happens.</p>
+    </div>`;
+
+  const streamBlock = t.streaming ? `
+    <div class="msg-asst" id="stream-block">
+      <div class="who">carlos</div>
+      <div class="body"><span id="stream-text"></span><span class="caret"></span></div>
+    </div>` : '';
+
+  const approval = t.approval ? `
+    <div class="approval" id="approval">
+      <div class="a-head">
+        <span class="a-tag">needs your call</span>
+        <span class="a-reason">${esc(t.approval.reason)} · ${t.approval.requestId}</span>
+      </div>
+      <div class="a-cmd"><span class="tool">${esc(t.approval.tool)}</span> · ${esc(t.approval.input)}</div>
+      <div class="a-btns">
+        <button class="deny" onclick="resolveApproval('deny')">deny</button>
+        <button class="allow" onclick="resolveApproval('allow')">allow once</button>
+        <button class="always" onclick="resolveApproval('allow_always')">always allow ${esc(t.approval.tool)}</button>
+        <span class="a-kbd"><kbd>d</kbd> deny · <kbd>a</kbd> allow</span>
+      </div>
+    </div>` : '';
+
+  const canSend = t.attached && !t.ownedBy;
+  const placeholder = t.ownedBy ? 'read-only: this thread belongs to the TUI right now'
+    : !t.attached ? 'attach to this thread to talk to it'
+    : 'tell carlos what is next...';
+
+  stage.innerHTML = `
+    <div class="stage-head" data-state="${t.state}" style="--state-c: ${stateColor(t.state)}">
+      <span class="s-title">${esc(t.title)}</span>
+      <span class="s-state">${STATE_WORDS[t.state]}</span>
+      <span class="spacer"></span>
+      <span class="s-id">${t.id}</span>
+    </div>
+    ${guard}
+    <div class="scroll" id="scroll"><div class="feed">${feed}${streamBlock}</div></div>
+    ${approval}
+    <div class="composer">
+      <div class="composer-inner">
+        <textarea id="box" rows="1" placeholder="${placeholder}" ${canSend ? '' : 'disabled'}></textarea>
+        <button class="send" id="send" ${canSend ? '' : 'disabled'}>send</button>
+      </div>
+      <div class="hint">Enter to send · Shift+Enter for a newline · messages mid-turn queue as the next turn (spec §9.2)</div>
+    </div>`;
+
+  for (const card of stage.querySelectorAll('.tool-card .tc-head')) {
+    card.addEventListener('click', () => card.parentElement.classList.toggle('open'));
+  }
+
+  const box = $('#box');
+  if (box && canSend) {
+    box.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+    });
+    $('#send').addEventListener('click', sendMessage);
+  }
+
+  const scroll = $('#scroll');
+  scroll.scrollTop = scroll.scrollHeight;
+
+  if (t.streaming && t.streamText) startStream(t);
+}
+
+function renderEvent(e) {
+  if (e.kind === 'user_message') {
+    return `<div class="msg-user"><div class="bubble">${esc(e.text)}</div><div class="who">george</div></div>`;
+  }
+  if (e.kind === 'assistant_message') {
+    return `<div class="msg-asst${e.error ? ' error' : ''}"><div class="who">carlos${e.error ? ' · error' : ''}</div><div class="body">${esc(e.text)}</div></div>`;
+  }
+  if (e.kind === 'tool_call') {
+    const trunc = e.truncated ? `<span class="tc-trunc">preview capped at 2 KB; the model saw the full output (spec F12)</span>` : '';
+    return `<div class="tool-card${e.error ? ' err' : ''}">
+      <span class="tc-tag">${e.error ? 'tool · error' : 'tool'}</span>
+      <div class="tc-head"><span class="tc-name">${esc(e.name)}</span><span class="tc-input">${esc(e.input)}</span></div>
+      <div class="tc-out">${esc(e.output)}${trunc}</div>
+    </div>`;
+  }
+  if (e.kind === 'state' || e.kind === 'research') {
+    return `<div class="evt-line">${esc(e.text)}</div>`;
+  }
+  return '';
+}
+
+function startStream(t) {
+  const target = $('#stream-text');
+  if (!target) return;
+  let i = 0;
+  streamTimer = setInterval(() => {
+    if (i >= t.streamText.length) {
+      // seal the turn, then start over after a beat (it is a mockup, after all)
+      clearInterval(streamTimer);
+      setTimeout(() => { if (activeId === t.id) { target.textContent = ''; startStream(t); } }, 4500);
+      return;
+    }
+    const step = 2 + Math.floor(Math.random() * 4);
+    target.textContent = t.streamText.slice(0, i + step);
+    i += step;
+    const scroll = $('#scroll');
+    if (scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight < 120) scroll.scrollTop = scroll.scrollHeight;
+  }, 38);
+}
+
+// ───────────────────────── detail rail ─────────────────────────
+function renderRail() {
+  const t = thread(activeId);
+  const rail = $('#rail');
+
+  const attachBtn = t.ownedBy
+    ? `<button class="btn-ghost" onclick="tryAttachForeign()">attach</button>`
+    : t.attached
+      ? `<button class="btn-ghost" onclick="toggleAttach()">detach</button>`
+      : `<button class="btn-ghost primary" onclick="toggleAttach()">attach</button>`;
+
+  const crew = t.children.length
+    ? t.children.map(c => `
+        <div class="crew-item">
+          <span class="c-dot" style="background:${stateColor(c.state)}"></span>
+          <span class="c-body">
+            <span class="c-title">${esc(c.title)}</span>
+            <span class="c-sub">${c.state} · ${c.lastTool} · ${c.tokens} tok</span>
+          </span>
+          <span class="c-cost">${c.cost}</span>
+        </div>`).join('')
+    : `<div class="crew-empty">No sub-agents on this thread. carlos spawns them with the Agent tool when a task is worth delegating.</div>`;
+
+  const approvalCard = t.approval ? `
+    <div class="rail-card" style="border-color: rgba(198,74,44,0.4)">
+      <span class="rc-tag" style="color: var(--clay)">waiting on you</span>
+      <h3>pending approval</h3>
+      <div class="kv">
+        <dt>tool</dt><dd class="mono">${esc(t.approval.tool)}</dd>
+        <dt>request</dt><dd class="mono">${t.approval.requestId}</dd>
+      </div>
+      <div class="rail-note" style="margin-top: 8px; padding: 0;">The loop is blocked in-goroutine until you answer (spec §10). No timeout: carlos waits as long as you do.</div>
+    </div>` : '';
+
+  rail.innerHTML = `
+    <div class="rail-card">
+      <span class="rc-tag">this thread</span>
+      <h3>${esc(t.title)}</h3>
+      <dl class="kv">
+        <dt>state</dt><dd><span class="state-word" style="--state-c:${stateColor(t.state)}">${STATE_WORDS[t.state]}</span></dd>
+        <dt>frame</dt><dd class="mono">${esc(t.frame)}</dd>
+        <dt>model</dt><dd class="mono">${esc(t.model)}</dd>
+        <dt>backend</dt><dd class="mono">${esc(t.backend)}</dd>
+        <dt>attached</dt><dd>${t.attached ? 'yes, this process' : t.ownedBy ? 'no · owned by the TUI' : 'no'}</dd>
+        <dt>messages</dt><dd>${t.userMsgs}</dd>
+      </dl>
+      <div class="attach-row">${attachBtn}</div>
+    </div>
+    ${approvalCard}
+    <div class="rail-card">
+      <span class="rc-tag">the crew</span>
+      <h3>sub-agents</h3>
+      ${crew}
+    </div>
+    <div class="rail-note">Frames resolve at attach (this thread came up in <b>${esc(t.frame)}</b>). Switching frames mid-thread stays a TUI move for v1.</div>`;
+}
+
+// ───────────────────────── actions ─────────────────────────
+function sendMessage() {
+  const box = $('#box');
+  const text = box.value.trim();
+  if (!text) return;
+  const t = thread(activeId);
+  t.events.push({ kind: 'user_message', text });
+  t.userMsgs += 1;
+  t.updated = 'now';
+  t.preview = text;
+  if (!t.streaming) {
+    t.streaming = true;
+    t.streamText = 'Got it. (This is the mockup talking: in the real thing this reply streams over SSE as delta events, then seals into the transcript as one assistant_message row.)';
+  }
+  renderAll();
+}
+
+function resolveApproval(decision) {
+  const t = thread(activeId);
+  if (!t.approval) return;
+  const a = t.approval;
+  delete t.approval;
+  if (decision === 'deny') {
+    t.events.push({ kind: 'tool_call', name: a.tool, input: a.input, error: true, output: '(rejected by user)', truncated: false });
+    t.events.push({ kind: 'assistant_message', text: 'Understood, not pushing. The notes commit stays local; say the word when you want it on origin.' });
+    t.state = 'awaiting_input';
+    toast(`denied · <code>approval_resolved</code> fanned out to every connected tab`);
+  } else {
+    t.events.push({ kind: 'tool_call', name: a.tool, input: a.input, output: 'To github.com:georgebuilds/anneal.git\n   3f1c2aa..8d04e71  main -> main', truncated: false });
+    t.events.push({ kind: 'assistant_message', text: 'Pushed. Slice 7d preflight notes are on origin/main. The implementation pass is queued up whenever you want to GO.' });
+    t.state = 'done';
+    toast(decision === 'allow_always'
+      ? `allowed · <code>${esc(a.tool)}</code> added to this thread's always-allow cache (session lifetime)`
+      : `allowed once · <code>${a.requestId}</code> resolved`);
+  }
+  t.updated = 'now';
+  renderAll();
+}
+
+function toggleAttach() {
+  const t = thread(activeId);
+  t.attached = !t.attached;
+  toast(t.attached
+    ? `attached · chatglue loop and heartbeat started for <code>${t.id}</code>`
+    : `detached · loop stopped, transcript stays readable`);
+  renderAll();
+}
+
+function tryAttachForeign() {
+  const t = thread(activeId);
+  toast(`<code>409 thread_owned</code> · heartbeat is ${t.heartbeatAge} fresh. Close the TUI session or pick another thread.`);
+}
+
+function newThread() {
+  newThreadCounter += 1;
+  const id = '01JXNEW' + String(newThreadCounter).padStart(3, '0');
+  THREADS.unshift({
+    id, title: 'untitled thread', state: 'awaiting_input', attached: true,
+    frame: 'carlos', model: 'claude-fable-5', backend: 'carlos',
+    userMsgs: 0, updated: 'now', preview: 'nothing yet. say something.',
+    events: [], children: [],
+  });
+  activeId = id;
+  toast(`thread minted · <code>${id}</code> · frame resolved to <code>carlos</code> at attach`);
+  renderAll();
+  const box = $('#box'); if (box) box.focus();
+}
+
+// ───────────────────────── helpers ─────────────────────────
+function stateColor(s) {
+  return { running: 'var(--navy)', awaiting_input: '#8a6314', blocked: 'var(--clay)',
+           done: 'var(--sage)', failed: 'var(--clay)', foreign: 'var(--subtle)' }[s] || 'var(--subtle)';
+}
+function esc(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+let toastTimer = null;
+function toast(html) {
+  const el = $('#toast');
+  el.innerHTML = html;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 3400);
+}
+
+function renderAll() { renderRoster(); renderStage(); renderRail(); }
+
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'TEXTAREA') return;
+  const t = thread(activeId);
+  if (t.approval && e.key === 'd') resolveApproval('deny');
+  if (t.approval && e.key === 'a') resolveApproval('allow');
+});
+
+$('#btn-new').addEventListener('click', newThread);
+renderAll();
+</script>
+</body>
+</html>
