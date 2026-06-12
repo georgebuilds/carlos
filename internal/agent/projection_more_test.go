@@ -239,6 +239,13 @@ func TestProjection_Apply_PassiveEventTypes(t *testing.T) {
 		agent.EvtArtifactRef,
 		agent.EvtSessionReset,
 		agent.EvtResearchPhase,
+		agent.EvtUserShellStart,
+		agent.EvtUserShellEnd,
+		agent.EvtGatewayInbound,
+		agent.EvtGatewayOutbound,
+		agent.EvtApprovalProposed,
+		agent.EvtApprovalAccepted,
+		agent.EvtApprovalRejected,
 	} {
 		if err := p.Apply(helperEvent(t, "a", typ, []byte(`{}`))); err != nil {
 			t.Errorf("apply %s: %v", typ, err)
@@ -247,6 +254,91 @@ func TestProjection_Apply_PassiveEventTypes(t *testing.T) {
 		if err := p.Apply(helperEvent(t, "ghost", typ, []byte(`{}`))); err != nil {
 			t.Errorf("apply %s for ghost should silently no-op, got %v", typ, err)
 		}
+	}
+}
+
+// Regression for the shipped bug where Apply rejected seven production
+// event types (user_shell_*, gateway_*, approval_*) as "unknown event
+// type": every /shell use painted a projection-error system note in chat
+// and Replay/ReplayAll failed on logs containing them. They must be
+// accepted as passive no-ops, while a genuinely unknown type still errors.
+func TestProjection_Apply_ShippedEventTypesNotUnknown(t *testing.T) {
+	p := agent.NewProjection()
+	created, _ := agent.NewStateChangeCreated(agent.AgentCreated{
+		ID: "a", RootID: "a", Title: "x", Model: "fake",
+	})
+	if err := p.Apply(helperEvent(t, "a", agent.EvtStateChange, created)); err != nil {
+		t.Fatalf("seed created: %v", err)
+	}
+	before, _ := p.Get("a")
+	for _, typ := range []agent.EventType{
+		agent.EvtUserShellStart,
+		agent.EvtUserShellEnd,
+		agent.EvtGatewayInbound,
+		agent.EvtGatewayOutbound,
+		agent.EvtApprovalProposed,
+		agent.EvtApprovalAccepted,
+		agent.EvtApprovalRejected,
+	} {
+		// Happy path: known agent.
+		ev := helperEvent(t, "a", typ, []byte(`{}`))
+		ev.TS = before.UpdatedAt.Add(time.Second)
+		if err := p.Apply(ev); err != nil {
+			t.Errorf("apply %s: %v", typ, err)
+		}
+		r, _ := p.Get("a")
+		if !r.UpdatedAt.Equal(ev.TS) {
+			t.Errorf("apply %s did not bump UpdatedAt: got %v, want %v", typ, r.UpdatedAt, ev.TS)
+		}
+		// Happy path: unknown agent silently no-ops, matching the other
+		// passive types.
+		if err := p.Apply(helperEvent(t, "ghost", typ, []byte(`{}`))); err != nil {
+			t.Errorf("apply %s for ghost should silently no-op, got %v", typ, err)
+		}
+	}
+	// Bad path: a genuinely unknown type must still be rejected loudly.
+	err := p.Apply(helperEvent(t, "a", agent.EventType("user_shell_bogus"), []byte(`{}`)))
+	if err == nil || !strings.Contains(err.Error(), "unknown event type") {
+		t.Fatalf("want unknown-event err for bogus type, got %v", err)
+	}
+}
+
+// Regression: Replay over a log containing user_shell events must succeed.
+// Before the fix it failed with `replay: apply seq=N: projection: unknown
+// event type "user_shell_start"`.
+func TestReplay_LogWithUserShellEventsSucceeds(t *testing.T) {
+	dir := t.TempDir()
+	log, err := agent.OpenStateDB(filepath.Join(dir, "state.db"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer agent.CloseStateDB(log)
+
+	ctx := context.Background()
+	created, _ := agent.NewStateChangeCreated(agent.AgentCreated{
+		ID: "a", RootID: "a", Title: "x", Model: "fake",
+	})
+	for _, ev := range []agent.Event{
+		helperEvent(t, "a", agent.EvtStateChange, created),
+		helperEvent(t, "a", agent.EvtUserShellStart, []byte(`{"command":"ls","cwd":"/tmp"}`)),
+		helperEvent(t, "a", agent.EvtUserShellEnd, []byte(`{"exit_code":0}`)),
+	} {
+		if _, err := log.Append(ctx, ev); err != nil {
+			t.Fatalf("append %s: %v", ev.Type, err)
+		}
+	}
+
+	p, err := agent.Replay(ctx, log, "a")
+	if err != nil {
+		t.Fatalf("replay over user_shell events: %v", err)
+	}
+	if _, ok := p.Get("a"); !ok {
+		t.Fatalf("replayed projection missing agent row")
+	}
+
+	// ReplayAll must survive the same log.
+	if _, err := agent.ReplayAll(ctx, log); err != nil {
+		t.Fatalf("replayAll over user_shell events: %v", err)
 	}
 }
 
