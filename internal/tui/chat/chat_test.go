@@ -139,14 +139,17 @@ func TestReadOnlyViewer_RendersSeededTranscript(t *testing.T) {
 
 	m := New(log, agentID, src)
 	m = drive(t, m, 120, 30)
+	// Typewriter (slice 9b): live text reveals over textTicks; pump
+	// enough of them to expose the full buffer.
+	m = pumpTextTicks(m, 40)
 
 	view := m.View()
 
 	mustContain(t, view, "hello carlos") // user message
-	mustContain(t, view, "👤")          // user avatar
+	mustContain(t, view, "👤")            // user avatar
 	mustContain(t, view, stripGlyphTool) // tool-call leading chevron (activity strip)
 	mustContain(t, view, "bash")         // tool name
-	mustContain(t, view, "🧢")          // live assistant avatar
+	mustContain(t, view, "🧢")            // live assistant avatar
 	mustContain(t, view, "Hi! I'll take a look.")
 	// Header retired the "[<glyph> <label>]" bracketed badge; the bare
 	// state glyph alone now carries the spawning signal.
@@ -451,7 +454,6 @@ func countUserMessages(t *testing.T, log *agent.SQLiteEventLog, agentID string) 
 	return n
 }
 
-
 // TestRenderEmptyState_GreetsByUserName confirms the slice-9g empty
 // state panel addresses the user by their onboarded name (with "Boss"
 // as the brand-voice default) and surfaces the example prompts so a
@@ -640,9 +642,9 @@ func TestTextSource_LiveTextAppearsInTranscript(t *testing.T) {
 	m = drive(t, m, 120, 30)
 
 	src.Append(agentID, "streaming token...")
-	// Tick fires the re-render path.
-	updated, _ := m.Update(textTickMsg{})
-	m = updated.(*Model)
+	// Ticks fire the re-render path AND advance the typewriter reveal
+	// cursor (slice 9b); pump until the full buffer is exposed.
+	m = pumpTextTicks(m, 40)
 
 	if got := m.View(); !strings.Contains(got, "streaming token...") {
 		t.Fatalf("live text not surfaced: %s", got)
@@ -750,8 +752,8 @@ func TestSubmit_BusyAssistantQueuesMessage(t *testing.T) {
 	if cmd := m.submit(); cmd != nil {
 		t.Errorf("mid-turn submit should return nil cmd (parked, not dispatched); got non-nil")
 	}
-	if got, want := m.queuedUserMessages, []string{"?"}; len(got) != 1 || got[0] != want[0] {
-		t.Errorf("queuedUserMessages = %v, want %v", got, want)
+	if got := m.queuedUserMessages; len(got) != 1 || got[0].text != "?" {
+		t.Errorf("queuedUserMessages = %v, want one entry with text %q", got, "?")
 	}
 	if m.status == "" {
 		t.Errorf("status hint should be set so the user sees the message was queued")
@@ -800,8 +802,8 @@ func TestSubmit_BusyQueuesFIFO(t *testing.T) {
 		t.Fatalf("queued count = %d, want %d (queue: %v)", len(m.queuedUserMessages), len(want), m.queuedUserMessages)
 	}
 	for i := range want {
-		if m.queuedUserMessages[i] != want[i] {
-			t.Errorf("queue[%d] = %q, want %q (FIFO order broken)", i, m.queuedUserMessages[i], want[i])
+		if m.queuedUserMessages[i].text != want[i] {
+			t.Errorf("queue[%d] = %q, want %q (FIFO order broken)", i, m.queuedUserMessages[i].text, want[i])
 		}
 	}
 	if !strings.Contains(m.status, "3 queued") {

@@ -143,7 +143,7 @@ func TestAppendUserMessage_AppendFailureSurfacesErrMsg(t *testing.T) {
 	if err := log.Close(); err != nil {
 		t.Fatalf("close: %v", err)
 	}
-	cmd := m.appendUserMessage("after close")
+	cmd := m.appendUserMessage("after close", nil)
 	if cmd == nil {
 		t.Fatal("appendUserMessage should return an append command")
 	}

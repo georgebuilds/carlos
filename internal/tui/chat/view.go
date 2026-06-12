@@ -270,7 +270,25 @@ func (m *Model) renderInput(w int) string {
 		inputRow := renderSlashInputRow(m, w)
 		return strings.Join([]string{hint, sep, inputRow}, "\n")
 	}
-	return sep + "\n" + m.ta.View()
+	// @file mention autocomplete (slice I-4): same hint-band slot,
+	// next in priority after slash mode. The input row keeps the
+	// chip-aware renderer so existing chips stay styled while the
+	// user types the @token.
+	if m.mentionSuggest.open {
+		hint := renderMentionHint(m.mentionSuggest, w)
+		return strings.Join([]string{hint, sep, m.renderComposerInput(w)}, "\n")
+	}
+	// Sticky chip peek (slice I-2 paste, I-3 image, I-4 mention):
+	// while the cursor touches a chip, a small preview card occupies
+	// the hint-band slot. Slash mode keeps priority on the slot via
+	// the early return above.
+	if att, ok := m.peekAttachment(); ok {
+		return strings.Join([]string{m.renderPeek(att, w), sep, m.renderComposerInput(w)}, "\n")
+	}
+	// Chip-aware render (slice I-1): pixel-identical to ta.View()
+	// until the composer holds a live chip, then markers paint as
+	// styled sigil+nickname chips. See composer.go.
+	return sep + "\n" + m.renderComposerInput(w)
 }
 
 // renderHeader composes the four-item chat-header row:
@@ -1274,7 +1292,10 @@ func renderEntry(e transcriptEntry, md *glamour.TermRenderer, snaps []ChildSnaps
 	colon := lipgloss.NewStyle().Foreground(colorMuted).Render(":")
 	switch e.kind {
 	case entryUserMessage:
-		return renderAvatarBlock("👤", colon, e.text, colorUser, width)
+		// displayChips substitutes chip markers with their plain
+		// sigil+nickname form (slice I-1) BEFORE the wrap + style
+		// pass - replayed history shows the chip, never ‹p:ID›.
+		return renderAvatarBlock("👤", colon, displayChips(e.text, e.attachments), colorUser, width)
 	case entryAssistantMessage:
 		return renderAssistantMarkdown(e.text, width, md)
 	case entryUserShell:

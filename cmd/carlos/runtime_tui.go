@@ -746,6 +746,19 @@ func runDefault(cfg *config.Config, sessionID string) error {
 			chat.WithUserShell(shellMgr),
 			chat.WithShellHistory(shellHistory),
 			chat.WithChildrenView(childrenView),
+			// Slice I-3 capability gate: resolved against the LIVE
+			// dispatch on every render, so /model swaps and frame
+			// switches (both rebuild liveDispatch under loopMu) flip
+			// the image-chip warn treatment without a restart.
+			chat.WithVisionProbe(func() bool {
+				loopMu.Lock()
+				defer loopMu.Unlock()
+				return liveDispatch != nil && liveDispatch.provider != nil &&
+					liveDispatch.provider.Capabilities().Vision
+			}),
+			// Slice I-4: @vault/ mention tier completes from the
+			// configured vault. Empty path = tier off.
+			chat.WithVaultPath(cfg.Vault.Path),
 		}
 		if frameUI.Active != "" {
 			opts = append(opts, chat.WithFrame(frameUI))

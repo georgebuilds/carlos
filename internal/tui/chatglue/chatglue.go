@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -358,12 +359,113 @@ func (l *Loop) buildHistory(ctx context.Context) ([]providers.Message, error) {
 		if p.Text == "" {
 			continue
 		}
+		if ev.Type == agent.EvtUserMessage {
+			// Composer-chip expansion (slices I-1 + I-3): user text
+			// persists with inline markers (‹p:ID› etc); the model must
+			// see the expanded content instead - pastes as fenced
+			// blocks, images as real image blocks (vision providers) or
+			// readable placeholders (everything else). This is the ONLY
+			// expansion point (the live-send path also flows through
+			// buildHistory), so markers are expanded exactly once and a
+			// raw marker can never leak into the context.
+			out = append(out, providers.Message{
+				Role:    role,
+				Content: l.expandUserBlocks(p.Text, p.Attachments),
+			})
+			continue
+		}
 		out = append(out, providers.Message{
 			Role:    role,
 			Content: []providers.Block{{Kind: "text", Text: p.Text}},
 		})
 	}
 	return out, nil
+}
+
+// expandUserBlocks turns one persisted user message (text with chip
+// markers + the attachments those markers reference) into the typed
+// block slice the provider sees. Slice I-3's bridge:
+//
+//   - provider without vision (or nil provider): the whole message
+//     stays ONE text block via agent.ExpandMarkers - image chips
+//     degrade to "[image: label]" placeholders, byte-identical to the
+//     pre-I-3 behavior;
+//   - vision provider: the message splits at image markers into text
+//     blocks + image blocks IN MARKER ORDER, the pixels loaded from
+//     the content-addressed artifact store by the attachment's SHA256
+//     (the chat TUI stored them there at paste time);
+//   - any image that can't be loaded (no SHA, blob missing, bytes
+//     that don't sniff as a supported image type) degrades to the
+//     same text placeholder marked "(unavailable)" - a broken chip
+//     must never fail the turn.
+//
+// The I-1 invariant carries over: no raw ‹x:id› marker ever reaches
+// the model through any of these paths.
+func (l *Loop) expandUserBlocks(text string, atts []agent.Attachment) []providers.Block {
+	vision := l.cfg.Provider != nil && l.cfg.Provider.Capabilities().Vision
+	if !vision {
+		return []providers.Block{{Kind: "text", Text: agent.ExpandMarkers(text, atts)}}
+	}
+	segs := agent.ExpandMarkerSegments(text, atts)
+	basePath := agent.ArtifactBasePath("")
+	blocks := make([]providers.Block, 0, len(segs))
+	for _, seg := range segs {
+		if seg.Image == nil {
+			blocks = append(blocks, providers.Block{Kind: "text", Text: seg.Text})
+			continue
+		}
+		data, mediaType, ok := loadImageArtifact(basePath, *seg.Image)
+		if !ok {
+			blocks = append(blocks, providers.Block{
+				Kind: "text",
+				Text: unavailableImageText(*seg.Image),
+			})
+			continue
+		}
+		blocks = append(blocks, providers.ImageBlock(mediaType, data))
+	}
+	return blocks
+}
+
+// supportedImageMediaTypes is the intersection of what Anthropic's
+// Messages API and the OpenAI-compatible providers accept. The chat
+// composer normalizes clipboard images to PNG, so in practice this is
+// belt-and-braces against hand-crafted attachments.
+var supportedImageMediaTypes = map[string]bool{
+	"image/png":  true,
+	"image/jpeg": true,
+	"image/gif":  true,
+	"image/webp": true,
+}
+
+// loadImageArtifact reads an image attachment's bytes from the
+// content-addressed artifact store and sniffs their media type.
+// ok=false for every failure mode (no SHA recorded, blob missing,
+// bytes that aren't a supported image format) - the caller degrades
+// to a text placeholder.
+func loadImageArtifact(basePath string, att agent.Attachment) (data []byte, mediaType string, ok bool) {
+	if att.SHA256 == "" {
+		return nil, "", false
+	}
+	b, err := agent.ReadArtifact(basePath, att.SHA256)
+	if err != nil || len(b) == 0 {
+		return nil, "", false
+	}
+	mt := http.DetectContentType(b)
+	if !supportedImageMediaTypes[mt] {
+		return nil, "", false
+	}
+	return b, mt, true
+}
+
+// unavailableImageText is the degraded stand-in for an image chip
+// whose bytes can't be sent despite the provider supporting vision.
+// Distinct from the plain capability placeholder so the model (and
+// anyone reading a transcript dump) can tell "provider can't see
+// images" from "this particular image is gone".
+func unavailableImageText(att agent.Attachment) string {
+	p := agent.ImagePlaceholder(att)
+	return strings.TrimSuffix(p, "]") + " (unavailable)]"
 }
 
 // persistAssistantTurn appends the sealed assistant text as an

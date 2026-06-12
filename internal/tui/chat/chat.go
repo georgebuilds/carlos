@@ -17,6 +17,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/georgebuilds/carlos/internal/agent"
+	"github.com/georgebuilds/carlos/internal/clipboard"
 	"github.com/georgebuilds/carlos/internal/config"
 	"github.com/georgebuilds/carlos/internal/frame"
 	"github.com/georgebuilds/carlos/internal/memory"
@@ -147,16 +148,31 @@ type transcriptEntry struct {
 	// row created by EvtUserShellStart instead of appending a fresh row.
 	// shellOutput streams in via the Manager Subscribe pump until the
 	// End event lands the canonical inline-truncated copy.
-	shellJobID       string
-	shellCommand     string
-	shellOutput      string
-	shellExitCode    int
-	shellDuration    time.Duration
-	shellRunning     bool // true between Start and End
-	shellCancelled   bool
+	shellJobID        string
+	shellCommand      string
+	shellOutput       string
+	shellExitCode     int
+	shellDuration     time.Duration
+	shellRunning      bool // true between Start and End
+	shellCancelled    bool
 	shellBackgrounded bool
-	shellTruncated   int // bytes dropped from the inline output
-	shellFailErr     string
+	shellTruncated    int // bytes dropped from the inline output
+	shellFailErr      string
+
+	// attachments are the composer-chip payloads carried by a user
+	// message (slice I-1). text keeps the raw markers; renderEntry
+	// substitutes them with sigil+nickname chips at paint time via
+	// displayChips, so replayed history shows the chip, not ‹p:ID›.
+	attachments []agent.Attachment
+}
+
+// queuedUserMessage is one parked mid-turn submit: the raw message
+// text (chip markers intact) plus the attachments serialized from the
+// composer at submit time, so a queued chip message survives the wait
+// with its payloads bound.
+type queuedUserMessage struct {
+	text string
+	atts []agent.Attachment
 }
 
 type entryKind int
@@ -229,6 +245,28 @@ type Model struct {
 	// Bubbles components.
 	vp viewport.Model
 	ta textarea.Model
+
+	// composer wraps ta with inline-chip (attachment) bookkeeping -
+	// slice I-1. Holds a POINTER to ta, so the existing m.ta call
+	// sites stay the single source of truth for the value + cursor.
+	// nil in tests that build a bare Model{}; every Composer method
+	// is nil-receiver safe.
+	composer *Composer
+
+	// clip is the image-clipboard probe behind the ctrl+v intercept
+	// (slice I-3). New defaults it to clipboard.System(), which is
+	// lazy and headless-safe; tests inject a clipboard.Fake via
+	// WithClipboard. nil (bare Model, explicit override) disables the
+	// probe entirely so ctrl+v stays a pure text paste.
+	clip clipboard.Reader
+
+	// visionProbe answers "can the CURRENT provider read images?" -
+	// the slice-I-3 capability gate. Resolved live on every render
+	// (never cached at boot) so /model swaps and frame switches flip
+	// the image-chip warn treatment immediately. nil assumes vision:
+	// the gate is cosmetic and the chatglue bridge degrades safely
+	// server-side either way. Wired by cmd/carlos via WithVisionProbe.
+	visionProbe func() bool
 
 	// Live subscription handle. nil until subscribeCmd resolves.
 	subCh     <-chan agent.Event
@@ -453,14 +491,15 @@ type Model struct {
 	// to run on the next Update tick.
 	queuedCmds []tea.Cmd
 
-	// queuedUserMessages holds raw user-message text the user typed
-	// while the assistant was mid-turn (streaming, tool-calling, or in
-	// the in-flight Spawning / Running / Compacting projection
-	// states). FIFO. submit() pushes here when assistantBusy() is true
-	// instead of silently dropping the input; flushQueuedUserMessage
-	// pops one entry per assistant-idle tick so each queued message
-	// gets its own turn.
-	queuedUserMessages []string
+	// queuedUserMessages holds user messages submitted while the
+	// assistant was mid-turn (streaming, tool-calling, or in the
+	// in-flight Spawning / Running / Compacting projection states).
+	// FIFO. submit() pushes here when assistantBusy() is true instead
+	// of silently dropping the input; flushQueuedUserMessage pops one
+	// entry per assistant-idle tick so each queued message gets its
+	// own turn. Each entry carries the raw text (chip markers intact)
+	// plus the chip attachments serialized at submit time.
+	queuedUserMessages []queuedUserMessage
 
 	// Inline sub-agent panel: childrenView is the supervisor-scoped
 	// reader, nil disables the panel entirely; childrenSnap is the
@@ -475,6 +514,30 @@ type Model struct {
 	// separator). Zero value = closed; refresh derives "open" from
 	// the textarea value so we never go out of sync.
 	slashSuggest slashSuggest
+
+	// mentionSuggest is the @file-mention sibling of slashSuggest
+	// (slice I-4): live fuzzy file completion while the cursor sits in
+	// an @token. Refreshed alongside slashSuggest via refreshSuggests;
+	// consumed by renderInput (hint band) + handleMentionSuggestKey.
+	mentionSuggest mentionSuggest
+
+	// mentionIdx / mentionVaultIdx are the lazily-built candidate file
+	// indexes behind mention autocomplete (cwd tier and @vault/ tier).
+	// nil until the first "@" keystroke; refreshed on a short TTL. See
+	// mention.go for the walk bounds.
+	mentionIdx      *mentionIndex
+	mentionVaultIdx *mentionIndex
+
+	// mentionRoot overrides the cwd-tier walk root; "" (production)
+	// means os.Getwd at index-build time. Tests point it at a fixture
+	// tree.
+	mentionRoot string
+
+	// vaultPath is the configured Obsidian vault root for the @vault/
+	// mention tier. "" disables the tier (the "vault/" query prefix
+	// then falls through to plain cwd completion). Set via
+	// WithVaultPath from cfg.Vault.Path.
+	vaultPath string
 
 	// thinkingTick advances on every textTickMsg so the "carlos is
 	// thinking" activity indicator at the bottom of the transcript
@@ -702,6 +765,35 @@ func WithFrame(ui FrameUI) Option {
 	return func(m *Model) { m.frame = ui }
 }
 
+// WithClipboard replaces the image-clipboard probe behind the ctrl+v
+// intercept (slice I-3). New defaults to clipboard.System(); tests
+// inject a clipboard.Fake for deterministic image pastes. Passing nil
+// disables the probe entirely - ctrl+v degrades to the textarea's
+// stock text paste.
+func WithClipboard(r clipboard.Reader) Option {
+	return func(m *Model) { m.clip = r }
+}
+
+// WithVisionProbe wires the live "can the current provider read
+// images?" answer for the slice-I-3 capability gate. The probe is
+// called at render time (not cached), so the production closure
+// should read the CURRENT dispatch under its own lock - that way
+// /model swaps and frame switches update the image-chip warn
+// treatment without restarting the chat. nil (the default) assumes
+// vision and never warns.
+func WithVisionProbe(probe func() bool) Option {
+	return func(m *Model) { m.visionProbe = probe }
+}
+
+// WithVaultPath wires the configured Obsidian vault root (cfg.Vault.
+// Path) into @file mention autocomplete's opt-in "@vault/..." tier
+// (slice I-4). An empty path (no vault configured) leaves the tier
+// off; the "vault/" query prefix then completes from the cwd like any
+// other text.
+func WithVaultPath(path string) Option {
+	return func(m *Model) { m.vaultPath = path }
+}
+
 // WithChildrenView wires the inline sub-agent panel. The chat polls
 // cv.Snapshot at ~250ms while at least one child is live; the panel
 // appears on the right when the inner width clears splitMinWidth and
@@ -777,6 +869,14 @@ func New(log agent.EventLog, agentID string, source TextSource, opts ...Option) 
 		chatHistoryCursor: -1,
 		diag:              io.Discard,
 	}
+	// Wire AFTER the literal so the pointer targets the heap field
+	// (the Model lives behind a *Model everywhere downstream).
+	m.composer = NewComposer(&m.ta)
+	// Image-paste probe (slice I-3): the real system clipboard by
+	// default. Safe everywhere - clipboard.System() initializes
+	// lazily on the first ctrl+v and degrades to "no image" on
+	// headless sessions. Tests override with WithClipboard.
+	m.clip = clipboard.System()
 	for _, opt := range opts {
 		opt(m)
 	}
@@ -1110,7 +1210,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// entries) and the composer is single-line so the
 			// textarea's native multi-line cursor nav still wins
 			// when the user is mid-compose.
-			if m.chatHistoryShouldEngage() && !(m.slashSuggest.open && len(m.slashSuggest.matches) > 1) {
+			if m.chatHistoryShouldEngage() &&
+				!(m.slashSuggest.open && len(m.slashSuggest.matches) > 1) &&
+				!(m.mentionSuggest.open && len(m.mentionSuggest.matches) > 1) {
 				if m.chatHistoryUp() {
 					return m, nil
 				}
@@ -1126,7 +1228,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.ta.CursorEnd()
 				return m, nil
 			}
-			if m.chatHistoryShouldEngage() && !(m.slashSuggest.open && len(m.slashSuggest.matches) > 1) {
+			if m.chatHistoryShouldEngage() &&
+				!(m.slashSuggest.open && len(m.slashSuggest.matches) > 1) &&
+				!(m.mentionSuggest.open && len(m.mentionSuggest.matches) > 1) {
 				if m.chatHistoryDown() {
 					return m, nil
 				}
@@ -1137,6 +1241,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// "!" mode keeps owning ↑↓; placed before the textarea route so
 		// Tab actually completes instead of inserting whitespace.
 		if cmd, handled := m.handleSlashSuggestKey(msg.String()); handled {
+			return m, cmd
+		}
+		// @file mention autocomplete (slice I-4) mirrors the slash
+		// intercept: Tab attaches the highlighted file as a ◇ chip,
+		// ↑↓ navigate the match list, Esc dismisses. Mutually
+		// exclusive with slash mode (a "/" value never mentions), so
+		// ordering after the slash handler is belt-and-braces only.
+		if cmd, handled := m.handleMentionSuggestKey(msg.String()); handled {
 			return m, cmd
 		}
 		// Default route: textarea owns the keystroke when input is enabled.
@@ -1157,6 +1269,47 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if len(m.startupNotices) > 0 {
 			m.startupNotices = nil
 		}
+		// Image paste (slice I-3): ctrl+v probes the clipboard for an
+		// IMAGE before the textarea's own paste binding (a TEXT read
+		// via atotto) can see the key. An image becomes one ▣ chip
+		// backed by a content-addressed artifact; no image (headless
+		// session included) falls through so text paste behaves
+		// exactly as before. An artifact-write failure consumes the
+		// key with a status-line error and inserts nothing - the
+		// clipboard still holds the image, so the paste is never
+		// silently lost.
+		if msg.String() == "ctrl+v" && m.handleImagePaste() {
+			m.refreshSuggests()
+			return m, nil
+		}
+		// Large-paste clipping (slice I-2): bracketed paste delivers
+		// the whole body as ONE KeyRunes msg with Paste=true (termscrub
+		// passes it through untouched). Above the clip threshold the
+		// paste becomes a single inline chip - attachment stored, only
+		// the marker enters the textarea - whether the cursor is at the
+		// end, mid-text, or inside an open slash-suggest band (the
+		// refresh below keeps the band honest either way). Below the
+		// threshold it falls through to the textarea and inserts as
+		// plain text, exactly the pre-I-2 behavior.
+		if msg.Paste && msg.Type == tea.KeyRunes && m.composer != nil {
+			if pasted := normalizePaste(string(msg.Runes)); shouldClipPaste(pasted) {
+				m.composer.InsertChip(agent.Attachment{
+					Kind:     agent.AttachmentPaste,
+					Nickname: clipNickname(pasted),
+					Content:  pasted,
+				})
+				m.refreshSuggests()
+				return m, nil
+			}
+		}
+		// Chip atomicity (slice I-1): when the cursor is adjacent to an
+		// inline chip, backspace/delete remove the whole chip and ←/→
+		// hop over it - one keypress each, the chip behaves as a single
+		// grapheme. Handled keys never reach the textarea.
+		if m.composer.HandleKey(msg) {
+			m.refreshSuggests()
+			return m, nil
+		}
 		var cmd tea.Cmd
 		m.ta, cmd = m.ta.Update(msg)
 		// Defense-in-depth scrub of terminal escape remnants that
@@ -1176,12 +1329,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.ta.SetValue(cleaned)
 			m.ta.CursorEnd()
 		}
+		// Re-derive chip refs from the (possibly edited) value and snap
+		// the cursor out of any marker interior so the next keystroke
+		// can't split a chip. No-op without live attachments.
+		m.composer.Sync()
 		// Refresh the slash-mode suggest state after every textarea
 		// edit so the ghost text + hint band track what the user just
 		// typed. refresh is a no-op when the input doesn't start with
 		// "/", so the cost on the non-slash path is a single prefix
 		// check.
-		m.slashSuggest.refresh(m.ta.Value(), m.argCompleterFn())
+		m.refreshSuggests()
 		return m, cmd
 
 	case backfillMsg:
@@ -1394,9 +1551,10 @@ func (m *Model) applyEvent(ev agent.Event) {
 			}
 		}
 		m.transcript = append(m.transcript, transcriptEntry{
-			kind: entryUserMessage,
-			ts:   ev.TS,
-			text: p.Text,
+			kind:        entryUserMessage,
+			ts:          ev.TS,
+			text:        p.Text,
+			attachments: p.Attachments,
 		})
 	case agent.EvtAssistantMessage:
 		var p agent.MessagePayload
@@ -1640,16 +1798,28 @@ func (m *Model) findUserShellEntry(jobID string) int {
 // All side-effects run inside the returned tea.Cmd so this function
 // stays testable in isolation.
 func (m *Model) submit() tea.Cmd {
+	// Serialize through the composer so chip attachments travel with
+	// the text (the markers stay in raw; they're the persisted form).
+	// A nil composer (bare test Model) falls back to the textarea.
 	raw := strings.TrimSpace(m.ta.Value())
+	var atts []agent.Attachment
+	if m.composer != nil {
+		text, a := m.composer.Serialize()
+		raw = strings.TrimSpace(text)
+		atts = a
+	}
 	if raw == "" {
 		return nil
 	}
 
 	// Phase U: "!cmd" submissions short-circuit to the user-shell
-	// path before slash or model routing.
-	if isShellSubmission(raw) {
+	// path before slash or model routing. A message carrying chips is
+	// never a shell or slash submission - chips are model-bound
+	// content, so those branches are gated on len(atts)==0.
+	if len(atts) == 0 && isShellSubmission(raw) {
 		m.slashSuggest.reset()
-		m.ta.Reset()
+		m.mentionSuggest.reset()
+		m.resetComposer()
 		return m.submitUserShellCmd(extractShellCommand(raw), usershell.Foreground)
 	}
 
@@ -1661,7 +1831,7 @@ func (m *Model) submit() tea.Cmd {
 	// ghost text first accepts the suggestion. We only rewrite when
 	// the typed value is strictly a prefix of the verb; anything
 	// past the verb (args) the user owns.
-	if m.slashSuggest.open {
+	if len(atts) == 0 && m.slashSuggest.open {
 		if spec, ok := m.slashSuggest.selected(); ok {
 			verb := "/" + spec.Name
 			if strings.HasPrefix(verb, raw) && raw != verb {
@@ -1671,22 +1841,25 @@ func (m *Model) submit() tea.Cmd {
 	}
 
 	m.slashSuggest.reset()
-	m.ta.Reset()
+	m.mentionSuggest.reset()
+	m.resetComposer()
 	// Any successful submit ends the current history walk so the
 	// next ↑ starts from the most-recent entry again. Cheap; safe to
 	// call when no walk is active.
 	m.chatHistoryReset()
 
-	cmd, err := slash.Parse(raw)
-	if err == nil {
-		return m.dispatchSlash(cmd)
-	}
-	if !errors.Is(err, slash.ErrNotSlash) {
-		// slash.Parse only returns ErrNotSlash today, but surface any
-		// future shape defensively rather than treating malformed
-		// slash input as a model message.
-		return func() tea.Msg {
-			return errMsg{err: fmt.Errorf("slash parse: %w", err)}
+	if len(atts) == 0 {
+		cmd, err := slash.Parse(raw)
+		if err == nil {
+			return m.dispatchSlash(cmd)
+		}
+		if !errors.Is(err, slash.ErrNotSlash) {
+			// slash.Parse only returns ErrNotSlash today, but surface any
+			// future shape defensively rather than treating malformed
+			// slash input as a model message.
+			return func() tea.Msg {
+				return errMsg{err: fmt.Errorf("slash parse: %w", err)}
+			}
 		}
 	}
 	// Mid-turn queueing: if the assistant is still working on the
@@ -1697,11 +1870,23 @@ func (m *Model) submit() tea.Cmd {
 	// in practice means the user sees nothing happen until they
 	// re-type after the turn finishes.
 	if m.assistantBusy() {
-		m.queuedUserMessages = append(m.queuedUserMessages, raw)
+		m.queuedUserMessages = append(m.queuedUserMessages, queuedUserMessage{text: raw, atts: atts})
 		m.status = m.queuedHintLine()
 		return nil
 	}
-	return m.appendUserMessage(raw)
+	return m.appendUserMessage(raw, atts)
+}
+
+// resetComposer clears the textarea AND the composer's chip state on
+// every submit path, so attachments can't bleed into the next message.
+// Falls back to the bare textarea reset when no composer is wired
+// (bare test Models).
+func (m *Model) resetComposer() {
+	if m.composer != nil {
+		m.composer.Reset()
+		return
+	}
+	m.ta.Reset()
 }
 
 // queuedHintLine renders the status hint shown after a mid-turn
@@ -1734,7 +1919,7 @@ func (m *Model) flushQueuedUserMessage() tea.Cmd {
 	if m.assistantBusy() {
 		return nil
 	}
-	text := m.queuedUserMessages[0]
+	q := m.queuedUserMessages[0]
 	m.queuedUserMessages = m.queuedUserMessages[1:]
 	// Clear the hint once the queue empties; otherwise refresh it so
 	// the remaining count is accurate.
@@ -1743,7 +1928,7 @@ func (m *Model) flushQueuedUserMessage() tea.Cmd {
 	} else {
 		m.status = m.queuedHintLine()
 	}
-	return m.appendUserMessage(text)
+	return m.appendUserMessage(q.text, q.atts)
 }
 
 // submitBackgroundShell extracts the "!cmd" body and submits it as
@@ -2401,18 +2586,19 @@ func absDuration(d time.Duration) time.Duration {
 // The optimistic copy is then deduped against the canonical event
 // when the subscription pump delivers it — see applyEvent's
 // EvtUserMessage case for the matching logic.
-func (m *Model) appendUserMessage(text string) tea.Cmd {
+func (m *Model) appendUserMessage(text string, atts []agent.Attachment) tea.Cmd {
 	m.transcript = append(m.transcript, transcriptEntry{
-		kind: entryUserMessage,
-		ts:   time.Now().UTC(),
-		text: text,
+		kind:        entryUserMessage,
+		ts:          time.Now().UTC(),
+		text:        text,
+		attachments: atts,
 	})
 	m.rerenderViewport()
 
 	agentID := m.agentID
 	log := m.log
 	return func() tea.Msg {
-		payload, err := json.Marshal(agent.MessagePayload{Text: text})
+		payload, err := json.Marshal(agent.MessagePayload{Text: text, Attachments: atts})
 		if err != nil {
 			return errMsg{err: fmt.Errorf("marshal user_message: %w", err)}
 		}

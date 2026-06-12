@@ -93,11 +93,55 @@ type Event struct {
 }
 
 // MessagePayload is the canonical on-the-wire shape for EvtUserMessage,
-// EvtAssistantMessage, and EvtSteering events. Single Text field today;
-// future fields (attachments, citations) can be added without breaking
-// existing rows because json.Unmarshal ignores unknown fields.
+// EvtAssistantMessage, and EvtSteering events. Text is the message body
+// (for user messages it may embed chip markers - see attachment.go);
+// Attachments carries the chip payloads those markers point at. Both
+// directions stay compatible: old rows unmarshal with a nil Attachments
+// slice, and old readers ignore the unknown "attachments" key because
+// json.Unmarshal skips fields it doesn't know.
 type MessagePayload struct {
 	Text string `json:"text"`
+	// Attachments are the composer-chip payloads referenced by markers
+	// embedded in Text (slice I-1). Empty for assistant/steering
+	// messages and for plain user messages; omitted from the JSON so
+	// pre-I-1 rows and new chip-less rows are byte-identical.
+	Attachments []Attachment `json:"attachments,omitempty"`
+}
+
+// AttachmentKind discriminates the three composer-chip flavors. The
+// values are persisted inside event payloads - do not renumber/rename.
+type AttachmentKind string
+
+const (
+	// AttachmentPaste is a large clipboard paste clipped into a chip.
+	// Content carries the full pasted text inline.
+	AttachmentPaste AttachmentKind = "paste"
+	// AttachmentImage is a pasted/attached image. The pixels live on
+	// disk (a later slice owns storage); Path + SHA256 reference them.
+	AttachmentImage AttachmentKind = "image"
+	// AttachmentMention is an @file mention. Path points at the
+	// mentioned file; content is resolved at expansion time by the
+	// slice that owns mentions.
+	AttachmentMention AttachmentKind = "mention"
+)
+
+// Attachment is one composer-chip payload carried alongside a user
+// message. The marker embedded in MessagePayload.Text (e.g. "‹p:1›")
+// references an Attachment by ID; the pairing survives replay because
+// both halves live in the same payload row.
+//
+// Field usage by kind:
+//
+//	paste:   Content (inline full text)
+//	image:   Path + SHA256 (storage lands in a later slice)
+//	mention: Path (resolution lands in a later slice)
+type Attachment struct {
+	ID       string         `json:"id"`
+	Kind     AttachmentKind `json:"kind"`
+	Nickname string         `json:"nickname,omitempty"`
+	Content  string         `json:"content,omitempty"`
+	Path     string         `json:"path,omitempty"`
+	SHA256   string         `json:"sha256,omitempty"`
 }
 
 // ResearchPhasePayload is the EvtResearchPhase payload (slice 11d).

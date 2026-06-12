@@ -2,6 +2,22 @@ package theme
 
 import "github.com/georgebuilds/carlos/internal/agent"
 
+// Composer chip sigils (slice I-1). One single-cell glyph per chip
+// kind so the shape alone encodes the kind under NO_COLOR, mirroring
+// the StateGlyph contract below. Color pairing happens at the render
+// site (chat composer): paste=Tool, image=OK, mention=Accent.
+//
+// Named constants on purpose: ChipSigilPaste is U+2307 WAVY LINE,
+// which sits outside the Geometric Shapes block the rest of our
+// glyphs come from and has weaker monospace-font coverage (it can
+// render as tofu in older terminal fonts). If field reports confirm
+// that, the swap is this one line.
+const (
+	ChipSigilPaste   = "⌇" // U+2307 WAVY LINE - font-coverage risk, see above
+	ChipSigilImage   = "▣" // U+25A3 WHITE SQUARE CONTAINING BLACK SMALL SQUARE
+	ChipSigilMention = "◇" // U+25C7 WHITE DIAMOND
+)
+
 // StateGlyph returns the unicode shape paired with the colored badge for
 // an agent state. Color encodes priority; the glyph encodes the state
 // itself - together they survive both colorblind viewers and NO_COLOR

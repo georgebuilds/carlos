@@ -65,6 +65,34 @@ func TestStateGlyph_UnknownReturnsMiddleDot(t *testing.T) {
 	}
 }
 
+// TestChipSigils_SingleCellAndDistinct extends the StateGlyph cell
+// contract to the slice I-1 composer chip sigils: each must be one
+// rune, one terminal cell, and distinct from the others so the shape
+// alone encodes the chip kind under NO_COLOR. The width==1 check is
+// the canary for the documented U+2307 (ChipSigilPaste) font risk -
+// if a sigil ever needs swapping, this test pins the replacement to
+// the same constraints.
+func TestChipSigils_SingleCellAndDistinct(t *testing.T) {
+	sigils := map[string]string{
+		"paste":   ChipSigilPaste,
+		"image":   ChipSigilImage,
+		"mention": ChipSigilMention,
+	}
+	seen := make(map[string]string, len(sigils))
+	for name, g := range sigils {
+		if w := lipgloss.Width(g); w != 1 {
+			t.Errorf("ChipSigil %s = %q: width=%d, want 1 (single terminal cell)", name, g, w)
+		}
+		if n := utf8.RuneCountInString(g); n != 1 {
+			t.Errorf("ChipSigil %s = %q: %d runes, want 1", name, g, n)
+		}
+		if prev, dup := seen[g]; dup {
+			t.Errorf("sigil collision: %s and %s both map to %q", prev, name, g)
+		}
+		seen[g] = name
+	}
+}
+
 // TestStateGlyph_AllDistinct enforces the accessibility promise: two
 // different states must render to two different glyphs. Without this,
 // the NO_COLOR fallback collapses (e.g. running and done both being
