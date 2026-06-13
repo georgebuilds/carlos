@@ -265,7 +265,9 @@ func hadToolUse(msgs []providers.Message) bool {
 // tool_result event. Larger outputs land in the model's context fine
 // (agent.Run sees the full bytes); the persisted event just carries a
 // preview the chat transcript can render without bloating the log.
-const ToolResultPreviewCap = 2048
+// Aliases agent.ToolResultPreviewCap - the sub-agent write path in
+// agent.runChild caps with the same value, so the two can't drift.
+const ToolResultPreviewCap = agent.ToolResultPreviewCap
 
 // persistToolCall is wired as agent.LoopOptions.OnToolCall so each
 // tool_use lands in the event log the instant the loop observes it,

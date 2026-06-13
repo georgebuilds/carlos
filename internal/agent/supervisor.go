@@ -478,13 +478,15 @@ func (s *Supervisor) Spawn(ctx context.Context, parentID string, contract SpawnC
 	}()
 
 	// Phase 5 slice 5a: allocate a per-subtree Tracker whose parent is
-	// the supervisor's run-wide parentTracker (if installed). Sibling
-	// subtrees end up with independent Trackers but all roll up into
-	// the same per-run cap.
-	var subtreeTracker *Tracker
-	if s.parentTracker != nil {
-		subtreeTracker = NewTracker(s.parentTracker)
-	}
+	// the supervisor's run-wide parentTracker (nil parent is fine -
+	// the tracker then counts this subtree alone). Sibling subtrees end
+	// up with independent Trackers but all roll up into the same
+	// per-run cap when one is installed. The tracker is allocated
+	// UNCONDITIONALLY (not only under a run budget): it is also the
+	// child's spend meter - runChild flushes its totals into the event
+	// log + agents projection row on termination, which is where the
+	// crew column's tokens/cost come from.
+	subtreeTracker := NewTracker(s.parentTracker)
 
 	child := &runningChild{
 		id:       id,
@@ -935,8 +937,10 @@ func (s *Supervisor) SubAgentApprover() Approver {
 // SetRunBudget installs the supervisor's run-wide Tracker. After this
 // call, every subsequent Spawn allocates a per-subtree Tracker whose
 // parent is the run-wide one, so per-subtree spend rolls up into the
-// per-run cap automatically. Passing nil disables enforcement again
-// (children spawned afterwards get no Tracker).
+// per-run cap automatically. Passing nil disables roll-up enforcement
+// again (children spawned afterwards still get their own parentless
+// Tracker - it doubles as the per-child spend meter runChild persists
+// on termination).
 //
 // Phase 5 slice 5a. The per-run Budget itself is supplied to the loop
 // via LoopOptions.Budget - Spawn pulls per-subtree caps from the

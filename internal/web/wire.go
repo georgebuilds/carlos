@@ -86,6 +86,15 @@ func wireState(s agent.State) string {
 	}
 }
 
+// WireStateString exposes the canonical wire-state mapping to backend
+// implementations outside the package (cmd/carlos's ChildSnap builder in
+// particular), so every state string the browser sees - thread summaries
+// AND crew rows - comes from the same table. Callers must NOT substitute
+// agent.State.String(): its dash-form words ("awaiting-input",
+// "paused-by-user") are outside the wire vocabulary and the SPA's state
+// word/color tables would fall through to raw text + muted gray.
+func WireStateString(s agent.State) string { return wireState(s) }
+
 // rfc3339 renders an event timestamp in the millisecond-precision RFC3339
 // form the wire uses (matching the spec §8 example).
 func rfc3339(t time.Time) string {

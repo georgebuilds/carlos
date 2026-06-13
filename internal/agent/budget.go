@@ -87,6 +87,8 @@ func (b Budget) IsUnlimited() bool {
 type Tracker struct {
 	mu        sync.Mutex
 	tokens    int64 // tokensIn + tokensOut sum
+	tokensIn  int64 // request-side share of `tokens` (for persistence)
+	tokensOut int64 // response-side share of `tokens` (for persistence)
 	costCents int64
 	startedAt time.Time
 	clock     func() time.Time // injectable for tests; defaults to time.Now
@@ -135,6 +137,8 @@ func (t *Tracker) Add(tokensIn, tokensOut, costCents int64) {
 	}
 	t.mu.Lock()
 	t.tokens += tokensIn + tokensOut
+	t.tokensIn += tokensIn
+	t.tokensOut += tokensOut
 	t.costCents += costCents
 	t.mu.Unlock()
 	if t.parent != nil {
@@ -237,6 +241,8 @@ func (t *Tracker) CheckBudget(b Budget) error {
 // inside the method; the returned struct is a value type.
 type Snapshot struct {
 	Tokens    int64
+	TokensIn  int64 // request-side share of Tokens
+	TokensOut int64 // response-side share of Tokens
 	CostCents int64
 	Elapsed   time.Duration
 	StartedAt time.Time
@@ -248,6 +254,8 @@ func (t *Tracker) Snapshot() Snapshot {
 	defer t.mu.Unlock()
 	return Snapshot{
 		Tokens:    t.tokens,
+		TokensIn:  t.tokensIn,
+		TokensOut: t.tokensOut,
 		CostCents: t.costCents,
 		Elapsed:   t.clock().Sub(t.startedAt),
 		StartedAt: t.startedAt,

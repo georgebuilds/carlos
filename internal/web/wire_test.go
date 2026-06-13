@@ -37,6 +37,11 @@ func TestWireState_UnderscoreForm(t *testing.T) {
 		if got := wireState(st); got != want {
 			t.Errorf("wireState(%v) = %q, want %q", st, got, want)
 		}
+		// The exported wrapper (cmd/carlos's ChildSnap builder) must stay
+		// the same table - never a second mapping that can drift.
+		if got := WireStateString(st); got != want {
+			t.Errorf("WireStateString(%v) = %q, want %q", st, got, want)
+		}
 		// Underscore discipline: the wire form never carries a dash, even
 		// though State.String() does (D-C).
 		if strings.Contains(want, "-") {

@@ -345,6 +345,49 @@ func (l *SQLiteEventLog) UpdateAgentState(ctx context.Context, agentID string, s
 	return nil
 }
 
+// AddAgentUsage accumulates token/cost spend onto the projection cache
+// row for `agentID`: tokens_in/tokens_out/cost_cents each increment by
+// the given delta and `updated_at` is bumped. Callers MUST first Append
+// the matching token_usage event to `events` (so a SoT replay produces
+// the same row) - this helper just keeps the cache fresh, mirroring the
+// UpdateAgentState two-step contract. Negative deltas are clamped to
+// zero, matching Tracker.Add's stance on bad usage reports.
+//
+// The crew column (web ListChildSnapshots) and the manage roster both
+// read these columns; before this helper existed nothing ever wrote
+// them, which is why finished sub-agents reported "0 tok · $0.00".
+func (l *SQLiteEventLog) AddAgentUsage(ctx context.Context, agentID string, deltaIn, deltaOut, deltaCost int64, ts time.Time) error {
+	if deltaIn < 0 {
+		deltaIn = 0
+	}
+	if deltaOut < 0 {
+		deltaOut = 0
+	}
+	if deltaCost < 0 {
+		deltaCost = 0
+	}
+	res, err := l.db.ExecContext(ctx,
+		`UPDATE agents
+		    SET tokens_in = tokens_in + ?,
+		        tokens_out = tokens_out + ?,
+		        cost_cents = cost_cents + ?,
+		        updated_at = ?
+		  WHERE id = ?`,
+		deltaIn, deltaOut, deltaCost, ts.UnixMilli(), agentID,
+	)
+	if err != nil {
+		return fmt.Errorf("eventlog: add agent usage %s: %w", agentID, err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return fmt.Errorf("eventlog: add agent usage %s: no row", agentID)
+	}
+	return nil
+}
+
 // UpdateAgentModel updates the projection cache row's `model` for
 // `agentID`. Called when the user runs `/model <provider>:<model>`
 // mid-chat so the header pill / `/whoami` echo reflect the freshly-

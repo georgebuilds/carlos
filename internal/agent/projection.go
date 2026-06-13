@@ -137,11 +137,20 @@ type ToolCall struct {
 	Input []byte `json:"input,omitempty"`
 }
 
+// ToolResultPreviewCap is the max payload size persisted for a single
+// tool_result event - by chatglue for the chat thread's own tools and
+// by runChild for a sub-agent's tools. Larger outputs reach the model
+// in full inside agent.Run; the persisted event just carries a preview
+// the transcript surfaces render without bloating the log.
+// chatglue.ToolResultPreviewCap aliases this value so the two write
+// paths can never drift.
+const ToolResultPreviewCap = 2048
+
 // ToolResult is the on-the-wire payload for EvtToolResult events. Body
-// caps at ToolResultPreviewCap (see chatglue) so a multi-MiB grep
-// result doesn't bloat the log; the model still saw the full output
-// inside the agent.Run loop. IsError is true when the tool surfaced
-// an error (tool returned err OR was rejected by the approver).
+// caps at ToolResultPreviewCap so a multi-MiB grep result doesn't
+// bloat the log; the model still saw the full output inside the
+// agent.Run loop. IsError is true when the tool surfaced an error
+// (tool returned err OR was rejected by the approver).
 type ToolResult struct {
 	Name    string `json:"name"`
 	Output  []byte `json:"output,omitempty"`

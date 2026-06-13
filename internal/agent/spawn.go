@@ -334,6 +334,15 @@ func (s *Supervisor) runChild(ctx context.Context, child *runningChild, p provid
 		Steering:      child.steering,
 		Budget:        budget,
 		BudgetTracker: child.tracker,
+		// Persist the child's tool activity under ITS OWN agent id,
+		// mirroring chatglue's hooks for the parent thread. Without
+		// these the child's event-log namespace holds only lifecycle
+		// rows, so LastToolCall (the crew column's / agent card's
+		// "running {tool}" signal) always came back empty and the
+		// child transcript was uninspectable. Best-effort: append
+		// failures are swallowed, the loop carries on.
+		OnToolCall:   func(use providers.Block) { s.persistChildToolCall(ctx, child.id, use) },
+		OnToolResult: func(use, result providers.Block) { s.persistChildToolResult(ctx, child.id, use, result) },
 	}, initial)
 
 	// 3. Classify.
@@ -348,6 +357,13 @@ func (s *Supervisor) runChild(ctx context.Context, child *runningChild, p provid
 			runErr = fmt.Errorf("supervisor.runChild: transition to %s: %w", terminal, err)
 		}
 	}
+
+	// 3b. Flush the child's spend meter into the log + projection row,
+	// BEFORE the terminal notifyChild fires so the snapshot the web crew
+	// column / TUI panel re-reads already carries the final numbers.
+	// Persisted under WithoutCancel: a child that terminated because the
+	// parent ctx was cancelled must still get its spend on the books.
+	s.persistChildUsage(context.WithoutCancel(ctx), child)
 
 	// 4. Persist final turn via the Slice 3d artifact helper. Best-
 	//    effort: write failures are NOT promoted to loop failures, but
@@ -382,6 +398,85 @@ func (s *Supervisor) runChild(ctx context.Context, child *runningChild, p provid
 		Err:           runErr,
 	}
 	close(resultCh)
+}
+
+// persistChildToolCall appends an EvtToolCall under the child's own
+// agent id the moment the loop observes the tool_use block - the
+// sub-agent twin of chatglue's persistToolCall. Best-effort by design:
+// a failed append must never disturb the running loop.
+func (s *Supervisor) persistChildToolCall(ctx context.Context, childID string, use providers.Block) {
+	if s.log == nil {
+		return
+	}
+	payload, _ := json.Marshal(ToolCall{Name: use.ToolName, Input: use.ToolInput})
+	_, _ = s.log.Append(ctx, Event{
+		AgentID: childID,
+		TS:      time.Now().UTC(),
+		Type:    EvtToolCall,
+		Payload: payload,
+	})
+}
+
+// persistChildToolResult is persistChildToolCall's pair: lands the
+// result preview (capped at ToolResultPreviewCap) when the tool
+// finishes, with the same error heuristic chatglue applies (the loop
+// wraps denials and failures with known prefixes - see executeOneTool).
+func (s *Supervisor) persistChildToolResult(ctx context.Context, childID string, use, result providers.Block) {
+	if s.log == nil {
+		return
+	}
+	out := result.ToolResult
+	if len(out) > ToolResultPreviewCap {
+		out = out[:ToolResultPreviewCap]
+	}
+	full := string(result.ToolResult)
+	isErr := strings.HasPrefix(full, "(rejected by user)") ||
+		strings.HasPrefix(full, "tool error:")
+	payload, _ := json.Marshal(ToolResult{
+		Name:    use.ToolName, // result blocks carry no name; pair from the use.
+		Output:  out,
+		IsError: isErr,
+	})
+	_, _ = s.log.Append(ctx, Event{
+		AgentID: childID,
+		TS:      time.Now().UTC(),
+		Type:    EvtToolResult,
+		Payload: payload,
+	})
+}
+
+// persistChildUsage flushes the child's Tracker totals as one
+// token_usage event + the matching agents-row column update (the
+// UpdateAgentState two-step contract, applied to spend). The crew
+// column (web ListChildSnapshots), the inline agent card
+// (SnapshotChildrenOf) and the manage roster all read those columns;
+// without this flush every finished sub-agent reported zero spend.
+// No-ops when the tracker is missing or recorded nothing (a child
+// whose provider call never completed). Best-effort: persistence
+// failures never reclassify the run.
+func (s *Supervisor) persistChildUsage(ctx context.Context, child *runningChild) {
+	if s.log == nil || child.tracker == nil {
+		return
+	}
+	snap := child.tracker.Snapshot()
+	if snap.Tokens <= 0 && snap.CostCents <= 0 {
+		return
+	}
+	payload, err := json.Marshal(TokenUsage{
+		DeltaIn:   snap.TokensIn,
+		DeltaOut:  snap.TokensOut,
+		DeltaCost: snap.CostCents,
+	})
+	if err != nil {
+		return
+	}
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	if _, err := s.log.Append(ctx, Event{
+		AgentID: child.id, TS: now, Type: EvtTokenUsage, Payload: payload,
+	}); err != nil {
+		return // keep event + row consistent: no event, no column bump
+	}
+	_ = s.log.AddAgentUsage(ctx, child.id, snap.TokensIn, snap.TokensOut, snap.CostCents, now)
 }
 
 // transition appends a state_change event AND updates the projection

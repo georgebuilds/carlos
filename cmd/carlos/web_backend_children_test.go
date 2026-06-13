@@ -7,6 +7,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"net/http/httptest"
 	"strings"
 	"sync"
@@ -91,6 +92,49 @@ func TestCarlosBackend_ChildrenIncludesFinished(t *testing.T) {
 	}
 	if kids[0].StartedAt == "" {
 		t.Error("started_at empty")
+	}
+}
+
+// TestCarlosBackend_ChildrenWireStateAndSpend pins the ChildSnap field
+// mapping the SPA's crew rail renders verbatim: states use the WIRE
+// vocabulary (underscore-form via web.WireStateString, never the
+// dash-form State.String()), and the spend columns + last-tool
+// enrichment pass through. Bad path included: a child with zero events
+// and zero spend still maps sanely (empty last_tool, zero tokens/cost)
+// instead of being dropped or garbled.
+func TestCarlosBackend_ChildrenWireStateAndSpend(t *testing.T) {
+	b, _, log := newChildrenTestBackend(t)
+	insertRow(t, log, "t1", "", agent.StateRunning)
+	insertRow(t, log, "c1", "t1", agent.StateAwaitingInput)
+	insertRow(t, log, "c2", "t1", agent.StateDone)
+
+	// c1 ran a tool and burned budget; c2 is the zero-event bad path.
+	if err := log.AddAgentUsage(context.Background(), "c1", 800, 400, 3, time.Now().UTC()); err != nil {
+		t.Fatalf("seed spend: %v", err)
+	}
+	payload, _ := json.Marshal(agent.ToolCall{Name: "read_file", Input: []byte(`{}`)})
+	if _, err := log.Append(context.Background(), agent.Event{
+		AgentID: "c1", TS: time.Now().UTC(), Type: agent.EvtToolCall, Payload: payload,
+	}); err != nil {
+		t.Fatalf("seed tool call: %v", err)
+	}
+
+	kids := b.Children(context.Background(), "t1")
+	if len(kids) != 2 {
+		t.Fatalf("children = %+v, want 2", kids)
+	}
+	c1, c2 := kids[0], kids[1]
+	if c1.State != "awaiting_input" {
+		t.Errorf("c1 state = %q, want wire-form awaiting_input (not State.String()'s awaiting-input)", c1.State)
+	}
+	if c1.Tokens != 1200 || c1.CostCents != 3 {
+		t.Errorf("c1 spend = %d tok / %d cents, want 1200 / 3", c1.Tokens, c1.CostCents)
+	}
+	if c1.LastTool != "read_file" {
+		t.Errorf("c1 last_tool = %q, want read_file", c1.LastTool)
+	}
+	if c2.State != "done" || c2.Tokens != 0 || c2.CostCents != 0 || c2.LastTool != "" {
+		t.Errorf("c2 (zero-event child) = %+v, want done with zero spend and empty last_tool", c2)
 	}
 }
 
