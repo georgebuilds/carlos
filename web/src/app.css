@@ -338,6 +338,33 @@ button { font-family: inherit; cursor: pointer; }
 .msg-asst.error .body { color: var(--clay); }
 .msg-asst.error .who { color: var(--clay); }
 
+/* ───────────── thinking indicator ─────────────
+   The wait between a user submit and the first streamed token, in the
+   assistant reply position (TUI parity: internal/tui/chat/thinking.go).
+   Three muted dots ride a quiet staggered wave; the elapsed counter appears
+   after 3s as dim mono text. The reduced-motion rule at the bottom of this
+   file collapses the wave to one instant run, so the dots settle static at
+   their base opacity while the timer keeps counting. */
+.thinking .body { display: flex; align-items: center; gap: 10px; }
+.thinking .dots { display: inline-flex; gap: 5px; }
+.thinking .dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--muted);
+  opacity: 0.45;
+  animation: think-wave 0.99s ease-in-out infinite;
+}
+.thinking .dot:nth-child(2) { animation-delay: 0.165s; }
+.thinking .dot:nth-child(3) { animation-delay: 0.33s; }
+@keyframes think-wave {
+  0%, 50%, 100% { opacity: 0.45; transform: translateY(0); }
+  25% { opacity: 1; transform: translateY(-3px); }
+}
+.thinking .label { font-size: 12px; font-style: italic; color: var(--subtle); }
+.thinking .t-elapsed {
+  font-family: 'JetBrains Mono', monospace; font-size: 11px;
+  color: var(--subtle);
+}
+
 .tool-card {
   align-self: stretch; max-width: 92%;
   position: relative;

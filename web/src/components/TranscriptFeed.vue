@@ -7,12 +7,18 @@ import AssistantMessage from './AssistantMessage.vue'
 import ToolCard from './ToolCard.vue'
 import EventLine from './EventLine.vue'
 import StreamBlock from './StreamBlock.vue'
+import ThinkingIndicator from './ThinkingIndicator.vue'
 import EmptyState from './EmptyState.vue'
 
-const props = defineProps<{ events: WireEvent[]; delta: string }>()
+const props = defineProps<{ events: WireEvent[]; delta: string; thinking?: boolean }>()
 
 const rows = computed(() => buildRows(props.events))
 const isEmpty = computed(() => rows.value.length === 0 && !props.delta)
+
+// The thinking indicator is keyed by the last persisted seq so each new
+// transcript entry remounts it, resetting its elapsed clock (TUI parity:
+// elapsed is "time since the last transcript entry").
+const lastSeq = computed(() => props.events[props.events.length - 1]?.seq ?? 0)
 
 const scrollEl = ref<HTMLElement | null>(null)
 
@@ -34,6 +40,12 @@ watch(
 watch(
   () => props.delta,
   () => scrollToBottom(),
+)
+watch(
+  () => props.thinking,
+  (on) => {
+    if (on) scrollToBottom()
+  },
 )
 </script>
 
@@ -60,6 +72,7 @@ watch(
           <EventLine v-else-if="row.type === 'event'" :text="row.text" />
         </template>
         <StreamBlock v-if="delta" :text="delta" />
+        <ThinkingIndicator v-else-if="thinking" :key="`think-${lastSeq}`" />
       </template>
     </div>
   </div>

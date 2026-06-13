@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { ThreadSummary, ApprovalDecision, WireEvent } from '@/api/types'
+import { isThinking } from '@/api/thinking'
 import { displayState } from '@/stores/threads'
 import type { PendingApproval } from '@/stores/approvals'
 import StageHeader from './StageHeader.vue'
@@ -38,6 +39,16 @@ const placeholder = computed(() => {
 // count since the rail no longer guarantees a home for the overflow.
 const topApproval = computed(() => props.approvals[0] ?? null)
 const queued = computed(() => Math.max(0, props.approvals.length - 1))
+
+// thinking dots paint only on threads this tab is live-streaming (attached,
+// not foreign: a read-only backfill would leave stale dots spinning forever)
+// and never beside a pending approval banner, which is its own wait signal.
+const thinking = computed(
+  () =>
+    canSend.value &&
+    props.approvals.length === 0 &&
+    isThinking(props.events, props.delta, props.thread.state),
+)
 </script>
 
 <template>
@@ -50,7 +61,7 @@ const queued = computed(() => Math.max(0, props.approvals.length - 1))
       @delete="emit('delete', $event)"
     />
     <GuardBanner v-if="isForeign" :heartbeat-age="thread.heartbeat_age" />
-    <TranscriptFeed :events="events" :delta="delta" />
+    <TranscriptFeed :events="events" :delta="delta" :thinking="thinking" />
     <ApprovalBanner
       v-if="topApproval"
       :approval="topApproval"
