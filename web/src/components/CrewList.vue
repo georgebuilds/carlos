@@ -10,6 +10,15 @@ function tokensLabel(n: number): string {
 function costLabel(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`
 }
+// Meta row: a field that is empty hides WITH its separator, so a child
+// that never ran a tool reads "done · 0 tok" - never "done · · 0 tok"
+// with dots floating around a hole. Tokens always render (zero is an
+// honest answer); state/last_tool only when present.
+function metaLabel(c: ChildSnapshot): string {
+  return [c.state, c.last_tool, `${tokensLabel(c.tokens)} tok`]
+    .filter((part) => part && part.trim() !== '')
+    .join(' · ')
+}
 </script>
 
 <template>
@@ -21,7 +30,7 @@ function costLabel(cents: number): string {
         <span class="c-dot" :style="{ background: stateVar(c.state) }"></span>
         <span class="c-body">
           <span class="c-title">{{ c.title }}</span>
-          <span class="c-sub">{{ c.state }} · {{ c.last_tool }} · {{ tokensLabel(c.tokens) }} tok</span>
+          <span class="c-sub">{{ metaLabel(c) }}</span>
         </span>
         <span class="c-cost">{{ costLabel(c.cost_cents) }}</span>
       </div>

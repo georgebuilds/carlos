@@ -580,12 +580,24 @@ button { font-family: inherit; cursor: pointer; }
 .crew-item + .crew-item { border-top: 1px solid var(--rule-soft); }
 .crew-item .c-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
 .crew-item .c-body { flex: 1; min-width: 0; }
+/* c-title / c-sub are spans: they MUST be display:block for the nowrap +
+   ellipsis clamp to apply (overflow does nothing on inline boxes). As
+   inline boxes the title painted past the card edge, over the cost, and
+   shoved the meta row's first word off-card - the "missing state word"
+   bug. Same pattern as the roster's .thread .t-title. */
 .crew-item .c-title {
+  display: block;
   font-size: 12px; font-weight: 500; color: var(--ink);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.crew-item .c-sub { font-size: 10.5px; color: var(--subtle); font-family: 'JetBrains Mono', monospace; }
-.crew-item .c-cost { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--muted); }
+.crew-item .c-sub {
+  display: block;
+  font-size: 10.5px; color: var(--subtle); font-family: 'JetBrains Mono', monospace;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* flex:none reserves the cost its full width at every rail width; the
+   title truncates into the remaining space instead of underlapping it. */
+.crew-item .c-cost { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--muted); flex: none; }
 .crew-empty { font-size: 12px; color: var(--subtle); padding: 4px 2px; }
 
 .rail-note { font-size: 11px; color: var(--subtle); line-height: 1.55; padding: 0 4px; }
