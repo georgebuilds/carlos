@@ -56,6 +56,43 @@ type Engine struct {
 	// elapsed is the wall-clock duration of the phase body. Like
 	// OnPhaseStart, callbacks must not mutate engine state.
 	OnPhaseDone func(phase string, elapsed time.Duration, err error)
+
+	// SkillProposer is an optional, best-effort hook (slice 11h). When
+	// set, a research run that finished cleanly AND cleared the quality
+	// gate (CanInduceFromResearch) gets summarized and offered to the
+	// skill-induction + approval pipeline. The hook is invoked at the
+	// TAIL of a successful research session, after the report is
+	// finalized; SpawnResearch supplies the session's agent ID so the
+	// proposal artifact attributes to the same agents row the run
+	// already created.
+	//
+	// Dependency inversion: the engine never imports internal/skills.
+	// The adapter that wraps skills.Inducer + the existing approval
+	// queue lives in internal/skills/skillwire and satisfies this
+	// interface. When nil, behavior is identical to pre-11h - no
+	// summary, no provider call, no queue write.
+	//
+	// Contract: the implementation MUST be best-effort. It must never
+	// return an error that fails the research run and must not block on
+	// slow work the run is waiting to report. Swallow induction errors
+	// to a diagnostic.
+	SkillProposer SkillProposer
+}
+
+// SkillProposer is the seam the research package uses to surface a
+// reusable-skill candidate from a finished research run. The production
+// implementation (skillwire.ResearchSkillProposer) runs the inducer and
+// queues any proposal through the existing approval pipeline; tests
+// inject a fake to assert the hook fires.
+//
+// agentID is the research session's agent ID (the agents row already
+// exists, so a queued skill_proposal artifact satisfies the artifacts
+// foreign key). report is the finalized, successful research Report.
+//
+// ProposeFromResearch is invoked from a context where its failure is
+// non-fatal; implementations must not surface errors back into the run.
+type SkillProposer interface {
+	ProposeFromResearch(ctx context.Context, agentID string, report *Report)
 }
 
 // beginPhase invokes OnPhaseStart (if set) and returns a start

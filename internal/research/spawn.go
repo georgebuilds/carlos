@@ -238,6 +238,18 @@ func runResearchSession(ctx context.Context, log ResearchLog, engine *Engine, ag
 		}
 	}
 
+	// 4b. Slice 11h: offer a reusable-skill candidate from a GOOD run.
+	//     Best-effort and gated: only fires when the run succeeded, a
+	//     proposer is wired, and the report clears the quality gate. The
+	//     proposer itself swallows induction errors to a diagnostic, so
+	//     this can never fail or slow the terminal-state path below (the
+	//     proposer contract forbids blocking work). We run it on the
+	//     local engine copy's SkillProposer so concurrent spawns don't
+	//     share a hook the caller mutated.
+	if runErr == nil && localEng.SkillProposer != nil && report != nil && CanInduceFromResearch(report) {
+		localEng.SkillProposer.ProposeFromResearch(ctx, agentID, report)
+	}
+
 	// 5. Final state transition.
 	terminal := agent.StateDone
 	if runErr != nil {

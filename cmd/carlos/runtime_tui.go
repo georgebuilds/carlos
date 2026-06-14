@@ -25,6 +25,7 @@ import (
 	"github.com/georgebuilds/carlos/internal/projectctx"
 	"github.com/georgebuilds/carlos/internal/research"
 	"github.com/georgebuilds/carlos/internal/skills"
+	"github.com/georgebuilds/carlos/internal/skills/skillwire"
 	"github.com/georgebuilds/carlos/internal/tools"
 	"github.com/georgebuilds/carlos/internal/tui/chat"
 	"github.com/georgebuilds/carlos/internal/tui/chatglue"
@@ -268,6 +269,21 @@ func runDefault(cfg *config.Config, sessionID string) error {
 	// missing, so a degenerate registry (e.g. without web tools)
 	// just disables the feature rather than crashing.
 	researchEngine := buildResearchEngine(d.provider, d.model, baseReg)
+	// Phase 11 slice 11h: a GOOD research run can surface a reusable
+	// skill candidate through the SAME induction + approval pipeline
+	// coding sessions use. Best-effort and gated inside SpawnResearch;
+	// nil-safe (no engine = no proposer). Failures land in the diag log,
+	// never on the research run.
+	if researchEngine != nil {
+		var existing []string
+		if skillsLib != nil {
+			existing = skillsLib.Descriptions()
+		}
+		researchEngine.SkillProposer = skillwire.NewResearchSkillProposer(
+			log, skills.NewInducer(d.provider), d.model, existing,
+			func(msg string) { fmt.Fprintln(diagWriter, "[research-induction] "+msg) },
+		)
+	}
 
 	src := chat.NewMemTextSource()
 	approver := chat.NewTUIApprover()
