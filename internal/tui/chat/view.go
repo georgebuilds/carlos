@@ -157,6 +157,16 @@ func (m *Model) renderInner(innerW, innerH int) string {
 		}
 		approval = renderPaletteOverlay(m, innerW, palH)
 		approvalH = lipgloss.Height(approval)
+	} else if m.preflightActive() {
+		// Slice 11k: research pre-flight (Clarify -> Brief) shares the
+		// takeover slot. Same precedence band as the palette - the two
+		// can't be open at once (each opens through its own gated path).
+		pfH := innerH - headerH - footerH - inputH - 1
+		if pfH < 8 {
+			pfH = 8
+		}
+		approval = renderPreflightOverlay(m, innerW, pfH)
+		approvalH = lipgloss.Height(approval)
 	} else if m.showJobs && m.usershell != nil {
 		approval = renderJobsOverlay(
 			m.usershell.Jobs(),
