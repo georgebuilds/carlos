@@ -57,6 +57,10 @@ func (e *Engine) runFetch(ctx context.Context, report *Report) (err error) {
 		if src.Title == "" {
 			src.Title = candidate.Title
 		}
+		// Carry the reputation verdict computed during the search
+		// ranking pass across the fetch boundary (the Fetcher returns a
+		// fresh Source and doesn't know about reputation).
+		src.Reputation = candidate.Reputation
 		src.ID = fmt.Sprintf("s%d", nextID)
 		nextID++
 		report.Budget.FetchedBytes += int64(len(src.Content))
