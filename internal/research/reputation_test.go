@@ -66,6 +66,7 @@ func TestClassify(t *testing.T) {
 	}{
 		{"edu trusted", "https://stanford.edu/page", "Lecture", TierTrusted},
 		{"gov trusted", "https://nasa.gov/mission", "Apollo", TierTrusted},
+		{"mil trusted", "https://army.mil/news", "Briefing", TierTrusted},
 		{"arxiv trusted", "https://arxiv.org/abs/1234", "Paper", TierTrusted},
 		{"wikipedia subdomain trusted", "https://en.wikipedia.org/wiki/Go", "Go", TierTrusted},
 		{"github trusted", "https://github.com/golang/go", "go", TierTrusted},

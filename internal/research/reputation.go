@@ -73,6 +73,7 @@ var trustedSuffixes = []string{
 	// Academic / government TLDs.
 	".edu",
 	".gov",
+	".mil",
 	".ac.uk",
 	".gov.uk",
 	".edu.au",

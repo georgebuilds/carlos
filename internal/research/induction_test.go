@@ -138,10 +138,8 @@ func TestSummarizeResearchSession_Shape(t *testing.T) {
 		"Decomposed along these sub-queries:",
 		"Which browsers ship WebGPU enabled by default?",
 		"Source tiers used:",
-		"reference:", // mdn + wikipedia
-		"academic:",  // arxiv
-		"community:", // hacker news
-		"general:",   // plain blog
+		"trusted:", // mdn + wikipedia + arxiv
+		"medium:",  // hacker news + plain blog
 		"Synthesis digest:",
 	}
 	for _, w := range wantContains {
@@ -196,24 +194,26 @@ func TestSummarizeResearchSession_SkipsEmptySubQueries(t *testing.T) {
 }
 
 func TestSummarizeResearchSession_TierClassification(t *testing.T) {
-	// Each entry maps a source URL to the tier label we expect to see in
-	// the rendered "Source tiers used" block. Exercises every branch of
-	// the host classifier, including the empty-URL fallthrough.
+	// Each entry maps a source URL to the reputation tier label we expect
+	// in the rendered "Source tiers used" block. The breakdown now reuses
+	// the canonical reputation classifier, so the vocabulary is
+	// trusted/medium/low. Covers whitelisted hosts (incl. .mil), plain
+	// https, and the unparseable fallthrough.
 	cases := []struct {
 		url  string
 		tier string
 	}{
-		{"https://www.whitehouse.gov/x", "official"},
-		{"https://army.mil/x", "official"},
-		{"https://mit.edu/x", "academic"},
-		{"https://arxiv.org/abs/1", "academic"},
-		{"https://en.wikipedia.org/wiki/X", "reference"},
-		{"https://docs.python.org/3/", "reference"},
-		{"https://www.reddit.com/r/x", "community"},
-		{"https://stackoverflow.com/q/1", "community"},
-		{"https://example.com/blog", "general"},
-		{"", "general"},
-		{"://bad-url", "general"},
+		{"https://www.whitehouse.gov/x", "trusted"},
+		{"https://army.mil/x", "trusted"},
+		{"https://mit.edu/x", "trusted"},
+		{"https://arxiv.org/abs/1", "trusted"},
+		{"https://en.wikipedia.org/wiki/X", "trusted"},
+		{"https://developer.mozilla.org/x", "trusted"},
+		{"https://www.reddit.com/r/x", "medium"},
+		{"https://stackoverflow.com/q/1", "medium"},
+		{"https://example.com/page", "medium"},
+		{"", "low"},
+		{"://bad-url", "low"},
 	}
 	for _, c := range cases {
 		r := goodReport()
@@ -225,17 +225,17 @@ func TestSummarizeResearchSession_TierClassification(t *testing.T) {
 	}
 }
 
-func TestSummarizeResearchSession_OfficialTier(t *testing.T) {
+func TestSummarizeResearchSession_TrustedAndLowTiers(t *testing.T) {
 	r := goodReport()
 	r.Sources = []research.Source{
 		{ID: "s1", URL: "https://www.nasa.gov/report"},
 		{ID: "s2", URL: "not a url ::::"},
 	}
 	out := research.SummarizeResearchSession(r)
-	if !strings.Contains(out, "official:") {
-		t.Errorf(".gov host should classify as official tier: %q", out)
+	if !strings.Contains(out, "trusted:") {
+		t.Errorf(".gov host should classify as trusted tier: %q", out)
 	}
-	if !strings.Contains(out, "general:") {
-		t.Errorf("unparseable URL should fall into general tier: %q", out)
+	if !strings.Contains(out, "low:") {
+		t.Errorf("unparseable URL should fall into low tier: %q", out)
 	}
 }

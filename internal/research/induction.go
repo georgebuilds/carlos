@@ -11,7 +11,6 @@ package research
 
 import (
 	"fmt"
-	"net/url"
 	"sort"
 	"strings"
 )
@@ -173,16 +172,17 @@ type tierCount struct {
 	count int
 }
 
-// sourceTierBreakdown groups sources into coarse, deterministic tiers
-// derived from the URL host. This is intentionally a small, local
-// heuristic (no dependency on the reputation layer, which another agent
-// owns) - enough to tell the inducer "this run leaned on docs and
-// academic sources" vs "this run was mostly forums". Tiers are returned
-// sorted by label so the summary is stable.
+// sourceTierBreakdown groups sources by their reputation tier so the
+// inducer can learn "prefer trusted sources" from a run that leaned on
+// them. It reuses the canonical reputation classifier (the same one the
+// search-ranking and synthesis-skepticism passes use) rather than a
+// parallel host heuristic, so the vocabulary stays trusted/medium/low
+// across the whole pipeline. Tiers are returned sorted by label so the
+// summary is stable.
 func sourceTierBreakdown(sources []Source) []tierCount {
 	counts := make(map[string]int)
 	for _, s := range sources {
-		counts[classifySourceTier(s.URL)]++
+		counts[classify(s.URL, s.Title).Tier.String()]++
 	}
 	out := make([]tierCount, 0, len(counts))
 	for tier, n := range counts {
@@ -190,43 +190,6 @@ func sourceTierBreakdown(sources []Source) []tierCount {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].tier < out[j].tier })
 	return out
-}
-
-// classifySourceTier maps one source URL onto a coarse tier label. The
-// buckets are deliberately broad and host-suffix based so the
-// classification is cheap and stable. Unknown / unparseable hosts fall
-// into "general".
-func classifySourceTier(rawURL string) string {
-	rawURL = strings.TrimSpace(rawURL)
-	if rawURL == "" {
-		return "general"
-	}
-	u, err := url.Parse(rawURL)
-	if err != nil || u.Host == "" {
-		return "general"
-	}
-	host := strings.ToLower(u.Hostname())
-	switch {
-	case strings.HasSuffix(host, ".gov"), strings.HasSuffix(host, ".mil"):
-		return "official"
-	case strings.HasSuffix(host, ".edu"),
-		strings.Contains(host, "arxiv.org"),
-		strings.Contains(host, "ncbi.nlm.nih.gov"),
-		strings.Contains(host, "scholar.google"):
-		return "academic"
-	case strings.Contains(host, "wikipedia.org"),
-		strings.Contains(host, "developer.mozilla.org"),
-		strings.HasPrefix(host, "docs."),
-		strings.Contains(host, ".readthedocs."):
-		return "reference"
-	case strings.Contains(host, "reddit.com"),
-		strings.Contains(host, "stackoverflow.com"),
-		strings.Contains(host, "ycombinator.com"),
-		strings.Contains(host, "quora.com"):
-		return "community"
-	default:
-		return "general"
-	}
 }
 
 // synthesisDigest returns at most maxRunes runes of the synthesis,
