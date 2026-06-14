@@ -239,6 +239,13 @@ func buildChildToolSpecs(reg *tools.Registry, allowlist []string) []providers.To
 // Errors during state-change persistence are folded into result.Err
 // alongside the loop error - we never panic in the worker.
 func (s *Supervisor) runChild(ctx context.Context, child *runningChild, p providers.Provider, reg *tools.Registry, contract SpawnContract, resultCh chan<- SpawnResult) {
+	// Balances the s.childWG.Add(1) Spawn issued before launching us.
+	// Declared first so it runs LAST (defers are LIFO): the decrement
+	// only lands after close(child.done) and every event-log /
+	// persisted-state write below has completed, which is the invariant
+	// Supervisor.Shutdown's Wait relies on to know no child is still
+	// touching the caller's state dir.
+	defer s.childWG.Done()
 	defer close(child.done)
 
 	// Lineage for nested spawns: if this child somehow runs the Agent
