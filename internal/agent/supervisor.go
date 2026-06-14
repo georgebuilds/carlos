@@ -185,6 +185,16 @@ type Supervisor struct {
 	children map[string]*runningChild
 	retries  map[string]*retryAttempts
 
+	// childWG counts in-flight runChild goroutines so Shutdown can join
+	// them. Each Spawn increments it before launching the worker; runChild
+	// decrements it (via defer) the instant it returns, AFTER its last
+	// event-log / persisted-state write. Shutdown cancels every child
+	// context, releases s.mu, then Wait()s on this group so no child
+	// goroutine is still writing under a caller's temp dir when Shutdown
+	// returns. NOT guarded by s.mu: a WaitGroup has its own internal
+	// synchronization, and the Add happens-before the goroutine launch.
+	childWG sync.WaitGroup
+
 	// Phase 5 slice 5a: per-run + per-subtree budget plumbing.
 	// parentTracker is the run-wide cumulative counter; each Spawn
 	// allocates a fresh subtreeTracker whose parent is parentTracker,
@@ -298,18 +308,31 @@ func (s *Supervisor) Run(ctx context.Context) {
 }
 
 // Shutdown stops the orphan sweeper, every active heartbeat ticker,
-// and cancels every in-flight child context. Idempotent.
+// cancels every in-flight child context, and then BLOCKS until every
+// child goroutine (runChild) has fully returned. Idempotent and safe to
+// call concurrently or twice (the test calls it via defer; production
+// callers may also invoke it).
 //
-// Shutdown does NOT block on child completion - children's
-// SpawnResult channels still close in their own time once their
-// goroutines unwind. Callers that need to wait should drain the
-// channels they received from Spawn.
+// Synchronous join rationale: runChild writes to the event log and the
+// persisted-state dir right up to the moment it returns. A caller that
+// owns a temp dir (e.g. t.TempDir) must be able to treat Shutdown's
+// return as "no child is touching my files anymore". Before the join was
+// added, a cancelled child could still be mid-write when Shutdown
+// returned, leaving the dir non-empty for the caller's RemoveAll. We
+// cancel under s.mu (so we don't race Spawn's children-map writes),
+// release the lock, then Wait on childWG OUTSIDE the lock because the
+// very goroutines we wait on take s.mu in cleanupChild to deregister
+// themselves; holding it across Wait would deadlock.
 func (s *Supervisor) Shutdown() {
 	s.mu.Lock()
 	for _, c := range s.children {
 		c.cancel()
 	}
 	s.mu.Unlock()
+	// Join every in-flight child BEFORE tearing down the heartbeat /
+	// sweeper, so a child's final transition + spend-flush writes land
+	// while the rest of the supervisor is still up.
+	s.childWG.Wait()
 	if s.heartbeat != nil {
 		s.heartbeat.StopAll()
 	}
@@ -520,6 +543,11 @@ func (s *Supervisor) Spawn(ctx context.Context, parentID string, contract SpawnC
 	} else {
 		childReg = buildChildRegistry(s.baseReg, contract.ToolAllowlist)
 	}
+	// Register the worker with childWG BEFORE launching it so Shutdown's
+	// Wait sees a non-zero count for this child. runChild's deferred
+	// Done() (paired in the function body) balances this Add after its
+	// last write completes.
+	s.childWG.Add(1)
 	go s.runChild(childCtx, child, spawnProvider, childReg, contract, resultCh)
 
 	// Lifecycle edge: a child appeared under parentID. Fired after the

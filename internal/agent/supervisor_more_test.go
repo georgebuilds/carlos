@@ -493,3 +493,104 @@ func TestSupervisor_Spawn_CancelReleasesBothContexts(t *testing.T) {
 		t.Fatal("Shutdown did not propagate cancel to child within 3s; both contexts must release")
 	}
 }
+
+// TestSupervisor_Shutdown_JoinsChildGoroutines pins the synchronous-join
+// contract: Shutdown must not return until every in-flight child
+// goroutine (runChild) has fully unwound, including its last event-log /
+// persisted-state write. Without the childWG join a cancelled child
+// could still be mid-write when Shutdown returned, which is what left a
+// caller's t.TempDir non-empty for RemoveAll.
+//
+// We assert the contract directly: spawn several hanging children, call
+// Shutdown synchronously, and require that by the time Shutdown returns
+// (a) no child is still counted in-flight and (b) every result channel
+// is already closed (runChild reached its final close(resultCh)). If
+// Shutdown returned early, the result reads below would block and the
+// 2s safety timeout would fire instead.
+func TestSupervisor_Shutdown_JoinsChildGoroutines(t *testing.T) {
+	dir := t.TempDir()
+	log, err := agent.OpenStateDB(filepath.Join(dir, "state.db"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer agent.CloseStateDB(log)
+
+	sup := agent.NewSupervisor(log, newHangingProvider(), tools.NewRegistry())
+	sup.SetMode(frame.ModeOrchestrator)
+
+	// Top-level spawns (empty parent) so computeDepth lands at 0 without
+	// needing pre-seeded parent rows; matches the concurrent-spawn race
+	// test's pattern. nChildren stays under the orchestrator cap (5: the
+	// min of SpawnCapFor(orchestrator) and the default ceiling) so every
+	// Spawn succeeds and the join contract is what's under test.
+	const nChildren = 4
+	results := make([]<-chan agent.SpawnResult, 0, nChildren)
+	for i := 0; i < nChildren; i++ {
+		_, res, err := sup.Spawn(context.Background(), "", agent.SpawnContract{Objective: "hang"})
+		if err != nil {
+			t.Fatalf("spawn %d: %v", i, err)
+		}
+		results = append(results, res)
+	}
+	if got := sup.ActiveChildren(""); got != nChildren {
+		t.Fatalf("before shutdown: ActiveChildren = %d, want %d", got, nChildren)
+	}
+
+	// Synchronous call: must block until every child goroutine returns.
+	sup.Shutdown()
+
+	// (a) No child still counted in-flight - cleanupChild ran for each.
+	if got := sup.ActiveChildren(""); got != 0 {
+		t.Fatalf("after shutdown: ActiveChildren = %d, want 0", got)
+	}
+
+	// (b) Every result channel is already resolved. Because Shutdown has
+	// returned, each runChild has executed its send + close, so the read
+	// is immediate; the timeout only fires if Shutdown returned early.
+	for i, res := range results {
+		select {
+		case _, ok := <-res:
+			// First receive yields the single SpawnResult (ok==true) or,
+			// if the test raced the close after an already-drained send,
+			// ok==false. Either way the channel was resolved before
+			// Shutdown returned.
+			_ = ok
+		case <-time.After(2 * time.Second):
+			t.Fatalf("child %d result channel not resolved after Shutdown returned; Shutdown did not join the goroutine", i)
+		}
+	}
+}
+
+// TestSupervisor_Shutdown_Idempotent pins that Shutdown is safe to call
+// twice (the common path: a test defers Shutdown and a production caller
+// also invokes it). A second call must not panic on the WaitGroup, the
+// already-stopped sweeper, or the drained heartbeat tickers, and must
+// return promptly.
+func TestSupervisor_Shutdown_Idempotent(t *testing.T) {
+	dir := t.TempDir()
+	log, err := agent.OpenStateDB(filepath.Join(dir, "state.db"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer agent.CloseStateDB(log)
+
+	sup := agent.NewSupervisor(log, newHangingProvider(), tools.NewRegistry())
+	sup.SetMode(frame.ModeOrchestrator)
+	sup.Run(context.Background())
+
+	if _, _, err := sup.Spawn(context.Background(), "", agent.SpawnContract{Objective: "hang"}); err != nil {
+		t.Fatalf("spawn: %v", err)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		sup.Shutdown()
+		sup.Shutdown() // second call must be a no-op, no panic
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("two Shutdown calls did not return within 3s")
+	}
+}
