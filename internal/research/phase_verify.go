@@ -3,6 +3,7 @@ package research
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/georgebuilds/carlos/internal/agent"
 )
@@ -32,6 +33,17 @@ func (e *Engine) runVerify(ctx context.Context, report *Report) (err error) {
 	// 1. Citation audit (always).
 	a := auditCitations(report.Synthesis)
 	report.Citations = &a
+
+	// 1b. Passage-citation validation (11i, always). Deterministic
+	// check that every inline [pN] resolves to a real passage ID;
+	// hallucinated IDs become a concern. Pure compute, no provider call.
+	cv := validatePassageCitations(report.Synthesis, report.Passages)
+	report.CitationValidation = &cv
+	if len(cv.Unknown) > 0 {
+		report.Concerns = append(report.Concerns,
+			fmt.Sprintf("verify: synthesis cites %d unknown passage ID(s) not in the passage set: %s",
+				len(cv.Unknown), strings.Join(cv.Unknown, ", ")))
+	}
 
 	// 2. LLM judge (optional).
 	if e.Judge == nil {
