@@ -64,15 +64,22 @@ func (e *Engine) runSearch(ctx context.Context, report *Report) (err error) {
 			if cap <= 0 {
 				cap = e.SourcesPerQuery
 			}
-			for _, r := range pickTopResults(results, cap) {
+			// Reputation pass (item 11j): rank the per-call results by
+			// trust tier BEFORE the cap is applied, so a thin low-tier
+			// hit can't crowd out a trusted one purely on search rank.
+			// Stable within a tier, so equal-tier results keep their
+			// original backend order.
+			ranked := rankByReputation(results)
+			for _, r := range pickTopResults(ranked, cap) {
 				u := strings.TrimSpace(r.URL)
 				if u == "" || seenURL[u] {
 					continue
 				}
 				seenURL[u] = true
 				report.Sources = append(report.Sources, Source{
-					URL:   u,
-					Title: r.Title,
+					URL:        u,
+					Title:      r.Title,
+					Reputation: classify(r.URL, r.Title),
 				})
 			}
 		}
@@ -82,7 +89,30 @@ func (e *Engine) runSearch(ctx context.Context, report *Report) (err error) {
 			"search: no sources found for any planned search")
 		return fmt.Errorf("no sources found")
 	}
+	flagLowTierDomination(report)
 	return nil
+}
+
+// flagLowTierDomination records a concern when the accumulated source
+// set is dominated by low-tier domains, so the user sees that the
+// research arc is resting on thin ground. Computed over the deduped
+// Source set (post-cap), not raw search hits.
+func flagLowTierDomination(report *Report) {
+	if len(report.Sources) == 0 {
+		return
+	}
+	low := 0
+	for _, s := range report.Sources {
+		if s.Reputation.Tier == TierLow {
+			low++
+		}
+	}
+	frac := float64(low) / float64(len(report.Sources))
+	if frac > lowTierDominationThreshold {
+		report.Concerns = append(report.Concerns,
+			fmt.Sprintf("search: result set dominated by low-tier sources (%d/%d); treat synthesis with caution",
+				low, len(report.Sources)))
+	}
 }
 
 // dispatchPlanned routes ONE PlannedSearch to the configured backend.

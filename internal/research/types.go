@@ -48,6 +48,12 @@ type Source struct {
 	Title     string    // page title (from <title>); may be empty
 	Content   string    // text-extracted body (capped by the Fetcher)
 	FetchedAt time.Time // UTC
+
+	// Reputation is the heuristic trust verdict computed during the
+	// search ranking pass (item 11j) and reused at synthesis (item 11g)
+	// so skepticism markers don't require a second classification pass.
+	// Zero value (TierLow, Score 0) until the ranking pass sets it.
+	Reputation Reputation
 }
 
 // Passage is one model-extracted, relevant excerpt from a Source. The
