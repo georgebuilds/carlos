@@ -62,6 +62,95 @@ func TestVerify_CitationAuditAlwaysRuns(t *testing.T) {
 	}
 }
 
+func TestVerify_PassageValidationAllValid(t *testing.T) {
+	// Synthesis cites only p1/p2, both of which the read phase
+	// extracts. Expect a populated CitationValidation with no unknowns
+	// and no hallucination concern.
+	synth := `Devices affected [p1]. Rollout Q2 2026 [p2].`
+	prov := newScriptedProvider("p1",
+		"sub1",
+		`{"text":"42 devices.","relevance":9}`,
+		`{"text":"Rollout Q2 2026.","relevance":8}`,
+		synth,
+	)
+	fs := &fakeSearch{
+		defaultResults: []tools.SearchResult{
+			{Rank: 1, URL: "https://a.example.com"},
+			{Rank: 2, URL: "https://b.example.com"},
+		},
+	}
+	ff := &fakeFetcher{
+		bodies: map[string]string{
+			"https://a.example.com": "alpha",
+			"https://b.example.com": "beta",
+		},
+	}
+	eng := &research.Engine{
+		Provider: prov, Model: "m", SourcesPerQuery: 5,
+		Search: fs, Fetcher: ff,
+	}
+	report, err := eng.Run(context.Background(), "q")
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if report.CitationValidation == nil {
+		t.Fatal("CitationValidation should be populated after verify")
+	}
+	cv := report.CitationValidation
+	if len(cv.Unknown) != 0 {
+		t.Errorf("expected no unknown IDs; got %v", cv.Unknown)
+	}
+	if !cv.OK() {
+		t.Errorf("expected OK validation; got %+v", cv)
+	}
+	for _, c := range report.Concerns {
+		if strings.Contains(c, "unknown passage ID") {
+			t.Errorf("unexpected hallucination concern: %q", c)
+		}
+	}
+}
+
+func TestVerify_PassageValidationHallucinatedIDConcern(t *testing.T) {
+	// Only p1 gets extracted, but the synthesis cites [p99]. Expect the
+	// validator to flag p99 as unknown and append a concern naming it.
+	synth := `Real claim [p1]. Hallucinated claim [p99].`
+	prov := newScriptedProvider("p1",
+		"sub1",
+		`{"text":"x","relevance":7}`,
+		synth,
+	)
+	fs := &fakeSearch{defaultResults: []tools.SearchResult{{Rank: 1, URL: "https://a.example.com"}}}
+	ff := &fakeFetcher{bodies: map[string]string{"https://a.example.com": "alpha"}}
+	eng := &research.Engine{
+		Provider: prov, Model: "m", SourcesPerQuery: 5,
+		Search: fs, Fetcher: ff,
+	}
+	report, err := eng.Run(context.Background(), "q")
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if report.CitationValidation == nil {
+		t.Fatal("CitationValidation should be populated after verify")
+	}
+	cv := report.CitationValidation
+	if cv.OK() {
+		t.Fatalf("expected validation to flag hallucinated ID; got %+v", cv)
+	}
+	wantUnknown := []string{"p99"}
+	if len(cv.Unknown) != 1 || cv.Unknown[0] != "p99" {
+		t.Errorf("Unknown = %v, want %v", cv.Unknown, wantUnknown)
+	}
+	found := false
+	for _, c := range report.Concerns {
+		if strings.Contains(c, "unknown passage ID") && strings.Contains(c, "p99") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected hallucination concern naming p99; got %v", report.Concerns)
+	}
+}
+
 func TestVerify_JudgePopulatesReport(t *testing.T) {
 	synth := `Devices affected [p1]. Rollout Q2 2026 [p2].`
 	prov := newScriptedProvider("p1",

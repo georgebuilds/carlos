@@ -72,8 +72,12 @@ type Report struct {
 	Synthesis    string                    // markdown body with inline [pN] citations
 	Verification *agent.VerificationReport // synthesis-quality judge (if Judge configured)
 	Citations    *agent.Audit              // citation coverage audit (if synthesis ran)
-	Concerns     []string                  // free-form issues surfaced during the run
-	Budget       BudgetUsage               // what we spent
+	// CitationValidation is the deterministic [pN]-against-passages check
+	// (11i). Set during verify when a synthesis exists; flags hallucinated
+	// passage IDs. nil when verify did not run.
+	CitationValidation *CitationValidation
+	Concerns           []string    // free-form issues surfaced during the run
+	Budget             BudgetUsage // what we spent
 }
 
 // SubQueryRoute is the model's plan for ONE sub-query: which backends
