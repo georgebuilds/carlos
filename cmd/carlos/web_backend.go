@@ -353,8 +353,8 @@ func (b *carlosBackend) Children(ctx context.Context, id string) []web.ChildSnap
 			// Wire vocabulary, not State.String(): the SPA's word/color
 			// tables key on underscore-form ("awaiting_input"), and the
 			// dash-form would render raw with a muted dot.
-			State: web.WireStateString(s.State),
-			Title: s.Title,
+			State:     web.WireStateString(s.State),
+			Title:     s.Title,
 			LastTool:  s.LastTool,
 			Tokens:    s.Tokens,
 			CostCents: s.CostCents,
