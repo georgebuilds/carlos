@@ -21,6 +21,7 @@ import (
 	"github.com/georgebuilds/carlos/internal/config"
 	"github.com/georgebuilds/carlos/internal/frame"
 	"github.com/georgebuilds/carlos/internal/memory"
+	"github.com/georgebuilds/carlos/internal/research"
 	"github.com/georgebuilds/carlos/internal/schedule"
 	"github.com/georgebuilds/carlos/internal/theme"
 	"github.com/georgebuilds/carlos/internal/tui/slash"
@@ -594,6 +595,27 @@ type Model struct {
 	paletteCursor int
 	paletteItems  []paletteItem
 	paletteMRU    []string
+
+	// Research pre-flight state (slice 11k). preflight is the wired
+	// Clarify -> Brief helper (nil disables the pre-flight; /research
+	// then dispatches straight through). preflightMode gates the
+	// takeover overlay + key routing; preflightAwaiting is set while an
+	// async clarify/brief model call is in flight. The remaining fields
+	// are the running state of the Clarify -> Brief loop:
+	// preflightQuestion is the original /research argument,
+	// preflightQuestions the model's clarifying questions,
+	// preflightIndex the current question, preflightAnswers the
+	// collected answers, and preflightBriefDraft the editable brief.
+	// All behavior lives in preflight.go; the fields live here because
+	// the Model owns the only authoritative state slot.
+	preflight           *research.Preflight
+	preflightMode       preflightMode
+	preflightAwaiting   bool
+	preflightQuestion   string
+	preflightQuestions  []string
+	preflightIndex      int
+	preflightAnswers    []string
+	preflightBriefDraft string
 }
 
 // FrameUI is the Phase F display + switch contract the chat Model
@@ -1065,6 +1087,17 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return next, cmd
 			}
 		}
+		// Slice 11k: research pre-flight (Clarify -> Brief). Same modal
+		// precedence as the pickers above; gated on no pending approval
+		// for the same reason as the palette. While the pre-flight owns
+		// the keyboard it captures composer input for clarify answers /
+		// brief edits and routes Enter/Esc itself; ctrl+c falls through.
+		if m.preflightActive() && m.pendingApproval == nil {
+			next, cmd, handled := m.handlePreflightKey(msg)
+			if handled {
+				return next, cmd
+			}
+		}
 		// Phase U S6: jobs overlay intercepts navigation + action
 		// keys while open. Ctrl+C still falls through so the user
 		// can quit even while browsing jobs.
@@ -1451,6 +1484,20 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.status = msg.text
 		m.statusKind = msg.kind
 		return m, nil
+
+	case clarifyResultMsg:
+		// Slice 11k: the async clarify call returned. Ignore stale
+		// results (the user may have canceled while it was in flight).
+		if !m.preflightAwaiting || m.preflightQuestion != msg.question {
+			return m, nil
+		}
+		return m, m.handleClarifyResult(msg)
+
+	case briefResultMsg:
+		if !m.preflightAwaiting || m.preflightQuestion != msg.question {
+			return m, nil
+		}
+		return m, m.handleBriefResult(msg)
 
 	case userShellUpdateMsg:
 		// S5: stream live output chunks into the matching transcript
@@ -2167,10 +2214,14 @@ func (m *Model) dispatchSlash(c slash.Command) tea.Cmd {
 		// real sub-agent so the chat stays interactive; phase events
 		// stream into an in-place entryResearchProgress row via the
 		// subscription pump + applyEvent.
-		q := strings.TrimSpace(c.Args)
+		// Slice 11k: parse a leading/anywhere --no-clarify flag out of
+		// the args. When present (or when the pre-flight is unwired) we
+		// fall through to the existing dispatch unchanged; otherwise we
+		// run the interactive Clarify -> Brief pre-flight first.
+		q, noClarify := parseResearchArgs(c.Args)
 		if q == "" {
 			return func() tea.Msg {
-				return statusMsg{text: "usage: /research <question>", kind: statusWarn}
+				return statusMsg{text: "usage: /research [--no-clarify] <question>", kind: statusWarn}
 			}
 		}
 		if m.researchEngine == nil {
@@ -2180,6 +2231,9 @@ func (m *Model) dispatchSlash(c slash.Command) tea.Cmd {
 					kind: statusWarn,
 				}
 			}
+		}
+		if m.preflight != nil && !noClarify {
+			return m.startPreflight(q)
 		}
 		if m.spawner != nil {
 			return m.runResearchAsync(q)

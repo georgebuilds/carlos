@@ -780,6 +780,14 @@ func runDefault(cfg *config.Config, sessionID string) error {
 					return research.SpawnResearch(ctx, log, engine, q)
 				},
 			)))
+			// Phase 11 slice 11k: wire the interactive Clarify -> Brief
+			// pre-flight off the same provider + model the dispatch uses.
+			// /research then runs the pre-flight before the pipeline fans
+			// out; --no-clarify skips it.
+			opts = append(opts, chat.WithPreflight(research.Preflight{
+				Provider: d.provider,
+				Model:    d.model,
+			}))
 		}
 		opts = append(opts, chat.WithStartupNotices(notices))
 		opts = append(opts, chat.WithDiagWriter(diagWriter))
