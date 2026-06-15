@@ -44,6 +44,7 @@ func (b *CCBackend) EnableDrive(ctx context.Context, hub *ephemeralHub, baseURL,
 	b.newCwd, _ = os.Getwd() // where a freshly created CC session runs
 	b.drivers = map[string]*ccDriver{}
 	b.pending = map[string]*ccPending{}
+	b.created = map[string]ThreadSummary{}
 }
 
 func (b *CCBackend) driveEnabled() bool { return b.hub != nil }
@@ -125,6 +126,7 @@ func (b *CCBackend) Detach(id string) error {
 	b.driveMu.Lock()
 	drv, ok := b.drivers[id]
 	delete(b.drivers, id)
+	delete(b.created, id) // a detached, file-less session is no longer live
 	b.driveMu.Unlock()
 	if ok {
 		drv.stop()
@@ -284,11 +286,17 @@ func (b *CCBackend) CreateThread(ctx context.Context, title string) (ThreadSumma
 		frame = filepath.Base(cwd)
 	}
 	now := rfc3339(nowUTC())
-	return ThreadSummary{
+	summary := ThreadSummary{
 		ID: id, Title: t, Model: "", State: "running",
 		Attached: true, CreatedAt: now, UpdatedAt: now,
 		Frame: frame, Backend: ccBackendName, Capabilities: b.caps(),
-	}, nil
+	}
+	// Stash the summary so GetThread (and thus the roster) can surface this
+	// session in the window before its JSONL is written on the first turn.
+	b.driveMu.Lock()
+	b.created[id] = summary
+	b.driveMu.Unlock()
+	return summary, nil
 }
 
 // Delete removes the on-disk Claude Code session file (the explicit,
