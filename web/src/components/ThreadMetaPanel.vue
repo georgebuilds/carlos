@@ -6,6 +6,7 @@
 import { computed, ref, watch } from 'vue'
 import type { ThreadSummary } from '@/api/types'
 import { displayState } from '@/stores/threads'
+import BackendMark from './BackendMark.vue'
 
 const props = defineProps<{ thread: ThreadSummary }>()
 const emit = defineEmits<{ delete: [id: string] }>()
@@ -33,6 +34,14 @@ function onConfirm(): void {
 }
 </script>
 
+<style scoped>
+.backend-v {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+</style>
+
 <template>
   <div class="meta-panel">
     <div class="mp-pairs">
@@ -45,7 +54,12 @@ function onConfirm(): void {
         ><span class="mp-v mono" :title="thread.model">{{ thread.model }}</span></span
       >
       <span class="mp-pair"
-        ><span class="mp-k">backend</span><span class="mp-v mono">{{ thread.backend }}</span></span
+        ><span class="mp-k">backend</span
+        ><span class="mp-v backend-v"
+          ><BackendMark :backend="thread.backend" :size="13" /><span class="mono">{{
+            thread.backend
+          }}</span></span
+        ></span
       >
       <span class="mp-pair"
         ><span class="mp-k">attached</span><span class="mp-v">{{ attachedLabel }}</span></span

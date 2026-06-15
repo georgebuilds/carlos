@@ -6,6 +6,7 @@
 import { computed, ref, watch } from 'vue'
 import type { ThreadSummary } from '@/api/types'
 import { displayState, stateVar, stateWord } from '@/stores/threads'
+import BackendMark from './BackendMark.vue'
 import ThreadMetaPanel from './ThreadMetaPanel.vue'
 
 const props = defineProps<{ thread: ThreadSummary }>()
@@ -37,6 +38,7 @@ watch(
 <template>
   <div class="stage-head" :style="{ '--state-c': stateVar(ds) }">
     <div class="sh-row">
+      <BackendMark :backend="thread.backend" :size="16" />
       <span class="s-title" :title="thread.title">{{ thread.title }}</span>
       <span class="s-state">{{ stateWord(ds) }}</span>
       <span class="s-frame" title="frame">{{ frameLabel }}</span>

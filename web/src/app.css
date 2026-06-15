@@ -161,8 +161,12 @@ button { font-family: inherit; cursor: pointer; }
   box-shadow: 0 2px 6px var(--shadow-soft);
 }
 .thread .t-title {
+  display: flex; align-items: center; gap: 6px;
   font-weight: 600; font-size: 13.5px; line-height: 1.35;
   padding-right: 78px;
+}
+.thread .t-title-text {
+  min-width: 0;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .thread .t-state {

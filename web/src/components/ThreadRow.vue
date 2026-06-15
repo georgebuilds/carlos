@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import type { ThreadSummary } from '@/api/types'
 import { displayState, isLive, stateVar, stateWord } from '@/stores/threads'
+import BackendMark from './BackendMark.vue'
 import { useGroupsStore } from '@/stores/groups'
 import { useThreadsStore } from '@/stores/threads'
 import { useToastStore } from '@/stores/toast'
@@ -53,7 +54,10 @@ async function moveTo(groupId: string | null): Promise<void> {
     :style="{ '--state-c': cvar }"
     @click="emit('select', thread.id)"
   >
-    <div class="t-title">{{ thread.title }}</div>
+    <div class="t-title">
+      <BackendMark :backend="thread.backend" :size="13" />
+      <span class="t-title-text">{{ thread.title }}</span>
+    </div>
     <div class="t-state">{{ word }}</div>
     <div class="t-preview">{{ thread.preview }}</div>
     <div class="t-meta">

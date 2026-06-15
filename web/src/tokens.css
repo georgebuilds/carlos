@@ -67,6 +67,14 @@
   --state-muted:   light-dark(#6b6357, #8a8170);
   /* the "your turn" badge ground (paper-hi text rides on it, 5.1:1) */
   --badge-turn-bg: #8a6314;
+
+  /* app-only: per-backend identity (the mascot glyph + backend chip tint),
+     from branding/theme.md loop-column assignments: carlos = cap navy,
+     claude code = amber-ochre. Dark values lift the hue above the dark page
+     so the glyph reads (carlos reuses --navy's dark #7aa0d4; amber-ochre
+     lifts to #d99340, ~6:1 on --card #1a1d27, derived not eyeballed). */
+  --backend-carlos: light-dark(#2c4a78, #7aa0d4);
+  --backend-cc:     light-dark(#b56a16, #d99340);
 }
 
 /* explicit user deviation pins the scheme; absence of the attribute means
