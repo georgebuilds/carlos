@@ -36,6 +36,16 @@ func newFrameServer(t *testing.T) (*Server, *frameBackend) {
 	log, path := newTestLog(t)
 	gs := newTestGroups(t, path)
 	be := &frameBackend{attached: map[string]bool{}, frame: "work"}
+	// The read surface shares the log via a CarlosReader whose oracle reads
+	// this stub's attach table, so the roster's Attached/Frame overlay
+	// follows the same source the interactive methods mutate.
+	be.readOnlyBackend = readOnlyBackend{CarlosReader: NewCarlosReader(log, "carlos", readOnlyCaps,
+		func(id string) (bool, string) {
+			if be.attached[id] {
+				return true, be.frame
+			}
+			return false, ""
+		})}
 	s := NewServer(Options{Log: log, Groups: gs, Token: testToken, Backend: be})
 	seedThread(t, log, "t1", "thread one", "hello")
 	seedThread(t, log, "t2", "thread two", "hi there")

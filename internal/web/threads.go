@@ -10,120 +10,52 @@ import (
 	"github.com/georgebuilds/carlos/internal/agent"
 )
 
-// summaryFromSession projects an agent.Session into the wire
-// ThreadSummary, overlaying web-only state (attachment, frame, group).
-func (s *Server) summaryFromSession(sess agent.Session, groupID *string) ThreadSummary {
-	return ThreadSummary{
-		ID:           sess.ID,
-		Title:        sess.Title,
-		Model:        sess.Model,
-		State:        wireState(sess.State),
-		Attached:     s.backend.Attached(sess.ID),
-		CreatedAt:    rfc3339(sess.CreatedAt),
-		UpdatedAt:    rfc3339(sess.UpdatedAt),
-		Preview:      sess.Preview,
-		UserMsgs:     sess.UserMsgs,
-		Frame:        s.backend.Frame(sess.ID),
-		Backend:      "carlos",
-		GroupID:      groupID,
-		Capabilities: s.backend.Caps(),
+// groupOverlay stamps the web-owned group membership onto a summary. The
+// grouping is roster metadata that spans backends, so it is applied at the
+// handler layer, never inside a backend (which is ignorant of groups).
+func (s *Server) groupOverlay(ctx context.Context, summaries []ThreadSummary) {
+	if s.groups == nil {
+		return
+	}
+	m, err := s.groups.MembershipMap(ctx)
+	if err != nil {
+		return
+	}
+	for i := range summaries {
+		if g, ok := m[summaries[i].ID]; ok {
+			g := g
+			summaries[i].GroupID = &g
+		}
 	}
 }
 
-// handleListThreads: GET /api/threads. Every top-level thread, with the
-// group-membership overlay and per-thread attachment flag.
+// handleListThreads: GET /api/threads. The backend owns the roster
+// projection (conversations-only filter + per-thread attachment overlay);
+// the handler adds the web-owned group-membership overlay.
 func (s *Server) handleListThreads(w http.ResponseWriter, r *http.Request) {
-	sessions, err := agent.ListUserSessions(r.Context(), s.log, "")
+	out, err := s.backend.ListThreads(r.Context())
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "list_failed", err.Error())
 		return
 	}
-	members := map[string]string{}
-	if s.groups != nil {
-		if m, err := s.groups.MembershipMap(r.Context()); err == nil {
-			members = m
-		}
-	}
-	out := make([]ThreadSummary, 0, len(sessions))
-	for _, sess := range sessions {
-		// The roster is conversations only. ListUserSessions returns every
-		// top-level (parent_id IS NULL) agent, which also catches research
-		// roots, headless `please` runs, and sub-agent task roots: those
-		// spawn with a self root_id and NO parent, so they slip past the
-		// parent filter despite being programmatic activity, not threads
-		// the user chatted with.
-		//
-		// Show a thread when EITHER it is a real conversation (>=1 user
-		// message) OR it is a still-live blank one (non-terminal state and
-		// no content yet). The second clause keeps a freshly created thread
-		// the user has not typed into visible (create, switch away, switch
-		// back), per the blank-stays-unless-app-closed rule. It hides:
-		//   - content-bearing spawns (research roots, completed headless
-		//     runs): zero user messages but real assistant/tool/research
-		//     events;
-		//   - terminal empties (orphaned/abandoned blank sessions, done
-		//     task roots): the "app closed" case the user is fine losing.
-		// UserMsgs>0 short-circuits, so the content query only runs for the
-		// rare zero-message non-terminal thread.
-		keep := sess.UserMsgs > 0 ||
-			(!sess.State.IsTerminal() && !s.hasContentEvents(r.Context(), sess.ID))
-		if !keep {
-			continue
-		}
-		var gid *string
-		if g, ok := members[sess.ID]; ok {
-			g := g
-			gid = &g
-		}
-		out = append(out, s.summaryFromSession(sess, gid))
-	}
+	s.groupOverlay(r.Context(), out)
 	writeJSON(w, http.StatusOK, out)
-}
-
-// hasContentEvents reports whether the thread has produced any assistant,
-// tool, or research events: the signature of a programmatic run (research
-// root, headless `please`, scheduled job) as opposed to a blank, freshly
-// created conversation that carries only lifecycle bookkeeping. Used to
-// keep blank conversations visible while hiding spawned roots. Best-effort:
-// a query error returns false (show the thread) rather than hiding it.
-func (s *Server) hasContentEvents(ctx context.Context, agentID string) bool {
-	var exists int
-	err := s.log.DB().QueryRowContext(ctx, `
-		SELECT EXISTS(
-			SELECT 1 FROM events
-			 WHERE agent_id = ?
-			   AND type IN ('assistant_message', 'tool_call', 'tool_result', 'research_phase')
-			 LIMIT 1)`, agentID).Scan(&exists)
-	if err != nil {
-		return false
-	}
-	return exists == 1
 }
 
 // handleGetThread: GET /api/threads/{id}.
 func (s *Server) handleGetThread(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	sessions, err := agent.ListUserSessions(r.Context(), s.log, "")
+	summary, ok, err := s.backend.GetThread(r.Context(), r.PathValue("id"))
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "list_failed", err.Error())
 		return
 	}
-	for _, sess := range sessions {
-		if sess.ID != id {
-			continue
-		}
-		var gid *string
-		if s.groups != nil {
-			if m, err := s.groups.MembershipMap(r.Context()); err == nil {
-				if g, ok := m[id]; ok {
-					gid = &g
-				}
-			}
-		}
-		writeJSON(w, http.StatusOK, s.summaryFromSession(sess, gid))
+	if !ok {
+		writeErr(w, http.StatusNotFound, "not_found", "no such thread")
 		return
 	}
-	writeErr(w, http.StatusNotFound, "not_found", "no such thread")
+	one := []ThreadSummary{summary}
+	s.groupOverlay(r.Context(), one)
+	writeJSON(w, http.StatusOK, one[0])
 }
 
 // handleCreateThread: POST /api/threads. Mints + ensures a new thread.
@@ -132,12 +64,12 @@ func (s *Server) handleCreateThread(w http.ResponseWriter, r *http.Request) {
 		Title string `json:"title"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&body)
-	sess, err := s.backend.CreateThread(r.Context(), body.Title)
+	summary, err := s.backend.CreateThread(r.Context(), body.Title)
 	if err != nil {
 		s.writeBackendErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, s.summaryFromSession(sess, nil))
+	writeJSON(w, http.StatusOK, summary)
 }
 
 // handleDeleteThread: DELETE /api/threads/{id}. Hard-deletes the thread and
@@ -168,19 +100,13 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	from := parseInt(r.URL.Query().Get("from"), 0)
 	limit := parseInt(r.URL.Query().Get("limit"), 0)
-	events, err := s.log.Read(r.Context(), id, from)
+	out, err := s.backend.ReadEvents(r.Context(), id, from, 0)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "read_failed", err.Error())
 		return
 	}
-	out := make([]WireEvent, 0, len(events))
-	for _, ev := range events {
-		if we, ok := eventToWire(ev); ok {
-			out = append(out, we)
-		}
-		if limit > 0 && int64(len(out)) >= limit {
-			break
-		}
+	if limit > 0 && int64(len(out)) > limit {
+		out = out[:limit]
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -203,14 +129,16 @@ func (s *Server) handleAttach(w http.ResponseWriter, r *http.Request) {
 		s.writeBackendErr(w, err)
 		return
 	}
-	sessions, _ := agent.ListUserSessions(r.Context(), s.log, "")
-	for _, sess := range sessions {
-		if sess.ID == id {
-			writeJSON(w, http.StatusOK, s.summaryFromSession(sess, nil))
-			return
-		}
+	summary, ok, err := s.backend.GetThread(r.Context(), id)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "list_failed", err.Error())
+		return
 	}
-	writeErr(w, http.StatusNotFound, "not_found", "no such thread")
+	if !ok {
+		writeErr(w, http.StatusNotFound, "not_found", "no such thread")
+		return
+	}
+	writeJSON(w, http.StatusOK, summary)
 }
 
 // handleDetach: POST /api/threads/{id}/detach.

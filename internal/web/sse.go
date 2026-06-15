@@ -52,7 +52,7 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 
 	// 1. Subscribe BEFORE backfill so nothing appended during backfill is
 	//    lost (it lands in the buffer and the splice dedupes it).
-	logCh, logUnsub, err := s.log.Subscribe(id)
+	logCh, logUnsub, err := s.backend.Subscribe(id)
 	if err != nil {
 		// Can't subscribe: degrade to a one-shot backfill so the client
 		// at least sees the transcript.
@@ -100,14 +100,13 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			// Gap repair: a jump means the 64-deep channel dropped
-			// events. Re-Read the gap and emit in order (F3).
+			// events (or a run of non-forwarded events did not advance
+			// the cursor). Re-Read the gap and emit in order (F3).
 			if last > 0 && ev.Seq > last+1 {
 				last = s.backfill(ctx, w, flusher, id, last, ev.Seq)
 			}
-			if we, ok := eventToWire(ev); ok {
-				writeSSE(w, we)
-				flusher.Flush()
-			}
+			writeSSE(w, ev)
+			flusher.Flush()
 			if ev.Seq > last {
 				last = ev.Seq
 			}
@@ -119,20 +118,15 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 // bound) and writes them as SSE frames. Returns the highest seq emitted
 // (or `from` if none).
 func (s *Server) backfill(ctx context.Context, w http.ResponseWriter, f http.Flusher, id string, from, upTo int64) int64 {
-	events, err := s.log.Read(ctx, id, from)
+	events, err := s.backend.ReadEvents(ctx, id, from, upTo)
 	if err != nil {
 		return from
 	}
 	last := from
-	for _, ev := range events {
-		if upTo > 0 && ev.Seq >= upTo {
-			break
-		}
-		if we, ok := eventToWire(ev); ok {
-			writeSSE(w, we)
-		}
-		if ev.Seq > last {
-			last = ev.Seq
+	for _, we := range events {
+		writeSSE(w, we)
+		if we.Seq > last {
+			last = we.Seq
 		}
 	}
 	f.Flush()

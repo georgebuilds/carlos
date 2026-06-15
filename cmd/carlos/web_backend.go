@@ -33,6 +33,13 @@ import (
 
 // carlosBackend is the single v1 web.Backend. One per `carlos web` process.
 type carlosBackend struct {
+	// CarlosReader supplies the read surface (Name/ListThreads/GetThread/
+	// ReadEvents/Subscribe) over the shared event log, with an attachment
+	// oracle injected in newCarlosBackend so the roster reflects this
+	// process's live attachments. The interactive methods below are
+	// carlosBackend's own.
+	*web.CarlosReader
+
 	cfg      *config.Config
 	log      *agent.SQLiteEventLog
 	sup      *agent.Supervisor
@@ -113,6 +120,13 @@ func newCarlosBackend(ctx context.Context, cfg *config.Config, log *agent.SQLite
 		attached:  map[string]*webThread{},
 		frameRoot: map[string]string{},
 	}
+
+	// Read surface: share the event log via CarlosReader, with an oracle
+	// that reports THIS process's live attachments + resolved frame so the
+	// roster's Attached/Frame overlay is accurate. Built after b exists so
+	// the oracle can close over it.
+	b.CarlosReader = web.NewCarlosReader(log, "carlos", b.Caps(),
+		func(id string) (bool, string) { return b.Attached(id), b.Frame(id) })
 
 	var frameInfo agent.FrameInfo
 	if res, ok := frame.ResolveActive(&cfg.Frames, frame.Input{Env: os.Getenv("CARLOS_FRAME"), Cwd: cwd}); ok {
@@ -295,29 +309,42 @@ func (b *carlosBackend) Resolve(id, requestID, decision string) error {
 }
 
 // CreateThread mints a fresh thread, seeds the agent row, and auto-attaches
-// so it is immediately interactive.
-func (b *carlosBackend) CreateThread(ctx context.Context, title string) (agent.Session, error) {
+// so it is immediately interactive. It returns the wire summary directly
+// (the thread is attached, so Attached=true and Frame is resolved).
+func (b *carlosBackend) CreateThread(ctx context.Context, title string) (web.ThreadSummary, error) {
 	id, err := mintSessionID(time.Now().UTC())
 	if err != nil {
-		return agent.Session{}, err
+		return web.ThreadSummary{}, err
 	}
 	// Slice 9f: prune split out of ensureDefaultAgent; CreateThread always
 	// takes the brand-new branch, so fire it inline exactly as before.
 	created, err := ensureDefaultAgent(ctx, b.log, id, b.dispatch.name, b.dispatch.model, b.cfg.UserName)
 	if err != nil {
-		return agent.Session{}, err
+		return web.ThreadSummary{}, err
 	}
 	if created {
 		pruneEmptyOrphans(ctx, b.log, io.Discard)
 	}
 	if err := b.Attach(ctx, id); err != nil {
-		return agent.Session{}, err
+		return web.ThreadSummary{}, err
 	}
 	t := title
 	if t == "" {
 		t = "chat with " + b.cfg.UserName + " (" + b.dispatch.name + ")"
 	}
-	return agent.Session{ID: id, Title: t, Model: b.dispatch.model, State: agent.StateRunning}, nil
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	return web.ThreadSummary{
+		ID:           id,
+		Title:        t,
+		Model:        b.dispatch.model,
+		State:        web.WireStateString(agent.StateRunning),
+		Attached:     true,
+		CreatedAt:    now,
+		UpdatedAt:    now,
+		Frame:        b.Frame(id),
+		Backend:      b.Name(),
+		Capabilities: b.Caps(),
+	}, nil
 }
 
 // Delete detaches the thread if this process is driving it, then hard-

@@ -56,7 +56,7 @@ type Server struct {
 func NewServer(opts Options) *Server {
 	b := opts.Backend
 	if b == nil {
-		b = readOnlyBackend{}
+		b = newReadOnlyBackend(opts.Log)
 	}
 	s := &Server{
 		log:     opts.Log,

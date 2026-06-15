@@ -113,6 +113,8 @@ func TestSSE_EphemeralSnapshotOnConnect(t *testing.T) {
 			Data: map[string]any{"request_id": "req_1", "name": "Bash"},
 		}},
 	}
+	// The read/subscribe surface needs a real reader over the seeded log.
+	be.readOnlyBackend = newReadOnlyBackend(log)
 	s := NewServer(Options{Log: log, Groups: gs, Token: testToken, Backend: be})
 
 	ctx, cancel := context.WithCancel(context.Background())

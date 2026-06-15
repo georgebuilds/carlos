@@ -32,16 +32,42 @@ type ChildSnap struct {
 	StartedAt string `json:"started_at"`
 }
 
-// Backend is the interactive seam (spec §12 ThreadBackend, adapted to the
-// in-process v1 shape). Read paths - list, read events, subscribe - go
-// straight to the event log and the group store; this interface owns only
-// the stateful, side-effectful operations. cmd/carlos provides the real
-// implementation (over the extracted runtime); tests and the read-only
-// server use stubs.
+// Backend is the per-runtime seam (spec §12 ThreadBackend, adapted to the
+// in-process v1 shape). It owns BOTH the read surface (Name/ListThreads/
+// GetThread/ReadEvents/Subscribe) and the interactive, side-effectful
+// operations, so a non-carlos backend with no SQLiteEventLog (Claude Code,
+// opencode) can be added without the HTTP handlers special-casing carlos.
+// The group overlay stays in the handler (web-roster metadata, spans
+// backends). cmd/carlos provides the real carlos implementation over the
+// runtime; the read-only server and tests embed CarlosReader for the read
+// half and stub the interactive half.
 type Backend interface {
+	// Name is the wire backend tag (spec §8.2 backend field), e.g.
+	// "carlos". It replaces the value formerly hardcoded in the handler.
+	Name() string
+
 	// Caps advertises which operations this backend supports, so the UI
 	// can gate buttons (spec §8.2 capabilities, §12 BackendCaps).
 	Caps() map[string]bool
+
+	// --- Read surface (spec §12). Owned by the backend so a non-carlos
+	// backend with no SQLiteEventLog can implement it over its own source.
+	// carlos's implementation (CarlosReader) wraps the event log. ---
+
+	// ListThreads returns the roster projection (conversations only, with
+	// the per-thread attachment overlay). The group overlay is applied by
+	// the handler, not here.
+	ListThreads(ctx context.Context) ([]ThreadSummary, error)
+	// GetThread returns one thread's summary, ok=false when absent.
+	GetThread(ctx context.Context, id string) (ThreadSummary, bool, error)
+	// ReadEvents returns persisted wire events with seq in (from, upTo);
+	// upTo==0 means no upper bound. Used by the events endpoint and the SSE
+	// backfill / gap-repair window.
+	ReadEvents(ctx context.Context, id string, from, upTo int64) ([]WireEvent, error)
+	// Subscribe returns a live wire-event stream plus an idempotent
+	// unsubscribe (spec §9.3). Persisted events carry Seq for the
+	// reconnect cursor; ephemeral kinds flow through the hub, not here.
+	Subscribe(id string) (<-chan WireEvent, func(), error)
 
 	// Attached reports whether this process is interactively driving the
 	// thread (its chatglue.Loop is running here).
@@ -68,8 +94,10 @@ type Backend interface {
 	Resolve(threadID, requestID, decision string) error
 
 	// CreateThread mints + ensures a new thread and returns its summary
-	// seed (id/title/model/state).
-	CreateThread(ctx context.Context, title string) (agent.Session, error)
+	// (already wire-shaped, attachment overlay stamped). Returning a
+	// ThreadSummary rather than an agent.Session keeps the handler free of
+	// carlos-internal types so a foreign backend can implement create.
+	CreateThread(ctx context.Context, title string) (ThreadSummary, error)
 
 	// Delete permanently removes a thread and its sub-agent lineage,
 	// returning the number of agent rows deleted. It detaches the thread
@@ -90,19 +118,35 @@ type Backend interface {
 	PendingApprovals(threadID string) []WireEvent
 }
 
-// readOnlyBackend is the W-1 placeholder: the detached read path works
-// fully (list, events, SSE replay of persisted events, groups), while
-// every interactive operation reports ErrUnsupported. W-2 replaces it
-// with the runtime-backed implementation. Heartbeat-based foreign-owner
-// detection is done by the server against the log directly, not here.
-type readOnlyBackend struct{}
+// readOnlyCaps is the capability set advertised when no interactive
+// backend is wired: the detached read path works fully, every interactive
+// operation reports ErrUnsupported.
+var readOnlyCaps = map[string]bool{
+	"create": false, "send": false, "approve": false,
+	"observe": true, "children": false,
+}
 
-func (readOnlyBackend) Caps() map[string]bool {
-	return map[string]bool{
-		"create": false, "send": false, "approve": false,
-		"observe": true, "children": false,
+// readOnlyBackend is the default when no interactive backend is wired: the
+// read surface works fully (list, events, SSE replay of persisted events,
+// groups) via the embedded CarlosReader, while every interactive operation
+// reports ErrUnsupported. The runtime-backed carlosBackend (cmd/carlos)
+// embeds the same reader with a live attachment oracle. Heartbeat-based
+// foreign-owner detection is done by the interactive backend, not here.
+type readOnlyBackend struct {
+	*CarlosReader
+}
+
+// newReadOnlyBackend builds the default backend over the event log with a
+// constant (false, "") attachment oracle: nothing is attached in read-only
+// mode, so every thread reads detached with an empty frame.
+func newReadOnlyBackend(log *agent.SQLiteEventLog) readOnlyBackend {
+	return readOnlyBackend{
+		CarlosReader: NewCarlosReader(log, "carlos", readOnlyCaps,
+			func(string) (bool, string) { return false, "" }),
 	}
 }
+
+func (readOnlyBackend) Caps() map[string]bool                { return readOnlyCaps }
 func (readOnlyBackend) Attached(string) bool                 { return false }
 func (readOnlyBackend) Frame(string) string                  { return "" }
 func (readOnlyBackend) Attach(context.Context, string) error { return ErrUnsupported }
@@ -111,8 +155,8 @@ func (readOnlyBackend) Send(context.Context, string, string) (int64, error) {
 	return 0, ErrUnsupported
 }
 func (readOnlyBackend) Resolve(string, string, string) error { return ErrUnsupported }
-func (readOnlyBackend) CreateThread(context.Context, string) (agent.Session, error) {
-	return agent.Session{}, ErrUnsupported
+func (readOnlyBackend) CreateThread(context.Context, string) (ThreadSummary, error) {
+	return ThreadSummary{}, ErrUnsupported
 }
 func (readOnlyBackend) Delete(string) (int, error)                   { return 0, ErrUnsupported }
 func (readOnlyBackend) Children(context.Context, string) []ChildSnap { return nil }
