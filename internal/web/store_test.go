@@ -32,7 +32,9 @@ func TestGroupStore_CreateListMemberCounts(t *testing.T) {
 	mustSet(t, gs, "t2", &web.ID)
 	mustSet(t, gs, "t3", &anneal.ID)
 
-	groups, err := gs.List(ctx)
+	// live = the three seeded threads; member counts gate on this set.
+	live := map[string]bool{"t1": true, "t2": true, "t3": true}
+	groups, err := gs.List(ctx, live)
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
@@ -48,7 +50,7 @@ func TestGroupStore_CreateListMemberCounts(t *testing.T) {
 	}
 }
 
-func TestGroupStore_MembershipMapHidesVanishedThreads(t *testing.T) {
+func TestGroupStore_MembershipMapAndLiveGatedCounts(t *testing.T) {
 	log, path := newTestLog(t)
 	gs := newTestGroups(t, path)
 	ctx := context.Background()
@@ -56,8 +58,10 @@ func TestGroupStore_MembershipMapHidesVanishedThreads(t *testing.T) {
 	seedThread(t, log, "live", "alive", "hi")
 	g, _ := gs.Create(ctx, "g")
 	mustSet(t, gs, "live", &g.ID)
-	// A membership row for a thread that was never inserted as an agent:
-	// the join must hide it (plan §4.6).
+	// A membership row for a thread that is not in the live roster (e.g.
+	// janitor-pruned). Backend agnostic now: MembershipMap returns the row,
+	// but the overlay only stamps ids already in the roster and the member
+	// count is gated on the live set (plan WB-3).
 	mustSet(t, gs, "ghost", &g.ID)
 
 	m, err := gs.MembershipMap(ctx)
@@ -67,22 +71,54 @@ func TestGroupStore_MembershipMapHidesVanishedThreads(t *testing.T) {
 	if _, ok := m["live"]; !ok {
 		t.Error("live thread missing from membership map")
 	}
-	if _, ok := m["ghost"]; ok {
-		t.Error("ghost thread should be hidden by the agents join")
-	}
-	// Member count likewise ignores the ghost.
-	got, _ := gs.List(ctx)
-	if got[0].Threads != 1 {
-		t.Errorf("member count = %d, want 1 (ghost excluded)", got[0].Threads)
+	// No agents join: the ghost row is returned. The overlay drops it because
+	// it is not in the roster summaries.
+	if _, ok := m["ghost"]; !ok {
+		t.Error("ghost row should be returned (no agents join, backend agnostic)")
 	}
 
-	// Sweep removes the orphan row.
+	// Live-gated count counts only the roster member.
+	live := map[string]bool{"live": true}
+	got, _ := gs.List(ctx, live)
+	if got[0].Threads != 1 {
+		t.Errorf("live-gated member count = %d, want 1 (ghost excluded)", got[0].Threads)
+	}
+	// A nil live set applies no filter: both memberships count.
+	gotAll, _ := gs.List(ctx, nil)
+	if gotAll[0].Threads != 2 {
+		t.Errorf("unfiltered member count = %d, want 2", gotAll[0].Threads)
+	}
+
+	// Sweep removes the orphan row (still keyed off the agents table; only
+	// carlos threads have agent rows, so a carlos-only ghost is swept).
 	n, err := gs.SweepOrphans(ctx)
 	if err != nil {
 		t.Fatalf("sweep: %v", err)
 	}
 	if n != 1 {
 		t.Errorf("swept %d rows, want 1", n)
+	}
+}
+
+func TestGroupStore_BackendAgnosticGrouping(t *testing.T) {
+	_, path := newTestLog(t)
+	gs := newTestGroups(t, path)
+	ctx := context.Background()
+
+	// A Claude Code thread (no agent row) can be assigned to a group and
+	// counted, proving the agents join is gone (plan WB-3).
+	g, _ := gs.Create(ctx, "claude code")
+	ccID := "cc:11111111-2222-3333-4444-555555555555"
+	mustSet(t, gs, ccID, &g.ID)
+
+	m, _ := gs.MembershipMap(ctx)
+	if m[ccID] != g.ID {
+		t.Errorf("cc thread membership = %q, want %q", m[ccID], g.ID)
+	}
+	live := map[string]bool{ccID: true}
+	got, _ := gs.List(ctx, live)
+	if got[0].Threads != 1 {
+		t.Errorf("cc-only group count = %d, want 1", got[0].Threads)
 	}
 }
 
@@ -103,7 +139,7 @@ func TestGroupStore_DeleteRevertsMembers(t *testing.T) {
 	if _, ok := m["t1"]; ok {
 		t.Error("member should have reverted to ungrouped after delete")
 	}
-	groups, _ := gs.List(ctx)
+	groups, _ := gs.List(ctx, nil)
 	if len(groups) != 0 {
 		t.Errorf("got %d groups after delete, want 0", len(groups))
 	}
@@ -172,6 +208,65 @@ func TestGroupStore_SetThreadGroupUpsertAndRemove(t *testing.T) {
 	m, _ = gs.MembershipMap(ctx)
 	if _, ok := m["t1"]; ok {
 		t.Error("t1 should be ungrouped after nil set")
+	}
+}
+
+// TestGroupStore_ClosedStoreErrors exercises the DB-error return paths of
+// the new query methods (and a couple of touched ones) by closing the store.
+func TestGroupStore_ClosedStoreErrors(t *testing.T) {
+	_, path := newTestLog(t)
+	gs := newTestGroups(t, path)
+	ctx := context.Background()
+	// Create a group + memberships BEFORE closing so get/List have a target.
+	g, _ := gs.Create(ctx, "g")
+	mustSet(t, gs, "t1", &g.ID)
+	gid := g.ID
+	_ = gs.Close()
+
+	if _, err := gs.List(ctx, nil); err == nil {
+		t.Error("List on closed store should error")
+	}
+	if _, err := gs.MembershipMap(ctx); err == nil {
+		t.Error("MembershipMap on closed store should error")
+	}
+	if _, err := gs.CCOriginSet(ctx); err == nil {
+		t.Error("CCOriginSet on closed store should error")
+	}
+	if _, err := gs.memberCounts(ctx, nil); err == nil {
+		t.Error("memberCounts on closed store should error")
+	}
+	// get is unexported; reach it through Patch with no fields (which calls get).
+	if _, err := gs.Patch(ctx, gid, nil, nil); err == nil {
+		t.Error("Patch (get) on closed store should error")
+	}
+}
+
+func TestGroupStore_CCOrigin(t *testing.T) {
+	_, path := newTestLog(t)
+	gs := newTestGroups(t, path)
+	ctx := context.Background()
+
+	set, err := gs.CCOriginSet(ctx)
+	if err != nil || len(set) != 0 {
+		t.Fatalf("empty origin set = %v/%v, want empty/nil", set, err)
+	}
+	if err := gs.MarkCCOrigin(ctx, "cc:aaa"); err != nil {
+		t.Fatal(err)
+	}
+	// Idempotent: marking twice does not error.
+	if err := gs.MarkCCOrigin(ctx, "cc:aaa"); err != nil {
+		t.Fatalf("re-mark: %v", err)
+	}
+	if err := gs.MarkCCOrigin(ctx, "cc:bbb"); err != nil {
+		t.Fatal(err)
+	}
+	set, _ = gs.CCOriginSet(ctx)
+	if !set["cc:aaa"] || !set["cc:bbb"] || len(set) != 2 {
+		t.Errorf("origin set = %v, want {cc:aaa, cc:bbb}", set)
+	}
+	// Empty id is rejected.
+	if err := gs.MarkCCOrigin(ctx, ""); err == nil {
+		t.Error("empty id should error")
 	}
 }
 

@@ -38,18 +38,22 @@ type WireEvent struct {
 // (additive, absent means ungrouped). Frame resolves at attach ("" when
 // detached). Backend is always "carlos" in v1 (D5/D6 forward-compat).
 type ThreadSummary struct {
-	ID           string          `json:"id"`
-	Title        string          `json:"title"`
-	Model        string          `json:"model"`
-	State        string          `json:"state"`
-	Attached     bool            `json:"attached"`
-	CreatedAt    string          `json:"created_at"`
-	UpdatedAt    string          `json:"updated_at"`
-	Preview      string          `json:"preview"`
-	UserMsgs     int             `json:"user_msgs"`
-	Frame        string          `json:"frame"`
-	Backend      string          `json:"backend"`
-	GroupID      *string         `json:"group_id,omitempty"`
+	ID        string  `json:"id"`
+	Title     string  `json:"title"`
+	Model     string  `json:"model"`
+	State     string  `json:"state"`
+	Attached  bool    `json:"attached"`
+	CreatedAt string  `json:"created_at"`
+	UpdatedAt string  `json:"updated_at"`
+	Preview   string  `json:"preview"`
+	UserMsgs  int     `json:"user_msgs"`
+	Frame     string  `json:"frame"`
+	Backend   string  `json:"backend"`
+	GroupID   *string `json:"group_id,omitempty"`
+	// Repo is the web-only per-thread repository overlay (plan WR-0/WB-1):
+	// the git root the thread's cwd resolved to, for the by-repo home view.
+	// Absent/null when the thread has no resolvable repo.
+	Repo         *RepoRef        `json:"repo,omitempty"`
 	Capabilities map[string]bool `json:"capabilities"`
 	// Hidden marks a thread blacklisted from the roster (web-local, never a
 	// data delete). The SPA folds these out of the default view; mainly for
