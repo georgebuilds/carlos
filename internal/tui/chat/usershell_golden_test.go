@@ -1,7 +1,7 @@
 package chat
 
 import (
-	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -13,9 +13,9 @@ import (
 // S9: golden snapshots of the three user-shell TUI surfaces (jobs
 // overlay, composer footer, transcript block) across the three target
 // terminal sizes. These are pure render functions, so the snapshots are
-// deterministic without spinning a bubbletea program - the only volatile
-// bit is a *running* job's live duration in the overlay, which
-// scrubRunningDuration normalizes before comparison.
+// deterministic without spinning a bubbletea program - normalizeShellGolden
+// strips ANSI color (profile-independent) and the one volatile token (a
+// running job's live duration) before comparison.
 //
 // Regenerate with: go test ./internal/tui/chat/ -run TestUserShellGolden -update
 //
@@ -35,23 +35,25 @@ var shellGoldenSizes = []struct {
 // (EndedAt - StartedAt) render identically every run.
 var fixedTime = time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)
 
-// runningDurationRe matches the live "running <dur>" token the overlay
-// prints for an in-flight job, so the snapshot stays stable.
-var runningDurationRe = regexp.MustCompile(`running [0-9][^\s]*`)
-
-func scrubRunningDuration(s string) string {
-	return runningDurationRe.ReplaceAllString(s, "running <dur>")
+// normalizeShellGolden strips color escapes (via the package's shared
+// stripANSI) so the goldens are independent of lipgloss's process-global
+// color profile - a sibling test (imagepaste_test.go) flips it to ANSI,
+// and that state can leak across tests in one binary.
+func normalizeShellGolden(s string) string {
+	return stripANSI(s)
 }
 
-// fixtureRoster is a deterministic spread across every overlay section:
-// a running foreground job, a backgrounded job, a queued job, and three
-// recent terminal jobs (done / failed / cancelled).
+// fixtureRoster is a DETERMINISTIC overlay roster: a queued job plus the
+// three recent terminal states (done / failed / cancelled), all with
+// frozen timestamps. Running/background jobs are deliberately excluded -
+// their row shows a live time.Since duration whose text length shifts the
+// width-padded box border between runs, which no post-processing can pin.
+// The running + background sections are covered by the substring-tolerant
+// TestUserShellOverlay_LiveSections below instead.
 func fixtureRoster() []usershell.Snapshot {
 	start := fixedTime
 	end := start.Add(2*time.Second + 300*time.Millisecond)
 	return []usershell.Snapshot{
-		{ID: "01RUNNING0000000000000001", Command: "npm run dev", State: usershell.StateRunning, StartedAt: start},
-		{ID: "01BG000000000000000000002", Command: "tail -f log", State: usershell.StateRunning, Backgrounded: true, StartedAt: start},
 		{ID: "01QUEUED00000000000000003", Command: "go build ./...", State: usershell.StatePending, SubmittedAt: start},
 		{ID: "01DONE0000000000000000004", Command: "go test ./...", State: usershell.StateDone, ExitCode: 0, StartedAt: start, EndedAt: end},
 		{ID: "01FAIL0000000000000000005", Command: "make lint", State: usershell.StateFailed, ExitCode: 1, StartedAt: start, EndedAt: end},
@@ -64,7 +66,7 @@ func TestUserShellGolden_JobsOverlay(t *testing.T) {
 	roster := fixtureRoster()
 	for _, sz := range shellGoldenSizes {
 		t.Run(sz.name, func(t *testing.T) {
-			out := scrubRunningDuration(renderJobsOverlay(roster, "", false, 0, sz.w))
+			out := normalizeShellGolden(renderJobsOverlay(roster, "", false, 0, sz.w))
 			golden.RequireEqual(t, []byte(out))
 		})
 	}
@@ -76,7 +78,7 @@ func TestUserShellGolden_JobsOverlayFilterMode(t *testing.T) {
 	for _, sz := range shellGoldenSizes {
 		t.Run(sz.name, func(t *testing.T) {
 			// cursor on the 2nd row + an active filter caret.
-			out := scrubRunningDuration(renderJobsOverlay(roster, "go", true, 1, sz.w))
+			out := normalizeShellGolden(renderJobsOverlay(roster, "go", true, 1, sz.w))
 			golden.RequireEqual(t, []byte(out))
 		})
 	}
@@ -86,7 +88,7 @@ func TestUserShellGolden_JobsOverlayEmpty(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	for _, sz := range shellGoldenSizes {
 		t.Run(sz.name, func(t *testing.T) {
-			out := renderJobsOverlay(nil, "", false, 0, sz.w)
+			out := normalizeShellGolden(renderJobsOverlay(nil, "", false, 0, sz.w))
 			golden.RequireEqual(t, []byte(out))
 		})
 	}
@@ -106,8 +108,28 @@ func TestUserShellGolden_Footer(t *testing.T) {
 	}
 	for _, st := range states {
 		t.Run(st.name, func(t *testing.T) {
-			golden.RequireEqual(t, []byte(renderUserShellFooter(st.ctx)))
+			golden.RequireEqual(t, []byte(normalizeShellGolden(renderUserShellFooter(st.ctx))))
 		})
+	}
+}
+
+// TestUserShellOverlay_LiveSections covers the running + background
+// overlay sections, which the golden roster excludes because their live
+// duration is non-deterministic. Substring assertions tolerate the
+// variable duration while still pinning the section headers, glyphs, and
+// per-state labels.
+func TestUserShellOverlay_LiveSections(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	start := fixedTime
+	roster := []usershell.Snapshot{
+		{ID: "01RUNNING0000000000000001", Command: "npm run dev", State: usershell.StateRunning, StartedAt: start},
+		{ID: "01BG000000000000000000002", Command: "tail -f log", State: usershell.StateRunning, Backgrounded: true, StartedAt: start},
+	}
+	out := stripANSI(renderJobsOverlay(roster, "", false, 0, 120))
+	for _, want := range []string{"Running", "Background", "▶", "⬡", "npm run dev", "tail -f log", "running "} {
+		if !strings.Contains(out, want) {
+			t.Errorf("overlay missing %q\n%s", want, out)
+		}
 	}
 }
 
@@ -137,7 +159,7 @@ func TestUserShellGolden_TranscriptEntry(t *testing.T) {
 	for _, sz := range shellGoldenSizes {
 		for _, kind := range []string{"done", "failed", "cancelled", "running_bg", "truncated"} {
 			t.Run(kind+"_"+sz.name, func(t *testing.T) {
-				golden.RequireEqual(t, []byte(renderUserShellEntry(entries[kind], sz.w)))
+				golden.RequireEqual(t, []byte(normalizeShellGolden(renderUserShellEntry(entries[kind], sz.w))))
 			})
 		}
 	}

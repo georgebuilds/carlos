@@ -1,16 +1,8 @@
 ╭──────────────────────────────────────────────────────────────────────────────╮
-│ Shell jobs  6 total                                                          │
-│                                                                              │
-│ Running                                                                      │
-│ ▸ ▶ j01RUNNIN  npm run dev · running <dur>                                  │
-│                                                                              │
+│ Shell jobs  4 total                                                          │
 │                                                                              │
 │ Queued                                                                       │
-│   ▸ j01QUEUED  go build ./... · queued                                       │
-│                                                                              │
-│                                                                              │
-│ Background                                                                   │
-│   ⬡ j01BG0000  tail -f log · running <dur>                                  │
+│ ▸ ▸ j01QUEUED  go build ./... · queued                                       │
 │                                                                              │
 │                                                                              │
 │ Recent                                                                       │
