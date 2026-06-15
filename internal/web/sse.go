@@ -34,6 +34,12 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := r.PathValue("id")
+	// Resolve the owning backend before writing SSE headers so an unknown
+	// backend gets a clean 404 JSON rather than a half-open event stream.
+	b, ok := s.resolveBackend(w, id)
+	if !ok {
+		return
+	}
 
 	// `from` comes from the query, but a reconnecting EventSource carries
 	// Last-Event-ID (the last persisted seq) which takes precedence.
@@ -52,11 +58,11 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 
 	// 1. Subscribe BEFORE backfill so nothing appended during backfill is
 	//    lost (it lands in the buffer and the splice dedupes it).
-	logCh, logUnsub, err := s.backend.Subscribe(id)
+	logCh, logUnsub, err := b.Subscribe(id)
 	if err != nil {
 		// Can't subscribe: degrade to a one-shot backfill so the client
 		// at least sees the transcript.
-		s.backfill(ctx, w, flusher, id, from, 0)
+		s.backfill(ctx, b, w, flusher, id, from, 0)
 		return
 	}
 	defer logUnsub()
@@ -64,12 +70,12 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 	defer ephUnsub()
 
 	// 2. Backfill.
-	last := s.backfill(ctx, w, flusher, id, from, 0)
+	last := s.backfill(ctx, b, w, flusher, id, from, 0)
 
 	// 3 + 4. Splice happens implicitly in the live loop: we drop any
 	//    buffered persisted event with seq <= last. First emit the
 	//    ephemeral snapshot so a mid-turn reconnect shows in-flight state.
-	s.emitEphemeralSnapshot(ctx, w, flusher, id)
+	s.emitEphemeralSnapshot(ctx, b, w, flusher, id)
 
 	// 5 + 6. Live.
 	ticker := time.NewTicker(sseHeartbeat)
@@ -103,7 +109,7 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 			// events (or a run of non-forwarded events did not advance
 			// the cursor). Re-Read the gap and emit in order (F3).
 			if last > 0 && ev.Seq > last+1 {
-				last = s.backfill(ctx, w, flusher, id, last, ev.Seq)
+				last = s.backfill(ctx, b, w, flusher, id, last, ev.Seq)
 			}
 			writeSSE(w, ev)
 			flusher.Flush()
@@ -117,8 +123,8 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 // backfill reads persisted events in (from, upTo] (upTo==0 means no upper
 // bound) and writes them as SSE frames. Returns the highest seq emitted
 // (or `from` if none).
-func (s *Server) backfill(ctx context.Context, w http.ResponseWriter, f http.Flusher, id string, from, upTo int64) int64 {
-	events, err := s.backend.ReadEvents(ctx, id, from, upTo)
+func (s *Server) backfill(ctx context.Context, b Backend, w http.ResponseWriter, f http.Flusher, id string, from, upTo int64) int64 {
+	events, err := b.ReadEvents(ctx, id, from, upTo)
 	if err != nil {
 		return from
 	}
@@ -136,14 +142,14 @@ func (s *Server) backfill(ctx context.Context, w http.ResponseWriter, f http.Flu
 // emitEphemeralSnapshot reconstructs the non-persisted state on (re)connect
 // (spec §9.3 step 4): the in-flight delta buffer, any pending approval
 // requests, and a children snapshot. Ephemeral frames carry no id.
-func (s *Server) emitEphemeralSnapshot(ctx context.Context, w http.ResponseWriter, f http.Flusher, id string) {
-	if txt := s.backend.LiveText(id); txt != "" {
+func (s *Server) emitEphemeralSnapshot(ctx context.Context, b Backend, w http.ResponseWriter, f http.Flusher, id string) {
+	if txt := b.LiveText(id); txt != "" {
 		writeSSE(w, WireEvent{Thread: id, TS: rfc3339(nowUTC()), Kind: "delta", Data: map[string]any{"text": txt}})
 	}
-	for _, ap := range s.backend.PendingApprovals(id) {
+	for _, ap := range b.PendingApprovals(id) {
 		writeSSE(w, ap)
 	}
-	if kids := s.backend.Children(ctx, id); len(kids) > 0 {
+	if kids := b.Children(ctx, id); len(kids) > 0 {
 		writeSSE(w, ChildrenEvent(id, kids, nowUTC()))
 	}
 	f.Flush()

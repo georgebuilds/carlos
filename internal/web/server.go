@@ -41,14 +41,14 @@ type Options struct {
 // Server is the HTTP + SSE surface. Construct with NewServer and mount
 // Handler() on an http.Server bound to 127.0.0.1.
 type Server struct {
-	log     *agent.SQLiteEventLog
-	groups  *GroupStore
-	backend Backend
-	token   string
-	bound   string
-	metaFn  func() Meta
-	hub     *ephemeralHub
-	mux     *http.ServeMux
+	log      *agent.SQLiteEventLog
+	groups   *GroupStore
+	registry *Registry
+	token    string
+	bound    string
+	metaFn   func() Meta
+	hub      *ephemeralHub
+	mux      *http.ServeMux
 }
 
 // NewServer wires the routes. The returned Server's Handler() is the
@@ -58,17 +58,32 @@ func NewServer(opts Options) *Server {
 	if b == nil {
 		b = newReadOnlyBackend(opts.Log)
 	}
+	reg := NewRegistry()
+	reg.Register(b)
 	s := &Server{
-		log:     opts.Log,
-		groups:  opts.Groups,
-		backend: b,
-		token:   opts.Token,
-		bound:   opts.BoundAddr,
-		metaFn:  opts.MetaFn,
-		hub:     newEphemeralHub(),
+		log:      opts.Log,
+		groups:   opts.Groups,
+		registry: reg,
+		token:    opts.Token,
+		bound:    opts.BoundAddr,
+		metaFn:   opts.MetaFn,
+		hub:      newEphemeralHub(),
 	}
 	s.routes()
 	return s
+}
+
+// resolveBackend routes a thread id to its owning backend, writing a 404
+// unknown_backend and returning ok=false when no registered backend claims
+// the id's prefix. A legacy unprefixed id resolves to the default (carlos)
+// backend, so existing callers are unaffected.
+func (s *Server) resolveBackend(w http.ResponseWriter, id string) (Backend, bool) {
+	b, ok := s.registry.For(id)
+	if !ok {
+		writeErr(w, http.StatusNotFound, "unknown_backend", "no backend for thread "+id)
+		return nil, false
+	}
+	return b, true
 }
 
 // Hub exposes the ephemeral fan-out so the interactive backend (W-2/W-3)
@@ -76,14 +91,14 @@ func NewServer(opts Options) *Server {
 // handlers stream.
 func (s *Server) Hub() *ephemeralHub { return s.hub }
 
-// SetBackend swaps the interactive backend after construction. Needed
-// because the runtime-backed backend depends on the server's hub, which
-// only exists once NewServer has run (chicken-and-egg). A nil argument is
-// ignored so the read-only default stays in place.
+// SetBackend registers (or replaces, by Name) the interactive backend
+// after construction. Needed because the runtime-backed backend depends on
+// the server's hub, which only exists once NewServer has run
+// (chicken-and-egg). Replacing keeps the slot's position, so swapping the
+// read-only carlos placeholder for the interactive carlosBackend keeps it
+// the default. A nil argument is ignored.
 func (s *Server) SetBackend(b Backend) {
-	if b != nil {
-		s.backend = b
-	}
+	s.registry.Register(b)
 }
 
 func (s *Server) routes() {

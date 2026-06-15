@@ -33,7 +33,7 @@ func (s *Server) groupOverlay(ctx context.Context, summaries []ThreadSummary) {
 // projection (conversations-only filter + per-thread attachment overlay);
 // the handler adds the web-owned group-membership overlay.
 func (s *Server) handleListThreads(w http.ResponseWriter, r *http.Request) {
-	out, err := s.backend.ListThreads(r.Context())
+	out, err := s.registry.ListThreads(r.Context())
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "list_failed", err.Error())
 		return
@@ -44,7 +44,12 @@ func (s *Server) handleListThreads(w http.ResponseWriter, r *http.Request) {
 
 // handleGetThread: GET /api/threads/{id}.
 func (s *Server) handleGetThread(w http.ResponseWriter, r *http.Request) {
-	summary, ok, err := s.backend.GetThread(r.Context(), r.PathValue("id"))
+	id := r.PathValue("id")
+	b, ok := s.resolveBackend(w, id)
+	if !ok {
+		return
+	}
+	summary, ok, err := b.GetThread(r.Context(), id)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "list_failed", err.Error())
 		return
@@ -64,7 +69,9 @@ func (s *Server) handleCreateThread(w http.ResponseWriter, r *http.Request) {
 		Title string `json:"title"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&body)
-	summary, err := s.backend.CreateThread(r.Context(), body.Title)
+	// v1 creates on the default (carlos) backend; per-backend creation is a
+	// later slice (the create-with-backend affordance, plan B-5).
+	summary, err := s.registry.Default().CreateThread(r.Context(), body.Title)
 	if err != nil {
 		s.writeBackendErr(w, err)
 		return
@@ -76,7 +83,12 @@ func (s *Server) handleCreateThread(w http.ResponseWriter, r *http.Request) {
 // its sub-agent lineage (events, artifacts, agent rows). Refuses with 409
 // thread_live when another live process is driving it.
 func (s *Server) handleDeleteThread(w http.ResponseWriter, r *http.Request) {
-	n, err := s.backend.Delete(r.PathValue("id"))
+	id := r.PathValue("id")
+	b, ok := s.resolveBackend(w, id)
+	if !ok {
+		return
+	}
+	n, err := b.Delete(id)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrUnsupported):
@@ -98,9 +110,13 @@ func (s *Server) handleDeleteThread(w http.ResponseWriter, r *http.Request) {
 // limit slices the head of that window (D-A).
 func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	b, ok := s.resolveBackend(w, id)
+	if !ok {
+		return
+	}
 	from := parseInt(r.URL.Query().Get("from"), 0)
 	limit := parseInt(r.URL.Query().Get("limit"), 0)
-	out, err := s.backend.ReadEvents(r.Context(), id, from, 0)
+	out, err := b.ReadEvents(r.Context(), id, from, 0)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "read_failed", err.Error())
 		return
@@ -115,7 +131,11 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 // SSE children kind (spec §9.1).
 func (s *Server) handleChildren(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	kids := s.backend.Children(r.Context(), id)
+	b, ok := s.resolveBackend(w, id)
+	if !ok {
+		return
+	}
+	kids := b.Children(r.Context(), id)
 	if kids == nil {
 		kids = []ChildSnap{}
 	}
@@ -125,11 +145,15 @@ func (s *Server) handleChildren(w http.ResponseWriter, r *http.Request) {
 // handleAttach: POST /api/threads/{id}/attach.
 func (s *Server) handleAttach(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if err := s.backend.Attach(r.Context(), id); err != nil {
+	b, ok := s.resolveBackend(w, id)
+	if !ok {
+		return
+	}
+	if err := b.Attach(r.Context(), id); err != nil {
 		s.writeBackendErr(w, err)
 		return
 	}
-	summary, ok, err := s.backend.GetThread(r.Context(), id)
+	summary, ok, err := b.GetThread(r.Context(), id)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "list_failed", err.Error())
 		return
@@ -143,7 +167,12 @@ func (s *Server) handleAttach(w http.ResponseWriter, r *http.Request) {
 
 // handleDetach: POST /api/threads/{id}/detach.
 func (s *Server) handleDetach(w http.ResponseWriter, r *http.Request) {
-	if err := s.backend.Detach(r.PathValue("id")); err != nil {
+	id := r.PathValue("id")
+	b, ok := s.resolveBackend(w, id)
+	if !ok {
+		return
+	}
+	if err := b.Detach(id); err != nil {
 		s.writeBackendErr(w, err)
 		return
 	}
@@ -154,6 +183,10 @@ func (s *Server) handleDetach(w http.ResponseWriter, r *http.Request) {
 // EvtUserMessage and returns its seq; does NOT wait for the turn (§9.2).
 func (s *Server) handleMessage(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	b, ok := s.resolveBackend(w, id)
+	if !ok {
+		return
+	}
 	var body struct {
 		Text string `json:"text"`
 	}
@@ -161,7 +194,7 @@ func (s *Server) handleMessage(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "bad_request", "text is required")
 		return
 	}
-	seq, err := s.backend.Send(r.Context(), id, body.Text)
+	seq, err := b.Send(r.Context(), id, body.Text)
 	if err != nil {
 		s.writeBackendErr(w, err)
 		return
@@ -173,6 +206,10 @@ func (s *Server) handleMessage(w http.ResponseWriter, r *http.Request) {
 // pending tool-approval request (spec §10).
 func (s *Server) handleApproval(w http.ResponseWriter, r *http.Request) {
 	id, rid := r.PathValue("id"), r.PathValue("rid")
+	b, ok := s.resolveBackend(w, id)
+	if !ok {
+		return
+	}
 	var body struct {
 		Decision string `json:"decision"`
 	}
@@ -186,7 +223,7 @@ func (s *Server) handleApproval(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "bad_decision", "decision must be deny|allow|allow_always")
 		return
 	}
-	if err := s.backend.Resolve(id, rid, body.Decision); err != nil {
+	if err := b.Resolve(id, rid, body.Decision); err != nil {
 		s.writeBackendErr(w, err)
 		return
 	}
@@ -200,7 +237,7 @@ func (s *Server) handleMeta(w http.ResponseWriter, r *http.Request) {
 		m = s.metaFn()
 	}
 	if m.BackendCaps == nil {
-		m.BackendCaps = s.backend.Caps()
+		m.BackendCaps = s.registry.Default().Caps()
 	}
 	writeJSON(w, http.StatusOK, m)
 }

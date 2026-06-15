@@ -146,6 +146,10 @@ func newReadOnlyBackend(log *agent.SQLiteEventLog) readOnlyBackend {
 	}
 }
 
+// Name is defined on readOnlyBackend itself (not promoted from the embedded
+// CarlosReader) so test stubs that embed readOnlyBackend with a nil reader
+// still answer the registry's keying call without a nil dereference.
+func (readOnlyBackend) Name() string                         { return "carlos" }
 func (readOnlyBackend) Caps() map[string]bool                { return readOnlyCaps }
 func (readOnlyBackend) Attached(string) bool                 { return false }
 func (readOnlyBackend) Frame(string) string                  { return "" }
