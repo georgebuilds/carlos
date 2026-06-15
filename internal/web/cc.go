@@ -39,7 +39,10 @@ var ccCaps = map[string]bool{
 	"observe": true, "children": false,
 }
 
-// CCBackend implements web.Backend over the Claude Code session store.
+// CCBackend implements web.Backend over the Claude Code session store. With
+// drive disabled it is observe-only (list/read/tail); EnableDrive (cc_drive.go)
+// turns on the interactive path (attach a `claude` subprocess, send turns,
+// bridge tool approval to the browser).
 type CCBackend struct {
 	root string           // ~/.claude/projects
 	now  func() time.Time // injectable clock (tests)
@@ -47,6 +50,17 @@ type CCBackend struct {
 	mu    sync.Mutex
 	index map[string]string       // "cc:<uuid>" -> jsonl path (refreshed on scan)
 	cache map[string]ccCacheEntry // path -> summary keyed by mtime+size
+
+	// drive config, set by EnableDrive; a nil hub means observe-only.
+	lifeCtx context.Context
+	hub     *ephemeralHub
+	baseURL string // e.g. http://127.0.0.1:7777 (for the hook callback)
+	token   string // bearer the hook authenticates with
+	exePath string // the carlos binary, for the hook command
+
+	driveMu sync.Mutex
+	drivers map[string]*ccDriver  // attached thread -> live process
+	pending map[string]*ccPending // approval request_id -> blocked hook
 }
 
 type ccCacheEntry struct {
@@ -75,8 +89,7 @@ func newCCBackendAt(root string) *CCBackend {
 	}
 }
 
-func (b *CCBackend) Name() string          { return ccBackendName }
-func (b *CCBackend) Caps() map[string]bool { return ccCaps }
+func (b *CCBackend) Name() string { return ccBackendName }
 
 // ListThreads scans the project store for recent sessions, newest first.
 // Stat + a single cheap scan per file, cached by mtime+size so the 3s
@@ -187,7 +200,7 @@ func (b *CCBackend) summaryFor(id, path string, info os.FileInfo) ThreadSummary 
 		UserMsgs:     sc.UserMsgs,
 		Frame:        frame,
 		Backend:      ccBackendName,
-		Capabilities: ccCaps,
+		Capabilities: b.caps(),
 	}
 	b.mu.Lock()
 	b.cache[path] = ccCacheEntry{modNano: mod.UnixNano(), size: info.Size(), summary: s}
@@ -325,21 +338,3 @@ func (b *CCBackend) findByUUID(id string) (string, bool) {
 	}
 	return "", false
 }
-
-// --- Interactive surface: unsupported in observe-only v1 (B-3/B-4). ---
-
-func (b *CCBackend) Attached(string) bool                 { return false }
-func (b *CCBackend) Frame(string) string                  { return "" }
-func (b *CCBackend) Attach(context.Context, string) error { return ErrUnsupported }
-func (b *CCBackend) Detach(string) error                  { return ErrUnsupported }
-func (b *CCBackend) Send(context.Context, string, string) (int64, error) {
-	return 0, ErrUnsupported
-}
-func (b *CCBackend) Resolve(string, string, string) error { return ErrUnsupported }
-func (b *CCBackend) CreateThread(context.Context, string) (ThreadSummary, error) {
-	return ThreadSummary{}, ErrUnsupported
-}
-func (b *CCBackend) Delete(string) (int, error)                   { return 0, ErrUnsupported }
-func (b *CCBackend) Children(context.Context, string) []ChildSnap { return nil }
-func (b *CCBackend) LiveText(string) string                       { return "" }
-func (b *CCBackend) PendingApprovals(string) []WireEvent          { return nil }

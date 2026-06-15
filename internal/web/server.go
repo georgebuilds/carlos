@@ -124,6 +124,9 @@ func (s *Server) routes() {
 	m.HandleFunc("POST /api/threads/{id}/detach", s.handleDetach)
 	m.HandleFunc("POST /api/threads/{id}/messages", s.handleMessage)
 	m.HandleFunc("POST /api/threads/{id}/approvals/{rid}", s.handleApproval)
+	// Claude Code PreToolUse hook callback (B-4): the spawned hook posts a
+	// tool here and blocks for the human's decision.
+	m.HandleFunc("POST /api/cc/hook", s.handleCCHook)
 	// Groups (web-owned).
 	m.HandleFunc("GET /api/groups", s.handleListGroups)
 	m.HandleFunc("POST /api/groups", s.handleCreateGroup)

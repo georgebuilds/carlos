@@ -291,6 +291,14 @@ func main() {
 				exit(err)
 			}
 			return
+		case "cc-hook":
+			// Internal: the PreToolUse hook a `carlos web`-driven Claude
+			// Code session runs before each tool (installed via --settings).
+			// A thin HTTP client to the local web server; no config needed.
+			if err := runCCHook(args[1:]); err != nil {
+				exit(err)
+			}
+			return
 		case "web":
 			// `carlos web [--port N]` - localhost HTTP + SSE agent
 			// console (Vue SPA over the event log). Needs a complete

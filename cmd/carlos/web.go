@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strconv"
@@ -95,10 +96,20 @@ func runWeb(args []string, cfg *config.Config) error {
 		defer backend.Shutdown()
 	}
 
-	// Register the Claude Code observe adapter as a peer backend (B-2). It
-	// projects ~/.claude/projects sessions read-only; a missing store just
-	// lists nothing, so this is always safe to register.
-	srv.Register(web.NewCCBackend())
+	// Register the Claude Code adapter as a peer backend. It projects
+	// ~/.claude/projects sessions read-only (B-2); a missing store just
+	// lists nothing, so this is always safe to register. When the `claude`
+	// binary is present, enable driving (B-3/B-4): attach spawns a claude
+	// subprocess and tool approvals bridge to the browser via a PreToolUse
+	// hook (`carlos cc-hook`). Without claude, it stays observe-only and the
+	// caps tell the SPA to keep the composer disabled.
+	cc := web.NewCCBackend()
+	if _, err := exec.LookPath("claude"); err == nil {
+		if exe, err := os.Executable(); err == nil {
+			cc.EnableDrive(ctx, srv.Hub(), "http://"+addr, token, exe)
+		}
+	}
+	srv.Register(cc)
 
 	// Top-level mux: /api/* is token-gated (srv.Handler wraps the auth
 	// middleware); everything else serves the embedded SPA without the
