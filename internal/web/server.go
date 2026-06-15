@@ -140,6 +140,10 @@ func (s *Server) routes() {
 	m.HandleFunc("POST /api/threads", s.handleCreateThread)
 	m.HandleFunc("GET /api/threads/{id}", s.handleGetThread)
 	m.HandleFunc("DELETE /api/threads/{id}", s.handleDeleteThread)
+	// Roster blacklist (web-local hide; no data delete). POST hides, DELETE
+	// unhides. Mainly for foreign (Claude Code) threads carlos does not own.
+	m.HandleFunc("POST /api/threads/{id}/hide", s.handleHideThread)
+	m.HandleFunc("DELETE /api/threads/{id}/hide", s.handleHideThread)
 	m.HandleFunc("GET /api/threads/{id}/events", s.handleEvents)
 	m.HandleFunc("GET /api/threads/{id}/stream", s.handleStream)
 	m.HandleFunc("GET /api/threads/{id}/children", s.handleChildren)

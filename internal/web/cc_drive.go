@@ -10,6 +10,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/georgebuilds/carlos/internal/agent"
 )
 
 // cc_drive.go: the interactive half of the Claude Code backend (B-3 drive +
@@ -284,9 +286,28 @@ func (b *CCBackend) CreateThread(ctx context.Context, title string) (ThreadSumma
 	}, nil
 }
 
-// Delete / Children stay unsupported in v1: carlos web does not delete
-// Claude Code sessions, and CC sub-agent surfacing is deferred.
-func (b *CCBackend) Delete(string) (int, error)                   { return 0, ErrUnsupported }
+// Delete removes the on-disk Claude Code session file (the explicit,
+// destructive "delete session" action, distinct from the default hide).
+// This DOES remove it from Claude Code too, so the SPA guards it behind a
+// confirm. Detaches a running driver first. Returns ErrSessionNotFound when
+// no file backs the id.
+func (b *CCBackend) Delete(id string) (int, error) {
+	path, ok := b.pathFor(id)
+	if !ok {
+		return 0, agent.ErrSessionNotFound
+	}
+	_ = b.Detach(id) // stop a driver if we are driving it
+	if err := os.Remove(path); err != nil {
+		return 0, fmt.Errorf("cc: delete session file: %w", err)
+	}
+	b.mu.Lock()
+	delete(b.index, id)
+	delete(b.cache, path)
+	b.mu.Unlock()
+	return 1, nil
+}
+
+// Children stays unsupported: CC sub-agent surfacing is deferred.
 func (b *CCBackend) Children(context.Context, string) []ChildSnap { return nil }
 
 // uuidV4 generates a random RFC 4122 v4 UUID for a new CC session id.

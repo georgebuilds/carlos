@@ -109,6 +109,10 @@ export const api = {
     request<ThreadSummary>('GET', `/api/threads/${encodeURIComponent(id)}`),
   deleteThread: (id: string) =>
     request<{ deleted: number }>('DELETE', `/api/threads/${encodeURIComponent(id)}`),
+  hideThread: (id: string) =>
+    request<void>('POST', `/api/threads/${encodeURIComponent(id)}/hide`),
+  unhideThread: (id: string) =>
+    request<void>('DELETE', `/api/threads/${encodeURIComponent(id)}/hide`),
   events: (id: string, from = 0, limit = 500) =>
     request<WireEvent[]>(
       'GET',

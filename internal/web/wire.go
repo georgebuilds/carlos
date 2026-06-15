@@ -51,6 +51,10 @@ type ThreadSummary struct {
 	Backend      string          `json:"backend"`
 	GroupID      *string         `json:"group_id,omitempty"`
 	Capabilities map[string]bool `json:"capabilities"`
+	// Hidden marks a thread blacklisted from the roster (web-local, never a
+	// data delete). The SPA folds these out of the default view; mainly for
+	// foreign (Claude Code) threads carlos does not own.
+	Hidden bool `json:"hidden,omitempty"`
 }
 
 // wireState maps an agent.State to the underscore-form wire string the

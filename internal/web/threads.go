@@ -29,6 +29,46 @@ func (s *Server) groupOverlay(ctx context.Context, summaries []ThreadSummary) {
 	}
 }
 
+// hiddenOverlay stamps the web-owned roster blacklist onto summaries. Like
+// groups, it is handler-layer metadata that spans backends; the SPA folds
+// hidden threads out of the default view (a "show hidden" toggle reveals
+// them). Best-effort: a store error leaves everything visible.
+func (s *Server) hiddenOverlay(ctx context.Context, summaries []ThreadSummary) {
+	if s.groups == nil {
+		return
+	}
+	hidden, err := s.groups.HiddenSet(ctx)
+	if err != nil || len(hidden) == 0 {
+		return
+	}
+	for i := range summaries {
+		if hidden[summaries[i].ID] {
+			summaries[i].Hidden = true
+		}
+	}
+}
+
+// handleHideThread: POST/DELETE /api/threads/{id}/hide. Adds or removes the
+// thread from the roster blacklist (web-local; no data is touched).
+func (s *Server) handleHideThread(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if s.groups == nil {
+		writeErr(w, http.StatusServiceUnavailable, "no_store", "grouping store unavailable")
+		return
+	}
+	var err error
+	if r.Method == http.MethodDelete {
+		err = s.groups.Unhide(r.Context(), id)
+	} else {
+		err = s.groups.Hide(r.Context(), id)
+	}
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "hide_failed", err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // handleListThreads: GET /api/threads. The backend owns the roster
 // projection (conversations-only filter + per-thread attachment overlay);
 // the handler adds the web-owned group-membership overlay.
@@ -39,6 +79,7 @@ func (s *Server) handleListThreads(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.groupOverlay(r.Context(), out)
+	s.hiddenOverlay(r.Context(), out)
 	writeJSON(w, http.StatusOK, out)
 }
 

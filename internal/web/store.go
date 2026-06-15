@@ -42,6 +42,13 @@ CREATE TABLE IF NOT EXISTS web_thread_groups (
   group_id  TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS web_thread_groups_by_group ON web_thread_groups(group_id);
+-- web_hidden blacklists threads from the roster WITHOUT deleting them. Used
+-- mainly for foreign (Claude Code) threads carlos does not own: hiding is a
+-- carlos-web-local view filter, never a touch on the agent's data. Backend
+-- agnostic (no agents join), since cc:<uuid> ids are not agent rows.
+CREATE TABLE IF NOT EXISTS web_hidden (
+  thread_id TEXT PRIMARY KEY
+);
 `
 
 // OpenGroupStore opens (or creates) the grouping tables in the state.db at
@@ -239,6 +246,44 @@ func (s *GroupStore) SweepOrphans(ctx context.Context) (int64, error) {
 	}
 	n, _ := res.RowsAffected()
 	return n, nil
+}
+
+// Hide adds a thread to the roster blacklist (idempotent). It does not
+// delete anything; ListThreads stamps `hidden` on these and the SPA folds
+// them out of the default view.
+func (s *GroupStore) Hide(ctx context.Context, threadID string) error {
+	if threadID == "" {
+		return errors.New("web: thread id is required")
+	}
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO web_hidden(thread_id) VALUES(?) ON CONFLICT(thread_id) DO NOTHING`, threadID)
+	return err
+}
+
+// Unhide removes a thread from the blacklist (idempotent).
+func (s *GroupStore) Unhide(ctx context.Context, threadID string) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM web_hidden WHERE thread_id = ?`, threadID)
+	return err
+}
+
+// HiddenSet returns the set of blacklisted thread ids for the roster
+// overlay. Backend-agnostic (no agents join): a cc:<uuid> hidden row is just
+// an id. Rows for threads that vanished do no harm (they match nothing).
+func (s *GroupStore) HiddenSet(ctx context.Context) (map[string]bool, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT thread_id FROM web_hidden`)
+	if err != nil {
+		return nil, fmt.Errorf("hidden set: %w", err)
+	}
+	defer rows.Close()
+	out := map[string]bool{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out[id] = true
+	}
+	return out, rows.Err()
 }
 
 func (s *GroupStore) get(ctx context.Context, id string) (Group, error) {

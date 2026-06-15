@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useThreadsStore } from '@/stores/threads'
 import { useGroupsStore } from '@/stores/groups'
 import { useToastStore } from '@/stores/toast'
@@ -14,6 +14,21 @@ const toast = useToastStore()
 const emit = defineEmits<{ select: [id: string] }>()
 
 const visibleGroups = computed(() => groups.groups.filter((g) => threadsStore.groupVisible(g.id)))
+
+const newGroupOpen = ref(false)
+const newGroupName = ref('')
+async function createGroup(): Promise<void> {
+  const n = newGroupName.value.trim()
+  newGroupOpen.value = false
+  newGroupName.value = ''
+  if (!n) return
+  try {
+    await groups.create(n)
+    toast.show(`group "${n}" created`)
+  } catch {
+    toast.show('could not create the group')
+  }
+}
 const noResults = computed(
   () =>
     threadsStore.query.trim() !== '' &&
@@ -46,6 +61,27 @@ async function newThread(backend?: string): Promise<void> {
         aria-label="search conversations"
         spellcheck="false"
       />
+    </div>
+    <div class="roster-tools">
+      <button
+        v-if="threadsStore.hiddenCount > 0"
+        class="rt-btn"
+        :class="{ on: threadsStore.showHidden }"
+        @click="threadsStore.showHidden = !threadsStore.showHidden"
+      >
+        {{ threadsStore.showHidden ? 'hiding hidden' : `show hidden (${threadsStore.hiddenCount})` }}
+      </button>
+      <span class="spacer"></span>
+      <input
+        v-if="newGroupOpen"
+        v-model="newGroupName"
+        class="rt-input"
+        placeholder="group name"
+        @keyup.enter="createGroup"
+        @keyup.escape="newGroupOpen = false"
+        @blur="createGroup"
+      />
+      <button v-else class="rt-btn" @click="newGroupOpen = true">+ group</button>
     </div>
     <div class="thread-list">
       <!-- ungrouped first: a fresh thread is always immediately visible -->

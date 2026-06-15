@@ -14,6 +14,9 @@ vi.mock('@/api/client', async () => {
       detach: vi.fn(),
       listThreads: vi.fn(),
       children: vi.fn(),
+      hideThread: vi.fn(),
+      unhideThread: vi.fn(),
+      createThread: vi.fn(),
     },
   }
 })
@@ -289,5 +292,56 @@ describe('threads store · live search', () => {
     expect(s.groupVisible('g2')).toBe(false)
     s.query = ''
     expect(s.groupVisible('g2')).toBe(true) // every group shows with no query
+  })
+})
+
+describe('threads store · hide / show-hidden', () => {
+  beforeEach(() => setActivePinia(createPinia()))
+
+  it('folds hidden threads out of the roster unless showHidden is on', () => {
+    const s = useThreadsStore()
+    s.threads = [thread('a'), thread('b', { hidden: true })]
+    expect(s.ungrouped.map((t) => t.id)).toEqual(['a'])
+    expect(s.hiddenCount).toBe(1)
+    s.showHidden = true
+    expect(s.ungrouped.map((t) => t.id).sort()).toEqual(['a', 'b'])
+  })
+
+  it('hide() flips optimistically and calls the api; reverts on failure', async () => {
+    const s = useThreadsStore()
+    s.threads = [thread('a')]
+    vi.mocked(api.hideThread).mockResolvedValueOnce(undefined)
+    await s.hide('a')
+    expect(s.threads[0].hidden).toBe(true)
+    expect(api.hideThread).toHaveBeenCalledWith('a')
+
+    vi.mocked(api.hideThread).mockRejectedValueOnce(new Error('boom'))
+    s.threads[0].hidden = false
+    await expect(s.hide('a')).rejects.toThrow('boom')
+    expect(s.threads[0].hidden).toBe(false) // reverted
+  })
+
+  it('unhide() clears the flag and calls the api; reverts on failure', async () => {
+    const s = useThreadsStore()
+    s.threads = [thread('a', { hidden: true })]
+    vi.mocked(api.unhideThread).mockResolvedValueOnce(undefined)
+    await s.unhide('a')
+    expect(s.threads[0].hidden).toBe(false)
+    expect(api.unhideThread).toHaveBeenCalledWith('a')
+
+    s.threads[0].hidden = true
+    vi.mocked(api.unhideThread).mockRejectedValueOnce(new Error('boom'))
+    await expect(s.unhide('a')).rejects.toThrow('boom')
+    expect(s.threads[0].hidden).toBe(true) // reverted
+  })
+
+  it('create(backend) posts the chosen backend and prepends the new thread', async () => {
+    const s = useThreadsStore()
+    vi.mocked(api.createThread).mockResolvedValueOnce(thread('cc:new', { backend: 'cc' }))
+    const t = await s.create('cc')
+    expect(api.createThread).toHaveBeenCalledWith({ backend: 'cc' })
+    expect(t.id).toBe('cc:new')
+    expect(s.threads[0].id).toBe('cc:new')
+    expect(s.activeId).toBe('cc:new')
   })
 })

@@ -92,6 +92,7 @@ export interface ThreadSummary {
   frame: string
   backend: string
   group_id?: string | null
+  hidden?: boolean // web-local roster blacklist (folded out of the default view)
   capabilities: BackendCaps
   // foreign-owner overlay, surfaced by the server when another process owns it.
   owner?: 'tui' | 'web' | null

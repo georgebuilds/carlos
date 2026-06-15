@@ -8,6 +8,17 @@ ignore:
   # unit-testable. Underlying logic lives in internal/agent + internal/
   # research where it is covered.
   - "cmd/carlos/runtime_headless.go"
+  # The carlos web command + its runtime-backed backend: assemble the same
+  # ~600-line runtime as runDefault and serve HTTP. Same untestable
+  # entry-point category; the web package (internal/web) is unit-tested.
+  - "cmd/carlos/web.go"
+  - "cmd/carlos/web_backend.go"
+  # The Claude Code subprocess driver: spawns and pumps a live `claude`
+  # process over stream-json. Only exercisable with the binary + auth, so it
+  # is covered by the gated CARLOS_CC_IT integration tests, not unit tests.
+  # The testable halves (stream parser, approval bridge, file projection) in
+  # cc_stream.go / cc_drive.go / cc_map.go ARE unit-tested.
+  - "internal/web/cc_driver.go"
   # Top-level CLI verb dispatch. main() is a switch where every arm calls
   # os.Exit / exit(err) or launches a TUI/program, plus build-info version
   # stamping - the same entry-point category as the two runtime files

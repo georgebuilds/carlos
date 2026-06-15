@@ -61,6 +61,9 @@ export const useThreadsStore = defineStore('threads', () => {
   // live roster search: a case-insensitive substring filter over title +
   // preview, applied to both the ungrouped list and each group's members.
   const query = ref('')
+  // hidden (blacklisted) threads are folded out of the roster unless the
+  // user flips "show hidden". Mainly for foreign Claude Code threads.
+  const showHidden = ref(false)
   let pollTimer: ReturnType<typeof setInterval> | null = null
 
   function matchesQuery(t: ThreadSummary): boolean {
@@ -71,6 +74,15 @@ export const useThreadsStore = defineStore('threads', () => {
     )
   }
 
+  // a thread shows in the roster when it matches the search AND is not
+  // hidden (unless "show hidden" is on).
+  function visible(t: ThreadSummary): boolean {
+    if (t.hidden && !showHidden.value) return false
+    return matchesQuery(t)
+  }
+
+  const hiddenCount = computed(() => threads.value.filter((t) => t.hidden).length)
+
   const active = computed<ThreadSummary | null>(
     () => threads.value.find((t) => t.id === activeId.value) ?? null,
   )
@@ -78,13 +90,13 @@ export const useThreadsStore = defineStore('threads', () => {
   // ungrouped first (plan §4.1), then sorted by updated_at desc inside.
   const ungrouped = computed(() =>
     threads.value
-      .filter((t) => !t.group_id && matchesQuery(t))
+      .filter((t) => !t.group_id && visible(t))
       .sort((a, b) => b.updated_at.localeCompare(a.updated_at)),
   )
 
   function membersOf(groupId: string): ThreadSummary[] {
     return threads.value
-      .filter((t) => t.group_id === groupId && matchesQuery(t))
+      .filter((t) => t.group_id === groupId && visible(t))
       .sort((a, b) => b.updated_at.localeCompare(a.updated_at))
   }
 
@@ -195,6 +207,31 @@ export const useThreadsStore = defineStore('threads', () => {
     return res
   }
 
+  // hide / unhide: a web-local roster blacklist (no data is deleted). The
+  // active thread, if hidden, stays selected; it simply leaves the default
+  // list. Optimistic with revert on failure.
+  async function hide(id: string): Promise<void> {
+    const t = threads.value.find((x) => x.id === id)
+    if (t) t.hidden = true
+    try {
+      await api.hideThread(id)
+    } catch (e) {
+      if (t) t.hidden = false
+      throw e
+    }
+  }
+
+  async function unhide(id: string): Promise<void> {
+    const t = threads.value.find((x) => x.id === id)
+    if (t) t.hidden = false
+    try {
+      await api.unhideThread(id)
+    } catch (e) {
+      if (t) t.hidden = true
+      throw e
+    }
+  }
+
   async function loadChildren(id: string): Promise<void> {
     const res = await api.children(id)
     children.value[id] = res.children
@@ -213,6 +250,8 @@ export const useThreadsStore = defineStore('threads', () => {
     active,
     children,
     query,
+    showHidden,
+    hiddenCount,
     ungrouped,
     membersOf,
     groupVisible,
@@ -225,6 +264,8 @@ export const useThreadsStore = defineStore('threads', () => {
     detach,
     create,
     remove,
+    hide,
+    unhide,
     loadChildren,
     setChildren,
   }
