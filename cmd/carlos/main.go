@@ -291,6 +291,41 @@ func main() {
 				exit(err)
 			}
 			return
+		case "run":
+			// `carlos run "<cmd>"` - launch a detached background shell
+			// job owned by the daemon. Survives this process exiting;
+			// reconnect with `carlos attach <id>` or read its output with
+			// `carlos logs <id>`. Mirrors Claude Code's `--exec` model.
+			if err := runJobRun(args[1:]); err != nil {
+				exit(err)
+			}
+			return
+		case "jobs":
+			// `carlos jobs` - list the daemon's background jobs.
+			if err := runJobsList(args[1:]); err != nil {
+				exit(err)
+			}
+			return
+		case "attach":
+			// `carlos attach <id>` - stream a daemon job's output until it
+			// finishes (Ctrl+C detaches without stopping the job).
+			if err := runJobAttach(args[1:]); err != nil {
+				exit(err)
+			}
+			return
+		case "logs":
+			// `carlos logs <id>` - print a daemon job's captured output
+			// once (IPC, falling back to the on-disk <id>.log).
+			if err := runJobLogs(args[1:]); err != nil {
+				exit(err)
+			}
+			return
+		case "stop":
+			// `carlos stop <id>` - cancel a running daemon job.
+			if err := runJobStop(args[1:]); err != nil {
+				exit(err)
+			}
+			return
 		case "cc-hook":
 			// Internal: the PreToolUse hook a `carlos web`-driven Claude
 			// Code session runs before each tool (installed via --settings).
@@ -1258,6 +1293,11 @@ Usage:
   carlos gateway add                       interactive wizard to configure ntfy / Telegram / Signal channels
   carlos gateway test <channel>            send a test notification through one gateway channel
                                              (ntfy | telegram | signal | custom)
+  carlos run "<command>"                   launch a detached background shell job (needs the daemon)
+  carlos jobs                              list the daemon's background jobs
+  carlos attach <id>                       stream a background job's output until it finishes
+  carlos logs <id>                         print a background job's captured output once
+  carlos stop <id>                         cancel a running background job
   carlos web [--port N]                    serve the localhost web console (default port 7777)
   carlos chat                              [dev-aid, Slice 1e] chat TUI against a temp log
   carlos manage                            [dev-aid, Slice 4]  manage TUI with seeded sample roster

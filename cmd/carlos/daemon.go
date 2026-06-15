@@ -89,6 +89,8 @@ func runDaemonRun() error {
 		TickInterval:    30 * time.Second,
 		Notifier:        &daemon.SystemNotifier{}, // slice 8d: desktop banners on fire
 		Home:            home,
+		JobsDir:         filepath.Join(home, ".carlos", "jobs"),
+		JobsDBPath:      filepath.Join(home, ".carlos", "jobs.db"),
 		ProviderBuilder: buildProviderForFrame,
 	})
 	if err != nil {
