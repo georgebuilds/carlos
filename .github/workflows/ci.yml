@@ -5,7 +5,7 @@
 #
 # # Job split
 #
-# Three parallel jobs:
+# Four parallel jobs:
 #   - `check`: vet + go.mod-tidy guard. The tidy step is gated on a
 #     paths-filter so docs-only / source-only PRs skip the module
 #     graph walk entirely. Fast (<15s warm); surfaces style + dep
@@ -16,11 +16,14 @@
 #     hand-curated path prefixes (`internal/agent/...` is the heavy
 #     one and gets its own shard) so the runners finish in roughly
 #     the same wall time. Each shard streams a per-shard coverage
-#     profile; Codecov merges them on upload.
+#     profile; Codecov merges them on upload (flags shard-1 / shard-2).
+#   - `web`: the Vue SPA's vitest suite with v8 coverage, uploaded
+#     under the `web` flag so the front-end is a distinct Codecov
+#     component from the Go code.
 #
 # Running them in parallel bounds wall time by the longest job. The
-# setup-go cache makes the per-job spin-up cheap enough that the
-# wall-clock win beats running setup three times.
+# setup-go / setup-node caches make per-job spin-up cheap enough that
+# the wall-clock win beats running setup four times.
 #
 # # Caching
 #
@@ -167,4 +170,34 @@ jobs:
         with:
           files: coverage.txt
           flags: shard-2
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+  web:
+    name: web (vitest + coverage)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install deps
+        working-directory: web
+        run: npm ci
+
+      - name: Test with coverage
+        working-directory: web
+        run: npm run test:cov
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v6
+        with:
+          files: web/coverage/lcov.info
+          flags: web
           token: ${{ secrets.CODECOV_TOKEN }}

@@ -31,5 +31,14 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     include: ['src/**/*.test.ts'],
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'lcov'],
+      reportsDirectory: './coverage',
+      // Cover the app source; exclude test files and the bootstrap entry
+      // (mirrors the Go side ignoring entry-point files in codecov.yml).
+      include: ['src/**/*.{ts,vue}'],
+      exclude: ['src/**/*.test.ts', 'src/main.ts'],
+    },
   },
 })
