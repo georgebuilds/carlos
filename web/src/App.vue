@@ -211,23 +211,26 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 <template>
   <div class="app">
     <TopBar />
-    <div class="panes">
-      <Roster @select="onSelect" @import-cc="ccImportOpen = true" />
-      <Stage
-        v-if="active"
-        :thread="active"
-        :events="activeEvents"
-        :delta="activeDelta"
-        :approvals="activeApprovals"
-        @send="onSend"
-        @resolve="onResolve"
-        @attach="onAttach"
-        @detach="onDetach"
-        @attach-foreign="onAttachForeign"
-        @delete="onDelete"
-      />
-      <HomeBoard v-else @select="onSelect" />
-      <Rail :approvals="activeApprovals" :children="activeChildren" />
+    <div class="panes" :class="{ solo: !active }">
+      <!-- With a thread selected: roster + chat + rail. With none: the home
+           board takes the whole pane (no left conversation list). -->
+      <template v-if="active">
+        <Roster @select="onSelect" @import-cc="ccImportOpen = true" />
+        <Stage
+          :thread="active"
+          :events="activeEvents"
+          :delta="activeDelta"
+          :approvals="activeApprovals"
+          @send="onSend"
+          @resolve="onResolve"
+          @attach="onAttach"
+          @detach="onDetach"
+          @attach-foreign="onAttachForeign"
+          @delete="onDelete"
+        />
+        <Rail :approvals="activeApprovals" :children="activeChildren" />
+      </template>
+      <HomeBoard v-else @select="onSelect" @import-cc="ccImportOpen = true" />
     </div>
     <CCImportModal v-if="ccImportOpen" @close="ccImportOpen = false" />
     <Toast />

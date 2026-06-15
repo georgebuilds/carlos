@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { useThreadsStore } from '@/stores/threads'
 import { useGroupsStore } from '@/stores/groups'
 import { useToastStore } from '@/stores/toast'
+import { useNewThread } from '@/composables/useNewThread'
 import RosterHeader from './RosterHeader.vue'
 import ThreadRow from './ThreadRow.vue'
 import GroupSection from './GroupSection.vue'
@@ -10,6 +11,7 @@ import GroupSection from './GroupSection.vue'
 const threadsStore = useThreadsStore()
 const groups = useGroupsStore()
 const toast = useToastStore()
+const { newThread: createThread } = useNewThread()
 
 const emit = defineEmits<{ select: [id: string]; importCc: [] }>()
 
@@ -37,15 +39,8 @@ const noResults = computed(
 )
 
 async function newThread(backend?: string): Promise<void> {
-  try {
-    const t = await threadsStore.create(backend)
-    emit('select', t.id)
-    toast.show(
-      backend === 'cc' ? 'claude code session started' : 'thread minted · frame resolves at attach',
-    )
-  } catch {
-    toast.show('could not start that thread')
-  }
+  const id = await createThread(backend)
+  if (id) emit('select', id)
 }
 </script>
 

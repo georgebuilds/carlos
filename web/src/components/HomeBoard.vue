@@ -8,21 +8,29 @@ import { computed } from 'vue'
 import { useThreadsStore } from '@/stores/threads'
 import { useGroupsStore } from '@/stores/groups'
 import { useHomeViewStore } from '@/stores/homeview'
+import { useNewThread } from '@/composables/useNewThread'
 import RepoSection from './RepoSection.vue'
 import GroupSection from './GroupSection.vue'
 import ThreadRow from './ThreadRow.vue'
+import NewMenu from './NewMenu.vue'
 
 const threads = useThreadsStore()
 const groups = useGroupsStore()
 const home = useHomeViewStore()
+const { newThread: createThread } = useNewThread()
 
-const emit = defineEmits<{ select: [id: string] }>()
+const emit = defineEmits<{ select: [id: string]; importCc: [] }>()
 
 const sections = computed(() => threads.byRepo)
 const visibleGroups = computed(() =>
   groups.groups.filter((g) => threads.groupVisible(g.id)),
 )
 const empty = computed(() => threads.threads.filter((t) => !t.parent_id).length === 0)
+
+async function onNew(backend?: string): Promise<void> {
+  const id = await createThread(backend)
+  if (id) emit('select', id)
+}
 </script>
 
 <template>
@@ -33,6 +41,14 @@ const empty = computed(() => threads.threads.filter((t) => !t.parent_id).length 
         <p class="home-sub">grouped by git repository · newest activity first</p>
       </div>
       <span class="home-spacer"></span>
+      <input
+        v-model="threads.query"
+        class="home-search"
+        type="search"
+        placeholder="search conversations"
+        aria-label="search conversations"
+        spellcheck="false"
+      />
       <div class="home-toggle" role="tablist" aria-label="home view">
         <button
           class="ht-btn"
@@ -53,6 +69,7 @@ const empty = computed(() => threads.threads.filter((t) => !t.parent_id).length 
           By group
         </button>
       </div>
+      <NewMenu @new="onNew" @import-cc="emit('importCc')" />
     </header>
 
     <div class="home-body">

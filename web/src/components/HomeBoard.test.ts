@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { mount, flushPromises } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
 import HomeBoard from './HomeBoard.vue'
 import RepoSection from './RepoSection.vue'
@@ -13,7 +13,24 @@ vi.mock('@/api/client', async () => {
   const actual = await vi.importActual<typeof import('@/api/client')>('@/api/client')
   return {
     ...actual,
-    api: { listGroups: vi.fn().mockResolvedValue([]), listThreads: vi.fn().mockResolvedValue([]) },
+    api: {
+      listGroups: vi.fn().mockResolvedValue([]),
+      listThreads: vi.fn().mockResolvedValue([]),
+      createThread: vi.fn().mockResolvedValue({
+        id: 'fresh',
+        title: 'fresh',
+        model: '',
+        state: 'running',
+        attached: true,
+        created_at: '',
+        updated_at: '',
+        preview: '',
+        user_msgs: 0,
+        frame: '',
+        backend: 'carlos',
+        capabilities: {},
+      }),
+    },
   }
 })
 
@@ -105,5 +122,30 @@ describe('HomeBoard', () => {
     const w = mount(HomeBoard)
     await w.findComponent(ThreadCard).find('.thread-card').trigger('click')
     expect(w.emitted('select')?.[0]).toEqual(['a'])
+  })
+
+  it('+ new creates a thread from the home header and selects it', async () => {
+    setup()
+    const w = mount(HomeBoard)
+    await w.find('.btn-new').trigger('click')
+    // first menu item is the carlos (primary) create
+    await w.find('.new-menu .nm-item').trigger('click')
+    await flushPromises()
+    expect(w.emitted('select')?.[0]).toEqual(['fresh'])
+  })
+
+  it('the new menu offers an import entry that bubbles import-cc up', async () => {
+    setup()
+    const w = mount(HomeBoard)
+    await w.find('.btn-new').trigger('click')
+    await w.find('.nm-import').trigger('click')
+    expect(w.emitted('importCc')).toBeTruthy()
+  })
+
+  it('the home search binds the roster query', async () => {
+    const { threads } = setup()
+    const w = mount(HomeBoard)
+    await w.find('.home-search').setValue('cargo')
+    expect(threads.query).toBe('cargo')
   })
 })
