@@ -60,8 +60,9 @@ type CCBackend struct {
 	newCwd  string // cwd for a newly created session (the carlos-web launch dir)
 
 	driveMu sync.Mutex
-	drivers map[string]*ccDriver  // attached thread -> live process
-	pending map[string]*ccPending // approval request_id -> blocked hook
+	drivers map[string]*ccDriver     // attached thread -> live process
+	pending map[string]*ccPending    // approval request_id -> blocked hook
+	created map[string]ThreadSummary // just-created sessions whose JSONL has not landed yet
 }
 
 type ccCacheEntry struct {
@@ -202,12 +203,28 @@ func (b *CCBackend) ImportCandidates(ctx context.Context) ([]ccImportable, error
 func (b *CCBackend) GetThread(ctx context.Context, id string) (ThreadSummary, bool, error) {
 	path, ok := b.pathFor(id)
 	if !ok {
+		// No JSONL on disk yet. A session created via the web "+ new" flow
+		// has no file until its first turn runs, but it is live (the driver
+		// is attached). Fall back to the stashed create-summary so it stays
+		// in the roster and is directly openable in that window, instead of
+		// vanishing on the next poll.
+		b.driveMu.Lock()
+		s, pending := b.created[id]
+		b.driveMu.Unlock()
+		if pending {
+			return s, true, nil
+		}
 		return ThreadSummary{}, false, nil
 	}
 	info, err := os.Stat(path)
 	if err != nil {
 		return ThreadSummary{}, false, nil
 	}
+	// The file has landed, so the stash (if any) is stale: drop it and let
+	// the file be the source of truth from here on.
+	b.driveMu.Lock()
+	delete(b.created, id)
+	b.driveMu.Unlock()
 	return b.summaryFor(id, path, info), true, nil
 }
 
