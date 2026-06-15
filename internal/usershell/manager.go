@@ -111,6 +111,13 @@ type Options struct {
 	// logs land (<id>.log files). Empty falls back to
 	// ~/.carlos/usershell/. Tests inject a tempdir.
 	OutputDir string
+
+	// FrameName is the frame this Manager's jobs belong to. Recorded in
+	// each job's StartPayload so the S8 model-context projection can
+	// attribute the `<user-shell frame="...">` block. Empty is fine -
+	// the projection omits the attribute. The daemon-owned job runtime
+	// leaves this empty (its jobs aren't frame-scoped).
+	FrameName string
 }
 
 // Manager owns the user-shell job lifecycle for one chat session:
@@ -132,6 +139,7 @@ type Manager struct {
 	bufCap    int
 	log       *agent.SQLiteEventLog
 	outputDir string
+	frameName string
 
 	// jobs holds every Job the Manager has seen, keyed by ID. Stays
 	// around after termination so the jobs overlay can render
@@ -241,6 +249,7 @@ func New(opts Options) *Manager {
 		bufCap:      opts.RingBufferCap,
 		log:         opts.Log,
 		outputDir:   outputDir,
+		frameName:   opts.FrameName,
 		jobs:        map[string]*Job{},
 		outputs:     map[string]*RingBuffer{},
 		bgRunning:   map[string]struct{}{},
@@ -282,6 +291,15 @@ func defaultOutputDir() string {
 // Background path: if the bg pool has room (< bgLimit running), this
 // submission spawns immediately in parallel. Otherwise it queues.
 func (m *Manager) Submit(ctx context.Context, command string, mode Mode) (*Job, error) {
+	return m.SubmitIn(ctx, command, "", mode)
+}
+
+// SubmitIn is Submit with an explicit per-job working directory. An
+// empty cwd falls back to the Manager's configured cwd (the Submit
+// behavior). The daemon job runtime uses this so a `carlos run` issued
+// from any directory spawns there, rather than racing SetCwd across
+// concurrent background spawns.
+func (m *Manager) SubmitIn(ctx context.Context, command, cwd string, mode Mode) (*Job, error) {
 	command = trimCommand(command)
 	if command == "" {
 		return nil, errors.New("usershell: empty command")
@@ -290,6 +308,9 @@ func (m *Manager) Submit(ctx context.Context, command string, mode Mode) (*Job, 
 	if m.closed {
 		m.mu.Unlock()
 		return nil, ErrClosed
+	}
+	if cwd == "" {
+		cwd = m.cwd
 	}
 	id, err := m.newJobID()
 	if err != nil {
@@ -305,7 +326,7 @@ func (m *Manager) Submit(ctx context.Context, command string, mode Mode) (*Job, 
 	// queue-removal path in Cancel(); only running jobs need
 	// job.cancel populated, and startLocked is the one that does
 	// that under m.mu before launching runJob.
-	job := NewJob(id, command, m.cwd, mode, nil)
+	job := NewJob(id, command, cwd, mode, nil)
 	job.SubmittedAt = m.now().UTC().Truncate(time.Millisecond)
 	m.jobs[id] = job
 	switch mode {
@@ -387,6 +408,7 @@ func (m *Manager) startLocked(parent context.Context, job *Job) {
 			Mode:       job.Mode.String(),
 			Background: job.Mode == Background,
 			StartedAt:  job.StartedAt,
+			FrameName:  m.frameName,
 		})
 	}
 

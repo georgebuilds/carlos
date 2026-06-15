@@ -32,6 +32,14 @@ type StartPayload struct {
 	Mode       string    `json:"mode"`
 	Background bool      `json:"background,omitempty"`
 	StartedAt  time.Time `json:"started_at"`
+
+	// FrameName is the frame the job ran in, captured at Manager
+	// construction. Carried here (alongside the job's other identity
+	// fields) so the S8 model-context projection can attribute the
+	// `<user-shell frame="...">` block. Empty for jobs from a Manager
+	// that wasn't told its frame (tests, legacy on-disk events) — the
+	// projection simply omits the frame attribute in that case.
+	FrameName string `json:"frame,omitempty"`
 }
 
 // EndPayload is the JSON body of EvtUserShellEnd. Written when a Job

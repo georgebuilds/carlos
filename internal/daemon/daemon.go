@@ -20,6 +20,7 @@ import (
 	"github.com/georgebuilds/carlos/internal/providers"
 	"github.com/georgebuilds/carlos/internal/schedule"
 	"github.com/georgebuilds/carlos/internal/tools"
+	"github.com/georgebuilds/carlos/internal/usershell"
 )
 
 // Clock abstracts time.Now so the daemon's main loop is testable with a
@@ -98,6 +99,18 @@ type Options struct {
 	// behaviour.
 	ProviderBuilder func(frame.ResolvedProvider) (providers.Provider, error)
 
+	// JobsDir is where daemon-owned background jobs write their per-job
+	// <id>.log output files. Empty → ~/.carlos/jobs (or ./.carlos/jobs
+	// if $HOME is unresolvable). Tests inject a tempdir.
+	JobsDir string
+
+	// JobsDBPath is the SQLite event log daemon-owned jobs persist their
+	// start/end rows into. Deliberately separate from StateDBPath so a
+	// background job's lifetime is decoupled from any chat session.
+	// Empty → ~/.carlos/jobs.db. A blank string with no resolvable home
+	// disables job persistence (jobs still run in-memory).
+	JobsDBPath string
+
 	// Logger, when non-nil, is used for every package-internal log line
 	// (lifecycle events, schedule fires, gateway errors). Defaults to a
 	// text handler writing to os.Stderr at Info level so production
@@ -159,6 +172,17 @@ type Daemon struct {
 	fireLog fireLogger
 
 	listener net.Listener
+
+	// jobsMgr owns daemon-side background shell jobs (the `carlos run` /
+	// attach / logs / stop surface). Constructed in Run, independent of
+	// the schedule/gateway machinery. Distinct from the TUI's per-session
+	// usershell.Manager: this one lives for the daemon's lifetime so a
+	// background job survives the TUI exiting. nil until Run wires it;
+	// guarded by mu for the swap, but the Manager itself is internally
+	// concurrency-safe so handlers read the pointer under mu then call
+	// methods lock-free.
+	jobsMgr *usershell.Manager
+	jobsLog *agent.SQLiteEventLog // jobs.db handle; closed on shutdown
 
 	mu               sync.Mutex
 	schedules        []schedule.Schedule
@@ -340,6 +364,16 @@ func (d *Daemon) Run(ctx context.Context) error {
 		d.spawner = supervisorAdapter{d.supervisor}
 		defer d.supervisor.Shutdown()
 	}
+
+	// 5.25 Background-job runtime. The daemon owns a usershell.Manager so
+	// `carlos run`/attach/logs/stop jobs outlive any TUI session. Its
+	// store is deliberately separate from state.db: jobs.db + a flat
+	// ~/.carlos/jobs/ output dir, so daemon job lifetime is decoupled
+	// from chat-session lifetime. Best-effort: a jobs.db open failure
+	// degrades to an in-memory-only runtime (jobs still run, just no
+	// audit trail) rather than refusing to start the daemon.
+	d.startJobsRuntime()
+	defer d.stopJobsRuntime()
 
 	// 5.5 Gateway (broker + adapters + approvals router). Skipped when
 	// the config block is disabled OR when no event log is available
@@ -826,6 +860,16 @@ func (d *Daemon) dispatch(req Request) Response {
 		return Response{Ok: true, Msg: "shutting down"}
 	case "gateway-test":
 		return d.gatewayTestResponse(req.Channel)
+	case "jobs-spawn":
+		return d.jobsSpawnResponse(req)
+	case "jobs-list":
+		return d.jobsListResponse()
+	case "jobs-get":
+		return d.jobsGetResponse(req.JobID)
+	case "jobs-logs":
+		return d.jobsLogsResponse(req.JobID, req.Offset)
+	case "jobs-stop":
+		return d.jobsStopResponse(req.JobID)
 	default:
 		return Response{Ok: false, Msg: fmt.Sprintf("unknown cmd %q", req.Cmd)}
 	}
