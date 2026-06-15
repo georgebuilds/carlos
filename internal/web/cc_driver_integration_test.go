@@ -57,7 +57,7 @@ func TestCCDriver_Integration(t *testing.T) {
 		}
 	}
 
-	drv, err := startCCDriver(context.Background(), "cc:"+uuid, uuid, cwd, "", publish)
+	drv, err := startCCDriver(context.Background(), "cc:"+uuid, uuid, cwd, "", publish, false)
 	if err != nil {
 		t.Fatalf("startCCDriver: %v", err)
 	}
@@ -141,7 +141,7 @@ func TestCCApproval_Integration(t *testing.T) {
 	})
 
 	hookCmd := bin + " cc-hook --url " + srv.URL + "/api/cc/hook --token tok --thread cc:" + uuid
-	drv, err := startCCDriver(context.Background(), "cc:"+uuid, uuid, cwd, hookCmd, func(WireEvent) {})
+	drv, err := startCCDriver(context.Background(), "cc:"+uuid, uuid, cwd, hookCmd, func(WireEvent) {}, false)
 	if err != nil {
 		t.Fatalf("startCCDriver: %v", err)
 	}

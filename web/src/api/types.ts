@@ -112,10 +112,19 @@ export interface Group {
 }
 
 // ── meta (GET /api/meta) ──────────────────────────────────────────────
+// An agent the roster's "+ new" menu can start a thread with: detected
+// (installed) backends whose create capability is on.
+export interface AgentInfo {
+  name: string // backend id ("carlos", "cc")
+  display: string // menu label ("carlos thread", "Claude Code")
+  can_create: boolean
+}
+
 export interface Meta {
   version?: string
   addr?: string
   backends?: string[]
+  agents?: AgentInfo[]
   [k: string]: unknown
 }
 

@@ -103,7 +103,7 @@ export const api = {
 
   // ── threads ──
   listThreads: () => request<ThreadSummary[]>('GET', '/api/threads'),
-  createThread: (body?: { title?: string; frame?: string }) =>
+  createThread: (body?: { title?: string; frame?: string; backend?: string }) =>
     request<ThreadSummary>('POST', '/api/threads', body ?? {}),
   getThread: (id: string) =>
     request<ThreadSummary>('GET', `/api/threads/${encodeURIComponent(id)}`),

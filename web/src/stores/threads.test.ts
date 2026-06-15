@@ -261,3 +261,33 @@ describe('threads store · roster excludes sub-agents (defense in depth)', () =>
     expect(s.threads.map((t) => t.id)).toEqual(['a', 'b', 'c'])
   })
 })
+
+describe('threads store · live search', () => {
+  beforeEach(() => setActivePinia(createPinia()))
+
+  it('filters ungrouped by title and preview, case-insensitively', () => {
+    const s = useThreadsStore()
+    s.threads = [
+      thread('a', { title: 'Refactor auth' }),
+      thread('b', { title: 'CI flake', preview: 'the AUTH test is flaky' }),
+      thread('c', { title: 'docs pass' }),
+    ]
+    s.query = 'auth'
+    expect(s.ungrouped.map((t) => t.id).sort()).toEqual(['a', 'b'])
+    s.query = ''
+    expect(s.ungrouped).toHaveLength(3)
+  })
+
+  it('hides a group with no matching members while searching', () => {
+    const s = useThreadsStore()
+    s.threads = [
+      thread('a', { group_id: 'g1', title: 'auth thing' }),
+      thread('b', { group_id: 'g2', title: 'unrelated' }),
+    ]
+    s.query = 'auth'
+    expect(s.groupVisible('g1')).toBe(true)
+    expect(s.groupVisible('g2')).toBe(false)
+    s.query = ''
+    expect(s.groupVisible('g2')).toBe(true) // every group shows with no query
+  })
+})

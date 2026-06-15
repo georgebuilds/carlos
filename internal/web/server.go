@@ -18,6 +18,30 @@ type Meta struct {
 	Model       string          `json:"model"`
 	Provider    string          `json:"provider"`
 	BackendCaps map[string]bool `json:"backend_caps"`
+	// Agents lists the registered backends for the roster's "+ new" menu,
+	// each with whether it can start a new thread. Filled by the server from
+	// the registry (the metaFn does not see it).
+	Agents []AgentInfo `json:"agents"`
+}
+
+// AgentInfo is one entry in the "+ new" menu: a backend, its menu label, and
+// whether starting a fresh thread on it is supported.
+type AgentInfo struct {
+	Name      string `json:"name"`
+	Display   string `json:"display"`
+	CanCreate bool   `json:"can_create"`
+}
+
+// agentDisplay maps a backend id to its menu label.
+func agentDisplay(name string) string {
+	switch name {
+	case "carlos":
+		return "carlos thread"
+	case ccBackendName:
+		return "Claude Code"
+	default:
+		return name
+	}
 }
 
 // Options configures a Server. Token and Log are required; the rest have

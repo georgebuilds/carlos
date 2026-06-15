@@ -57,6 +57,7 @@ type CCBackend struct {
 	baseURL string // e.g. http://127.0.0.1:7777 (for the hook callback)
 	token   string // bearer the hook authenticates with
 	exePath string // the carlos binary, for the hook command
+	newCwd  string // cwd for a newly created session (the carlos-web launch dir)
 
 	driveMu sync.Mutex
 	drivers map[string]*ccDriver  // attached thread -> live process
@@ -245,22 +246,19 @@ func (b *CCBackend) Subscribe(id string) (<-chan WireEvent, func(), error) {
 	var once sync.Once
 	unsub := func() { once.Do(func() { close(done) }) }
 
-	path, ok := b.pathFor(id)
-	if !ok {
-		// No file: a stream that never emits until the client disconnects.
-		// (The SSE handler closes via unsub; ReadEvents already returned the
-		// empty transcript.)
-		go func() {
-			<-done
-			close(out)
-		}()
-		return out, unsub, nil
-	}
-
-	last := int64(0)
-	if data, err := os.ReadFile(path); err == nil {
-		if ev := ccRecordsToWire(id, data); len(ev) > 0 {
-			last = ev[len(ev)-1].Seq
+	// Prime the cursor SYNCHRONOUSLY: if the session file already exists, set
+	// `last` to its current end so the tail delivers only future appends (the
+	// SSE backfill replays history). Doing this before the goroutine starts
+	// avoids a race where an append lands between Subscribe returning and the
+	// first poll, getting swallowed by a prime-at-end. A freshly created
+	// session whose file appears LATER primes at 0, so everything is delivered
+	// once it shows up (nothing was backfilled).
+	var last int64
+	if path, ok := b.resolvePathLight(id); ok {
+		if data, err := os.ReadFile(path); err == nil {
+			if ev := ccRecordsToWire(id, data); len(ev) > 0 {
+				last = ev[len(ev)-1].Seq
+			}
 		}
 	}
 
@@ -269,29 +267,45 @@ func (b *CCBackend) Subscribe(id string) (<-chan WireEvent, func(), error) {
 		t := time.NewTicker(ccPollInterval)
 		defer t.Stop()
 		for {
+			if path, ok := b.resolvePathLight(id); ok {
+				if data, err := os.ReadFile(path); err == nil {
+					for _, we := range ccRecordsToWire(id, data) {
+						if we.Seq <= last {
+							continue
+						}
+						select {
+						case out <- we:
+							last = we.Seq
+						case <-done:
+							return
+						}
+					}
+				}
+			}
 			select {
 			case <-done:
 				return
 			case <-t.C:
-				data, err := os.ReadFile(path)
-				if err != nil {
-					continue
-				}
-				for _, we := range ccRecordsToWire(id, data) {
-					if we.Seq <= last {
-						continue
-					}
-					select {
-					case out <- we:
-						last = we.Seq
-					case <-done:
-						return
-					}
-				}
 			}
 		}
 	}()
 	return out, unsub, nil
+}
+
+// resolvePathLight resolves a thread id to its file path WITHOUT the full
+// ListThreads scan pathFor does: check the cached index (revalidating the
+// stat), else a cheap uuid lookup across project dirs. Suited to the 1s tail
+// poll, including waiting for a brand-new session's file to appear.
+func (b *CCBackend) resolvePathLight(id string) (string, bool) {
+	b.mu.Lock()
+	p, ok := b.index[id]
+	b.mu.Unlock()
+	if ok {
+		if _, err := os.Stat(p); err == nil {
+			return p, true
+		}
+	}
+	return b.findByUUID(id)
 }
 
 // pathFor resolves a "cc:<uuid>" id to a session file path, refreshing the

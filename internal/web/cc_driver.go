@@ -43,15 +43,20 @@ type ccDriver struct {
 // command injected via --settings so every gated tool routes to the browser
 // approval bridge; cwd is the session's working directory (--add-dir +
 // process Dir). The returned driver outlives the call; stop() tears it down.
-func startCCDriver(ctx context.Context, threadID, uuid, cwd, hookCmd string, publish func(WireEvent)) (*ccDriver, error) {
+func startCCDriver(ctx context.Context, threadID, uuid, cwd, hookCmd string, publish func(WireEvent), newSession bool) (*ccDriver, error) {
 	args := []string{
 		"-p",
 		"--input-format", "stream-json",
 		"--output-format", "stream-json",
 		"--verbose",
 		"--include-partial-messages",
-		"--resume", uuid,
 		"--permission-mode", "default",
+	}
+	// A fresh session uses --session-id to mint it; an existing one resumes.
+	if newSession {
+		args = append(args, "--session-id", uuid)
+	} else {
+		args = append(args, "--resume", uuid)
 	}
 	if cwd != "" {
 		args = append(args, "--add-dir", cwd)

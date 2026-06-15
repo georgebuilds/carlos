@@ -75,6 +75,25 @@ func (r *Registry) For(threadID string) (Backend, bool) {
 	return b, ok
 }
 
+// All returns every registered backend in registration order (carlos first).
+func (r *Registry) All() []Backend {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	out := make([]Backend, 0, len(r.order))
+	for _, n := range r.order {
+		out = append(out, r.backends[n])
+	}
+	return out
+}
+
+// Backend returns the backend registered under name, if any.
+func (r *Registry) Backend(name string) (Backend, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	b, ok := r.backends[name]
+	return b, ok
+}
+
 // Names returns the registered backend names in registration order.
 func (r *Registry) Names() []string {
 	r.mu.RLock()

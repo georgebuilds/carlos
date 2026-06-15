@@ -66,12 +66,22 @@ func (s *Server) handleGetThread(w http.ResponseWriter, r *http.Request) {
 // handleCreateThread: POST /api/threads. Mints + ensures a new thread.
 func (s *Server) handleCreateThread(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Title string `json:"title"`
+		Title   string `json:"title"`
+		Backend string `json:"backend"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&body)
-	// v1 creates on the default (carlos) backend; per-backend creation is a
-	// later slice (the create-with-backend affordance, plan B-5).
-	summary, err := s.registry.Default().CreateThread(r.Context(), body.Title)
+	// Default to carlos; an explicit backend (from the "+ new" menu) routes
+	// to that agent's create path (e.g. "cc" starts a Claude Code session).
+	be := s.registry.Default()
+	if body.Backend != "" {
+		b, ok := s.registry.Backend(body.Backend)
+		if !ok {
+			writeErr(w, http.StatusNotFound, "unknown_backend", "no backend "+body.Backend)
+			return
+		}
+		be = b
+	}
+	summary, err := be.CreateThread(r.Context(), body.Title)
 	if err != nil {
 		s.writeBackendErr(w, err)
 		return
@@ -238,6 +248,15 @@ func (s *Server) handleMeta(w http.ResponseWriter, r *http.Request) {
 	}
 	if m.BackendCaps == nil {
 		m.BackendCaps = s.registry.Default().Caps()
+	}
+	if m.Agents == nil {
+		for _, b := range s.registry.All() {
+			m.Agents = append(m.Agents, AgentInfo{
+				Name:      b.Name(),
+				Display:   agentDisplay(b.Name()),
+				CanCreate: b.Caps()["create"],
+			})
+		}
 	}
 	writeJSON(w, http.StatusOK, m)
 }

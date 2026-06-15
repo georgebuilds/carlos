@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -38,6 +39,7 @@ func (b *CCBackend) EnableDrive(ctx context.Context, hub *ephemeralHub, baseURL,
 	b.baseURL = strings.TrimRight(baseURL, "/")
 	b.token = token
 	b.exePath = exePath
+	b.newCwd, _ = os.Getwd() // where a freshly created CC session runs
 	b.drivers = map[string]*ccDriver{}
 	b.pending = map[string]*ccPending{}
 }
@@ -50,7 +52,7 @@ func (b *CCBackend) driveEnabled() bool { return b.hub != nil }
 func (b *CCBackend) caps() map[string]bool {
 	if b.driveEnabled() {
 		return map[string]bool{
-			"create": false, "send": true, "approve": true,
+			"create": true, "send": true, "approve": true,
 			"observe": true, "children": false,
 		}
 	}
@@ -97,7 +99,7 @@ func (b *CCBackend) Attach(ctx context.Context, id string) error {
 		cwd = ccScanSession(data).Cwd
 	}
 
-	drv, err := startCCDriver(b.lifeCtx, id, uuid, cwd, b.hookCommand(id), b.hub.Publish)
+	drv, err := startCCDriver(b.lifeCtx, id, uuid, cwd, b.hookCommand(id), b.hub.Publish, false)
 	if err != nil {
 		return fmt.Errorf("cc: start driver: %w", err)
 	}
@@ -242,14 +244,61 @@ func (b *CCBackend) PendingApprovals(id string) []WireEvent {
 	return out
 }
 
-// CreateThread / Delete / Children stay unsupported in v1: carlos web does
-// not mint or delete Claude Code sessions, and CC sub-agent surfacing is
-// deferred.
-func (b *CCBackend) CreateThread(context.Context, string) (ThreadSummary, error) {
-	return ThreadSummary{}, ErrUnsupported
+// CreateThread starts a NEW Claude Code session in the carlos-web launch
+// directory: mint a fresh session id, spawn the driver in new-session mode
+// (claude --session-id), and auto-attach so it is immediately interactive.
+// The on-disk JSONL appears once the first turn runs; the file-tail Subscribe
+// (cc.go) handles a file that shows up after attach.
+func (b *CCBackend) CreateThread(ctx context.Context, title string) (ThreadSummary, error) {
+	if !b.driveEnabled() {
+		return ThreadSummary{}, ErrUnsupported
+	}
+	uuid, err := uuidV4()
+	if err != nil {
+		return ThreadSummary{}, err
+	}
+	id := ccBackendName + ":" + uuid
+	cwd := b.newCwd
+
+	drv, err := startCCDriver(b.lifeCtx, id, uuid, cwd, b.hookCommand(id), b.hub.Publish, true)
+	if err != nil {
+		return ThreadSummary{}, fmt.Errorf("cc: start session: %w", err)
+	}
+	b.driveMu.Lock()
+	b.drivers[id] = drv
+	b.driveMu.Unlock()
+
+	t := title
+	if t == "" {
+		t = "new claude code session"
+	}
+	frame := ""
+	if cwd != "" {
+		frame = filepath.Base(cwd)
+	}
+	now := rfc3339(nowUTC())
+	return ThreadSummary{
+		ID: id, Title: t, Model: "", State: "running",
+		Attached: true, CreatedAt: now, UpdatedAt: now,
+		Frame: frame, Backend: ccBackendName, Capabilities: b.caps(),
+	}, nil
 }
+
+// Delete / Children stay unsupported in v1: carlos web does not delete
+// Claude Code sessions, and CC sub-agent surfacing is deferred.
 func (b *CCBackend) Delete(string) (int, error)                   { return 0, ErrUnsupported }
 func (b *CCBackend) Children(context.Context, string) []ChildSnap { return nil }
+
+// uuidV4 generates a random RFC 4122 v4 UUID for a new CC session id.
+func uuidV4() (string, error) {
+	var u [16]byte
+	if _, err := rand.Read(u[:]); err != nil {
+		return "", err
+	}
+	u[6] = (u[6] & 0x0f) | 0x40 // version 4
+	u[8] = (u[8] & 0x3f) | 0x80 // variant 10x
+	return fmt.Sprintf("%x-%x-%x-%x-%x", u[0:4], u[4:6], u[6:8], u[8:10], u[10:16]), nil
+}
 
 // hookCommand builds the PreToolUse hook command string for a thread: the
 // carlos binary in cc-hook mode, told where to call back and which thread it

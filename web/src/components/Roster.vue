@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useThreadsStore } from '@/stores/threads'
 import { useGroupsStore } from '@/stores/groups'
 import { useToastStore } from '@/stores/toast'
@@ -12,13 +13,23 @@ const toast = useToastStore()
 
 const emit = defineEmits<{ select: [id: string] }>()
 
-async function newThread(): Promise<void> {
+const visibleGroups = computed(() => groups.groups.filter((g) => threadsStore.groupVisible(g.id)))
+const noResults = computed(
+  () =>
+    threadsStore.query.trim() !== '' &&
+    threadsStore.ungrouped.length === 0 &&
+    visibleGroups.value.length === 0,
+)
+
+async function newThread(backend?: string): Promise<void> {
   try {
-    const t = await threadsStore.create()
+    const t = await threadsStore.create(backend)
     emit('select', t.id)
-    toast.show('thread minted · frame resolves at attach')
+    toast.show(
+      backend === 'cc' ? 'claude code session started' : 'thread minted · frame resolves at attach',
+    )
   } catch {
-    toast.show('could not create a thread')
+    toast.show('could not start that thread')
   }
 }
 </script>
@@ -26,6 +37,16 @@ async function newThread(): Promise<void> {
 <template>
   <aside class="roster">
     <RosterHeader :count="threadsStore.threads.length" @new="newThread" />
+    <div class="roster-search">
+      <input
+        v-model="threadsStore.query"
+        class="roster-search-input"
+        type="search"
+        placeholder="search conversations"
+        aria-label="search conversations"
+        spellcheck="false"
+      />
+    </div>
     <div class="thread-list">
       <!-- ungrouped first: a fresh thread is always immediately visible -->
       <ThreadRow
@@ -36,11 +57,12 @@ async function newThread(): Promise<void> {
         @select="emit('select', $event)"
       />
       <GroupSection
-        v-for="g in groups.groups"
+        v-for="g in visibleGroups"
         :key="g.id"
         :group="g"
         @select="emit('select', $event)"
       />
+      <p v-if="noResults" class="roster-empty">no conversations match "{{ threadsStore.query }}"</p>
     </div>
   </aside>
 </template>

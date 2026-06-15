@@ -58,7 +58,18 @@ export const useThreadsStore = defineStore('threads', () => {
   const threads = ref<ThreadSummary[]>([])
   const activeId = ref<string | null>(null)
   const children = ref<Record<string, ChildSnapshot[]>>({})
+  // live roster search: a case-insensitive substring filter over title +
+  // preview, applied to both the ungrouped list and each group's members.
+  const query = ref('')
   let pollTimer: ReturnType<typeof setInterval> | null = null
+
+  function matchesQuery(t: ThreadSummary): boolean {
+    const q = query.value.trim().toLowerCase()
+    if (!q) return true
+    return (
+      (t.title ?? '').toLowerCase().includes(q) || (t.preview ?? '').toLowerCase().includes(q)
+    )
+  }
 
   const active = computed<ThreadSummary | null>(
     () => threads.value.find((t) => t.id === activeId.value) ?? null,
@@ -67,14 +78,20 @@ export const useThreadsStore = defineStore('threads', () => {
   // ungrouped first (plan §4.1), then sorted by updated_at desc inside.
   const ungrouped = computed(() =>
     threads.value
-      .filter((t) => !t.group_id)
+      .filter((t) => !t.group_id && matchesQuery(t))
       .sort((a, b) => b.updated_at.localeCompare(a.updated_at)),
   )
 
   function membersOf(groupId: string): ThreadSummary[] {
     return threads.value
-      .filter((t) => t.group_id === groupId)
+      .filter((t) => t.group_id === groupId && matchesQuery(t))
       .sort((a, b) => b.updated_at.localeCompare(a.updated_at))
+  }
+
+  // While searching, a group with no matching members is hidden from the
+  // roster; with no query every group shows (even empty ones).
+  function groupVisible(groupId: string): boolean {
+    return query.value.trim() === '' || membersOf(groupId).length > 0
   }
 
   // rollup counts for a collapsed group header.
@@ -157,8 +174,8 @@ export const useThreadsStore = defineStore('threads', () => {
     }
   }
 
-  async function create(): Promise<ThreadSummary> {
-    const t = await api.createThread({})
+  async function create(backend?: string): Promise<ThreadSummary> {
+    const t = await api.createThread(backend ? { backend } : {})
     threads.value.unshift(t)
     activeId.value = t.id
     return t
@@ -195,8 +212,10 @@ export const useThreadsStore = defineStore('threads', () => {
     activeId,
     active,
     children,
+    query,
     ungrouped,
     membersOf,
+    groupVisible,
     rollup,
     setActive,
     poll,
