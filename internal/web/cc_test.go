@@ -71,6 +71,40 @@ func TestCCMap_GoldenTranscript(t *testing.T) {
 	}
 }
 
+// Claude Code persists slash commands as user messages wrapped in
+// <local-command-*> / <command-*> tags. The mapping must drop the
+// boilerplate caveat and project the invocation + output as compact
+// `command` events, not verbose user bubbles.
+func TestCCMap_SlashCommandsCompact(t *testing.T) {
+	fixture := `{"type":"user","timestamp":"2026-06-13T10:00:00.000Z","message":{"role":"user","content":"<local-command-caveat>Caveat: boilerplate</local-command-caveat>"}}
+{"type":"user","timestamp":"2026-06-13T10:00:01.000Z","message":{"role":"user","content":"<command-name>/fast</command-name>\n<command-message>fast</command-message>\n<command-args>off</command-args>"}}
+{"type":"user","timestamp":"2026-06-13T10:00:02.000Z","message":{"role":"user","content":"<local-command-stdout>Fast mode OFF</local-command-stdout>"}}
+{"type":"user","timestamp":"2026-06-13T10:00:03.000Z","message":{"role":"user","content":"a normal message"}}`
+
+	evs := ccRecordsToWire("cc:s1", []byte(fixture))
+	if len(evs) != 3 {
+		t.Fatalf("got %d events, want 3 (caveat dropped): %+v", len(evs), evs)
+	}
+	if evs[0].Kind != "command" || dataField(t, evs[0], "name") != "/fast" || dataField(t, evs[0], "args") != "off" {
+		t.Errorf("event 0 = %+v, want command /fast off", evs[0])
+	}
+	if evs[1].Kind != "command" || dataField(t, evs[1], "output") != "Fast mode OFF" {
+		t.Errorf("event 1 = %+v, want command output 'Fast mode OFF'", evs[1])
+	}
+	if evs[2].Kind != "user_message" || dataField(t, evs[2], "text") != "a normal message" {
+		t.Errorf("event 2 = %+v, want the normal user_message", evs[2])
+	}
+}
+
+func TestCCTag(t *testing.T) {
+	if got := ccTag("<command-name>/fast</command-name>\n<command-args>off</command-args>", "command-args"); got != "off" {
+		t.Errorf("ccTag args = %q, want off", got)
+	}
+	if got := ccTag("no tags here", "command-name"); got != "" {
+		t.Errorf("ccTag on plain text = %q, want empty", got)
+	}
+}
+
 // writeCCSession drops a session file under a fresh project dir and returns
 // the root + the wire id.
 func writeCCSession(t *testing.T, name, body string) (root, id string) {

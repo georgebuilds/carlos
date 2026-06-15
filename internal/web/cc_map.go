@@ -81,6 +81,17 @@ func ccRecordsToWire(tid string, data []byte) []WireEvent {
 		switch rec.Type {
 		case "user":
 			if s, ok := ccContentString(rec.Message.Content); ok {
+				// Claude Code persists slash commands as user messages wrapped
+				// in <local-command-*> / <command-*> tags. Rendered verbatim
+				// they are noisy bubbles; project them compactly: drop the
+				// boilerplate caveat, surface the invocation + its output as a
+				// `command` event the SPA renders as a one-line pill.
+				if data, kind := ccCommandWrapper(s); kind == ccWrapDrop {
+					continue
+				} else if kind == ccWrapCommand {
+					emit("command", ts, data)
+					continue
+				}
 				if strings.TrimSpace(s) == "" {
 					continue
 				}
@@ -122,6 +133,68 @@ func ccRecordsToWire(tid string, data []byte) []WireEvent {
 		}
 	}
 	return out
+}
+
+// ccWrap classifies a user-message string as a Claude Code slash-command
+// wrapper: drop (boilerplate caveat), a compact command event, or none (a
+// normal user turn).
+type ccWrap int
+
+const (
+	ccWrapNone ccWrap = iota
+	ccWrapDrop
+	ccWrapCommand
+)
+
+// ccCommandWrapper detects Claude Code's slash-command bookkeeping. The
+// caveat block is identical boilerplate on every command and carries no
+// signal, so it is dropped. A <command-name> invocation and a
+// <local-command-stdout/stderr> output each become a compact `command`
+// event (data: {name, args?} or {output, stream?}).
+func ccCommandWrapper(s string) (map[string]any, ccWrap) {
+	t := strings.TrimSpace(s)
+	switch {
+	case strings.HasPrefix(t, "<local-command-caveat>"):
+		return nil, ccWrapDrop
+	case strings.HasPrefix(t, "<command-name>"):
+		name := ccTag(t, "command-name")
+		if name == "" {
+			return nil, ccWrapNone
+		}
+		d := map[string]any{"name": name}
+		if args := ccTag(t, "command-args"); args != "" {
+			d["args"] = args
+		}
+		return d, ccWrapCommand
+	case strings.HasPrefix(t, "<local-command-stdout>"):
+		out := ccTag(t, "local-command-stdout")
+		if out == "" {
+			return nil, ccWrapDrop
+		}
+		return map[string]any{"output": out}, ccWrapCommand
+	case strings.HasPrefix(t, "<local-command-stderr>"):
+		out := ccTag(t, "local-command-stderr")
+		if out == "" {
+			return nil, ccWrapDrop
+		}
+		return map[string]any{"output": out, "stream": "stderr"}, ccWrapCommand
+	}
+	return nil, ccWrapNone
+}
+
+// ccTag returns the trimmed inner text of the first <tag>...</tag> in s, or "".
+func ccTag(s, tag string) string {
+	open, closeT := "<"+tag+">", "</"+tag+">"
+	i := strings.Index(s, open)
+	if i < 0 {
+		return ""
+	}
+	i += len(open)
+	j := strings.Index(s[i:], closeT)
+	if j < 0 {
+		return ""
+	}
+	return strings.TrimSpace(s[i : i+j])
 }
 
 // ccContentString returns (s, true) when a message content is a bare JSON

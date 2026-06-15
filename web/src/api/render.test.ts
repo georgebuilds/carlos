@@ -67,4 +67,23 @@ describe('buildRows folds tool_call + tool_result', () => {
     ])
     expect(rows[0]).toMatchObject({ type: 'tool', name: 'Bash', output: 'late', isError: true })
   })
+
+  it('folds a slash command and its output into one compact line', () => {
+    const rows = buildRows([
+      e(1, 'command', { name: '/fast', args: 'off' }),
+      e(2, 'command', { output: 'Fast mode OFF' }),
+    ])
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({
+      type: 'command',
+      name: '/fast',
+      args: 'off',
+      output: 'Fast mode OFF',
+    })
+  })
+
+  it('renders a standalone command output on its own', () => {
+    const rows = buildRows([e(1, 'command', { output: 'orphan output' })])
+    expect(rows[0]).toMatchObject({ type: 'command', output: 'orphan output' })
+  })
 })

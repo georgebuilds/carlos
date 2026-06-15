@@ -18,6 +18,7 @@ export type RenderRow =
       truncated: boolean
     }
   | { type: 'event'; key: string; text: string }
+  | { type: 'command'; key: string; name?: string; args?: string; output?: string; stream?: string }
 
 export function stringifyInput(input: unknown): string {
   if (input == null) return ''
@@ -109,6 +110,22 @@ export function buildRows(events: WireEvent[]): RenderRow[] {
             truncated: !!d.truncated,
           })
         }
+        break
+      }
+      case 'command': {
+        const d = ev.data as { name?: string; args?: string; output?: string; stream?: string }
+        // A command's output (no name) folds into the immediately preceding
+        // invocation so a slash command + its result read as one compact
+        // line; a standalone output renders on its own.
+        if (d.name === undefined && d.output !== undefined) {
+          const last = rows[rows.length - 1]
+          if (last && last.type === 'command' && last.output === undefined) {
+            last.output = d.output
+            last.stream = d.stream
+            break
+          }
+        }
+        rows.push({ type: 'command', key, name: d.name, args: d.args, output: d.output, stream: d.stream })
         break
       }
       case 'state':

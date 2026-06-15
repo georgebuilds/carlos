@@ -6,6 +6,7 @@ import UserMessage from './UserMessage.vue'
 import AssistantMessage from './AssistantMessage.vue'
 import ToolCard from './ToolCard.vue'
 import EventLine from './EventLine.vue'
+import CommandLine from './CommandLine.vue'
 import StreamBlock from './StreamBlock.vue'
 import ThinkingIndicator from './ThinkingIndicator.vue'
 import EmptyState from './EmptyState.vue'
@@ -70,6 +71,13 @@ watch(
             :truncated="row.truncated"
           />
           <EventLine v-else-if="row.type === 'event'" :text="row.text" />
+          <CommandLine
+            v-else-if="row.type === 'command'"
+            :name="row.name"
+            :args="row.args"
+            :output="row.output"
+            :stream="row.stream"
+          />
         </template>
         <StreamBlock v-if="delta" :text="delta" />
         <ThinkingIndicator v-else-if="thinking" :key="`think-${lastSeq}`" />
