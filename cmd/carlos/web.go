@@ -95,6 +95,11 @@ func runWeb(args []string, cfg *config.Config) error {
 		defer backend.Shutdown()
 	}
 
+	// Register the Claude Code observe adapter as a peer backend (B-2). It
+	// projects ~/.claude/projects sessions read-only; a missing store just
+	// lists nothing, so this is always safe to register.
+	srv.Register(web.NewCCBackend())
+
 	// Top-level mux: /api/* is token-gated (srv.Handler wraps the auth
 	// middleware); everything else serves the embedded SPA without the
 	// gate (the bundle is non-secret and bootstraps from the URL

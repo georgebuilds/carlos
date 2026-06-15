@@ -101,6 +101,14 @@ func (s *Server) SetBackend(b Backend) {
 	s.registry.Register(b)
 }
 
+// Register adds a peer backend (e.g. the Claude Code observe adapter)
+// alongside the default carlos backend. Routing is by the thread id's
+// "<backend>:" prefix; the first-registered backend stays the default for
+// unprefixed (carlos) ids.
+func (s *Server) Register(b Backend) {
+	s.registry.Register(b)
+}
+
 func (s *Server) routes() {
 	m := http.NewServeMux()
 	// Read paths (work in read-only mode).
