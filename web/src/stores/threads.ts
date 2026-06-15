@@ -27,6 +27,7 @@ const STATE_WORDS: Partial<Record<DisplayState, string>> = {
 }
 
 export function stateWord(s: DisplayState): string {
+  if (!s) return ''
   return STATE_WORDS[s] ?? s.replace(/_/g, ' ')
 }
 

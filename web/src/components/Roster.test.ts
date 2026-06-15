@@ -13,7 +13,20 @@ vi.mock('@/api/client', async () => {
       createGroup: vi.fn().mockResolvedValue({ id: 'g1', name: 'X', pos: 0, threads: 0 }),
       listGroups: vi.fn().mockResolvedValue([]),
       listThreads: vi.fn().mockResolvedValue([]),
-      createThread: vi.fn().mockResolvedValue({ id: 'new', backend: 'carlos' }),
+      createThread: vi.fn().mockResolvedValue({
+        id: 'new',
+        title: 'new',
+        model: '',
+        state: 'running',
+        attached: true,
+        created_at: '',
+        updated_at: '2026-01-01T00:00:00Z',
+        preview: '',
+        user_msgs: 0,
+        frame: '',
+        backend: 'carlos',
+        capabilities: {},
+      }),
     },
   }
 })
