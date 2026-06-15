@@ -28,6 +28,7 @@ import (
 	"github.com/georgebuilds/carlos/internal/agent"
 	"github.com/georgebuilds/carlos/internal/providers"
 	"github.com/georgebuilds/carlos/internal/tools"
+	"github.com/georgebuilds/carlos/internal/usershell"
 )
 
 // TextSource is the publish seam the chat view polls each render
@@ -348,10 +349,40 @@ func (l *Loop) buildHistory(ctx context.Context) ([]providers.Message, error) {
 	if err != nil {
 		return nil, err
 	}
+	// S8 projection: user-shell jobs persist under a SEPARATE synthetic
+	// agent_id (usershell.EventAgentID), so they never appear in the
+	// chat agent's own stream. Read that stream too and merge by seq so
+	// a `!cmd` the user ran between two chat turns lands at the right
+	// point in the model's context. Best-effort: a read failure here
+	// degrades to "the model doesn't see shell output" rather than
+	// failing the whole turn.
+	shellEvs, serr := l.log.Read(ctx, usershell.EventAgentID, 0)
+	if serr != nil {
+		shellEvs = nil
+	}
+	evs = mergeBySeq(evs, shellEvs)
+
 	out := make([]providers.Message, 0, len(evs))
+	// shellStarts correlates each EvtUserShellEnd back to its start
+	// event, which is where the command + cwd + frame live. Keyed by
+	// job id; populated as starts stream past.
+	shellStarts := map[string]usershell.StartPayload{}
 	for _, ev := range evs {
 		if ev.Type == agent.EvtSessionReset {
 			out = out[:0]
+			clear(shellStarts)
+			continue
+		}
+		switch ev.Type {
+		case agent.EvtUserShellStart:
+			if p, derr := usershell.DecodeStartPayload(ev.Payload); derr == nil {
+				shellStarts[p.JobID] = p
+			}
+			continue
+		case agent.EvtUserShellEnd:
+			if blk, ok := shellEndBlock(ev.Payload, shellStarts); ok {
+				out = append(out, providers.Message{Role: "user", Content: []providers.Block{blk}})
+			}
 			continue
 		}
 		var role string
@@ -391,6 +422,83 @@ func (l *Loop) buildHistory(ctx context.Context) ([]providers.Message, error) {
 		})
 	}
 	return out, nil
+}
+
+// mergeBySeq interleaves two seq-ascending event slices into one. Both
+// inputs come straight from EventLog.Read (already ordered by seq), so
+// this is a linear two-pointer merge. Seq is globally monotonic across
+// agent_ids, so the result reflects true wall-clock interleaving of the
+// chat turns and the user's `!cmd` jobs.
+func mergeBySeq(a, b []agent.Event) []agent.Event {
+	if len(b) == 0 {
+		return a
+	}
+	if len(a) == 0 {
+		return b
+	}
+	out := make([]agent.Event, 0, len(a)+len(b))
+	i, j := 0, 0
+	for i < len(a) && j < len(b) {
+		if a[i].Seq <= b[j].Seq {
+			out = append(out, a[i])
+			i++
+		} else {
+			out = append(out, b[j])
+			j++
+		}
+	}
+	out = append(out, a[i:]...)
+	out = append(out, b[j:]...)
+	return out
+}
+
+// shellEndBlock renders one completed user-shell job as the `<user-shell>`
+// context block the model sees on its next turn. Correlates the end
+// payload back to its start (for the command / cwd / frame) via starts.
+// Returns ok=false for an end with no recorded start (a corrupt or
+// pre-reset stream) so a half-pair never emits a command-less block.
+func shellEndBlock(raw []byte, starts map[string]usershell.StartPayload) (providers.Block, bool) {
+	end, err := usershell.DecodeEndPayload(raw)
+	if err != nil {
+		return providers.Block{}, false
+	}
+	start, ok := starts[end.JobID]
+	if !ok {
+		return providers.Block{}, false
+	}
+
+	var attrs strings.Builder
+	if start.FrameName != "" {
+		fmt.Fprintf(&attrs, ` frame=%q`, start.FrameName)
+	}
+	if start.Cwd != "" {
+		fmt.Fprintf(&attrs, ` cwd=%q`, start.Cwd)
+	}
+	switch {
+	case end.Cancelled:
+		attrs.WriteString(` status="cancelled"`)
+	default:
+		fmt.Fprintf(&attrs, ` exit=%d`, end.ExitCode)
+	}
+	if end.Duration > 0 {
+		fmt.Fprintf(&attrs, ` duration=%q`, end.Duration.Round(time.Millisecond).String())
+	}
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "<user-shell%s>\n", attrs.String())
+	fmt.Fprintf(&b, "$ %s\n", start.Command)
+	if end.TruncatedBytes > 0 {
+		fmt.Fprintf(&b, "[earlier output truncated: %d bytes]\n", end.TruncatedBytes)
+	}
+	if out := strings.TrimRight(end.OutputInline, "\n"); out != "" {
+		b.WriteString(out)
+		b.WriteByte('\n')
+	}
+	if end.FailErrMsg != "" {
+		fmt.Fprintf(&b, "[error: %s]\n", end.FailErrMsg)
+	}
+	b.WriteString("</user-shell>")
+	return providers.Block{Kind: "text", Text: b.String()}, true
 }
 
 // expandUserBlocks turns one persisted user message (text with chip
