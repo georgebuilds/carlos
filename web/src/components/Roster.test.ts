@@ -97,4 +97,11 @@ describe('Roster · tools', () => {
     await flushPromises()
     expect(api.createGroup).not.toHaveBeenCalled()
   })
+
+  it('forwards the header importCc up as its own importCc', async () => {
+    const { w } = mountRoster()
+    await w.find('.btn-new').trigger('click')
+    await w.find('.nm-import').trigger('click')
+    expect(w.emitted('importCc')).toBeTruthy()
+  })
 })

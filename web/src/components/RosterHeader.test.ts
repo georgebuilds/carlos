@@ -53,4 +53,13 @@ describe('RosterHeader · new dropdown', () => {
     await w.find('.btn-new').trigger('click')
     expect(w.text()).toContain('carlos thread')
   })
+
+  it('offers an "open existing CC session" entry that emits importCc', async () => {
+    const w = mountHeader(AGENTS)
+    await w.find('.btn-new').trigger('click')
+    const item = w.find('.nm-import')
+    expect(item.text()).toContain('open existing CC session')
+    await item.trigger('click')
+    expect(w.emitted('importCc')).toBeTruthy()
+  })
 })

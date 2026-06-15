@@ -4,7 +4,7 @@ import { useConnectionStore } from '@/stores/connection'
 import BackendMark from './BackendMark.vue'
 
 defineProps<{ count: number }>()
-const emit = defineEmits<{ new: [backend?: string] }>()
+const emit = defineEmits<{ new: [backend?: string]; importCc: [] }>()
 
 const conn = useConnectionStore()
 const open = ref(false)
@@ -21,6 +21,11 @@ const others = computed(() => creatable.value.slice(1)) // detected coding agent
 function pick(backend?: string): void {
   open.value = false
   emit('new', backend)
+}
+
+function pickImport(): void {
+  open.value = false
+  emit('importCc')
 }
 </script>
 
@@ -48,6 +53,11 @@ function pick(backend?: string): void {
               <span>{{ a.display }}</span>
             </button>
           </template>
+          <div class="nm-sep"></div>
+          <button class="nm-item nm-import" @click="pickImport">
+            <span>open existing CC session</span>
+            <span class="nm-sub">browse history</span>
+          </button>
         </div>
       </template>
     </div>

@@ -150,4 +150,10 @@ export const api = {
     request<void>('PUT', `/api/threads/${encodeURIComponent(id)}/group`, {
       group_id: groupId,
     }),
+
+  // ── Claude Code import (WA-2) ──
+  // Historical CC sessions on disk that carlos web does not yet own.
+  ccImportable: () => request<{ sessions: ThreadSummary[] }>('GET', '/api/cc/importable'),
+  // Mark a historical session web-owned (idempotent); answers the imported summary.
+  ccImport: (id: string) => request<ThreadSummary>('POST', '/api/cc/import', { id }),
 }

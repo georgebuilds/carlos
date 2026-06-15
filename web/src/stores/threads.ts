@@ -55,6 +55,54 @@ export function isLive(s: DisplayState): boolean {
   return s === 'running' || s === 'foreign'
 }
 
+// ── repo grouping (WB-2) ──────────────────────────────────────────────
+// A by-repo home section: a set of threads that share a git repo, plus the
+// single "No repository" catch-all. `root` is '' for the catch-all.
+export interface RepoGroup {
+  root: string
+  name: string
+  threads: ThreadSummary[]
+}
+
+// The catch-all label. Threads with no `repo` collect here; it always sorts
+// last regardless of activity.
+export const NO_REPO_LABEL = 'No repository'
+
+// Pure selector: group a flat thread list into ordered repo sections.
+//   - keyed by repo.root; threads with no repo fall into the '' catch-all
+//   - threads inside a section sort by updated_at desc (newest first)
+//   - real repo sections order by their newest member's updated_at (desc)
+//   - the catch-all ('' root) always sorts LAST
+//   - only sections with >= 1 thread are returned (a list with no orphans
+//     yields no catch-all)
+export function groupByRepo(list: ThreadSummary[]): RepoGroup[] {
+  const byRoot = new Map<string, RepoGroup>()
+  for (const t of list) {
+    const root = t.repo?.root ?? ''
+    const name = root ? t.repo?.name || root : NO_REPO_LABEL
+    let g = byRoot.get(root)
+    if (!g) {
+      g = { root, name, threads: [] }
+      byRoot.set(root, g)
+    }
+    g.threads.push(t)
+  }
+  const groups = [...byRoot.values()]
+  for (const g of groups) {
+    g.threads.sort((a, b) => b.updated_at.localeCompare(a.updated_at))
+  }
+  // newest-member activity desc; catch-all ('' root) forced last.
+  groups.sort((a, b) => {
+    if (a.root === '' && b.root === '') return 0
+    if (a.root === '') return 1
+    if (b.root === '') return -1
+    const aTop = a.threads[0]?.updated_at ?? ''
+    const bTop = b.threads[0]?.updated_at ?? ''
+    return bTop.localeCompare(aTop)
+  })
+  return groups
+}
+
 export const useThreadsStore = defineStore('threads', () => {
   const threads = ref<ThreadSummary[]>([])
   const activeId = ref<string | null>(null)
@@ -93,6 +141,13 @@ export const useThreadsStore = defineStore('threads', () => {
     threads.value
       .filter((t) => !t.group_id && visible(t))
       .sort((a, b) => b.updated_at.localeCompare(a.updated_at)),
+  )
+
+  // by-repo home sections (WB-2): the same visible set as the roster, grouped
+  // by git repo. Honors the live search + hidden filter exactly like the
+  // group view, so a query narrows both views identically.
+  const byRepo = computed<RepoGroup[]>(() =>
+    groupByRepo(threads.value.filter((t) => !t.parent_id && visible(t))),
   )
 
   function membersOf(groupId: string): ThreadSummary[] {
@@ -245,6 +300,22 @@ export const useThreadsStore = defineStore('threads', () => {
     children.value[id] = list
   }
 
+  // ── Claude Code import (WA-2) ───────────────────────────────────────
+  // Historical CC sessions carlos web does not yet own (the "+ new → open
+  // existing CC session" modal lists these).
+  async function importable(): Promise<ThreadSummary[]> {
+    const res = await api.ccImportable()
+    return res.sessions ?? []
+  }
+
+  // Adopt a historical CC session (idempotent server-side). Refresh the roster
+  // so it joins the home view, then return the imported summary.
+  async function importSession(id: string): Promise<ThreadSummary> {
+    const t = await api.ccImport(id)
+    await poll()
+    return t
+  }
+
   return {
     threads,
     activeId,
@@ -254,6 +325,7 @@ export const useThreadsStore = defineStore('threads', () => {
     showHidden,
     hiddenCount,
     ungrouped,
+    byRepo,
     membersOf,
     groupVisible,
     rollup,
@@ -269,5 +341,7 @@ export const useThreadsStore = defineStore('threads', () => {
     unhide,
     loadChildren,
     setChildren,
+    importable,
+    importSession,
   }
 })

@@ -11,9 +11,11 @@ import { useToastStore } from '@/stores/toast'
 import TopBar from './components/TopBar.vue'
 import Roster from './components/Roster.vue'
 import Stage from './components/Stage.vue'
-import EmptyStage from './components/EmptyStage.vue'
+import HomeBoard from './components/HomeBoard.vue'
+import CCImportModal from './components/CCImportModal.vue'
 import Rail from './components/Rail.vue'
 import Toast from './components/Toast.vue'
+import { ref } from 'vue'
 
 const conn = useConnectionStore()
 const threadsStore = useThreadsStore()
@@ -168,6 +170,12 @@ function onSelect(id: string): void {
   threadsStore.setActive(id)
 }
 
+// CC import modal (WA-2): opened from the roster's "+ new → open existing CC
+// session". On a successful import the modal refreshes the roster and emits
+// the imported id; we leave the home board in place (the session joins it)
+// rather than auto-selecting, matching the roster's create-then-show flow.
+const ccImportOpen = ref(false)
+
 async function onDelete(id: string): Promise<void> {
   // stop any live stream for this thread before the row disappears.
   transcript.stopStream(id)
@@ -204,7 +212,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
   <div class="app">
     <TopBar />
     <div class="panes">
-      <Roster @select="onSelect" />
+      <Roster @select="onSelect" @import-cc="ccImportOpen = true" />
       <Stage
         v-if="active"
         :thread="active"
@@ -218,9 +226,10 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
         @attach-foreign="onAttachForeign"
         @delete="onDelete"
       />
-      <EmptyStage v-else />
+      <HomeBoard v-else @select="onSelect" />
       <Rail :approvals="activeApprovals" :children="activeChildren" />
     </div>
+    <CCImportModal v-if="ccImportOpen" @close="ccImportOpen = false" />
     <Toast />
   </div>
 </template>

@@ -71,6 +71,16 @@ export interface WireEvent<T = Record<string, unknown>> {
 
 export type ApprovalDecision = 'deny' | 'allow' | 'allow_always'
 
+// ── repo reference (WB-1 overlay) ─────────────────────────────────────
+// The git repository a thread's working directory resolves to. Absent when
+// the thread has no resolvable repo (it lands in the "No repository"
+// catch-all on the by-repo home). `root` is the absolute git root; `name`
+// is its basename (the section header label).
+export interface RepoRef {
+  root: string
+  name: string
+}
+
 // ── thread summary (spec §8.2, + additive group_id) ───────────────────
 export interface BackendCaps {
   attach?: boolean
@@ -93,6 +103,9 @@ export interface ThreadSummary {
   backend: string
   group_id?: string | null
   hidden?: boolean // web-local roster blacklist (folded out of the default view)
+  // additive (WB-1): the git repo this thread's cwd resolves to. Absent when
+  // the thread has no repo; the by-repo home folds those into "No repository".
+  repo?: RepoRef
   capabilities: BackendCaps
   // foreign-owner overlay, surfaced by the server when another process owns it.
   owner?: 'tui' | 'web' | null
