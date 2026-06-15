@@ -710,7 +710,7 @@ func runDefault(cfg *config.Config, sessionID string) error {
 	if usershellFrame == "" {
 		usershellFrame = frame.DefaultPersonalName
 	}
-	shellOpts := usershell.Options{Log: log}
+	shellOpts := usershell.Options{Log: log, FrameName: usershellFrame}
 	if home, herr := os.UserHomeDir(); herr == nil {
 		shellOpts.OutputDir = frame.PathsFor(home, usershellFrame).JobsDir
 	}

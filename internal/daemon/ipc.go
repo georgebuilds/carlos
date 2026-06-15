@@ -20,6 +20,11 @@
 //	reload        → re-reads config from disk; equivalent to SIGHUP
 //	stop          → graceful shutdown (cancels the ctx the daemon is running under)
 //	gateway-test  → sends a fixed test envelope through one named gateway channel
+//	jobs-spawn    → launch a background shell job in the daemon's job runtime
+//	jobs-list     → list the daemon-owned background jobs
+//	jobs-get      → one job's status by id
+//	jobs-logs     → a job's captured output from a byte offset (for `attach` polling)
+//	jobs-stop     → cancel a running background job
 //
 // Reply envelope is always {"ok": bool, "msg": string, ...} so a CLI
 // failure mode is simple to surface: ok=false + msg is the human text
@@ -61,12 +66,32 @@ func DefaultSocketPath() string {
 //	{"cmd":"reload"}
 //	{"cmd":"stop"}
 //	{"cmd":"gateway-test","channel":"ntfy"}
+//	{"cmd":"jobs-spawn","command":"cargo test","cwd":"/repo"}
+//	{"cmd":"jobs-list"}
+//	{"cmd":"jobs-get","job_id":"01ARZ..."}
+//	{"cmd":"jobs-logs","job_id":"01ARZ...","offset":4096}
+//	{"cmd":"jobs-stop","job_id":"01ARZ..."}
 type Request struct {
 	Cmd string `json:"cmd"`
 
 	// Channel is the gateway channel name the gateway-test verb targets
 	// (ntfy / telegram / signal / custom). Ignored by other verbs.
 	Channel string `json:"channel,omitempty"`
+
+	// JobID targets one daemon-owned background job (jobs-get / jobs-logs
+	// / jobs-stop). Ignored by other verbs.
+	JobID string `json:"job_id,omitempty"`
+
+	// Command is the shell command jobs-spawn launches in the daemon's
+	// job runtime. Cwd is the working directory it spawns in (empty →
+	// the daemon's own cwd). Ignored by other verbs.
+	Command string `json:"command,omitempty"`
+	Cwd     string `json:"cwd,omitempty"`
+
+	// Offset is the byte offset jobs-logs streams output from, so an
+	// `attach` poll loop only receives the delta since its last read.
+	// Ignored by other verbs.
+	Offset int `json:"offset,omitempty"`
 }
 
 // Response is the JSON shape the daemon returns:
@@ -86,6 +111,30 @@ type Response struct {
 	LastReloadAt     *time.Time       `json:"last_reload_at,omitempty"`
 	LastReloadStatus *ReloadStatus    `json:"last_reload_status,omitempty"`
 	ActiveCount      int              `json:"active_count,omitempty"`
+
+	// Job-specific fields (jobs-* verbs).
+	Jobs       []JobStatus `json:"jobs,omitempty"`        // jobs-list
+	Job        *JobStatus  `json:"job,omitempty"`         // jobs-get / jobs-spawn
+	Output     string      `json:"output,omitempty"`      // jobs-logs: the bytes from Offset onward
+	NextOffset int         `json:"next_offset,omitempty"` // jobs-logs: caller's next Offset
+	Done       bool        `json:"done,omitempty"`        // jobs-logs: job has reached a terminal state
+}
+
+// JobStatus is one daemon-owned background job in a jobs-list / jobs-get
+// response. Mirrors the externally-relevant subset of
+// usershell.Snapshot so the CLI surface stays decoupled from the
+// usershell package's internal types.
+type JobStatus struct {
+	ID          string     `json:"id"`
+	Command     string     `json:"command"`
+	Cwd         string     `json:"cwd,omitempty"`
+	State       string     `json:"state"`
+	ExitCode    int        `json:"exit_code,omitempty"`
+	SubmittedAt time.Time  `json:"submitted_at"`
+	StartedAt   *time.Time `json:"started_at,omitempty"`
+	EndedAt     *time.Time `json:"ended_at,omitempty"`
+	DurationMS  int64      `json:"duration_ms,omitempty"`
+	FailErr     string     `json:"fail_err,omitempty"`
 }
 
 // ReloadStatus is the outcome of the most recent Reload attempt. Nil on

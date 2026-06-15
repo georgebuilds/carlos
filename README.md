@@ -59,6 +59,19 @@ After onboarding you're in the chat TUI. Type a question. carlos answers, calls 
 | `/permissions` | layered approval state + audit log |
 | `/mcp` | list configured MCP servers and their tools |
 
+#### Demo: the user-shell
+
+A `!`-prefixed line runs in your context without leaving the chat. Enter runs it in the foreground; `Ctrl+Z` pushes a running job to the background; `Ctrl+J` opens the jobs overlay (`j`/`k` to navigate, `d` to cancel, `Esc` to close). The slash variants are `/shell <cmd>`, `/bg`, and `/jobs`. A background job can also outlive the session entirely: `carlos run "<cmd>"` hands it to the daemon, and `carlos jobs` / `carlos attach <id>` / `carlos logs <id>` / `carlos stop <id>` drive it from anywhere.
+
+<!-- Demo GIF: record on a real terminal with `vhs demos/usershell-jobs.tape`
+     (it writes docs/branding/screenshots/usershell-jobs.gif), then uncomment:
+<p align="center">
+  <img src="docs/branding/screenshots/usershell-jobs.gif" alt="carlos user-shell: !ls -la runs in the foreground, !sleep moves to the background, and Ctrl+J opens the jobs overlay" width="720">
+</p>
+-->
+
+The recording is scripted in [`demos/usershell-jobs.tape`](demos/usershell-jobs.tape); regenerate it with `vhs demos/usershell-jobs.tape` (requires [charmbracelet/vhs](https://github.com/charmbracelet/vhs)).
+
 ### CLI verbs adjacent to the chat
 
 ```
