@@ -1,0 +1,3 @@
+$ go test ./...
+  ok  carlos  2.3s                                                                                                      
+✓ 0 · 2.3s
