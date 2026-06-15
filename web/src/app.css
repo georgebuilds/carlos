@@ -148,8 +148,9 @@ button { font-family: inherit; cursor: pointer; }
 
 .thread {
   position: relative;
+  display: flex; gap: 11px; align-items: flex-start;
   border-radius: 8px;
-  padding: 11px 12px 10px;
+  padding: 10px 12px;
   cursor: pointer;
   border: 1px solid transparent;
   margin-bottom: 2px;
@@ -160,29 +161,40 @@ button { font-family: inherit; cursor: pointer; }
   border-color: var(--rule);
   box-shadow: 0 2px 6px var(--shadow-soft);
 }
-.thread .t-title {
-  display: flex; align-items: center; gap: 6px;
-  font-weight: 600; font-size: 13.5px; line-height: 1.35;
-  padding-right: 78px;
+/* chat-app avatar tile: the agent mascot on a faint backend-tinted ground,
+   giving each conversation a little more presence than an inline glyph. */
+.thread .t-avatar {
+  flex: none;
+  width: 36px; height: 36px;
+  border-radius: 10px;
+  display: grid; place-items: center;
+  background: var(--paper-lo);
+  box-shadow: inset 0 0 0 1px var(--rule-soft);
+}
+.thread .t-avatar[data-backend="carlos"] { background: var(--backend-carlos-soft); }
+.thread .t-avatar[data-backend="cc"] { background: var(--backend-cc-soft); }
+.thread .t-body {
+  flex: 1; min-width: 0;
+  padding-right: 60px; /* room for the absolute state word */
 }
 .thread .t-title-text {
-  min-width: 0;
+  font-weight: 600; font-size: 13.5px; line-height: 1.3;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .thread .t-state {
-  position: absolute; top: 12px; right: 12px;
+  position: absolute; top: 11px; right: 12px;
   font-size: 9.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
   line-height: 1.2;
   color: var(--state-c, var(--muted));
 }
 .thread .t-preview {
-  font-size: 12px; color: var(--muted); line-height: 1.45;
-  margin-top: 3px;
+  font-size: 12px; color: var(--muted); line-height: 1.4;
+  margin-top: 2px;
   display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
 .thread .t-meta {
   display: flex; align-items: center; gap: 7px;
-  margin-top: 7px;
+  margin-top: 6px;
   font-size: 11px; color: var(--subtle);
 }
 .thread .t-frame {

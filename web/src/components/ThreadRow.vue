@@ -54,18 +54,20 @@ async function moveTo(groupId: string | null): Promise<void> {
     :style="{ '--state-c': cvar }"
     @click="emit('select', thread.id)"
   >
-    <div class="t-title">
-      <BackendMark :backend="thread.backend" :size="13" />
-      <span class="t-title-text">{{ thread.title }}</span>
+    <div class="t-avatar" :data-backend="thread.backend">
+      <BackendMark :backend="thread.backend" :size="22" />
+    </div>
+    <div class="t-body">
+      <div class="t-title-text">{{ thread.title }}</div>
+      <div class="t-preview">{{ thread.preview }}</div>
+      <div class="t-meta">
+        <span class="t-dot" :class="{ live }"></span>
+        <span v-if="thread.frame" class="t-frame">{{ thread.frame }}</span>
+        <span>{{ thread.user_msgs }} msgs · {{ relTime(thread.updated_at) }}</span>
+        <button class="t-move" title="move to group" @click.stop="menuOpen = !menuOpen">⋯</button>
+      </div>
     </div>
     <div class="t-state">{{ word }}</div>
-    <div class="t-preview">{{ thread.preview }}</div>
-    <div class="t-meta">
-      <span class="t-dot" :class="{ live }"></span>
-      <span class="t-frame">{{ thread.frame }}</span>
-      <span>{{ thread.user_msgs }} msgs · {{ relTime(thread.updated_at) }}</span>
-      <button class="t-move" title="move to group" @click.stop="menuOpen = !menuOpen">⋯</button>
-    </div>
     <div v-if="menuOpen" class="move-menu" @click.stop>
       <div class="mm-label">move to</div>
       <button @click="moveTo(null)">ungrouped</button>

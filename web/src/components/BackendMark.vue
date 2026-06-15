@@ -1,10 +1,10 @@
 <script setup lang="ts">
 // Per-thread backend identity glyph (multi-backend B-5). carlos threads
-// carry a cap-navy baseball cap; Claude Code threads carry an amber-ochre
-// terminal. Inline SVG (not emoji) so it tints from the --backend-* token,
-// stays crisp at roster size, and renders identically across OSes. Unknown
-// backends fall back to a neutral muted dot (forward-compat for opencode et
-// al. before their glyph exists). The 🧢 emoji stays the Caveat wordmark in
+// carry a cap-navy baseball cap; Claude Code threads carry their pixel-art
+// mascot (the orange critter) tinted from the --backend-* token. Inline SVG,
+// not emoji, so it tints, stays crisp at avatar size, and renders identically
+// across OSes. Unknown backends fall back to a neutral muted dot
+// (forward-compat for opencode). The 🧢 emoji stays the Caveat wordmark in
 // the top bar (implementation-plan L3); this is the per-thread badge.
 
 withDefaults(defineProps<{ backend: string; size?: number }>(), {
@@ -41,11 +41,23 @@ const label = (b: string): string =>
     role="img"
     :aria-label="label(backend)"
     :style="{ '--bm': 'var(--backend-cc)' }"
+    shape-rendering="crispEdges"
   >
-    <!-- terminal window: rounded outline, > prompt, blinking-cursor underline -->
-    <rect x="1.6" y="2.6" width="12.8" height="10.8" rx="2.2" fill="none" stroke="var(--bm)" stroke-width="1.3" />
-    <path d="M4.2 6.4 L6.2 8.1 L4.2 9.8" fill="none" stroke="var(--bm)" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" />
-    <line x1="7.7" y1="9.9" x2="11" y2="9.9" stroke="var(--bm)" stroke-width="1.3" stroke-linecap="round" />
+    <!-- Claude Code mascot: a blocky pixel critter. two top nubs, a chunky
+         body, four little legs, all in the backend tint; two dark eyes. -->
+    <g fill="var(--bm)">
+      <rect x="3.4" y="1.7" width="2.4" height="2.6" />
+      <rect x="10.2" y="1.7" width="2.4" height="2.6" />
+      <rect x="2.4" y="3.9" width="11.2" height="7.4" />
+      <rect x="3.4" y="11.2" width="1.7" height="2.7" />
+      <rect x="6.0" y="11.2" width="1.7" height="2.7" />
+      <rect x="8.6" y="11.2" width="1.7" height="2.7" />
+      <rect x="11.2" y="11.2" width="1.7" height="2.7" />
+    </g>
+    <g fill="var(--bm-eye, #2b1d12)">
+      <rect x="4.9" y="5.9" width="2.0" height="2.3" />
+      <rect x="9.1" y="5.9" width="2.0" height="2.3" />
+    </g>
   </svg>
 
   <span

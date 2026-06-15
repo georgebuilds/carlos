@@ -75,6 +75,9 @@
      lifts to #d99340, ~6:1 on --card #1a1d27, derived not eyeballed). */
   --backend-carlos: light-dark(#2c4a78, #7aa0d4);
   --backend-cc:     light-dark(#b56a16, #d99340);
+  /* faint per-backend grounds for the roster avatar tile */
+  --backend-carlos-soft: light-dark(rgba(44, 74, 120, 0.12), rgba(122, 160, 212, 0.16));
+  --backend-cc-soft:     light-dark(rgba(181, 106, 22, 0.14), rgba(217, 147, 64, 0.18));
 }
 
 /* explicit user deviation pins the scheme; absence of the attribute means
