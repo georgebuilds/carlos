@@ -122,6 +122,23 @@ func TestEventToWire_StateChangeMapsToWireState(t *testing.T) {
 	}
 }
 
+func TestEventToWire_CommandUsedMapsToCompactCommand(t *testing.T) {
+	payload := mustJSON(t, agent.CommandUsedPayload{Command: "frame"})
+	ev := agent.Event{Seq: 9, AgentID: "t1", TS: time.Now().UTC(), Type: agent.EvtCommandUsed, Payload: payload}
+	we, ok := eventToWire(ev)
+	if !ok {
+		t.Fatal("command_used should convert to a command wire event")
+	}
+	if we.Kind != "command" || we.Data.(map[string]any)["name"] != "/frame" {
+		t.Errorf("command wire = %+v, want kind command name /frame", we)
+	}
+	// An empty verb carries no signal and is not forwarded.
+	empty := agent.Event{Seq: 10, AgentID: "t1", TS: time.Now().UTC(), Type: agent.EvtCommandUsed, Payload: mustJSON(t, agent.CommandUsedPayload{})}
+	if _, ok := eventToWire(empty); ok {
+		t.Error("empty command verb should not be forwarded")
+	}
+}
+
 func TestEventToWire_UnforwardedKindsSkipped(t *testing.T) {
 	for _, typ := range []agent.EventType{
 		agent.EvtProviderCall, agent.EvtTokenUsage, agent.EvtHeartbeat,

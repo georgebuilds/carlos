@@ -197,6 +197,19 @@ func eventToWire(ev agent.Event) (WireEvent, bool) {
 			"err":        p.Err,
 		}
 
+	case agent.EvtCommandUsed:
+		// A carlos slash command. Render it as the same compact `command`
+		// pill the Claude Code adapter uses (cc_map.go), for cross-backend
+		// consistency. carlos records only the verb (no args, no output), so
+		// the data is just the name with its leading slash restored.
+		var p agent.CommandUsedPayload
+		_ = json.Unmarshal(ev.Payload, &p)
+		if p.Command == "" {
+			return w, false
+		}
+		w.Kind = "command"
+		w.Data = map[string]any{"name": "/" + p.Command}
+
 	case agent.EvtUserShellStart:
 		w.Kind = "shell_start"
 		w.Data = passthrough(ev.Payload)
