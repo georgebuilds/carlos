@@ -143,6 +143,60 @@ func (b *CCBackend) ListThreads(ctx context.Context) ([]ThreadSummary, error) {
 	return out, nil
 }
 
+// ccImportable is one import candidate: the roster summary plus the
+// session's on-disk cwd, so the import handler can resolve+store its repo.
+type ccImportable struct {
+	Summary ThreadSummary
+	Cwd     string
+}
+
+// ImportCandidates lists recent on-disk sessions (the same recency scan as
+// ListThreads, now repurposed as the IMPORT window) paired with each one's
+// cwd, newest first. The handler filters out ids already web-owned. A missing
+// root yields an empty list, never an error.
+func (b *CCBackend) ImportCandidates(ctx context.Context) ([]ccImportable, error) {
+	if b.root == "" {
+		return []ccImportable{}, nil
+	}
+	projects, err := os.ReadDir(b.root)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []ccImportable{}, nil
+		}
+		return nil, err
+	}
+	cutoff := b.now().Add(-ccRecencyWindow)
+	out := []ccImportable{}
+	for _, proj := range projects {
+		if !proj.IsDir() {
+			continue
+		}
+		dir := filepath.Join(b.root, proj.Name())
+		files, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		for _, f := range files {
+			if f.IsDir() || !strings.HasSuffix(f.Name(), ".jsonl") {
+				continue
+			}
+			info, err := f.Info()
+			if err != nil || info.ModTime().Before(cutoff) {
+				continue
+			}
+			id := ccBackendName + ":" + strings.TrimSuffix(f.Name(), ".jsonl")
+			path := filepath.Join(dir, f.Name())
+			cwd := ""
+			if data, err := os.ReadFile(path); err == nil {
+				cwd = ccScanSession(data).Cwd
+			}
+			out = append(out, ccImportable{Summary: b.summaryFor(id, path, info), Cwd: cwd})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Summary.UpdatedAt > out[j].Summary.UpdatedAt })
+	return out, nil
+}
+
 // GetThread returns one CC session's summary, resolving the file even when
 // it sits outside the recency window (direct open by id).
 func (b *CCBackend) GetThread(ctx context.Context, id string) (ThreadSummary, bool, error) {
@@ -155,6 +209,22 @@ func (b *CCBackend) GetThread(ctx context.Context, id string) (ThreadSummary, bo
 		return ThreadSummary{}, false, nil
 	}
 	return b.summaryFor(id, path, info), true, nil
+}
+
+// sessionCwd resolves a CC thread id to its on-disk session's working
+// directory (the first record's cwd), for repo resolution at import time.
+// ok=false when the file is missing or records no cwd.
+func (b *CCBackend) sessionCwd(id string) (string, bool) {
+	path, ok := b.pathFor(id)
+	if !ok {
+		return "", false
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", false
+	}
+	cwd := ccScanSession(data).Cwd
+	return cwd, cwd != ""
 }
 
 // summaryFor builds (or returns cached) the roster summary for one session

@@ -11,7 +11,7 @@ const threadsStore = useThreadsStore()
 const groups = useGroupsStore()
 const toast = useToastStore()
 
-const emit = defineEmits<{ select: [id: string] }>()
+const emit = defineEmits<{ select: [id: string]; importCc: [] }>()
 
 const visibleGroups = computed(() => groups.groups.filter((g) => threadsStore.groupVisible(g.id)))
 
@@ -51,7 +51,11 @@ async function newThread(backend?: string): Promise<void> {
 
 <template>
   <aside class="roster">
-    <RosterHeader :count="threadsStore.threads.length" @new="newThread" />
+    <RosterHeader
+      :count="threadsStore.threads.length"
+      @new="newThread"
+      @import-cc="emit('importCc')"
+    />
     <div class="roster-search">
       <input
         v-model="threadsStore.query"

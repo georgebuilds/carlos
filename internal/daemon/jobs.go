@@ -62,6 +62,13 @@ func (d *Daemon) jobsDir() string {
 	if d.opts.JobsDir != "" {
 		return d.opts.JobsDir
 	}
+	// Co-locate with state.db when its path is known: production points
+	// StateDBPath at ~/.carlos/state.db (so this stays ~/.carlos/jobs),
+	// while a test pointing it at a tempdir gets an isolated jobs dir
+	// instead of the user's real ~/.carlos.
+	if d.opts.StateDBPath != "" {
+		return filepath.Join(filepath.Dir(d.opts.StateDBPath), "jobs")
+	}
 	if d.opts.Home != "" {
 		return filepath.Join(d.opts.Home, ".carlos", "jobs")
 	}
@@ -77,6 +84,11 @@ func (d *Daemon) jobsDir() string {
 func (d *Daemon) jobsDBPath() string {
 	if d.opts.JobsDBPath != "" {
 		return d.opts.JobsDBPath
+	}
+	// Co-locate with state.db (see jobsDir): ~/.carlos/jobs.db in
+	// production, an isolated tempdir path under test.
+	if d.opts.StateDBPath != "" {
+		return filepath.Join(filepath.Dir(d.opts.StateDBPath), "jobs.db")
 	}
 	if d.opts.Home != "" {
 		return filepath.Join(d.opts.Home, ".carlos", "jobs.db")

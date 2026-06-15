@@ -115,6 +115,29 @@ describe('client error envelope and 409 typing', () => {
     }
   })
 
+  it('ccImportable GETs the importable session list', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ sessions: [] }), { status: 200 }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(api.ccImportable()).resolves.toEqual({ sessions: [] })
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('/api/cc/importable')
+    expect((init as RequestInit).method).toBe('GET')
+  })
+
+  it('ccImport POSTs the chosen id and returns the imported summary', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ id: 'cc:1', title: 'old' }), { status: 200 }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(api.ccImport('cc:1')).resolves.toMatchObject({ id: 'cc:1' })
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('/api/cc/import')
+    expect((init as RequestInit).method).toBe('POST')
+    expect((init as RequestInit).body).toBe(JSON.stringify({ id: 'cc:1' }))
+  })
+
   it('flags 404 as isGone', async () => {
     vi.stubGlobal(
       'fetch',

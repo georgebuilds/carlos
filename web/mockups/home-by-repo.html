@@ -1,0 +1,277 @@
+<!-- @dsCard group="carlos web" name="Home (by repo)" subtitle="repo-grouped launch view · light+dark" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>carlos web · home (by repo) — mockup</title>
+<!--
+  DESIGN MOCKUP (not wired). The repo-grouped home screen for carlos web.
+  Tokens copied verbatim from web/src/tokens.css; mascots from BackendMark.vue.
+  Decisions baked in (2026-06-15):
+    - view toggle [ By repo | By group ], By repo is the default landing
+    - only repos with >=1 thread show; "No repository" catch-all sorts last
+    - stacked repo sections + responsive card grid
+    - no left-stripe category coding; repo identity = header + thin rule
+    - CC roster = web-started only; "+ new" carries an "open existing CC session"
+  Follows the OS light/dark scheme (color-scheme + light-dark()), like the app.
+-->
+<style>
+:root {
+  color-scheme: light dark;
+  --paper:    light-dark(#f4ecd8, #15171c);
+  --paper-hi: light-dark(#fdf7e6, #1c1f27);
+  --paper-lo: light-dark(#ece4d2, #0b0d12);
+  --card:     light-dark(#fdf7e6, #1a1d27);
+  --navy:      light-dark(#2c4a78, #7aa0d4);
+  --navy-soft: light-dark(rgba(44, 74, 120, 0.14), rgba(122, 160, 212, 0.18));
+  --ink:      light-dark(#1b1812, #ece4d2);
+  --ink-soft: light-dark(#3a342a, #c9c1ad);
+  --muted:    light-dark(#6b6357, #8a8170);
+  --subtle:   light-dark(#8a8170, #6b6357);
+  --rule:     light-dark(rgba(27, 24, 18, 0.18), rgba(236, 228, 210, 0.18));
+  --rule-soft:light-dark(rgba(27, 24, 18, 0.10), rgba(236, 228, 210, 0.08));
+  --shadow:   light-dark(rgba(20, 22, 30, 0.10), rgba(0, 0, 0, 0.5));
+  --shadow-soft: light-dark(rgba(20, 22, 30, 0.06), rgba(0, 0, 0, 0.28));
+  --focus: var(--navy);
+  --state-running: light-dark(#2c4a78, #7aa0d4);
+  --state-turn:    light-dark(#8a6314, #f3c886);
+  --state-blocked: light-dark(#c64a2c, #e87a55);
+  --state-done:    light-dark(#7a9676, #a3c0a0);
+  --state-foreign: light-dark(#8a8170, #6b6357);
+  --backend-carlos: light-dark(#2c4a78, #7aa0d4);
+  --backend-cc:     light-dark(#b56a16, #d99340);
+  --backend-carlos-soft: light-dark(rgba(44, 74, 120, 0.12), rgba(122, 160, 212, 0.16));
+  --backend-cc-soft:     light-dark(rgba(181, 106, 22, 0.14), rgba(217, 147, 64, 0.18));
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+/* ---- top bar ------------------------------------------------------- */
+.topbar {
+  display: flex; align-items: center; gap: 16px;
+  padding: 12px 22px;
+  border-bottom: 1px solid var(--rule);
+  background: var(--paper-hi);
+  position: sticky; top: 0; z-index: 5;
+}
+.wordmark { font-size: 19px; font-weight: 700; letter-spacing: .2px; color: var(--ink); white-space: nowrap; }
+.wordmark .cap { color: var(--navy); }
+.spacer { flex: 1; }
+.search {
+  background: var(--card); border: 1px solid var(--rule); color: var(--ink);
+  border-radius: 9px; padding: 7px 11px; width: 220px; font-size: 13.5px;
+}
+.search::placeholder { color: var(--subtle); }
+
+/* segmented view toggle */
+.toggle { display: inline-flex; background: var(--paper-lo); border: 1px solid var(--rule); border-radius: 9px; padding: 2px; }
+.toggle button {
+  border: 0; background: transparent; color: var(--muted);
+  font: inherit; font-size: 13px; padding: 5px 13px; border-radius: 7px; cursor: pointer;
+}
+.toggle button.on { background: var(--card); color: var(--ink); box-shadow: 0 1px 2px var(--shadow-soft); font-weight: 600; }
+
+.newbtn {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--navy); color: var(--paper-hi); border: 0;
+  border-radius: 9px; padding: 8px 13px; font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer;
+}
+.newbtn .chev { opacity: .8; font-size: 11px; }
+
+/* the + new dropdown (shown statically here for the mockup) */
+.newwrap { position: relative; }
+.menu {
+  position: absolute; right: 0; top: calc(100% + 8px); width: 250px;
+  background: var(--card); border: 1px solid var(--rule); border-radius: 11px;
+  box-shadow: 0 10px 30px var(--shadow); padding: 6px; z-index: 9;
+}
+.menu button { display: flex; gap: 9px; align-items: center; width: 100%; text-align: left; border: 0; background: transparent; color: var(--ink); font: inherit; font-size: 13.5px; padding: 8px 10px; border-radius: 8px; cursor: pointer; }
+.menu button:hover { background: var(--paper-lo); }
+.menu .sep { height: 1px; background: var(--rule-soft); margin: 5px 8px; }
+.menu .sub { color: var(--subtle); font-size: 11.5px; margin-left: auto; }
+
+/* ---- repo sections ------------------------------------------------- */
+.page { max-width: 1180px; margin: 0 auto; padding: 26px 22px 80px; }
+.repo { margin-bottom: 38px; }
+.repo-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 14px; }
+.repo-name { font-size: 16.5px; font-weight: 700; color: var(--ink); }
+.repo-path { font-size: 12.5px; color: var(--subtle); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.repo-count { font-size: 12px; color: var(--muted); }
+.repo-rule { flex: 1; height: 1px; background: var(--rule); align-self: center; }
+.repo-new { border: 0; background: transparent; color: var(--navy); font: inherit; font-size: 12.5px; cursor: pointer; opacity: 0; transition: opacity .12s; }
+.repo:hover .repo-new { opacity: 1; }
+.repo.nogit .repo-name { color: var(--muted); font-weight: 600; }
+
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(268px, 1fr)); gap: 14px; }
+
+/* ---- conversation card --------------------------------------------- */
+.card {
+  background: var(--card); border: 1px solid var(--rule); border-radius: 13px;
+  padding: 13px 14px; cursor: pointer; display: flex; gap: 11px;
+  box-shadow: 0 1px 2px var(--shadow-soft); transition: border-color .12s, transform .12s, box-shadow .12s;
+}
+.card:hover { border-color: var(--navy); transform: translateY(-1px); box-shadow: 0 6px 16px var(--shadow); }
+.avatar { flex: none; width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center; }
+.avatar[data-backend="carlos"] { background: var(--backend-carlos-soft); }
+.avatar[data-backend="cc"] { background: var(--backend-cc-soft); }
+.body { min-width: 0; flex: 1; }
+.title { font-size: 14px; font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.preview { font-size: 12.5px; color: var(--muted); margin-top: 3px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.meta { display: flex; align-items: center; gap: 8px; margin-top: 9px; font-size: 11.5px; color: var(--subtle); }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--state-c, var(--muted)); flex: none; }
+.dot.live { box-shadow: 0 0 0 3px color-mix(in srgb, var(--state-c) 22%, transparent); }
+.statew { margin-left: auto; font-size: 11px; font-weight: 600; color: var(--state-c, var(--muted)); text-transform: lowercase; }
+.frame { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.backend-mark { display: inline-block; vertical-align: middle; }
+.legend { display:flex; gap:18px; align-items:center; color:var(--subtle); font-size:12px; padding: 0 2px 18px; }
+.legend .mk { display:inline-flex; gap:6px; align-items:center; }
+</style>
+</head>
+<body>
+
+<!-- inline mascot symbols, lifted from BackendMark.vue -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="m-carlos" viewBox="0 0 16 16">
+    <path d="M3 10 C3 4.6 5.2 3.1 8 3.1 C10.8 3.1 12 5.6 12 10 Z" fill="var(--backend-carlos)"/>
+    <path d="M10.6 9.7 C13.7 9.5 15.2 10 15.2 10.9 C15.2 11.4 13 11.1 10.6 11.1 Z" fill="var(--backend-carlos)"/>
+    <circle cx="8" cy="2.8" r="0.85" fill="var(--backend-carlos)"/>
+  </symbol>
+  <symbol id="m-cc" viewBox="0 0 16 16">
+    <g fill="var(--backend-cc)">
+      <rect x="3.4" y="1.7" width="2.4" height="2.6"/><rect x="10.2" y="1.7" width="2.4" height="2.6"/>
+      <rect x="2.4" y="3.9" width="11.2" height="7.4"/>
+      <rect x="3.4" y="11.2" width="1.7" height="2.7"/><rect x="6.0" y="11.2" width="1.7" height="2.7"/>
+      <rect x="8.6" y="11.2" width="1.7" height="2.7"/><rect x="11.2" y="11.2" width="1.7" height="2.7"/>
+    </g>
+    <g fill="#2b1d12"><rect x="4.9" y="5.9" width="2.0" height="2.3"/><rect x="9.1" y="5.9" width="2.0" height="2.3"/></g>
+  </symbol>
+</svg>
+
+<header class="topbar">
+  <span class="wordmark"><span class="cap">carlos</span> · home</span>
+  <span class="spacer"></span>
+  <input class="search" placeholder="search conversations…" />
+  <div class="toggle">
+    <button class="on">By repo</button>
+    <button>By group</button>
+  </div>
+  <div class="newwrap">
+    <button class="newbtn">+ new <span class="chev">▾</span></button>
+    <div class="menu">
+      <button><svg class="backend-mark" width="16" height="16"><use href="#m-carlos"/></svg> carlos thread</button>
+      <button><svg class="backend-mark" width="16" height="16"><use href="#m-cc"/></svg> claude code thread</button>
+      <div class="sep"></div>
+      <button>open existing CC session<span class="sub">browse history</span></button>
+    </div>
+  </div>
+</header>
+
+<main class="page">
+  <div class="legend">
+    <span class="mk"><svg class="backend-mark" width="15" height="15"><use href="#m-carlos"/></svg> carlos</span>
+    <span class="mk"><svg class="backend-mark" width="15" height="15"><use href="#m-cc"/></svg> claude code</span>
+    <span>· grouped by git repository · newest activity first</span>
+  </div>
+
+  <!-- repo: carlos -->
+  <section class="repo">
+    <div class="repo-head">
+      <span class="repo-name">carlos</span>
+      <span class="repo-path">~/Code/carlos</span>
+      <span class="repo-rule"></span>
+      <span class="repo-count">4</span>
+      <button class="repo-new">+ new here</button>
+    </div>
+    <div class="grid">
+      <article class="card" style="--state-c: var(--state-running)">
+        <span class="avatar" data-backend="carlos"><svg class="backend-mark" width="22" height="22"><use href="#m-carlos"/></svg></span>
+        <div class="body">
+          <div class="title">daemon-side background jobs</div>
+          <div class="preview">let's tackle the user-shell deferred tail items now. usual flow, subagents, coverage 90% min.</div>
+          <div class="meta"><span class="dot live"></span><span class="frame">personal</span><span>· 38 msgs · 2m ago</span><span class="statew">running</span></div>
+        </div>
+      </article>
+      <article class="card" style="--state-c: var(--state-turn)">
+        <span class="avatar" data-backend="carlos"><svg class="backend-mark" width="22" height="22"><use href="#m-carlos"/></svg></span>
+        <div class="body">
+          <div class="title">input flicker at scroll bottom</div>
+          <div class="preview">the chat input field flickers and delays my keyboard input when scrolled all the way down.</div>
+          <div class="meta"><span class="dot"></span><span class="frame">personal</span><span>· 6 msgs · 14m ago</span><span class="statew">your turn</span></div>
+        </div>
+      </article>
+      <article class="card" style="--state-c: var(--state-foreign)">
+        <span class="avatar" data-backend="cc"><svg class="backend-mark" width="22" height="22"><use href="#m-cc"/></svg></span>
+        <div class="body">
+          <div class="title">repo-grouped web home view</div>
+          <div class="preview">something like the board view but at launch, grouped by repository, with a catch-all.</div>
+          <div class="meta"><span class="dot"></span><span class="frame">carlos</span><span>· 12 msgs · 3m ago</span><span class="statew">done</span></div>
+        </div>
+      </article>
+      <article class="card" style="--state-c: var(--state-done)">
+        <span class="avatar" data-backend="carlos"><svg class="backend-mark" width="22" height="22"><use href="#m-carlos"/></svg></span>
+        <div class="body">
+          <div class="title">S8 user-shell projection</div>
+          <div class="preview">feed completed shell jobs to the model as user-shell blocks, merged by seq.</div>
+          <div class="meta"><span class="dot"></span><span class="frame">personal</span><span>· 21 msgs · 1h ago</span><span class="statew">done</span></div>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <!-- repo: anneal -->
+  <section class="repo">
+    <div class="repo-head">
+      <span class="repo-name">anneal</span>
+      <span class="repo-path">~/Code/anneal</span>
+      <span class="repo-rule"></span>
+      <span class="repo-count">2</span>
+      <button class="repo-new">+ new here</button>
+    </div>
+    <div class="grid">
+      <article class="card" style="--state-c: var(--state-done)">
+        <span class="avatar" data-backend="carlos"><svg class="backend-mark" width="22" height="22"><use href="#m-carlos"/></svg></span>
+        <div class="body">
+          <div class="title">slice 7d preflight</div>
+          <div class="preview">verify the premises empirically, write a notes file, then issue GO or STOP.</div>
+          <div class="meta"><span class="dot"></span><span class="frame">work</span><span>· 9 msgs · 2d ago</span><span class="statew">done</span></div>
+        </div>
+      </article>
+      <article class="card" style="--state-c: var(--state-foreign)">
+        <span class="avatar" data-backend="cc"><svg class="backend-mark" width="22" height="22"><use href="#m-cc"/></svg></span>
+        <div class="body">
+          <div class="title">codegen WebGPU backend</div>
+          <div class="preview">max-abs-diff against the oracle for the numeric kernels at N=2,4,8.</div>
+          <div class="meta"><span class="dot"></span><span class="frame">anneal</span><span>· 17 msgs · 2d ago</span><span class="statew">done</span></div>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <!-- catch-all -->
+  <section class="repo nogit">
+    <div class="repo-head">
+      <span class="repo-name">No repository</span>
+      <span class="repo-rule"></span>
+      <span class="repo-count">1</span>
+    </div>
+    <div class="grid">
+      <article class="card" style="--state-c: var(--state-done)">
+        <span class="avatar" data-backend="carlos"><svg class="backend-mark" width="22" height="22"><use href="#m-carlos"/></svg></span>
+        <div class="body">
+          <div class="title">quick question</div>
+          <div class="preview">what's the difference between a git worktree and a clone?</div>
+          <div class="meta"><span class="dot"></span><span>· 2 msgs · 4d ago</span><span class="statew">done</span></div>
+        </div>
+      </article>
+    </div>
+  </section>
+</main>
+
+</body>
+</html>

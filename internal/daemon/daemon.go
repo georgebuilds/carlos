@@ -372,8 +372,16 @@ func (d *Daemon) Run(ctx context.Context) error {
 	// from chat-session lifetime. Best-effort: a jobs.db open failure
 	// degrades to an in-memory-only runtime (jobs still run, just no
 	// audit trail) rather than refusing to start the daemon.
-	d.startJobsRuntime()
-	defer d.stopJobsRuntime()
+	//
+	// Gated to production (Spawner == nil), exactly like the state.db +
+	// supervisor above: a test-mode daemon (injected Spawner, no real
+	// state.db) has no jobs to own and must not open the user's real
+	// ~/.carlos/jobs.db - parallel lifecycle tests would otherwise all
+	// contend on that one SQLite file and flake on the busy timeout.
+	if d.opts.Spawner == nil {
+		d.startJobsRuntime()
+		defer d.stopJobsRuntime()
+	}
 
 	// 5.5 Gateway (broker + adapters + approvals router). Skipped when
 	// the config block is disabled OR when no event log is available

@@ -4,11 +4,81 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 
 	"github.com/georgebuilds/carlos/internal/agent"
 )
+
+// roster builds the merged thread list the SPA sees. carlos backends
+// contribute their full ListThreads; the Claude Code backend is scoped to
+// the threads carlos web OWNS (web_cc_origin), resolved one-by-one via
+// GetThread rather than the recency scan, so old on-disk sessions carlos
+// never started stay out of the console (plan WA-1). A missing group store
+// (read-only mode) falls back to the unscoped registry fan-out.
+func (s *Server) roster(ctx context.Context) ([]ThreadSummary, error) {
+	if s.groups == nil {
+		return s.registry.ListThreads(ctx)
+	}
+	origin, err := s.groups.CCOriginSet(ctx)
+	if err != nil {
+		// Best-effort: an origin-set failure should not blank the roster.
+		// Treat it as "no CC origins" so carlos threads still list.
+		origin = map[string]bool{}
+	}
+	out := []ThreadSummary{}
+	var errs []error
+	for _, b := range s.registry.All() {
+		if cc, ok := b.(*CCBackend); ok {
+			out = append(out, s.ccOriginRoster(ctx, cc, origin)...)
+			continue
+		}
+		ts, err := b.ListThreads(ctx)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", b.Name(), err))
+			continue // a single backend's failure must not blank the roster
+		}
+		out = append(out, ts...)
+	}
+	// Preserve the registry's contract: surface the error only when the whole
+	// roster came up empty AND a backend failed (a single-backend list failure
+	// still 500s), so a partial roster is served rather than failed.
+	if len(out) == 0 && len(errs) > 0 {
+		return nil, errors.Join(errs...)
+	}
+	return out, nil
+}
+
+// ccOriginRoster resolves each web-owned CC id via GetThread (NOT the
+// recency ListThreads), so the CC contribution is exactly carlos's own
+// sessions. An id whose file has vanished is silently skipped.
+func (s *Server) ccOriginRoster(ctx context.Context, cc *CCBackend, origin map[string]bool) []ThreadSummary {
+	out := []ThreadSummary{}
+	for id := range origin {
+		summary, ok, err := cc.GetThread(ctx, id)
+		if err != nil || !ok {
+			continue
+		}
+		out = append(out, summary)
+	}
+	return out
+}
+
+// rosterIDs returns the set of thread ids currently in the roster, used to
+// gate manual-group member counts on what the user actually sees (plan
+// WB-3), so janitor-pruned threads still drop out of the counts.
+func (s *Server) rosterIDs(ctx context.Context) map[string]bool {
+	out := map[string]bool{}
+	summaries, err := s.roster(ctx)
+	if err != nil {
+		return out
+	}
+	for _, t := range summaries {
+		out[t.ID] = true
+	}
+	return out
+}
 
 // groupOverlay stamps the web-owned group membership onto a summary. The
 // grouping is roster metadata that spans backends, so it is applied at the
@@ -48,6 +118,26 @@ func (s *Server) hiddenOverlay(ctx context.Context, summaries []ThreadSummary) {
 	}
 }
 
+// repoOverlay stamps the web-owned per-thread repo onto each summary, exactly
+// as groupOverlay stamps the group (plan WB-1). The repo is roster metadata
+// that spans backends, written at create/import; a thread with no stored repo
+// omits it. Best-effort: a store error leaves repos unset.
+func (s *Server) repoOverlay(ctx context.Context, summaries []ThreadSummary) {
+	if s.groups == nil {
+		return
+	}
+	m, err := s.groups.RepoMap(ctx)
+	if err != nil || len(m) == 0 {
+		return
+	}
+	for i := range summaries {
+		if r, ok := m[summaries[i].ID]; ok {
+			r := r
+			summaries[i].Repo = &r
+		}
+	}
+}
+
 // handleHideThread: POST/DELETE /api/threads/{id}/hide. Adds or removes the
 // thread from the roster blacklist (web-local; no data is touched).
 func (s *Server) handleHideThread(w http.ResponseWriter, r *http.Request) {
@@ -73,13 +163,14 @@ func (s *Server) handleHideThread(w http.ResponseWriter, r *http.Request) {
 // projection (conversations-only filter + per-thread attachment overlay);
 // the handler adds the web-owned group-membership overlay.
 func (s *Server) handleListThreads(w http.ResponseWriter, r *http.Request) {
-	out, err := s.registry.ListThreads(r.Context())
+	out, err := s.roster(r.Context())
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "list_failed", err.Error())
 		return
 	}
 	s.groupOverlay(r.Context(), out)
 	s.hiddenOverlay(r.Context(), out)
+	s.repoOverlay(r.Context(), out)
 	writeJSON(w, http.StatusOK, out)
 }
 
@@ -101,6 +192,7 @@ func (s *Server) handleGetThread(w http.ResponseWriter, r *http.Request) {
 	}
 	one := []ThreadSummary{summary}
 	s.groupOverlay(r.Context(), one)
+	s.repoOverlay(r.Context(), one)
 	writeJSON(w, http.StatusOK, one[0])
 }
 
@@ -127,7 +219,101 @@ func (s *Server) handleCreateThread(w http.ResponseWriter, r *http.Request) {
 		s.writeBackendErr(w, err)
 		return
 	}
+	// A web-created Claude Code thread is carlos-owned: record it in the
+	// origin set (so the roster lists it) and resolve+store its repo from the
+	// create cwd, exactly as an import would (plan WA-1 / WR-0). Best-effort:
+	// a store hiccup never fails the create itself.
+	if cc, ok := be.(*CCBackend); ok && s.groups != nil {
+		_ = s.groups.MarkCCOrigin(r.Context(), summary.ID)
+		if root, name, ok := gitRepoRoot(cc.CreateCwd()); ok {
+			_ = s.groups.SetThreadRepo(r.Context(), summary.ID, root, name)
+		}
+	}
 	writeJSON(w, http.StatusOK, summary)
+}
+
+// ccBackend returns the registered Claude Code backend, or nil when none is
+// wired (read-only mode, or a deployment without CC).
+func (s *Server) ccBackend() *CCBackend {
+	if b, ok := s.registry.Backend(ccBackendName); ok {
+		if cc, ok := b.(*CCBackend); ok {
+			return cc
+		}
+	}
+	return nil
+}
+
+// handleImportableCC: GET /api/cc/importable. Lists the recent on-disk CC
+// sessions (the recency scan, now the import window) that are NOT already
+// web-owned, as import candidates for the "+ new -> open existing" menu
+// (plan WA-2). Each candidate carries a repo overlay so the picker can show
+// it. Returns {"sessions": [...]}; an empty list when no CC backend.
+func (s *Server) handleImportableCC(w http.ResponseWriter, r *http.Request) {
+	cc := s.ccBackend()
+	if cc == nil || s.groups == nil {
+		writeJSON(w, http.StatusOK, map[string]any{"sessions": []ThreadSummary{}})
+		return
+	}
+	cands, err := cc.ImportCandidates(r.Context())
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "list_failed", err.Error())
+		return
+	}
+	origin, err := s.groups.CCOriginSet(r.Context())
+	if err != nil {
+		origin = map[string]bool{}
+	}
+	out := []ThreadSummary{}
+	for _, c := range cands {
+		if origin[c.Summary.ID] {
+			continue // already imported; not a candidate
+		}
+		out = append(out, c.Summary)
+	}
+	s.repoOverlay(r.Context(), out)
+	writeJSON(w, http.StatusOK, map[string]any{"sessions": out})
+}
+
+// handleImportCC: POST /api/cc/import {id}. Marks an on-disk CC session
+// web-owned (so it joins the roster) and resolves+stores its repo from the
+// session's cwd (plan WA-2). Idempotent: re-importing returns 200. 404 when
+// the id resolves to no on-disk session. Returns the imported ThreadSummary.
+func (s *Server) handleImportCC(w http.ResponseWriter, r *http.Request) {
+	cc := s.ccBackend()
+	if cc == nil || s.groups == nil {
+		writeErr(w, http.StatusServiceUnavailable, "no_cc", "claude code backend unavailable")
+		return
+	}
+	var body struct {
+		ID string `json:"id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.ID == "" {
+		writeErr(w, http.StatusBadRequest, "bad_request", "id is required")
+		return
+	}
+	summary, ok, err := cc.GetThread(r.Context(), body.ID)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "import_failed", err.Error())
+		return
+	}
+	if !ok {
+		writeErr(w, http.StatusNotFound, "not_found", "no such cc session")
+		return
+	}
+	if err := s.groups.MarkCCOrigin(r.Context(), body.ID); err != nil {
+		writeErr(w, http.StatusInternalServerError, "import_failed", err.Error())
+		return
+	}
+	// Resolve the repo from the session's recorded cwd. Best-effort: a
+	// session outside any git tree simply lands in the "No repository" group.
+	if cwd, ok := cc.sessionCwd(body.ID); ok {
+		if root, name, ok := gitRepoRoot(cwd); ok {
+			_ = s.groups.SetThreadRepo(r.Context(), body.ID, root, name)
+		}
+	}
+	one := []ThreadSummary{summary}
+	s.repoOverlay(r.Context(), one)
+	writeJSON(w, http.StatusOK, one[0])
 }
 
 // handleDeleteThread: DELETE /api/threads/{id}. Hard-deletes the thread and

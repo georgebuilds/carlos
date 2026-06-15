@@ -155,6 +155,10 @@ func (s *Server) routes() {
 	// Claude Code PreToolUse hook callback (B-4): the spawned hook posts a
 	// tool here and blocks for the human's decision.
 	m.HandleFunc("POST /api/cc/hook", s.handleCCHook)
+	// Claude Code import (WA-2): list on-disk sessions not yet web-owned, and
+	// adopt one into the roster (marks origin + resolves its repo).
+	m.HandleFunc("GET /api/cc/importable", s.handleImportableCC)
+	m.HandleFunc("POST /api/cc/import", s.handleImportCC)
 	// Groups (web-owned).
 	m.HandleFunc("GET /api/groups", s.handleListGroups)
 	m.HandleFunc("POST /api/groups", s.handleCreateGroup)

@@ -1453,13 +1453,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, approvalPumpCmd(m.approver.Requests())
 
 	case textTickMsg:
-		// Re-render so live assistant text from the TextSource appears.
-		// Also re-poll the children view at the same low cadence so a
-		// fresh spawn surfaces the inline panel without a dedicated
-		// supervisor event. The faster 250ms tick takes over once at
-		// least one child is live and stops on the next empty snapshot.
-		m.thinkingTick++
-		m.advanceTypewriter()
+		// Re-poll the children view at this low cadence so a fresh spawn
+		// surfaces the inline panel without a dedicated supervisor event.
+		// The faster 250ms tick takes over once at least one child is
+		// live and stops on the next empty snapshot.
 		if m.childrenView != nil && len(m.childrenSnap) == 0 {
 			snap := m.childrenView.Snapshot()
 			if len(snap) > 0 {
@@ -1468,7 +1465,26 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Batch(scheduleTextTick(), scheduleChildrenTick())
 			}
 		}
-		m.rerenderViewport()
+		// Advance the typewriter reveal cursor every tick. It's cheap (a
+		// rune count of the live buffer) and, crucially, snaps the cursor
+		// back to 0 when the buffer is empty - a settled or just-sealed
+		// turn - so the next turn reveals from its first rune.
+		m.advanceTypewriter()
+
+		// Only do the expensive repaint while something is actually
+		// animating: the thinking pulse, or a live assistant buffer still
+		// streaming / revealing. A settled transcript is static, so
+		// recomposing it (every sealed entry re-rendered through glamour)
+		// ~30x/sec just flickers the frame and starves keyboard input -
+		// the cause of the "input flickers / lags when scrolled to the
+		// bottom" report. Idle ticks keep their cadence so the next turn's
+		// first delta is still picked up within one tick. Tool / seal /
+		// shell / children updates each rerender from their own event
+		// handler, so nothing that needs a repaint depends on this branch.
+		if m.isThinking() || m.source.Get(m.agentID) != "" {
+			m.thinkingTick++
+			m.rerenderViewport()
+		}
 		return m, scheduleTextTick()
 
 	case errMsg:

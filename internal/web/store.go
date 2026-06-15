@@ -49,6 +49,14 @@ CREATE INDEX IF NOT EXISTS web_thread_groups_by_group ON web_thread_groups(group
 CREATE TABLE IF NOT EXISTS web_hidden (
   thread_id TEXT PRIMARY KEY
 );
+-- web_cc_origin records the Claude Code threads carlos web itself owns
+-- (created or explicitly imported). The roster scopes the CC backend's
+-- contribution to this set instead of mirroring every on-disk session, so
+-- the console is not flooded by sessions carlos never started. Backend
+-- agnostic: it only ever holds cc:<uuid> ids, but carries no agents join.
+CREATE TABLE IF NOT EXISTS web_cc_origin (
+  thread_id TEXT PRIMARY KEY
+);
 `
 
 // OpenGroupStore opens (or creates) the grouping tables in the state.db at
@@ -77,22 +85,25 @@ func OpenGroupStore(path string) (*GroupStore, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("group store migrate: %w", err)
 	}
+	if _, err := db.Exec(repoSchema); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("group store repo migrate: %w", err)
+	}
 	return &GroupStore{db: db}, nil
 }
 
 func (s *GroupStore) Close() error { return s.db.Close() }
 
 // List returns every group ordered by (pos, id) with its live member
-// count. The count joins web_thread_groups against the agents table for
-// top-level threads only, so memberships for janitor-pruned threads
-// contribute zero without an eager sweep (lazy hiding, plan §4.6).
-func (s *GroupStore) List(ctx context.Context) ([]Group, error) {
+// count. Backend agnostic: membership is NOT joined to the agents table (a
+// cc:<uuid> has no agent row but is still groupable, plan WB-3). Instead the
+// count is gated on `live` - the set of thread ids the roster handler is
+// currently showing - so memberships for janitor-pruned threads contribute
+// zero without an eager sweep (lazy hiding, plan §4.6). A nil `live` applies
+// no filter (callers with no roster context, e.g. a post-patch read).
+func (s *GroupStore) List(ctx context.Context, live map[string]bool) ([]Group, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT g.id, g.name, g.pos,
-		       (SELECT COUNT(*)
-		          FROM web_thread_groups wtg
-		          JOIN agents a ON a.id = wtg.thread_id
-		         WHERE wtg.group_id = g.id AND a.parent_id IS NULL) AS n
+		SELECT g.id, g.name, g.pos
 		  FROM web_groups g
 		 ORDER BY g.pos ASC, g.id ASC`)
 	if err != nil {
@@ -102,10 +113,43 @@ func (s *GroupStore) List(ctx context.Context) ([]Group, error) {
 	out := []Group{}
 	for rows.Next() {
 		var g Group
-		if err := rows.Scan(&g.ID, &g.Name, &g.Pos, &g.Threads); err != nil {
+		if err := rows.Scan(&g.ID, &g.Name, &g.Pos); err != nil {
 			return nil, err
 		}
 		out = append(out, g)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	counts, err := s.memberCounts(ctx, live)
+	if err != nil {
+		return nil, err
+	}
+	for i := range out {
+		out[i].Threads = counts[out[i].ID]
+	}
+	return out, nil
+}
+
+// memberCounts tallies live members per group id. A membership counts only
+// when its thread is in `live` (or unconditionally when live is nil), so the
+// agents join is gone yet pruned threads still drop out (plan WB-3).
+func (s *GroupStore) memberCounts(ctx context.Context, live map[string]bool) (map[string]int, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT thread_id, group_id FROM web_thread_groups`)
+	if err != nil {
+		return nil, fmt.Errorf("member counts: %w", err)
+	}
+	defer rows.Close()
+	out := map[string]int{}
+	for rows.Next() {
+		var tid, gid string
+		if err := rows.Scan(&tid, &gid); err != nil {
+			return nil, err
+		}
+		if live != nil && !live[tid] {
+			continue
+		}
+		out[gid]++
 	}
 	return out, rows.Err()
 }
@@ -210,14 +254,12 @@ func (s *GroupStore) SetThreadGroup(ctx context.Context, threadID string, groupI
 }
 
 // MembershipMap returns thread_id -> group_id for the overlay on
-// GET /threads. Only memberships whose thread is a live top-level agent
-// are returned (the join drops vanished threads, plan §4.6).
+// GET /threads. Backend agnostic (no agents join, plan WB-3): a cc:<uuid>
+// membership is returned exactly like a carlos one. The overlay only stamps
+// ids that are already in the roster, so rows for vanished threads match
+// nothing and drop out without an eager sweep (lazy hiding, plan §4.6).
 func (s *GroupStore) MembershipMap(ctx context.Context) (map[string]string, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT wtg.thread_id, wtg.group_id
-		  FROM web_thread_groups wtg
-		  JOIN agents a ON a.id = wtg.thread_id
-		 WHERE a.parent_id IS NULL`)
+	rows, err := s.db.QueryContext(ctx, `SELECT thread_id, group_id FROM web_thread_groups`)
 	if err != nil {
 		return nil, fmt.Errorf("membership map: %w", err)
 	}
@@ -286,14 +328,47 @@ func (s *GroupStore) HiddenSet(ctx context.Context) (map[string]bool, error) {
 	return out, rows.Err()
 }
 
+// MarkCCOrigin records a Claude Code thread as web-owned (idempotent). The
+// roster lists a CC session only when it is in this set, so an old on-disk
+// session carlos never started stays out of the console until imported.
+func (s *GroupStore) MarkCCOrigin(ctx context.Context, threadID string) error {
+	if threadID == "" {
+		return errors.New("web: thread id is required")
+	}
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO web_cc_origin(thread_id) VALUES(?) ON CONFLICT(thread_id) DO NOTHING`, threadID)
+	return err
+}
+
+// CCOriginSet returns the set of web-owned CC thread ids for the roster
+// scope. Backend agnostic (no agents join): a cc:<uuid> origin row is just
+// an id.
+func (s *GroupStore) CCOriginSet(ctx context.Context) (map[string]bool, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT thread_id FROM web_cc_origin`)
+	if err != nil {
+		return nil, fmt.Errorf("cc origin set: %w", err)
+	}
+	defer rows.Close()
+	out := map[string]bool{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out[id] = true
+	}
+	return out, rows.Err()
+}
+
+// get returns one group with its (unfiltered) member count. Backend
+// agnostic: the count is a plain tally of membership rows, no agents join
+// (plan WB-3). It is used to echo a group after a patch/assignment; the SPA
+// refetches GET /api/groups (roster-gated) for the authoritative live count.
 func (s *GroupStore) get(ctx context.Context, id string) (Group, error) {
 	var g Group
 	err := s.db.QueryRowContext(ctx, `
 		SELECT g.id, g.name, g.pos,
-		       (SELECT COUNT(*)
-		          FROM web_thread_groups wtg
-		          JOIN agents a ON a.id = wtg.thread_id
-		         WHERE wtg.group_id = g.id AND a.parent_id IS NULL) AS n
+		       (SELECT COUNT(*) FROM web_thread_groups wtg WHERE wtg.group_id = g.id) AS n
 		  FROM web_groups g WHERE g.id = ?`, id).
 		Scan(&g.ID, &g.Name, &g.Pos, &g.Threads)
 	if errors.Is(err, sql.ErrNoRows) {

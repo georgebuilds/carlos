@@ -48,6 +48,11 @@ func (b *CCBackend) EnableDrive(ctx context.Context, hub *ephemeralHub, baseURL,
 
 func (b *CCBackend) driveEnabled() bool { return b.hub != nil }
 
+// CreateCwd is the working directory a freshly created CC session runs in
+// (the carlos-web launch dir), exposed so the create handler can resolve the
+// new thread's repo (plan WR-0/WA-1). Empty until EnableDrive has run.
+func (b *CCBackend) CreateCwd() string { return b.newCwd }
+
 // caps advertises send+approve only when driving is wired; otherwise the
 // observe-only set. Stamped onto every summary so the SPA gates the composer
 // and approval UI per backend.

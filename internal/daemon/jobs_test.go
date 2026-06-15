@@ -334,6 +334,28 @@ func TestStartJobsRuntimeDegradesWhenPersistenceUnavailable(t *testing.T) {
 	}
 }
 
+func TestJobsPathDerivesFromStateDB(t *testing.T) {
+	// With no explicit jobs paths, the runtime co-locates with state.db's
+	// directory. Production points StateDBPath at ~/.carlos/state.db (so
+	// this stays ~/.carlos), but a test pointing it at a tempdir gets an
+	// isolated jobs store instead of the user's real ~/.carlos/jobs.db -
+	// the isolation that keeps parallel daemon lifecycle tests off one
+	// shared SQLite file (the CI busy-timeout flake this guards against).
+	dir := t.TempDir()
+	d := &Daemon{opts: Options{StateDBPath: filepath.Join(dir, "state.db")}}
+	if got, want := d.jobsDir(), filepath.Join(dir, "jobs"); got != want {
+		t.Errorf("jobsDir from StateDBPath: got %q want %q", got, want)
+	}
+	if got, want := d.jobsDBPath(), filepath.Join(dir, "jobs.db"); got != want {
+		t.Errorf("jobsDBPath from StateDBPath: got %q want %q", got, want)
+	}
+	// An explicit JobsDBPath still wins over the StateDBPath derivation.
+	d2 := &Daemon{opts: Options{StateDBPath: filepath.Join(dir, "state.db"), JobsDBPath: "/x/jobs.db"}}
+	if got := d2.jobsDBPath(); got != "/x/jobs.db" {
+		t.Errorf("explicit JobsDBPath should win: got %q", got)
+	}
+}
+
 func TestJobStatusFromSnapshotZeroTimes(t *testing.T) {
 	// A pending job has zero StartedAt/EndedAt → nil pointers, zero
 	// duration → omitted.

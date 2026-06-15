@@ -12,7 +12,7 @@ func (s *Server) handleListGroups(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, []Group{})
 		return
 	}
-	gs, err := s.groups.List(r.Context())
+	gs, err := s.groups.List(r.Context(), s.rosterIDs(r.Context()))
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "list_failed", err.Error())
 		return
