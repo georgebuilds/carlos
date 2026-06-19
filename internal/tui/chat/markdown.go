@@ -1,7 +1,9 @@
 package chat
 
 import (
+	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
@@ -59,6 +61,65 @@ const mdMinWidth = 24
 //
 // Falls back to renderAvatarBlock on glamour errors (which can happen
 // with malformed markdown) so a broken markdown reply never vanishes.
+// Glamour rendering is the dominant cost in composeTranscript, and
+// renderInner re-runs rerenderViewport on EVERY View() frame (View fires at
+// the textTick's ~30Hz). Re-glamouring every sealed assistant message every
+// frame pegs the CPU on a long conversation. On resume that starved
+// bubbletea's input reader: escape sequences split (a stray "[" leaking into
+// the composer), keystrokes stalled, and the viewport churned while the
+// cursor kept blinking. Sealed assistant text is immutable, so the rendered
+// output is cached per (width, text) - the cold first frame renders each
+// message once, every later frame is a map lookup.
+var (
+	mdCacheMu sync.Mutex
+	mdCache   = map[string]string{}
+	mdMisses  int // test hook: glamour renders actually performed (cache misses)
+)
+
+// mdCacheMax caps the cache so a very long-lived session cannot grow it
+// without bound; on overflow it is dropped wholesale (the next frame
+// re-renders the visible messages once, a one-off well past any normal
+// transcript size).
+const mdCacheMax = 2048
+
+// renderAssistantMarkdownCached is renderAssistantMarkdown behind the
+// per-(width,text) cache. The nil-renderer / narrow-width fallback is
+// deterministic in the same inputs, so it is cached too.
+func renderAssistantMarkdownCached(text string, width int, md *glamour.TermRenderer) string {
+	// Key on the color profile too: glamour's ANSI output depends on it, so
+	// a profile change (theme toggle, or a sibling test flipping it) must not
+	// serve a stale render. In production the profile is fixed per run, so
+	// this is effectively a (width, text) key.
+	key := strconv.Itoa(int(lipgloss.ColorProfile())) + "\x00" + strconv.Itoa(width) + "\x00" + text
+	mdCacheMu.Lock()
+	if v, ok := mdCache[key]; ok {
+		mdCacheMu.Unlock()
+		return v
+	}
+	mdCacheMu.Unlock()
+
+	v := renderAssistantMarkdown(text, width, md)
+
+	mdCacheMu.Lock()
+	if len(mdCache) >= mdCacheMax {
+		mdCache = make(map[string]string, mdCacheMax)
+	}
+	mdCache[key] = v
+	mdMisses++
+	mdCacheMu.Unlock()
+	return v
+}
+
+// resetMarkdownCache clears the render cache. Production never needs this
+// (the key is width+text, so an entry never goes stale within a run); tests
+// call it to isolate cache behavior.
+func resetMarkdownCache() {
+	mdCacheMu.Lock()
+	mdCache = map[string]string{}
+	mdMisses = 0
+	mdCacheMu.Unlock()
+}
+
 func renderAssistantMarkdown(text string, width int, md *glamour.TermRenderer) string {
 	if md == nil || width < mdMinWidth {
 		return renderAvatarBlockPlain(text, width)

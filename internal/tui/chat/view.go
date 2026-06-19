@@ -1325,7 +1325,7 @@ func renderEntry(e transcriptEntry, md *glamour.TermRenderer, snaps []ChildSnaps
 		// slicing an injected escape.
 		return linkifyText(renderAvatarBlock("👤", colon, displayChips(e.text, e.attachments), colorUser, width))
 	case entryAssistantMessage:
-		return renderAssistantMarkdown(e.text, width, md)
+		return renderAssistantMarkdownCached(e.text, width, md)
 	case entryUserShell:
 		// Phase U S5 block: $-prompt, output body, status badge.
 		// Renderer is in internal/tui/chat/usershell_render.go.
