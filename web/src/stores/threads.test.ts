@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
-import { useThreadsStore } from './threads'
+import { useThreadsStore, backendLabel } from './threads'
 import { ApiError } from '@/api/client'
 import type { ThreadSummary } from '@/api/types'
 
@@ -343,5 +343,13 @@ describe('threads store · hide / show-hidden', () => {
     expect(t.id).toBe('cc:new')
     expect(s.threads[0].id).toBe('cc:new')
     expect(s.activeId).toBe('cc:new')
+  })
+})
+
+describe('backendLabel', () => {
+  it('labels a Claude Code thread as Claude Code, everything else as carlos', () => {
+    expect(backendLabel('cc')).toBe('Claude Code')
+    expect(backendLabel('carlos')).toBe('carlos')
+    expect(backendLabel('')).toBe('carlos')
   })
 })
