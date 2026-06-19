@@ -87,3 +87,26 @@ describe('Stage · thinking gating', () => {
     expect(w.find('.thinking').exists()).toBe(false)
   })
 })
+
+describe('Stage · assistant speaker label', () => {
+  function assistant(seq: number): WireEvent {
+    return { seq, thread: 't1', ts: '', kind: 'assistant_message', data: { text: 'hi' } }
+  }
+
+  it('labels a carlos thread reply as carlos', () => {
+    const w = mountStage({ events: [user(1), assistant(2)] })
+    expect(w.find('.msg-asst .who').text()).toBe('carlos')
+  })
+
+  it("labels a Claude Code thread's reply as Claude Code, not carlos", () => {
+    const w = mountStage({ thread: { backend: 'cc' }, events: [user(1), assistant(2)] })
+    expect(w.find('.msg-asst .who').text()).toBe('Claude Code')
+  })
+
+  it('labels the live stream + thinking dots with the backend too', () => {
+    const streaming = mountStage({ thread: { backend: 'cc' }, delta: 'tok' })
+    expect(streaming.find('.msg-asst .who').text()).toBe('Claude Code')
+    const thinking = mountStage({ thread: { backend: 'cc' } })
+    expect(thinking.find('.thinking .who').text()).toBe('Claude Code')
+  })
+})

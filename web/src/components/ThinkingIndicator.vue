@@ -15,6 +15,8 @@
 // static at their base style. The timer is plain text and keeps working.
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
+withDefaults(defineProps<{ who?: string }>(), { who: 'carlos' })
+
 // Seconds before the elapsed trailer appears (TUI: thinkingElapsedThreshold).
 const THRESHOLD_S = 3
 
@@ -40,8 +42,8 @@ const showElapsed = computed(() => elapsed.value >= THRESHOLD_S)
 </script>
 
 <template>
-  <div class="msg-asst thinking" role="status" aria-label="carlos is thinking">
-    <div class="who">carlos</div>
+  <div class="msg-asst thinking" role="status" :aria-label="`${who} is thinking`">
+    <div class="who">{{ who }}</div>
     <div class="body">
       <span class="dots" aria-hidden="true">
         <span class="dot"></span><span class="dot"></span><span class="dot"></span>

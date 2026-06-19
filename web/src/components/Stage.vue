@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import type { ThreadSummary, ApprovalDecision, WireEvent } from '@/api/types'
 import { isThinking } from '@/api/thinking'
-import { displayState } from '@/stores/threads'
+import { displayState, backendLabel } from '@/stores/threads'
 import type { PendingApproval } from '@/stores/approvals'
 import StageHeader from './StageHeader.vue'
 import GuardBanner from './GuardBanner.vue'
@@ -27,6 +27,7 @@ const emit = defineEmits<{
 }>()
 
 const isForeign = computed(() => displayState(props.thread) === 'foreign')
+const who = computed(() => backendLabel(props.thread.backend))
 const canSend = computed(() => props.thread.attached && !isForeign.value)
 
 const placeholder = computed(() => {
@@ -61,7 +62,7 @@ const thinking = computed(
       @delete="emit('delete', $event)"
     />
     <GuardBanner v-if="isForeign" :heartbeat-age="thread.heartbeat_age" />
-    <TranscriptFeed :events="events" :delta="delta" :thinking="thinking" />
+    <TranscriptFeed :events="events" :delta="delta" :thinking="thinking" :who="who" />
     <ApprovalBanner
       v-if="topApproval"
       :approval="topApproval"

@@ -11,7 +11,10 @@ import StreamBlock from './StreamBlock.vue'
 import ThinkingIndicator from './ThinkingIndicator.vue'
 import EmptyState from './EmptyState.vue'
 
-const props = defineProps<{ events: WireEvent[]; delta: string; thinking?: boolean }>()
+const props = withDefaults(
+  defineProps<{ events: WireEvent[]; delta: string; thinking?: boolean; who?: string }>(),
+  { who: 'carlos' },
+)
 
 const rows = computed(() => buildRows(props.events))
 const isEmpty = computed(() => rows.value.length === 0 && !props.delta)
@@ -61,6 +64,7 @@ watch(
             v-else-if="row.type === 'assistant'"
             :text="row.text"
             :error="row.error"
+            :who="who"
           />
           <ToolCard
             v-else-if="row.type === 'tool'"
@@ -79,8 +83,8 @@ watch(
             :stream="row.stream"
           />
         </template>
-        <StreamBlock v-if="delta" :text="delta" />
-        <ThinkingIndicator v-else-if="thinking" :key="`think-${lastSeq}`" />
+        <StreamBlock v-if="delta" :text="delta" :who="who" />
+        <ThinkingIndicator v-else-if="thinking" :key="`think-${lastSeq}`" :who="who" />
       </template>
     </div>
   </div>

@@ -16,6 +16,13 @@ export function displayState(t: ThreadSummary): DisplayState {
   return t.state
 }
 
+// backendLabel is the speaker name shown on an assistant turn. A reply in a
+// Claude Code thread is Claude Code's, not carlos's; everything else (the
+// native backend, or an empty/unknown one) reads as carlos.
+export function backendLabel(backend: string): string {
+  return backend === 'cc' ? 'Claude Code' : 'carlos'
+}
+
 // State word table (plan §2). Anything not listed renders its raw wire word.
 const STATE_WORDS: Partial<Record<DisplayState, string>> = {
   running: 'running',
