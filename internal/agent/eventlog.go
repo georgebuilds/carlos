@@ -91,7 +91,25 @@ const (
 	// ULIDs - a per-agent MRU would always start empty. Projections
 	// treat the type as passive (UpdatedAt bump only).
 	EvtCommandUsed EventType = "command_used"
+
+	// EvtBackgroundComplete is the wake signal for an agent-dispatched
+	// background shell job (bash run_in_background) reaching a terminal
+	// state. The runtime subscribes to the job manager and appends one of
+	// these to the chat agent's stream when an agent-owned job finishes;
+	// chatglue's loop consumes it on the same goroutine that handles user
+	// messages (so wake-turns serialize politely behind any in-flight
+	// turn) and runs a turn that reacts to the job's output. Payload shape:
+	// BackgroundCompletePayload. Projections (buildHistory, chat
+	// transcript) ignore the type - the job's output already reaches the
+	// model via the EvtUserShellEnd <user-shell> block.
+	EvtBackgroundComplete EventType = "background_complete"
 )
+
+// BackgroundCompletePayload is the EvtBackgroundComplete body: the id of
+// the finished background job so the wake handler can name it in the nudge.
+type BackgroundCompletePayload struct {
+	JobID string `json:"job_id"`
+}
 
 type Event struct {
 	Seq     int64

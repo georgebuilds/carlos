@@ -6,6 +6,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -726,6 +727,39 @@ func runDefault(cfg *config.Config, sessionID string) error {
 	// chatglue.Loop rebuild, so enabling once here holds for the session.
 	bgShell := usershell.NewBackgroundDispatcher(shellMgr)
 	tools.EnableBackgroundShell(parentReg, bgShell)
+	// Wake-on-completion: subscribe to the job engine once for the session
+	// and, when an agent-dispatched background job reaches a terminal state,
+	// append a wake event to the chat agent's stream. chatglue's loop
+	// consumes it on the same goroutine that handles user messages, so the
+	// model reacts to the finished job without the user having to prompt
+	// again - serialized politely behind any in-flight turn. Only
+	// agent-owned jobs wake the model; the user's own `!cmd &` jobs stay
+	// passive (their output still folds into the next turn via buildHistory).
+	wakeAgentID := defaultAgentID
+	go func() {
+		updates, unsub := shellMgr.Subscribe()
+		defer unsub()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case u, ok := <-updates:
+				if !ok {
+					return
+				}
+				if !u.State.IsTerminal() || !bgShell.IsAgentJob(u.JobID) {
+					continue
+				}
+				payload, _ := json.Marshal(agent.BackgroundCompletePayload{JobID: u.JobID})
+				_, _ = log.Append(ctx, agent.Event{
+					AgentID: wakeAgentID,
+					TS:      time.Now().UTC(),
+					Type:    agent.EvtBackgroundComplete,
+					Payload: payload,
+				})
+			}
+		}
+	}()
 	// Phase U S7: separate ~/.carlos/shell-history file walked via
 	// ↑/↓ in shell mode. Created lazily on first Add; reads on
 	// startup so previous-session entries are available.
