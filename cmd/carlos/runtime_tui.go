@@ -6,6 +6,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -716,6 +717,52 @@ func runDefault(cfg *config.Config, sessionID string) error {
 	}
 	shellMgr := usershell.New(shellOpts)
 	defer shellMgr.Close()
+	// Background bash: let the model dispatch detached jobs (bash
+	// run_in_background) that keep running while the chat continues, then
+	// poll with BashOutput / stop with KillShell. The dispatcher reuses the
+	// same job engine as the user's `!cmd` and tracks agent-owned ids so a
+	// later wake-on-completion path can react only to the model's own jobs.
+	// Wired onto parentReg (the interactive chat agent); sub-agents keep
+	// synchronous bash. parentReg is a shared pointer reused across every
+	// chatglue.Loop rebuild, so enabling once here holds for the session.
+	bgShell := usershell.NewBackgroundDispatcher(shellMgr)
+	tools.EnableBackgroundShell(parentReg, bgShell)
+	// Wake-on-completion: subscribe to the job engine's terminal-completion
+	// feed once for the session. When an agent-dispatched background job
+	// finishes, append a wake event to the stream of the agent that
+	// dispatched it (OwnerOf), so the wake follows a /agents switch instead
+	// of always hitting the boot-time default. chatglue's loop consumes the
+	// event on the same goroutine that handles user messages, so the model
+	// reacts without the user prompting again - serialized politely behind
+	// any in-flight turn. The user's own `!cmd &` jobs never flow through
+	// the dispatcher, so they stay passive (output still folds into the next
+	// turn via buildHistory). The dedicated completion feed (not Subscribe)
+	// means a chatty job's output chunks can't crowd out the wake.
+	go func() {
+		completions, unsub := shellMgr.SubscribeCompletions()
+		defer unsub()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case snap, ok := <-completions:
+				if !ok {
+					return
+				}
+				owner, isAgent := bgShell.OwnerOf(snap.ID)
+				if !isAgent || owner == "" {
+					continue
+				}
+				payload, _ := json.Marshal(agent.BackgroundCompletePayload{JobID: snap.ID})
+				_, _ = log.Append(ctx, agent.Event{
+					AgentID: owner,
+					TS:      time.Now().UTC(),
+					Type:    agent.EvtBackgroundComplete,
+					Payload: payload,
+				})
+			}
+		}
+	}()
 	// Phase U S7: separate ~/.carlos/shell-history file walked via
 	// ↑/↓ in shell mode. Created lazily on first Add; reads on
 	// startup so previous-session entries are available.

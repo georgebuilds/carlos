@@ -125,10 +125,19 @@ func (l *Loop) Start(parentCtx context.Context) error {
 				if !ok {
 					return
 				}
-				if ev.Type != agent.EvtUserMessage {
-					continue
+				switch ev.Type {
+				case agent.EvtUserMessage:
+					l.handleUserMessage(ctx, ev)
+				case agent.EvtBackgroundComplete:
+					// Wake-on-completion: a background job the model
+					// dispatched finished. Handled on THIS goroutine, so it
+					// serializes behind any in-flight user turn rather than
+					// racing it.
+					var p agent.BackgroundCompletePayload
+					if err := json.Unmarshal(ev.Payload, &p); err == nil && p.JobID != "" {
+						l.handleBackgroundCompletion(ctx, p.JobID)
+					}
 				}
-				l.handleUserMessage(ctx, ev)
 			}
 		}
 	}()
@@ -181,7 +190,45 @@ func (l *Loop) handleUserMessage(ctx context.Context, _ agent.Event) {
 		l.surfaceError(ctx, fmt.Errorf("load history: %w", err))
 		return
 	}
+	l.runAgentTurn(ctx, history)
+}
 
+// handleBackgroundCompletion runs a wake-turn when a background shell job
+// the model dispatched (bash run_in_background) finishes. The job's output
+// is already in history as a <user-shell exit=N> block (buildHistory merges
+// EvtUserShellEnd), so this only appends a short, NON-persisted nudge naming
+// the job and asking the model to react now rather than waiting for the next
+// user message. The assistant's reply persists like any turn, so the user
+// sees carlos pick the thread back up on its own.
+//
+// Runs on the same goroutine as handleUserMessage (the Start loop), so a
+// wake-turn never overlaps an in-flight user turn.
+func (l *Loop) handleBackgroundCompletion(ctx context.Context, jobID string) {
+	ctx = agent.WithSpawnParent(ctx, l.agentID)
+	l.ctx = ctx
+	defer func() { l.ctx = nil }()
+
+	history, err := l.buildHistory(ctx)
+	if err != nil {
+		l.surfaceError(ctx, fmt.Errorf("load history: %w", err))
+		return
+	}
+	history = append(history, providers.Message{
+		Role: "user",
+		Content: []providers.Block{{
+			Kind: "text",
+			Text: fmt.Sprintf("[background] The shell job you started (id %s) has finished; its output is in the <user-shell> block above. Continue the task or report the result. If nothing more is needed, reply briefly.", jobID),
+		}},
+	})
+	l.runAgentTurn(ctx, history)
+}
+
+// runAgentTurn is the shared turn body for a user message and a
+// background-completion wake: stream the assistant reply into the live
+// TextSource, persist the sealed turn, and reset the source. The caller has
+// already set l.ctx (for the OnToolCall/OnToolResult hooks) and assembled
+// history (including any nudge).
+func (l *Loop) runAgentTurn(ctx context.Context, history []providers.Message) {
 	writer := &textSourceWriter{source: l.source, agentID: l.agentID}
 	// Capture-at-issue: if the configured approver supports per-turn
 	// frame snapshots, freeze the cross-frame state at the start of

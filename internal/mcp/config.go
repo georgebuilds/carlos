@@ -1,13 +1,12 @@
 // Package mcp wires Model Context Protocol servers into carlos's tool
-// registry. v1 supports stdio-transport tool servers only: at boot, the
-// configured servers are spawned, their tools are discovered, each one is
-// wrapped in a tools.Tool adapter, and the adapter is registered under a
-// "<server>__<tool>" name so the provider sees them alongside the
-// built-in tools.
+// registry. At boot the configured servers are connected (stdio servers are
+// spawned as subprocesses; http/sse servers are dialed over HTTP), their
+// tools are discovered, each one is wrapped in a tools.Tool adapter, and the
+// adapter is registered under a "<server>__<tool>" name so the provider sees
+// them alongside the built-in tools.
 //
-// Out of scope for v1 (tracked as TODOs):
+// Out of scope (tracked as TODOs):
 //   - Resources, prompts, sampling. Tool calls only.
-//   - Streamable HTTP transport. CommandTransport (stdio) only.
 //   - Per-tool approval categories. MCP tools inherit the standard
 //     LayeredApprover path: anything not in the built-in read-only
 //     allowlist falls through to the user-prompt approver.
@@ -16,8 +15,19 @@
 package mcp
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"strings"
+)
+
+// Transport identifiers for a ServerConfig. An empty Transport normalizes
+// to stdio so configs written before transport support round-trip
+// unchanged and the common "spawn a subprocess" case stays the default.
+const (
+	TransportStdio = "stdio"
+	TransportHTTP  = "http"
+	TransportSSE   = "sse"
 )
 
 // Config is the top-level on-disk shape of the `mcp:` block in
@@ -31,28 +41,71 @@ type Config struct {
 	Servers []ServerConfig `json:"servers,omitempty"`
 }
 
-// ServerConfig captures a single MCP server's spawn parameters.
+// ServerConfig captures a single MCP server's connection parameters.
 //
 // Name is a local nickname used for tool prefixing (e.g. "github" yields
-// "github__list_issues"). Command is the executable; if it's just a bare
-// binary name (no slash) the OS PATH is searched at spawn time. Args are
-// the literal argv after Command.
+// "github__list_issues").
 //
-// Env is merged onto os.Environ() with `${VAR}` expansion via os.ExpandEnv,
-// so a config can pin a secret via `${GITHUB_TOKEN}` without inlining the
-// value into the YAML. Empty values still override (the same semantics as
-// `KEY=` in a unix env list).
+// Transport selects how carlos reaches the server: "stdio" (default; spawn
+// a subprocess and talk over its stdio), "http" (Streamable HTTP), or "sse"
+// (HTTP server-sent events). An empty Transport means stdio.
+//
+// Stdio fields: Command is the executable; if it's just a bare binary name
+// (no slash) the OS PATH is searched at spawn time. Args are the literal
+// argv after Command. Env is merged onto os.Environ() with `${VAR}`
+// expansion via os.ExpandEnv, so a config can pin a secret via
+// `${GITHUB_TOKEN}` without inlining the value into the YAML. Empty values
+// still override (the same semantics as `KEY=` in a unix env list).
+//
+// HTTP/SSE fields: URL is the server endpoint. Headers are sent on every
+// request (e.g. {"Authorization": "Bearer ${TOKEN}"}); values get the same
+// `${VAR}` expansion as Env so secrets stay out of the YAML.
 //
 // Frames gates the server to a subset of frames. Empty (the common case)
 // means "available in every frame" - the same convention skills use.
 type ServerConfig struct {
-	Name    string            `json:"name"`
-	Command string            `json:"command"`
-	Args    []string          `json:"args,omitempty"`
-	Env     map[string]string `json:"env,omitempty"`
-	Frames  []string          `json:"frames,omitempty"`
-	// (Future: Transport "stdio"|"http"; URL string; etc. Keep stdio
-	// implicit for v1 so the surface stays tight.)
+	Name      string            `json:"name"`
+	Transport string            `json:"transport,omitempty"`
+	Command   string            `json:"command,omitempty"`
+	Args      []string          `json:"args,omitempty"`
+	Env       map[string]string `json:"env,omitempty"`
+	URL       string            `json:"url,omitempty"`
+	Headers   map[string]string `json:"headers,omitempty"`
+	Frames    []string          `json:"frames,omitempty"`
+}
+
+// TransportKind returns the normalized transport for the server: an empty
+// or whitespace-only Transport field means stdio, and the value is
+// lower-cased so "HTTP" and "http" are the same transport.
+func (s ServerConfig) TransportKind() string {
+	t := strings.ToLower(strings.TrimSpace(s.Transport))
+	if t == "" {
+		return TransportStdio
+	}
+	return t
+}
+
+// Validate reports whether the server config is coherent for its transport:
+// a name is always required, stdio needs a Command, and http/sse need a URL.
+// An unrecognized transport is rejected so a typo'd `transport:` surfaces at
+// load/import time rather than as a confusing connect failure later.
+func (s ServerConfig) Validate() error {
+	if strings.TrimSpace(s.Name) == "" {
+		return errors.New("mcp: server name is empty")
+	}
+	switch s.TransportKind() {
+	case TransportStdio:
+		if strings.TrimSpace(s.Command) == "" {
+			return fmt.Errorf("mcp: server %q (stdio) has empty command", s.Name)
+		}
+	case TransportHTTP, TransportSSE:
+		if strings.TrimSpace(s.URL) == "" {
+			return fmt.Errorf("mcp: server %q (%s) has empty url", s.Name, s.TransportKind())
+		}
+	default:
+		return fmt.Errorf("mcp: server %q has unknown transport %q", s.Name, s.Transport)
+	}
+	return nil
 }
 
 // ForFrame returns the subset of servers available in the given frame.
@@ -77,6 +130,22 @@ func (c Config) ForFrame(frame string) []ServerConfig {
 		}
 	}
 	return out
+}
+
+// AddServer appends s to the config unless a server with the same Name is
+// already present, in which case the existing entry is kept and the call is
+// a no-op. The boolean reports whether s was added (true) or skipped as a
+// duplicate (false). Dedup-by-name keeps re-importing idempotent and avoids
+// the registry collision two same-named servers would cause (their tools
+// share the "<name>__" prefix, so the second would clobber the first).
+func (c *Config) AddServer(s ServerConfig) bool {
+	for _, existing := range c.Servers {
+		if existing.Name == s.Name {
+			return false
+		}
+	}
+	c.Servers = append(c.Servers, s)
+	return true
 }
 
 // expandEnv returns a KEY=VAL slice suitable for exec.Cmd.Env: the

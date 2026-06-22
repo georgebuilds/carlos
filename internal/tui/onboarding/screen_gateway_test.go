@@ -336,12 +336,14 @@ func TestIsAllDigits(t *testing.T) {
 
 func TestFlow_GatewayAutoSkipsWhenDaemonOff(t *testing.T) {
 	f := New()
-	// Pretend we reached the Daemon screen and chose "no daemon".
+	// Pretend we reached the Daemon screen and chose "no daemon". Advancing
+	// skips the daemon-owned Gateway screen and lands on the MCP-import
+	// screen that now sits between Gateway and Done.
 	f.current = ScreenDaemon
 	f.cfg.Daemon.Enabled = false
 	f.advance()
-	if f.current != ScreenDone {
-		t.Errorf("expected auto-skip to ScreenDone, got %v", f.current)
+	if f.current != ScreenMCPImport {
+		t.Errorf("expected auto-skip past Gateway to ScreenMCPImport, got %v", f.current)
 	}
 }
 
@@ -357,9 +359,12 @@ func TestFlow_GatewayShownWhenDaemonOn(t *testing.T) {
 
 func TestFlow_BackNavAlsoSkipsGateway(t *testing.T) {
 	f := New()
-	f.current = ScreenDone
+	// MCPImport is the screen immediately after Gateway, so it's where a
+	// back-nav decrements into (and past) the skipped Gateway when the
+	// daemon is off.
+	f.current = ScreenMCPImport
 	f.cfg.Daemon.Enabled = false
-	// Simulate shift-tab from Done.
+	// Simulate shift-tab from MCPImport.
 	if f.current > ScreenName {
 		f.current--
 		if f.current == ScreenGateway && !f.cfg.Daemon.Enabled {
@@ -367,6 +372,6 @@ func TestFlow_BackNavAlsoSkipsGateway(t *testing.T) {
 		}
 	}
 	if f.current != ScreenDaemon {
-		t.Errorf("back-nav from Done with daemon off should land on Daemon, got %v", f.current)
+		t.Errorf("back-nav from MCPImport with daemon off should land on Daemon, got %v", f.current)
 	}
 }

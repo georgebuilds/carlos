@@ -58,6 +58,14 @@ type BashTool struct {
 	// (that's how a terminal works), which matches the bash tool's
 	// existing "combined output" semantics anyway.
 	PTY bool
+
+	// Background, when non-nil, enables run_in_background: the model can
+	// dispatch a detached job that keeps running while the conversation
+	// continues, then poll it with BashOutput / stop it with KillShell.
+	// nil (sub-agents, headless without a job manager) degrades a
+	// run_in_background request to a synchronous run with a note, so the
+	// model still gets a result rather than a hard failure.
+	Background BackgroundShell
 }
 
 // NewBashTool constructs a BashTool with sane defaults.
@@ -80,6 +88,10 @@ func (*BashTool) Schema() []byte {
 			"cmd": {
 				"type": "string",
 				"description": "The shell command to run, as a single string. e.g. \"ls -la /tmp\" or \"grep -r TODO src/\"."
+			},
+			"run_in_background": {
+				"type": "boolean",
+				"description": "Run the command detached and return immediately with a job id instead of blocking. Use for long-running commands (test suites, builds, dev servers) so the conversation can continue; poll output with BashOutput and stop it with KillShell. When the job finishes you'll be notified to react."
 			}
 		},
 		"required": ["cmd"]
@@ -87,7 +99,8 @@ func (*BashTool) Schema() []byte {
 }
 
 type bashInput struct {
-	Cmd string `json:"cmd"`
+	Cmd             string `json:"cmd"`
+	RunInBackground bool   `json:"run_in_background"`
 }
 
 const defaultMaxOutputBytes = 8 * 1024
@@ -104,6 +117,28 @@ func (t *BashTool) Execute(ctx context.Context, input []byte) ([]byte, error) {
 	}
 	if in.Cmd == "" {
 		return nil, errors.New("bash: empty cmd")
+	}
+
+	// Background dispatch: hand the command to the detached job runner and
+	// return its id immediately. The 30s timeout and output cap below only
+	// apply to the synchronous path - a backgrounded job runs until it
+	// exits or is killed, and its output is read via BashOutput. When no
+	// runner is wired (sub-agents, headless), fall through to a synchronous
+	// run with a note so the model still gets a usable result.
+	if in.RunInBackground {
+		if t.Background != nil {
+			cwd := t.WorkingDir
+			if cwd == "" {
+				cwd = t.BaseDir
+			}
+			id, err := t.Background.StartBackground(ctx, in.Cmd, cwd)
+			if err != nil {
+				return nil, fmt.Errorf("bash: start background: %w", err)
+			}
+			return []byte(fmt.Sprintf("Started background job %s. Poll it with BashOutput(bash_id=%q); stop it with KillShell(shell_id=%q). You'll be notified when it finishes.", id, id, id)), nil
+		}
+		// No runner wired here (sub-agents, headless without a job manager):
+		// fall through to a synchronous run so the model still gets a result.
 	}
 
 	timeout := t.Timeout

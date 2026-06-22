@@ -446,7 +446,7 @@ func parseOnboardOnly(args []string) (string, error) {
 		switch args[0] {
 		case "--only", "-only":
 			if len(args) < 2 {
-				return "", errors.New("--only requires a screen name (name|providers|models|skills|vault|daemon|gateway)")
+				return "", errors.New("--only requires a screen name (name|providers|models|skills|vault|daemon|gateway|mcp)")
 			}
 			return args[1], nil
 		default:
@@ -475,6 +475,8 @@ func onboardScreenByName(name string) (onboarding.Screen, bool) {
 		return onboarding.ScreenDaemon, true
 	case "gateway":
 		return onboarding.ScreenGateway, true
+	case "mcp", "mcp-import":
+		return onboarding.ScreenMCPImport, true
 	}
 	return 0, false
 }
@@ -540,7 +542,7 @@ func buildGatewayAddFlow(cfg *config.Config) *onboarding.Flow {
 func buildOnboardOnlyFlow(only, path string) (*onboarding.Flow, error) {
 	screen, ok := onboardScreenByName(only)
 	if !ok {
-		return nil, fmt.Errorf("unknown screen %q (valid: name, providers, models, skills, vault, daemon, gateway)", only)
+		return nil, fmt.Errorf("unknown screen %q (valid: name, providers, models, skills, vault, daemon, gateway, mcp)", only)
 	}
 	existing, err := config.Load(path)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {

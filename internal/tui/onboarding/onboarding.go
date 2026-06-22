@@ -31,10 +31,11 @@ const (
 	ScreenVault
 	ScreenDaemon
 	ScreenGateway
+	ScreenMCPImport
 	ScreenDone
 )
 
-const totalScreens = 8
+const totalScreens = 9
 
 // screenTitle is the heading shown above each right-pane form.
 func screenTitle(s Screen) string {
@@ -53,6 +54,8 @@ func screenTitle(s Screen) string {
 		return "Background daemon"
 	case ScreenGateway:
 		return "Messaging gateway"
+	case ScreenMCPImport:
+		return "Import MCP servers"
 	case ScreenDone:
 		return "Ready"
 	}
@@ -191,14 +194,15 @@ type Flow struct {
 	width  int
 	height int
 
-	name     nameModel
-	provider providerModel
-	model    modelModel
-	skills   skillsModel
-	vault    vaultModel
-	daemon   daemonModel
-	gateway  gatewayModel
-	done     doneModel
+	name      nameModel
+	provider  providerModel
+	model     modelModel
+	skills    skillsModel
+	vault     vaultModel
+	daemon    daemonModel
+	gateway   gatewayModel
+	mcpImport mcpImportModel
+	done      doneModel
 
 	// portrait is rendered once (fixed-size left rail) and cached.
 	portrait string
@@ -288,6 +292,7 @@ func NewWithOptions(opts Options) *Flow {
 		vault:     newVaultModel(),
 		daemon:    daemonChild,
 		gateway:   gatewayChild,
+		mcpImport: newMCPImportModel(),
 		done:      newDoneModel(),
 		portrait:  rememberRail(portraitCols, portraitRows),
 	}
@@ -378,6 +383,8 @@ func (f *Flow) Init() tea.Cmd {
 		return f.daemon.Init()
 	case ScreenGateway:
 		return f.gateway.Init()
+	case ScreenMCPImport:
+		return f.mcpImport.Init()
 	case ScreenDone:
 		return f.done.Init()
 	}
@@ -471,6 +478,10 @@ func (f *Flow) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ScreenGateway:
 		updated, cmd := f.gateway.Update(msg)
 		f.gateway = updated.(gatewayModel)
+		return f, cmd
+	case ScreenMCPImport:
+		updated, cmd := f.mcpImport.Update(msg)
+		f.mcpImport = updated.(mcpImportModel)
 		return f, cmd
 	case ScreenDone:
 		updated, cmd := f.done.Update(msg)
@@ -603,6 +614,8 @@ func (f *Flow) renderRightPane(w, _ int) string {
 		body = f.daemon.View()
 	case ScreenGateway:
 		body = f.gateway.View()
+	case ScreenMCPImport:
+		body = f.mcpImport.View()
 	case ScreenDone:
 		body = f.done.renderName(f.cfg.UserName, config.DefaultPath())
 	}
@@ -668,9 +681,9 @@ func schedulePulseTick() tea.Cmd {
 // Conditional skip: the gateway is daemon-owned (see
 // internal/daemon/gateway.go), so when the user declined the daemon
 // the gateway screen has nothing to configure. We jump past it
-// directly to Done. The step-counter still shows totalScreens=8 so
-// users notice the dot pattern; the skip is a UX nicety, not a
-// statement about the flow's structural length.
+// directly to the MCP-import screen. The step-counter still shows
+// totalScreens=9 so users notice the dot pattern; the skip is a UX
+// nicety, not a statement about the flow's structural length.
 func (f *Flow) advance() {
 	if f.current >= ScreenDone {
 		return
@@ -726,6 +739,13 @@ func (f *Flow) applyChildPayload(p any) {
 		if v.telegram.Enabled {
 			f.cfg.Gateway.Telegram = v.telegram
 		}
+	case mcpImportResult:
+		// Import the chosen servers one at a time. AddServer dedups by
+		// name, so re-running onboarding against a config that already has
+		// a server keeps the existing entry rather than duplicating it.
+		for _, s := range v.servers {
+			f.cfg.MCP.AddServer(s)
+		}
 	}
 }
 
@@ -738,6 +758,11 @@ func footerBar(s Screen) string {
 			styleKey.Render("ctrl-c") + styleHint.Render(" cancel")
 	case ScreenDone:
 		return styleKey.Render("enter") + styleHint.Render(" finish   ") +
+			styleKey.Render("ctrl-c") + styleHint.Render(" cancel")
+	case ScreenMCPImport:
+		return styleKey.Render("space") + styleHint.Render(" select   ") +
+			styleKey.Render("enter") + styleHint.Render(" continue   ") +
+			styleKey.Render("shift-tab") + styleHint.Render(" back   ") +
 			styleKey.Render("ctrl-c") + styleHint.Render(" cancel")
 	default:
 		return styleKey.Render("enter") + styleHint.Render(" continue   ") +

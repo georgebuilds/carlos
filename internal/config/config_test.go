@@ -557,6 +557,62 @@ func TestMCPRoundtrip(t *testing.T) {
 	}
 }
 
+// TestMCPHTTPRoundtrip pins the http/sse transport fields (transport, url,
+// headers) through a Save+Load cycle, and confirms a stdio server in the
+// same block still omits url/headers so mixed configs stay tidy.
+func TestMCPHTTPRoundtrip(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	want := &Config{
+		UserName: "Boss",
+		MCP: mcp.Config{
+			Servers: []mcp.ServerConfig{
+				{
+					Name:      "home-tools",
+					Transport: "http",
+					URL:       "http://192.168.0.201:5678/mcp/abc",
+					Headers:   map[string]string{"Authorization": "Bearer ${HOME_TOOLS_TOKEN}"},
+					Frames:    []string{"personal"},
+				},
+				{
+					Name:    "local-fs",
+					Command: "/usr/local/bin/mcp-fs",
+				},
+			},
+		},
+	}
+	if err := Save(path, want); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.MCP.Servers) != 2 {
+		t.Fatalf("Servers count: want 2 got %d", len(got.MCP.Servers))
+	}
+	ht := got.MCP.Servers[0]
+	if ht.Transport != "http" || ht.URL != "http://192.168.0.201:5678/mcp/abc" {
+		t.Errorf("http server fields: %+v", ht)
+	}
+	if ht.Headers["Authorization"] != "Bearer ${HOME_TOOLS_TOKEN}" {
+		t.Errorf("http headers not preserved (secret must stay as ${VAR}): %+v", ht.Headers)
+	}
+	if ht.Command != "" {
+		t.Errorf("http server should have no command: %q", ht.Command)
+	}
+	b, _ := os.ReadFile(path)
+	for _, key := range []string{"transport:", "url:", "headers:"} {
+		if !strings.Contains(string(b), key) {
+			t.Errorf("yaml missing key %q\n%s", key, string(b))
+		}
+	}
+	// The stdio server must not leak empty url/headers keys into the block.
+	if strings.Contains(string(b), "url: \"\"") {
+		t.Errorf("stdio server emitted empty url:\n%s", string(b))
+	}
+}
+
 // TestMCPOmittedWhenEmpty mirrors the other "omitted when empty" tests:
 // a zero MCP value must not emit a stray "mcp: {}" line.
 func TestMCPOmittedWhenEmpty(t *testing.T) {

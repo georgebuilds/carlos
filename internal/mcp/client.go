@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"os"
 	"os/exec"
 	"strings"
 
@@ -62,20 +64,31 @@ type Server struct {
 	stderr  *boundedBuffer // captured tail of the subprocess's stderr; nil for tests that inject Session directly
 }
 
-// Connect spawns cfg.Command with cfg.Args, attaches a stdio transport,
-// performs the MCP initialize handshake, and returns the live Server.
-// Caller owns the returned *Server and MUST Close it on shutdown.
+// Connect dials the MCP server described by cfg, performs the initialize
+// handshake, and returns the live Server. The transport is chosen by
+// cfg.TransportKind: stdio spawns cfg.Command as a subprocess; http and sse
+// dial cfg.URL over HTTP. Caller owns the returned *Server and MUST Close
+// it on shutdown.
 //
-// Errors here are typically "command not found", "exec failed", or
-// "initialize timed out" - the caller's policy (registry.ConnectAll) is
-// to log + skip the server rather than abort boot.
+// Errors here are typically "command not found", "exec failed", "connection
+// refused", or "initialize timed out" - the caller's policy
+// (registry.ConnectAll) is to log + skip the server rather than abort boot.
 func Connect(ctx context.Context, cfg ServerConfig) (*Server, error) {
-	if strings.TrimSpace(cfg.Name) == "" {
-		return nil, errors.New("mcp: server name is empty")
+	if err := cfg.Validate(); err != nil {
+		return nil, err
 	}
-	if strings.TrimSpace(cfg.Command) == "" {
-		return nil, fmt.Errorf("mcp: server %q has empty command", cfg.Name)
+	switch cfg.TransportKind() {
+	case TransportHTTP, TransportSSE:
+		return connectHTTP(ctx, cfg)
+	default:
+		return connectStdio(ctx, cfg)
 	}
+}
+
+// connectStdio spawns cfg.Command with cfg.Args and talks MCP over the
+// subprocess's stdio. The returned Server owns the subprocess and the
+// captured-stderr buffer.
+func connectStdio(ctx context.Context, cfg ServerConfig) (*Server, error) {
 	cmd := exec.CommandContext(ctx, cfg.Command, cfg.Args...)
 	cmd.Env = expandEnv(cfg.Env)
 	// Capture the server's stderr into a bounded in-memory buffer rather
@@ -142,6 +155,76 @@ func killAndReap(cmd *exec.Cmd) {
 	}
 	_ = cmd.Process.Kill()
 	_ = cmd.Wait()
+}
+
+// connectHTTP dials cfg.URL using the Streamable HTTP transport (or SSE
+// when cfg.TransportKind is "sse") and performs the MCP handshake. Unlike
+// the stdio path there's no subprocess, so the returned Server has nil cmd
+// and stderr - Close still works because it only touches the session, and
+// StderrTail returns "" for a remote server (there's no local stderr to
+// tail). Custom headers and `${VAR}` expansion ride a small RoundTripper so
+// secrets stay in the environment rather than the YAML.
+func connectHTTP(ctx context.Context, cfg ServerConfig) (*Server, error) {
+	endpoint := strings.TrimSpace(os.ExpandEnv(cfg.URL))
+	if endpoint == "" {
+		// Validate already guards this, but ExpandEnv can empty a URL that
+		// was nothing but an unset ${VAR}; catch it before the SDK does.
+		return nil, fmt.Errorf("mcp: server %q (%s) has empty url after env expansion", cfg.Name, cfg.TransportKind())
+	}
+	httpClient := httpClientWithHeaders(cfg.Headers)
+
+	var transport sdk.Transport
+	if cfg.TransportKind() == TransportSSE {
+		transport = &sdk.SSEClientTransport{Endpoint: endpoint, HTTPClient: httpClient}
+	} else {
+		transport = &sdk.StreamableClientTransport{Endpoint: endpoint, HTTPClient: httpClient}
+	}
+
+	client := sdk.NewClient(&sdk.Implementation{
+		Name:    carlosClientName,
+		Version: carlosClientVersion,
+	}, nil)
+	session, err := client.Connect(ctx, transport, nil)
+	if err != nil {
+		return nil, fmt.Errorf("mcp: connect %q: %w", cfg.Name, err)
+	}
+	return &Server{Name: cfg.Name, Session: session}, nil
+}
+
+// httpClientWithHeaders builds an *http.Client that injects headers on every
+// request, expanding `${VAR}` references against the process environment so
+// a config can carry `Authorization: Bearer ${TOKEN}` without inlining the
+// secret. Returns nil when there are no headers so the SDK falls back to
+// http.DefaultClient.
+func httpClientWithHeaders(headers map[string]string) *http.Client {
+	if len(headers) == 0 {
+		return nil
+	}
+	expanded := make(map[string]string, len(headers))
+	for k, v := range headers {
+		expanded[k] = os.ExpandEnv(v)
+	}
+	return &http.Client{Transport: &headerRoundTripper{headers: expanded, base: http.DefaultTransport}}
+}
+
+// headerRoundTripper sets a fixed set of headers on every outbound request
+// before delegating to base. It clones the request so a retry (the SDK
+// reconnects on transient failures) never mutates a shared *http.Request.
+type headerRoundTripper struct {
+	headers map[string]string
+	base    http.RoundTripper
+}
+
+func (h *headerRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	r := req.Clone(req.Context())
+	for k, v := range h.headers {
+		r.Header.Set(k, v)
+	}
+	base := h.base
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	return base.RoundTrip(r)
 }
 
 // ListTools fetches the server's tool catalog and translates each entry

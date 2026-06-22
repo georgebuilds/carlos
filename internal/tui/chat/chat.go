@@ -320,6 +320,13 @@ type Model struct {
 	// quitting is set on ctrl-c; View can short-circuit.
 	quitting bool
 
+	// away is the session's presence state, toggled by /away. When on, the
+	// daemon's gateway watcher delivers background-job completions to
+	// ntfy/Telegram (the "ping me when I'm not at the terminal" mode). The
+	// durable signal is the EvtPresence row /away writes; this mirror just
+	// drives the footer indicator without a log re-read each render.
+	away bool
+
 	// openManage is the slice-7g cross-screen signal. /agents sets
 	// this + quits; the caller (cmd/carlos) reads it after Run
 	// returns and relaunches as the manage TUI. Closes the loop on
@@ -2139,6 +2146,49 @@ func resolveShellJobID(mgr *usershell.Manager, arg string) string {
 // "the conversation persists in the event log"). Everything else echoes
 // a status line so the user can see the verb was recognized. Slice 1f
 // (or whichever later slice owns each verb) wires the rest.
+// awaySlash toggles presence mode. "/away" with no arg toggles; "/away on"
+// and "/away off" set it explicitly. It mirrors the new state onto m.away
+// (the footer indicator) and writes an EvtPresence row to the well-known
+// PresenceAgentID stream so the daemon's gateway watcher can read it across
+// the process boundary. With no daemon/gateway running the row is harmless -
+// it just records intent.
+func (m *Model) awaySlash(args string) tea.Cmd {
+	want := !m.away
+	switch strings.ToLower(strings.TrimSpace(args)) {
+	case "on":
+		want = true
+	case "off":
+		want = false
+	case "":
+		// no arg: toggle (want already set above)
+	default:
+		return func() tea.Msg {
+			return statusMsg{text: "usage: /away [on|off]", kind: statusWarn}
+		}
+	}
+	m.away = want
+	log, ok := m.log.(*agent.SQLiteEventLog)
+	return func() tea.Msg {
+		if ok {
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			payload, _ := json.Marshal(agent.PresencePayload{Away: want})
+			if _, err := log.Append(ctx, agent.Event{
+				AgentID: agent.PresenceAgentID,
+				TS:      time.Now().UTC(),
+				Type:    agent.EvtPresence,
+				Payload: payload,
+			}); err != nil {
+				return statusMsg{text: "away: append failed: " + err.Error(), kind: statusWarn}
+			}
+		}
+		if want {
+			return statusMsg{text: "away mode on: background job completions will ping your gateway", kind: statusInfo}
+		}
+		return statusMsg{text: "away mode off: back at the terminal", kind: statusInfo}
+	}
+}
+
 func (m *Model) dispatchSlash(c slash.Command) tea.Cmd {
 	// Slice 9k: every recognized verb lands one EvtCommandUsed row
 	// here - the single choke point shared by typed input and the
@@ -2187,6 +2237,8 @@ func (m *Model) dispatchSlash(c slash.Command) tea.Cmd {
 			}
 			return statusMsg{text: "conversation cleared (history reset for model too)", kind: statusInfo}
 		}
+	case "away":
+		return m.awaySlash(c.Args)
 	case "help":
 		// Slice 9d: full overlay panel instead of the one-line echo.
 		// Any keystroke (including /help again) dismisses it.

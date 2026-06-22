@@ -228,8 +228,8 @@ func TestFlow_RenderLeftRailIncludesStepCounter(t *testing.T) {
 	f := New()
 	f.portrait = "[face]"
 	out := stripStyle(f.renderLeftRail(leftRailWidth, 20))
-	if !strings.Contains(out, "step 1 of 8") {
-		t.Errorf("rail should show 'step 1 of 8' on fresh flow; got:\n%s", out)
+	if !strings.Contains(out, "step 1 of 9") {
+		t.Errorf("rail should show 'step 1 of 9' on fresh flow; got:\n%s", out)
 	}
 }
 
@@ -238,7 +238,7 @@ func TestFlow_RenderLeftRailIncludesStepCounter(t *testing.T) {
 func TestFlow_RenderRightPaneEachScreen(t *testing.T) {
 	for _, s := range []Screen{
 		ScreenName, ScreenProvider, ScreenModel, ScreenSkills,
-		ScreenVault, ScreenDaemon, ScreenGateway, ScreenDone,
+		ScreenVault, ScreenDaemon, ScreenGateway, ScreenMCPImport, ScreenDone,
 	} {
 		t.Run(screenTitle(s), func(t *testing.T) {
 			f := NewWithOptions(Options{
@@ -300,29 +300,30 @@ func TestFlow_ShiftTabAtNameIsNoop(t *testing.T) {
 }
 
 // TestFlow_ShiftTabSkipsGatewayWhenDaemonDisabled mirrors the
-// advance()-side auto-skip.
+// advance()-side auto-skip. MCPImport is the screen adjacent to Gateway on
+// the Done side, so backing out of it is where the skip happens.
 func TestFlow_ShiftTabSkipsGatewayWhenDaemonDisabled(t *testing.T) {
 	f := NewWithOptions(Options{
-		StartingScreen: ScreenDone,
+		StartingScreen: ScreenMCPImport,
 		ExistingConfig: &config.Config{
 			UserName: "Tester",
 			Daemon:   config.DaemonConfig{Enabled: false},
 		},
 	})
-	// shift-tab from Done with daemon disabled lands on Daemon (one
-	// extra step back past Gateway).
+	// shift-tab from MCPImport with daemon disabled lands on Daemon (one
+	// extra step back past the skipped Gateway).
 	next, _ := f.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
 	ff := next.(*Flow)
 	if ff.current != ScreenDaemon {
-		t.Errorf("shift-tab from Done w/ daemon off should land at Daemon, got %v", ff.current)
+		t.Errorf("shift-tab from MCPImport w/ daemon off should land at Daemon, got %v", ff.current)
 	}
 }
 
 // TestFlow_ShiftTabStopsAtGatewayWhenDaemonEnabled exercises the
-// converse: with daemon enabled, shift-tab from Done lands at Gateway.
+// converse: with daemon enabled, shift-tab from MCPImport lands at Gateway.
 func TestFlow_ShiftTabStopsAtGatewayWhenDaemonEnabled(t *testing.T) {
 	f := NewWithOptions(Options{
-		StartingScreen: ScreenDone,
+		StartingScreen: ScreenMCPImport,
 		ExistingConfig: &config.Config{
 			UserName: "Tester",
 			Daemon:   config.DaemonConfig{Enabled: true},
@@ -331,7 +332,7 @@ func TestFlow_ShiftTabStopsAtGatewayWhenDaemonEnabled(t *testing.T) {
 	next, _ := f.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
 	ff := next.(*Flow)
 	if ff.current != ScreenGateway {
-		t.Errorf("shift-tab from Done w/ daemon on should land at Gateway, got %v", ff.current)
+		t.Errorf("shift-tab from MCPImport w/ daemon on should land at Gateway, got %v", ff.current)
 	}
 }
 

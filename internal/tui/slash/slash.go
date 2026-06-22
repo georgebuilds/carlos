@@ -62,6 +62,7 @@ type Spec struct {
 var Builtins = []Spec{
 	// Mirrored from Claude Code (same name + behavior, so muscle memory carries).
 	{Name: "clear", Description: "clear the chat buffer (keeps the conversation; just clears the view)"},
+	{Name: "away", ArgsHint: "[on|off]", Description: "toggle away mode: ping the gateway when background jobs finish while you're out"},
 	{Name: "help", Description: "show available slash commands"},
 	{Name: "exit", Description: "exit carlos (alias: /quit, /q)"},
 	{Name: "quit", Description: "alias for /exit"},

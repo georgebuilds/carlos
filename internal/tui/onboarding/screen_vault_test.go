@@ -131,18 +131,19 @@ func TestVaultScreen_MkdirErrorKeepsScreen(t *testing.T) {
 }
 
 func TestFlow_VaultStepIncluded(t *testing.T) {
-	if totalScreens != 8 {
-		t.Errorf("totalScreens should be 8 after vault+gateway addition, got %d", totalScreens)
+	if totalScreens != 9 {
+		t.Errorf("totalScreens should be 9 after mcp-import addition, got %d", totalScreens)
 	}
 	titles := map[Screen]string{
-		ScreenName:     "What should I call you?",
-		ScreenProvider: "Wire up your providers",
-		ScreenModel:    "Pick default models",
-		ScreenSkills:   "Skills convention",
-		ScreenVault:    "Notes vault",
-		ScreenDaemon:   "Background daemon",
-		ScreenGateway:  "Messaging gateway",
-		ScreenDone:     "Ready",
+		ScreenName:      "What should I call you?",
+		ScreenProvider:  "Wire up your providers",
+		ScreenModel:     "Pick default models",
+		ScreenSkills:    "Skills convention",
+		ScreenVault:     "Notes vault",
+		ScreenDaemon:    "Background daemon",
+		ScreenGateway:   "Messaging gateway",
+		ScreenMCPImport: "Import MCP servers",
+		ScreenDone:      "Ready",
 	}
 	for s, want := range titles {
 		if got := screenTitle(s); got != want {
