@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"net/http"
 	"os"
 	"strings"
 	"testing"
@@ -98,6 +99,110 @@ func TestExpandEnv_Empty(t *testing.T) {
 		t.Errorf("expected verbatim os.Environ; got %d entries vs %d", len(got), len(os.Environ()))
 	}
 }
+
+// TestTransportKind pins the normalization: empty/whitespace means stdio
+// (so pre-transport configs round-trip), and the value is case-folded so a
+// hand-edited "HTTP" connects the same as "http".
+func TestTransportKind(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{"", TransportStdio},
+		{"   ", TransportStdio},
+		{"stdio", TransportStdio},
+		{"http", TransportHTTP},
+		{"HTTP", TransportHTTP},
+		{" Sse ", TransportSSE},
+	}
+	for _, tc := range cases {
+		if got := (ServerConfig{Transport: tc.in}).TransportKind(); got != tc.want {
+			t.Errorf("TransportKind(%q): want %q got %q", tc.in, tc.want, got)
+		}
+	}
+}
+
+// TestValidate covers the per-transport coherence rules: name always
+// required, stdio needs a command, http/sse need a url, and an unknown
+// transport is rejected up front rather than as a murky connect failure.
+func TestValidate(t *testing.T) {
+	cases := []struct {
+		name    string
+		cfg     ServerConfig
+		wantErr bool
+	}{
+		{"stdio ok", ServerConfig{Name: "a", Command: "/bin/echo"}, false},
+		{"stdio explicit ok", ServerConfig{Name: "a", Transport: "stdio", Command: "/bin/echo"}, false},
+		{"stdio no command", ServerConfig{Name: "a"}, true},
+		{"http ok", ServerConfig{Name: "a", Transport: "http", URL: "https://x/mcp"}, false},
+		{"sse ok", ServerConfig{Name: "a", Transport: "sse", URL: "https://x/sse"}, false},
+		{"http no url", ServerConfig{Name: "a", Transport: "http"}, true},
+		{"no name", ServerConfig{Command: "/bin/echo"}, true},
+		{"unknown transport", ServerConfig{Name: "a", Transport: "carrierpigeon", URL: "x"}, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.cfg.Validate()
+			if tc.wantErr && err == nil {
+				t.Errorf("want error, got nil")
+			}
+			if !tc.wantErr && err != nil {
+				t.Errorf("want nil, got %v", err)
+			}
+		})
+	}
+}
+
+// TestHTTPClientWithHeaders covers both branches: no headers returns nil so
+// the SDK uses http.DefaultClient, and a header map produces a client whose
+// RoundTripper injects the headers with ${VAR} expanded against the env.
+func TestHTTPClientWithHeaders(t *testing.T) {
+	if got := httpClientWithHeaders(nil); got != nil {
+		t.Errorf("no headers: want nil client, got %v", got)
+	}
+
+	t.Setenv("CARLOS_MCP_TEST_TOKEN", "sekret")
+	got := httpClientWithHeaders(map[string]string{
+		"Authorization": "Bearer ${CARLOS_MCP_TEST_TOKEN}",
+		"X-Static":      "fixed",
+	})
+	if got == nil {
+		t.Fatal("with headers: want non-nil client")
+	}
+	rt, ok := got.Transport.(*headerRoundTripper)
+	if !ok {
+		t.Fatalf("want *headerRoundTripper, got %T", got.Transport)
+	}
+	if rt.headers["Authorization"] != "Bearer sekret" {
+		t.Errorf("env expansion failed: %q", rt.headers["Authorization"])
+	}
+	if rt.headers["X-Static"] != "fixed" {
+		t.Errorf("static header mangled: %q", rt.headers["X-Static"])
+	}
+
+	// The RoundTripper must set the headers on the outbound request and
+	// must not mutate the caller's *http.Request (it clones first).
+	var seen http.Header
+	rt.base = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		seen = r.Header.Clone()
+		return &http.Response{StatusCode: 200, Body: http.NoBody, Header: make(http.Header)}, nil
+	})
+	req, _ := http.NewRequest(http.MethodGet, "https://example.invalid/mcp", nil)
+	if _, err := rt.RoundTrip(req); err != nil {
+		t.Fatalf("RoundTrip: %v", err)
+	}
+	if seen.Get("Authorization") != "Bearer sekret" {
+		t.Errorf("Authorization not injected: %q", seen.Get("Authorization"))
+	}
+	if req.Header.Get("Authorization") != "" {
+		t.Errorf("original request was mutated: %q", req.Header.Get("Authorization"))
+	}
+}
+
+// roundTripFunc adapts a func to http.RoundTripper for the header test.
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
 func contains(haystack []string, needle string) bool {
 	for _, h := range haystack {
