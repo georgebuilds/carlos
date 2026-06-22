@@ -44,17 +44,19 @@ func TestParseOnboardOnly_RecognizedFlags(t *testing.T) {
 // to an onboarding.Screen and that typos return ok=false.
 func TestOnboardScreenByName(t *testing.T) {
 	cases := map[string]onboarding.Screen{
-		"name":      onboarding.ScreenName,
-		"providers": onboarding.ScreenProvider,
-		"provider":  onboarding.ScreenProvider,
-		"models":    onboarding.ScreenModel,
-		"model":     onboarding.ScreenModel,
-		"skills":    onboarding.ScreenSkills,
-		"vault":     onboarding.ScreenVault,
-		"daemon":    onboarding.ScreenDaemon,
-		"gateway":   onboarding.ScreenGateway,
-		"GATEWAY":   onboarding.ScreenGateway,
-		"  vault ":  onboarding.ScreenVault,
+		"name":       onboarding.ScreenName,
+		"providers":  onboarding.ScreenProvider,
+		"provider":   onboarding.ScreenProvider,
+		"models":     onboarding.ScreenModel,
+		"model":      onboarding.ScreenModel,
+		"skills":     onboarding.ScreenSkills,
+		"vault":      onboarding.ScreenVault,
+		"daemon":     onboarding.ScreenDaemon,
+		"gateway":    onboarding.ScreenGateway,
+		"GATEWAY":    onboarding.ScreenGateway,
+		"  vault ":   onboarding.ScreenVault,
+		"mcp":        onboarding.ScreenMCPImport,
+		"mcp-import": onboarding.ScreenMCPImport,
 	}
 	for name, want := range cases {
 		got, ok := onboardScreenByName(name)

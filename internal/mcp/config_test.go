@@ -54,6 +54,36 @@ func TestForFrame_Empty(t *testing.T) {
 	}
 }
 
+// TestAddServer covers the dedup-by-name contract: a fresh name is
+// appended and reports true; a name already present is a no-op that reports
+// false and leaves the existing entry untouched (so re-importing is
+// idempotent and can't introduce a duplicate-prefix registry collision).
+func TestAddServer(t *testing.T) {
+	cfg := &Config{}
+
+	if !cfg.AddServer(ServerConfig{Name: "github", Command: "npx"}) {
+		t.Error("first add should report true")
+	}
+	if !cfg.AddServer(ServerConfig{Name: "home", Transport: "http", URL: "https://x/mcp"}) {
+		t.Error("second distinct add should report true")
+	}
+	if len(cfg.Servers) != 2 {
+		t.Fatalf("want 2 servers, got %d", len(cfg.Servers))
+	}
+
+	// Re-adding "github" with a different command must NOT append and must
+	// NOT overwrite the existing entry.
+	if cfg.AddServer(ServerConfig{Name: "github", Command: "different"}) {
+		t.Error("duplicate name should report false")
+	}
+	if len(cfg.Servers) != 2 {
+		t.Fatalf("duplicate add changed count to %d", len(cfg.Servers))
+	}
+	if cfg.Servers[0].Command != "npx" {
+		t.Errorf("duplicate add clobbered existing entry: %q", cfg.Servers[0].Command)
+	}
+}
+
 // TestExpandEnv covers the two value-add behaviors over a plain copy
 // of os.Environ: overrides land after the base (so a user-specified
 // PATH wins), and ${VAR} substitution resolves against the current

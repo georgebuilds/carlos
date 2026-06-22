@@ -133,6 +133,22 @@ func (c Config) ForFrame(frame string) []ServerConfig {
 	return out
 }
 
+// AddServer appends s to the config unless a server with the same Name is
+// already present, in which case the existing entry is kept and the call is
+// a no-op. The boolean reports whether s was added (true) or skipped as a
+// duplicate (false). Dedup-by-name keeps re-importing idempotent and avoids
+// the registry collision two same-named servers would cause (their tools
+// share the "<name>__" prefix, so the second would clobber the first).
+func (c *Config) AddServer(s ServerConfig) bool {
+	for _, existing := range c.Servers {
+		if existing.Name == s.Name {
+			return false
+		}
+	}
+	c.Servers = append(c.Servers, s)
+	return true
+}
+
 // expandEnv returns a KEY=VAL slice suitable for exec.Cmd.Env: the
 // current process environment, with the provided overrides applied (and
 // `${VAR}` expanded against the same process environment). The "appended
