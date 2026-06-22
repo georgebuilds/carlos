@@ -406,6 +406,10 @@ func (d *Daemon) Run(ctx context.Context) error {
 			defer cancel()
 			_ = gw.Stop(stopCtx)
 		}()
+		// Away-watcher: tail the shared log and, while the user is /away,
+		// ping the gateway when a backgrounded shell job finishes. Only
+		// runs when the gateway is up (there's nowhere to deliver otherwise).
+		go newAwayWatcher(d.log, d.notifyBackgroundComplete).run(runCtx)
 	}
 
 	// 6. IPC accept goroutine.
