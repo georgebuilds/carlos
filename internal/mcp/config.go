@@ -1,13 +1,12 @@
 // Package mcp wires Model Context Protocol servers into carlos's tool
-// registry. v1 supports stdio-transport tool servers only: at boot, the
-// configured servers are spawned, their tools are discovered, each one is
-// wrapped in a tools.Tool adapter, and the adapter is registered under a
-// "<server>__<tool>" name so the provider sees them alongside the
-// built-in tools.
+// registry. At boot the configured servers are connected (stdio servers are
+// spawned as subprocesses; http/sse servers are dialed over HTTP), their
+// tools are discovered, each one is wrapped in a tools.Tool adapter, and the
+// adapter is registered under a "<server>__<tool>" name so the provider sees
+// them alongside the built-in tools.
 //
-// Out of scope for v1 (tracked as TODOs):
+// Out of scope (tracked as TODOs):
 //   - Resources, prompts, sampling. Tool calls only.
-//   - Streamable HTTP transport. CommandTransport (stdio) only.
 //   - Per-tool approval categories. MCP tools inherit the standard
 //     LayeredApprover path: anything not in the built-in read-only
 //     allowlist falls through to the user-prompt approver.
