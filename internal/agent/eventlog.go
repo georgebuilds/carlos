@@ -111,6 +111,27 @@ type BackgroundCompletePayload struct {
 	JobID string `json:"job_id"`
 }
 
+// EvtPresence records the user toggling away/back via the chat /away
+// command. It's written to PresenceAgentID (a well-known stream) rather
+// than a chat agent id so the daemon - a separate process - can poll the
+// latest presence without knowing which chat agent is live. The daemon's
+// away-watcher gates remote gateway notifications on the most recent
+// EvtPresence it has seen. Payload shape: PresencePayload. Projections
+// treat it as passive.
+const EvtPresence EventType = "presence"
+
+// PresenceAgentID is the synthetic agent_id EvtPresence rows are written
+// under. Fixed (not a per-session ULID) so the cross-process away-watcher
+// always knows where to look.
+const PresenceAgentID = "presence"
+
+// PresencePayload is the EvtPresence body: Away=true means the user has
+// stepped away and wants background-job completions delivered to the
+// gateway (ntfy/Telegram); false means they're back at the terminal.
+type PresencePayload struct {
+	Away bool `json:"away"`
+}
+
 type Event struct {
 	Seq     int64
 	AgentID string

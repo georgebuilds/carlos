@@ -240,7 +240,7 @@ func (p *Projection) Apply(ev Event) error {
 		EvtUserShellStart, EvtUserShellEnd,
 		EvtGatewayInbound, EvtGatewayOutbound,
 		EvtApprovalProposed, EvtApprovalAccepted, EvtApprovalRejected,
-		EvtCommandUsed, EvtBackgroundComplete:
+		EvtCommandUsed, EvtBackgroundComplete, EvtPresence:
 		row, ok := p.rows[ev.AgentID]
 		if ok {
 			row.UpdatedAt = ev.TS

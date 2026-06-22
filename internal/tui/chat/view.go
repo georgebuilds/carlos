@@ -553,6 +553,15 @@ func (m *Model) renderFooter(w int) string {
 			keyStyle.Render("ctrl-c") + hintStyle.Render(" quit")
 	}
 
+	// Away badge: a persistent reminder that background-job completions are
+	// being routed to the gateway, so the user isn't surprised by a phone
+	// ping (or by the absence of one after /away off). Sits ahead of the
+	// keybind hints; the width math below already reads the composed string.
+	if m.away {
+		badge := lipgloss.NewStyle().Foreground(statusColor(statusWarn)).Bold(true).Render("● away")
+		hints = badge + hintStyle.Render("  ") + hints
+	}
+
 	// User-shell footer hint takes priority over the right-aligned
 	// /help tip. Idle state returns empty so we keep the existing
 	// tip behavior.
