@@ -727,32 +727,35 @@ func runDefault(cfg *config.Config, sessionID string) error {
 	// chatglue.Loop rebuild, so enabling once here holds for the session.
 	bgShell := usershell.NewBackgroundDispatcher(shellMgr)
 	tools.EnableBackgroundShell(parentReg, bgShell)
-	// Wake-on-completion: subscribe to the job engine once for the session
-	// and, when an agent-dispatched background job reaches a terminal state,
-	// append a wake event to the chat agent's stream. chatglue's loop
-	// consumes it on the same goroutine that handles user messages, so the
-	// model reacts to the finished job without the user having to prompt
-	// again - serialized politely behind any in-flight turn. Only
-	// agent-owned jobs wake the model; the user's own `!cmd &` jobs stay
-	// passive (their output still folds into the next turn via buildHistory).
-	wakeAgentID := defaultAgentID
+	// Wake-on-completion: subscribe to the job engine's terminal-completion
+	// feed once for the session. When an agent-dispatched background job
+	// finishes, append a wake event to the stream of the agent that
+	// dispatched it (OwnerOf), so the wake follows a /agents switch instead
+	// of always hitting the boot-time default. chatglue's loop consumes the
+	// event on the same goroutine that handles user messages, so the model
+	// reacts without the user prompting again - serialized politely behind
+	// any in-flight turn. The user's own `!cmd &` jobs never flow through
+	// the dispatcher, so they stay passive (output still folds into the next
+	// turn via buildHistory). The dedicated completion feed (not Subscribe)
+	// means a chatty job's output chunks can't crowd out the wake.
 	go func() {
-		updates, unsub := shellMgr.Subscribe()
+		completions, unsub := shellMgr.SubscribeCompletions()
 		defer unsub()
 		for {
 			select {
 			case <-ctx.Done():
 				return
-			case u, ok := <-updates:
+			case snap, ok := <-completions:
 				if !ok {
 					return
 				}
-				if !u.State.IsTerminal() || !bgShell.IsAgentJob(u.JobID) {
+				owner, isAgent := bgShell.OwnerOf(snap.ID)
+				if !isAgent || owner == "" {
 					continue
 				}
-				payload, _ := json.Marshal(agent.BackgroundCompletePayload{JobID: u.JobID})
+				payload, _ := json.Marshal(agent.BackgroundCompletePayload{JobID: snap.ID})
 				_, _ = log.Append(ctx, agent.Event{
-					AgentID: wakeAgentID,
+					AgentID: owner,
 					TS:      time.Now().UTC(),
 					Type:    agent.EvtBackgroundComplete,
 					Payload: payload,

@@ -182,8 +182,15 @@ type Manager struct {
 	// Subscribe call appends a channel; publish sends best-effort
 	// (non-blocking) to all of them. Used by the TUI to drive
 	// transcript redraws without polling.
-	subMu       sync.Mutex
-	subscribers []chan Update
+	//
+	// completionSubs is a SEPARATE fan-out that fires once per job, only
+	// on the terminal transition, carrying the final Snapshot. The
+	// wake-on-completion path subscribes here instead of `subscribers` so
+	// a chatty job's output chunks can't crowd a terminal event out of the
+	// shared buffer and cost a wake. Both lists are guarded by subMu.
+	subMu          sync.Mutex
+	subscribers    []chan Update
+	completionSubs []chan Snapshot
 
 	// ulidEntropy is the monotonic-random reader for fresh job IDs.
 	// Guarded by ulidMu - ulid.MonotonicEntropy is not safe for
@@ -579,6 +586,7 @@ func (m *Manager) finalize(job *Job, rb *RingBuffer, next State, exit int, failE
 	}
 
 	m.publishState(job.ID, next)
+	m.publishCompletion(snap)
 	m.onJobTerminal(job.ID)
 }
 
@@ -841,6 +849,51 @@ func (m *Manager) publish(u Update) {
 	for _, c := range subs {
 		select {
 		case c <- u:
+		default:
+		}
+	}
+}
+
+// SubscribeCompletions returns a channel that receives the final Snapshot
+// of each job exactly once, when it reaches a terminal state. It is the
+// low-volume counterpart to Subscribe (which also carries every output
+// chunk): the wake-on-completion path uses this so output floods can't
+// evict a terminal event from a shared buffer. The buffer is generous (256)
+// and sends are non-blocking; since a job emits exactly one completion, a
+// drop would require 256 jobs finishing faster than the consumer's per-event
+// work (a log append), which doesn't happen in practice.
+//
+// The unsubscribe func must be called when the consumer is done. Safe after
+// Close.
+func (m *Manager) SubscribeCompletions() (<-chan Snapshot, func()) {
+	ch := make(chan Snapshot, 256)
+	m.subMu.Lock()
+	m.completionSubs = append(m.completionSubs, ch)
+	m.subMu.Unlock()
+	unsub := func() {
+		m.subMu.Lock()
+		defer m.subMu.Unlock()
+		for i, c := range m.completionSubs {
+			if c == ch {
+				m.completionSubs = append(m.completionSubs[:i], m.completionSubs[i+1:]...)
+				return
+			}
+		}
+	}
+	return ch, unsub
+}
+
+// publishCompletion fans a terminal Snapshot out to every completion
+// subscriber. Best-effort (non-blocking) like publish, so a wedged consumer
+// never stalls the runJob goroutine's finalize path.
+func (m *Manager) publishCompletion(snap Snapshot) {
+	m.subMu.Lock()
+	subs := make([]chan Snapshot, len(m.completionSubs))
+	copy(subs, m.completionSubs)
+	m.subMu.Unlock()
+	for _, c := range subs {
+		select {
+		case c <- snap:
 		default:
 		}
 	}

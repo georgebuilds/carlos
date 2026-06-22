@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/georgebuilds/carlos/internal/agent"
 	"github.com/georgebuilds/carlos/internal/tools"
 )
 
@@ -36,7 +37,10 @@ func TestDispatcher_StartTracksAgentJob(t *testing.T) {
 	defer m.Close()
 	d := NewBackgroundDispatcher(m)
 
-	id, err := d.StartBackground(context.Background(), "echo done", "")
+	// Dispatch carries a spawn-parent so the wake can be routed back to the
+	// dispatching agent.
+	ctx := agent.WithSpawnParent(context.Background(), "agent-77")
+	id, err := d.StartBackground(ctx, "echo done", "")
 	if err != nil {
 		t.Fatalf("StartBackground: %v", err)
 	}
@@ -46,7 +50,10 @@ func TestDispatcher_StartTracksAgentJob(t *testing.T) {
 	if !d.IsAgentJob(id) {
 		t.Error("started job should be marked agent-owned")
 	}
-	if d.IsAgentJob("some-other-id") {
+	if owner, ok := d.OwnerOf(id); !ok || owner != "agent-77" {
+		t.Errorf("OwnerOf = %q,%v; want agent-77,true", owner, ok)
+	}
+	if _, ok := d.OwnerOf("some-other-id"); ok {
 		t.Error("unrelated id must not be agent-owned")
 	}
 
@@ -71,6 +78,34 @@ func TestDispatcher_NonZeroExit(t *testing.T) {
 	state, exit := waitTerminal(t, d, id)
 	if state != "failed" || exit != 3 {
 		t.Errorf("want failed/3, got %s/%d", state, exit)
+	}
+}
+
+// TestManager_SubscribeCompletions fires exactly once per job, on the
+// terminal transition, carrying the final snapshot - the low-volume feed the
+// wake path relies on instead of the chatty output Subscribe channel.
+func TestManager_SubscribeCompletions(t *testing.T) {
+	fr := &fakeRunner{output: "hi\n", exit: 0}
+	m := New(Options{Runner: fr, OutputDir: t.TempDir()})
+	defer m.Close()
+
+	comps, unsub := m.SubscribeCompletions()
+	defer unsub()
+
+	job, err := m.Submit(context.Background(), "echo hi", Background)
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case snap := <-comps:
+		if snap.ID != job.ID {
+			t.Errorf("completion for wrong job: got %s want %s", snap.ID, job.ID)
+		}
+		if !snap.State.IsTerminal() {
+			t.Errorf("completion snapshot not terminal: %s", snap.State)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("no completion published within deadline")
 	}
 }
 
