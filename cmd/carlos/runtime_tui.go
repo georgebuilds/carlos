@@ -716,6 +716,16 @@ func runDefault(cfg *config.Config, sessionID string) error {
 	}
 	shellMgr := usershell.New(shellOpts)
 	defer shellMgr.Close()
+	// Background bash: let the model dispatch detached jobs (bash
+	// run_in_background) that keep running while the chat continues, then
+	// poll with BashOutput / stop with KillShell. The dispatcher reuses the
+	// same job engine as the user's `!cmd` and tracks agent-owned ids so a
+	// later wake-on-completion path can react only to the model's own jobs.
+	// Wired onto parentReg (the interactive chat agent); sub-agents keep
+	// synchronous bash. parentReg is a shared pointer reused across every
+	// chatglue.Loop rebuild, so enabling once here holds for the session.
+	bgShell := usershell.NewBackgroundDispatcher(shellMgr)
+	tools.EnableBackgroundShell(parentReg, bgShell)
 	// Phase U S7: separate ~/.carlos/shell-history file walked via
 	// ↑/↓ in shell mode. Created lazily on first Add; reads on
 	// startup so previous-session entries are available.

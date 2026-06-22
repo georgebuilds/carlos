@@ -58,6 +58,29 @@ func (r *Registry) All() []Tool {
 	return out
 }
 
+// EnableBackgroundShell wires a BackgroundShell into the registry's bash
+// tool (so run_in_background works) and registers the BashOutput + KillShell
+// companion tools. Call once per session after the job runner exists. A nil
+// shell is a no-op, so callers without a runner (sub-agents) can call it
+// unconditionally and keep bash on its synchronous-only path.
+//
+// Kept as a post-construction step rather than a NewDefaultRegistry*
+// parameter because the runner is per-session and built after the registry;
+// threading it through every factory signature would churn a dozen call
+// sites for a single optional capability.
+func EnableBackgroundShell(r *Registry, shell BackgroundShell) {
+	if r == nil || shell == nil {
+		return
+	}
+	if t, ok := r.Get("bash"); ok {
+		if bt, ok := t.(*BashTool); ok {
+			bt.Background = shell
+		}
+	}
+	r.Register(&BashOutputTool{Shell: shell})
+	r.Register(&KillShellTool{Shell: shell})
+}
+
 // NewDefaultRegistry constructs a Registry pre-populated with every
 // tool shipped in this package. The foreground (cmd/carlos) is free to
 // build its own Registry from scratch and pick & choose; this factory
