@@ -63,6 +63,10 @@ type Config struct {
 	// when non-empty so older configs round-trip without a stray empty
 	// `frames: {}` line.
 	Frames frame.Config `json:"frames,omitempty"`
+	// Todos is the task/reminder configuration (default Obsidian-backed,
+	// optionally externalised per frame). Emitted only when non-empty so
+	// older configs round-trip without a stray `todos: {}` line.
+	Todos TodosConfig `json:"todos,omitempty"`
 	// MCP is the user's set of Model Context Protocol servers. Each
 	// entry spawns a subprocess at boot and contributes its tool
 	// catalog under the "<server>__<tool>" namespace. Per-server Frames
@@ -168,6 +172,41 @@ type GatewayRetry struct {
 type VaultConfig struct {
 	Path    string   `json:"path,omitempty"`
 	Exclude []string `json:"exclude,omitempty"`
+}
+
+// TodosConfig is the on-disk shape of the todos: block. Out of the box, todos
+// live as `- [ ] task` checkbox lines in the Obsidian vault, scoped per frame
+// via each frame's vault_subtree. Users who keep tasks elsewhere declare
+// external backends here and point individual frames at them through the
+// frame's capabilities.todos.backend setting.
+//
+// Emitted only when non-empty so older configs round-trip without a stray
+// `todos: {}` line.
+type TodosConfig struct {
+	// DefaultBackend is the backend a frame uses when it does not pin one in
+	// capabilities.todos.backend. Empty means "obsidian".
+	DefaultBackend string `json:"default_backend,omitempty"`
+	// Inbox is the vault-relative filename (within a frame's subtree) that
+	// todo_add appends new tasks to. Empty means "todos.md".
+	Inbox string `json:"inbox,omitempty"`
+	// Backends declares external (non-Obsidian) task backends, keyed by the
+	// name a frame references in capabilities.todos.backend.
+	Backends map[string]TodoBackendConfig `json:"backends,omitempty"`
+}
+
+// TodoBackendConfig configures one external todo backend. Secrets never live
+// in YAML: AuthEnv names the environment variable holding the credential, read
+// at process start.
+type TodoBackendConfig struct {
+	// Type selects the transport. "rest" is the shipped reference transport;
+	// future types (e.g. "mcp") slot in here.
+	Type string `json:"type"`
+	// BaseURL is the service root for REST backends (e.g. https://api.example.com).
+	BaseURL string `json:"base_url,omitempty"`
+	// AuthHeader is the header carrying the credential (e.g. "Authorization").
+	AuthHeader string `json:"auth_header,omitempty"`
+	// AuthEnv names the environment variable whose value is sent as AuthHeader.
+	AuthEnv string `json:"auth_env,omitempty"`
 }
 
 // ThemeConfig captures the user's TUI color preferences. Both fields
@@ -284,6 +323,22 @@ func Load(path string) (*Config, error) {
 	for _, f := range cfg.Frames.List {
 		if !frame.IsValidName(f.Name) {
 			return nil, fmt.Errorf("config: invalid frame name %q in %s: must match ^[a-z][a-z0-9_-]{0,30}$", f.Name, path)
+		}
+	}
+	// Validate external todo backends at load so a hand-edited typo fails
+	// loudly at startup rather than surfacing only when a frame routes a todo
+	// to the broken backend. The "obsidian" name is reserved for the built-in
+	// default and cannot be redeclared.
+	for name, b := range cfg.Todos.Backends {
+		switch {
+		case name == "" || name == "obsidian":
+			return nil, fmt.Errorf("config: invalid todos backend name %q in %s (\"obsidian\" is reserved)", name, path)
+		case b.Type == "":
+			return nil, fmt.Errorf("config: todos backend %q in %s: missing type", name, path)
+		case b.Type != "rest":
+			return nil, fmt.Errorf("config: todos backend %q in %s: unsupported type %q (want \"rest\")", name, b.Type, path)
+		case b.BaseURL == "":
+			return nil, fmt.Errorf("config: todos backend %q in %s: rest backend requires base_url", name, path)
 		}
 	}
 	return &cfg, nil

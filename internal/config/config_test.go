@@ -650,3 +650,53 @@ func TestLoad_MigratesEmptyDefaultProvider(t *testing.T) {
 		t.Errorf("expected empty Provider/Model when default_provider unset; got %+v", p)
 	}
 }
+
+// TestTodosConfigRoundtripAndValidation covers the todos block: a valid rest
+// backend survives Save/Load, and malformed backend declarations are rejected
+// at load so a hand-edited typo fails loudly at startup.
+func TestTodosConfigRoundtripAndValidation(t *testing.T) {
+	dir := t.TempDir()
+
+	// Valid: rest backend with a base_url round-trips.
+	good := filepath.Join(dir, "good.yaml")
+	if err := Save(good, &Config{
+		UserName: "George",
+		Todos: TodosConfig{
+			DefaultBackend: "obsidian",
+			Inbox:          "todos.md",
+			Backends: map[string]TodoBackendConfig{
+				"todoist": {Type: "rest", BaseURL: "https://api.todoist.example", AuthHeader: "Authorization", AuthEnv: "TODOIST_TOKEN"},
+			},
+		},
+	}); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	got, err := Load(good)
+	if err != nil {
+		t.Fatalf("load good: %v", err)
+	}
+	if b := got.Todos.Backends["todoist"]; b.BaseURL != "https://api.todoist.example" || b.AuthEnv != "TODOIST_TOKEN" {
+		t.Errorf("todos backend not roundtripped: %+v", b)
+	}
+
+	// Invalid declarations must be rejected at load.
+	bad := []struct {
+		name string
+		b    TodoBackendConfig
+		key  string
+	}{
+		{"missing-type", TodoBackendConfig{BaseURL: "https://x"}, "weird"},
+		{"bad-type", TodoBackendConfig{Type: "carrier-pigeon", BaseURL: "https://x"}, "weird"},
+		{"missing-url", TodoBackendConfig{Type: "rest"}, "weird"},
+		{"reserved-name", TodoBackendConfig{Type: "rest", BaseURL: "https://x"}, "obsidian"},
+	}
+	for _, c := range bad {
+		p := filepath.Join(dir, c.name+".yaml")
+		if err := Save(p, &Config{UserName: "George", Todos: TodosConfig{Backends: map[string]TodoBackendConfig{c.key: c.b}}}); err != nil {
+			t.Fatalf("save %s: %v", c.name, err)
+		}
+		if _, err := Load(p); err == nil {
+			t.Errorf("%s: expected Load to reject the config", c.name)
+		}
+	}
+}
