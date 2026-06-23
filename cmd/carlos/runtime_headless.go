@@ -168,7 +168,7 @@ func runHeadless(prompt string, opts pleaseOptions) error {
 	// tool set: bash + file ops + git read-only. The Agent tool
 	// itself is added to the PARENT'S registry only (below), NOT the
 	// base - children at depth 1 (the v0 cap) can't further spawn.
-	baseReg := tools.NewDefaultRegistryWithIdentity(baseDir, cfg.Vault, cfg.Frames, cfg.Frames.Active, tools.ProviderSummariesFromConfig(cfg.Providers), cfg.UserName)
+	baseReg := tools.NewDefaultRegistryWithIdentity(baseDir, cfg.Vault, cfg.Frames, cfg.Frames.Active, tools.ProviderSummariesFromConfig(cfg.Providers), cfg.UserName, cfg.Todos)
 	// Skill library + the skill_use tool so `carlos please` sees the
 	// same skill catalog the chat surface does. Bundled-overlay path
 	// means even a fresh brew install gets the starter pack.
