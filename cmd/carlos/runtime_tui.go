@@ -227,7 +227,7 @@ func runDefault(cfg *config.Config, sessionID string) error {
 	// notes_* / obsidian_* tools can default to the active frame's
 	// vault_subtree and fan out across every configured frame on
 	// cross-frame queries.
-	baseReg := tools.NewDefaultRegistryWithIdentity("", cfg.Vault, cfg.Frames, cfg.Frames.Active, tools.ProviderSummariesFromConfig(cfg.Providers), cfg.UserName)
+	baseReg := tools.NewDefaultRegistryWithIdentity("", cfg.Vault, cfg.Frames, cfg.Frames.Active, tools.ProviderSummariesFromConfig(cfg.Providers), cfg.UserName, cfg.Todos)
 	baseReg.Register(tools.NewSkillUseTool(skillsLib, cfg.Frames.Active))
 	// MCP v1: connect every configured MCP server enabled for the
 	// active frame and register each discovered tool under the

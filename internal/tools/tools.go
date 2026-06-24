@@ -162,7 +162,7 @@ func NewDefaultRegistryWithBaseDirAndFrames(
 	frames frame.Config,
 	active string,
 ) *Registry {
-	return NewDefaultRegistryWithIdentity(baseDir, vaultCfg, frames, active, nil, "")
+	return NewDefaultRegistryWithIdentity(baseDir, vaultCfg, frames, active, nil, "", config.TodosConfig{})
 }
 
 // NewDefaultRegistryWithIdentity is the variant that also wires the
@@ -178,6 +178,7 @@ func NewDefaultRegistryWithIdentity(
 	active string,
 	providers map[string]ProviderSummary,
 	userName string,
+	todosCfg config.TodosConfig,
 ) *Registry {
 	r := NewRegistry()
 	bash := NewBashTool()
@@ -250,6 +251,16 @@ func NewDefaultRegistryWithIdentity(
 	r.Register(NewNotesRecentTool(nenv))
 	r.Register(NewNotesResolveTool(nenv))
 	r.Register(NewNotesWriteTool(nenv))
+	// Phase: todos. The four todo_* tools share one todo.Router built from
+	// the same vault + frames, plus the todos config block. They reuse the
+	// notes cache as their write-invalidator so a todo edit is reflected by
+	// the next notes_search. Obsidian is the default backend; frames may pin
+	// an external backend via capabilities.todos.backend.
+	tenv := newTodoEnv(vaultCfg, todosCfg, frames, active, nenv.cache)
+	r.Register(NewTodoListTool(tenv))
+	r.Register(NewTodoAddTool(tenv))
+	r.Register(NewTodoDoneTool(tenv))
+	r.Register(NewTodoUpdateTool(tenv))
 	r.Register(NewCarlosAboutTool(vaultCfg, frames, active, providers, userName))
 	r.Register(NewObsidianGetTool(nenv))
 	r.Register(NewObsidianSearchTool(nenv))

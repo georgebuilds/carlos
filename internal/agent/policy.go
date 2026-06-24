@@ -160,6 +160,17 @@ var DefaultBuiltinAllow = []string{
 	"notes_backlinks",
 	"notes_tagged",
 	"notes_write",
+	// Todo tools. Auto-approved on the same trust anchor as notes_write:
+	// the default Obsidian backend is constrained to the configured vault +
+	// the active frame's subtree, and cross-frame writes trip the
+	// cross-frame approval gate. Frames pinned to an EXTERNAL backend route
+	// through these same tool names; that egress is governed by the backend
+	// being explicitly declared in config (todos.backends), not by a silent
+	// default, so the configuration boundary remains the trust anchor.
+	"todo_list",
+	"todo_add",
+	"todo_done",
+	"todo_update",
 	// Read-only introspection of carlos's own state (vault path,
 	// frames, capabilities, providers). Returns local data only;
 	// no network egress, no file mutation.

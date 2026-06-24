@@ -85,7 +85,7 @@ func newCarlosBackend(ctx context.Context, cfg *config.Config, log *agent.SQLite
 
 	skillsLib, _ := skills.LoadFromConfig(cfg, "")
 	baseReg := tools.NewDefaultRegistryWithIdentity("", cfg.Vault, cfg.Frames, cfg.Frames.Active,
-		tools.ProviderSummariesFromConfig(cfg.Providers), cfg.UserName)
+		tools.ProviderSummariesFromConfig(cfg.Providers), cfg.UserName, cfg.Todos)
 	baseReg.Register(tools.NewSkillUseTool(skillsLib, cfg.Frames.Active))
 
 	sup := agent.NewSupervisor(log, d.provider, baseReg)

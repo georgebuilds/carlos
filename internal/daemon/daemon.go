@@ -200,6 +200,7 @@ type Daemon struct {
 	frameCfg        frame.Config
 	providersCfg    map[string]config.ProviderConfig
 	vaultCfg        config.VaultConfig
+	todosCfg        config.TodosConfig
 
 	// activeCount tracks in-flight scheduled spawns so the status
 	// response can surface "n schedules running right now".
@@ -410,6 +411,16 @@ func (d *Daemon) Run(ctx context.Context) error {
 		// ping the gateway when a backgrounded shell job finishes. Only
 		// runs when the gateway is up (there's nowhere to deliver otherwise).
 		go newAwayWatcher(d.log, d.notifyBackgroundComplete).run(runCtx)
+		// Reminder-watcher: while the user is /away, periodically scan the
+		// todo backends for due (or overdue) items and ping the gateway once
+		// per item. Shares the same presence gate as the away-watcher so
+		// reminders only reach a remote device when the user is actually away.
+		d.mu.Lock()
+		rrouter, rerr := tools.BuildTodoRouter(d.vaultCfg, d.todosCfg, d.frameCfg, "", nil)
+		d.mu.Unlock()
+		if rerr == nil && rrouter != nil {
+			go newReminderWatcher(d.log, rrouter, d.notifyTodoDue, d.opts.Now.Now, reminderScanInterval).run(runCtx)
+		}
 	}
 
 	// 6. IPC accept goroutine.
@@ -544,6 +555,7 @@ func (d *Daemon) loadConfig() error {
 	d.frameCfg = cfg.Frames
 	d.providersCfg = cfg.Providers
 	d.vaultCfg = cfg.Vault
+	d.todosCfg = cfg.Todos
 	d.mu.Unlock()
 	return nil
 }
