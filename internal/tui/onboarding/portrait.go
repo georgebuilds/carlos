@@ -130,6 +130,18 @@ func DetectProtocol() RenderProtocol {
 	if os.Getenv("TERM_PROGRAM") == "iTerm.app" {
 		return ProtoITerm2
 	}
+	// Apple Terminal.app advertises $TERM_PROGRAM=Apple_Terminal. It has
+	// no inline-image protocol (no iTerm2 OSC 1337, no Kitty graphics),
+	// so the half-block sampler is its deliberate ceiling. Matching it
+	// explicitly makes the three-terminal contract self-documenting
+	// (iTerm2 + Ghostty render the full PNG; Terminal.app renders
+	// half-block) and pins the behavior even if $TERM is unusual or
+	// empty (where the generic fall-through below would drop to ASCII).
+	// Terminal.app is 256-color only, so the half-block renderer's
+	// auto-degrade does the right thing here.
+	if os.Getenv("TERM_PROGRAM") == "Apple_Terminal" {
+		return ProtoUnicodeHalfBlock
+	}
 
 	// Sixel detection without DA1 probing is heuristic. We match a small
 	// allow-list of TERMs known to advertise sixel out of the box. DA1
