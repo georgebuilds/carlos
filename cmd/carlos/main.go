@@ -334,6 +334,16 @@ func main() {
 				exit(err)
 			}
 			return
+		case "mcp":
+			// `carlos mcp add|add-json|list|get|remove` - manage MCP
+			// servers from the CLI. Deliberately mirrors `claude mcp` so
+			// a command copied from the internet works by swapping the
+			// binary name. Edits ~/.carlos/config.yaml; servers connect
+			// on the next carlos start.
+			if err := runMCP(args[1:]); err != nil {
+				exit(err)
+			}
+			return
 		case "web":
 			// `carlos web [--port N]` - localhost HTTP + SSE agent
 			// console (Vue SPA over the event log). Needs a complete
@@ -1300,6 +1310,10 @@ Usage:
   carlos attach <id>                       stream a background job's output until it finishes
   carlos logs <id>                         print a background job's captured output once
   carlos stop <id>                         cancel a running background job
+  carlos mcp add <name> <cmd|url> [args]   add an MCP server (mirrors "claude mcp add"; use -- before a stdio command)
+  carlos mcp list                          list configured MCP servers
+  carlos mcp get <name>                    show one MCP server's config
+  carlos mcp remove <name>                 remove an MCP server
   carlos web [--port N]                    serve the localhost web console (default port 7777)
   carlos chat                              [dev-aid, Slice 1e] chat TUI against a temp log
   carlos manage                            [dev-aid, Slice 4]  manage TUI with seeded sample roster
