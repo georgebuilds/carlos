@@ -100,12 +100,22 @@ type gatewayResult struct {
 func newGatewayModel() gatewayModel {
 	ti := textinput.New()
 	ti.CharLimit = 512
-	ti.Width = 56
+	ti.Width = gatewayInputMax
 	ti.Prompt = "> "
 	return gatewayModel{
 		stage: gwStageDecide,
 		input: ti,
 	}
+}
+
+// gatewayInputMax is the gateway-field input's design width on a roomy
+// pane; setWidth shrinks below it on a narrow terminal.
+const gatewayInputMax = 56
+
+// setWidth re-fits the input to the current right-pane width so the field
+// tracks terminal resizes instead of overflowing at its constructed size.
+func (m *gatewayModel) setWidth(paneW int) {
+	m.input.Width = fitInputWidth(paneW, gatewayInputMax)
 }
 
 // NewGatewayStandalone constructs a gatewayModel that bypasses the

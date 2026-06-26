@@ -31,10 +31,20 @@ func newNameModel(initial string) nameModel {
 		ti.SetValue(initial)
 	}
 	ti.CharLimit = 64
-	ti.Width = 32
+	ti.Width = nameInputMax
 	ti.Prompt = "> "
 	ti.Focus()
 	return nameModel{input: ti}
+}
+
+// nameInputMax is the input's design width on a roomy pane; setWidth
+// shrinks below it when the pane is narrow.
+const nameInputMax = 32
+
+// setWidth re-fits the input to the current right-pane width so the field
+// tracks terminal resizes instead of overflowing at its constructed size.
+func (m *nameModel) setWidth(paneW int) {
+	m.input.Width = fitInputWidth(paneW, nameInputMax)
 }
 
 func (m nameModel) Init() tea.Cmd { return textinput.Blink }
