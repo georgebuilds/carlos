@@ -117,11 +117,10 @@ var Builtins = []Spec{
 	// after a /frame switch to confirm the live swap.
 	{Name: "whoami", Description: "show the active frame, mode, provider, and model"},
 
-	// MCP v1 - list configured MCP servers and the tools they
-	// contributed at boot. Handler ships in a follow-on slice (see
-	// chat.dispatchSlash); for now the verb appears in the palette so
-	// users can discover it.
-	{Name: "mcp", Description: "list configured MCP servers and their tools"},
+	// MCP - list configured MCP servers with live connection status, and
+	// add/remove servers from the chat. Handler is chat.mcpSlash; config
+	// edits land in ~/.carlos/config.yaml and connect on the next start.
+	{Name: "mcp", ArgsHint: "[list|add|remove <name>]", Description: "list, add, or remove MCP servers"},
 }
 
 // Lookup returns the Spec for name (case-insensitive), or (Spec{}, false).

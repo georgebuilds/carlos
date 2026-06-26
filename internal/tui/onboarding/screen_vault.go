@@ -46,10 +46,20 @@ func newVaultModel() vaultModel {
 	ti.Placeholder = def
 	ti.SetValue(def)
 	ti.CharLimit = 256
-	ti.Width = 48
+	ti.Width = vaultInputMax
 	ti.Prompt = "> "
 	ti.Focus()
 	return vaultModel{input: ti}
+}
+
+// vaultInputMax is the vault-path input's design width on a roomy pane;
+// setWidth shrinks below it on a narrow terminal.
+const vaultInputMax = 48
+
+// setWidth re-fits the input to the current right-pane width so the field
+// tracks terminal resizes instead of overflowing at its constructed size.
+func (m *vaultModel) setWidth(paneW int) {
+	m.input.Width = fitInputWidth(paneW, vaultInputMax)
 }
 
 func (m vaultModel) Init() tea.Cmd { return textinput.Blink }

@@ -118,7 +118,31 @@ const (
 	colGap        = 3  // gutter between rail's right border and right pane
 	minTerminalW  = 80
 	minTerminalH  = 24
+
+	// inputChrome is the cell overhead a textinput needs beyond its
+	// editable Width: the "> " prompt plus a cursor cell and a little
+	// breathing room so the caret never sits flush against the pane edge.
+	inputChrome = 4
+	// minInputWidth keeps a shrinking input usable on a narrow pane.
+	minInputWidth = 12
 )
+
+// fitInputWidth returns the editable textinput width for a right-pane of
+// paneW cells, clamped to [minInputWidth, max]. Screens call this every
+// render (mirroring the chat composer, which re-sizes its textarea on
+// each frame) so the input tracks the pane on resize instead of keeping
+// the width it was constructed with - the bug that let onboarding inputs
+// overflow when the terminal shrank.
+func fitInputWidth(paneW, max int) int {
+	w := paneW - inputChrome
+	if w > max {
+		w = max
+	}
+	if w < minInputWidth {
+		w = minInputWidth
+	}
+	return w
+}
 
 // Styles re-used across screens. Per-frame width/height-dependent
 // styles are constructed in the View() path.
@@ -600,19 +624,24 @@ func (f *Flow) renderRightPane(w, _ int) string {
 	var body string
 	switch f.current {
 	case ScreenName:
+		f.name.setWidth(w)
 		body = f.name.View()
 	case ScreenProvider:
+		f.provider.setWidth(w)
 		body = f.provider.View()
 	case ScreenModel:
 		f.model.syncFromConfig(f.cfg)
+		f.model.setWidth(w)
 		body = f.model.View()
 	case ScreenSkills:
 		body = f.skills.View()
 	case ScreenVault:
+		f.vault.setWidth(w)
 		body = f.vault.View()
 	case ScreenDaemon:
 		body = f.daemon.View()
 	case ScreenGateway:
+		f.gateway.setWidth(w)
 		body = f.gateway.View()
 	case ScreenMCPImport:
 		body = f.mcpImport.View()

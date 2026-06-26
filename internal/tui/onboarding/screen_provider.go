@@ -65,7 +65,7 @@ type providerResult struct {
 func newProviderModel() providerModel {
 	ti := textinput.New()
 	ti.CharLimit = 256
-	ti.Width = 60
+	ti.Width = providerInputMax
 	ti.Prompt = "> "
 	return providerModel{
 		idx:      0,
@@ -75,6 +75,16 @@ func newProviderModel() providerModel {
 		setLater: map[string]bool{},
 		input:    ti,
 	}
+}
+
+// providerInputMax is the API-key/URL input's design width on a roomy
+// pane; setWidth shrinks below it on a narrow terminal.
+const providerInputMax = 60
+
+// setWidth re-fits the input to the current right-pane width so the field
+// tracks terminal resizes instead of overflowing at its constructed size.
+func (m *providerModel) setWidth(paneW int) {
+	m.input.Width = fitInputWidth(paneW, providerInputMax)
 }
 
 func (m providerModel) Init() tea.Cmd { return textinput.Blink }

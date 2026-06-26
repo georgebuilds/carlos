@@ -95,6 +95,26 @@ func TestDetectProtocol_ITerm2(t *testing.T) {
 	}
 }
 
+// TestDetectProtocol_AppleTerminal pins Terminal.app to half-block: it
+// has no inline-image protocol, so it is the deliberate non-PNG ceiling.
+// The explicit TERM_PROGRAM match must win even when a multiplexer has
+// rewritten TERM to something that would otherwise route elsewhere.
+func TestDetectProtocol_AppleTerminal(t *testing.T) {
+	clearProtocolEnv(t)
+	t.Setenv("TERM_PROGRAM", "Apple_Terminal")
+	if got := DetectProtocol(); got != ProtoUnicodeHalfBlock {
+		t.Errorf("TERM_PROGRAM=Apple_Terminal: got %s want half-block", got)
+	}
+	// Even with a kitty-ish TERM left over from a multiplexer, the
+	// explicit Apple_Terminal branch (which sits after the kitty TERM
+	// check) must not be reachable via that path - confirm the common
+	// Terminal.app TERM still lands on half-block.
+	t.Setenv("TERM", "xterm-256color")
+	if got := DetectProtocol(); got != ProtoUnicodeHalfBlock {
+		t.Errorf("Apple_Terminal + xterm-256color: got %s want half-block", got)
+	}
+}
+
 // TestDetectProtocol_SixelTerms covers the sixel TERM allow-list.
 func TestDetectProtocol_SixelTerms(t *testing.T) {
 	for _, term := range []string{"mlterm", "foot", "foot-extra", "contour", "yaft-256color"} {

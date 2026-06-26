@@ -1,6 +1,7 @@
 package onboarding
 
 import (
+	"encoding/base64"
 	"image/color"
 	"strings"
 	"testing"
@@ -122,6 +123,11 @@ func TestRenderITerm2Cells_OutputShape(t *testing.T) {
 	}
 	if !strings.Contains(s, "width=18") || !strings.Contains(s, "height=9") {
 		t.Errorf("missing cell-size declaration; output prefix:\n%s", s[:min(120, len(s))])
+	}
+	// name= keeps iTerm2's confirmation dialog from reading "Unnamed file".
+	wantName := "name=" + base64.StdEncoding.EncodeToString([]byte("carlos.png"))
+	if !strings.Contains(s, wantName) {
+		t.Errorf("missing %q; output prefix:\n%s", wantName, s[:min(120, len(s))])
 	}
 	// Layout reservation: rows-1 newlines after the escape (the image
 	// already advanced the cursor by one row).

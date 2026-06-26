@@ -134,10 +134,20 @@ type modelResult struct {
 func newModelModel() modelModel {
 	ti := textinput.New()
 	ti.CharLimit = 128
-	ti.Width = 48
+	ti.Width = modelInputMax
 	ti.Prompt = "> "
 	ti.Focus()
 	return modelModel{chosen: map[string]string{}, input: ti, cursor: -1}
+}
+
+// modelInputMax is the model-slug input's design width on a roomy pane;
+// setWidth shrinks below it on a narrow terminal.
+const modelInputMax = 48
+
+// setWidth re-fits the input to the current right-pane width so the field
+// tracks terminal resizes instead of overflowing at its constructed size.
+func (m *modelModel) setWidth(paneW int) {
+	m.input.Width = fitInputWidth(paneW, modelInputMax)
 }
 
 // currentProvider returns the provider key the screen is asking about

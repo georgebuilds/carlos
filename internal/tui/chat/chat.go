@@ -275,6 +275,12 @@ type Model struct {
 	// server-side either way. Wired by cmd/carlos via WithVisionProbe.
 	visionProbe func() bool
 
+	// mcpStatus is the optional read-only snapshot of MCP sessions that
+	// came up at boot, consumed by the `/mcp` listing. nil leaves the
+	// listing config-only (no connected/tool columns). Wired by
+	// cmd/carlos via WithMCPStatus.
+	mcpStatus func() []MCPServerStatus
+
 	// Live subscription handle. nil until subscribeCmd resolves.
 	subCh     <-chan agent.Event
 	subCancel func()
@@ -840,6 +846,17 @@ func WithVisionProbe(probe func() bool) Option {
 // other text.
 func WithVaultPath(path string) Option {
 	return func(m *Model) { m.vaultPath = path }
+}
+
+// WithMCPStatus wires a read-only snapshot of the MCP sessions that
+// connected at boot, so `/mcp` can annotate each configured server with
+// its live connection state and tool count. nil (the common case for
+// the dev-aid loop and tests) leaves the listing config-only - it still
+// shows every configured server, just without the connected/tool
+// columns. MCP servers connect once at startup; the snapshot stays
+// accurate for the session.
+func WithMCPStatus(status func() []MCPServerStatus) Option {
+	return func(m *Model) { m.mcpStatus = status }
 }
 
 // WithChildrenView wires the inline sub-agent panel. The chat polls
@@ -2380,6 +2397,8 @@ func (m *Model) dispatchSlash(c slash.Command) tea.Cmd {
 		return m.modeSlash(strings.TrimSpace(c.Args))
 	case "whoami":
 		return m.whoamiSlash()
+	case "mcp":
+		return m.mcpSlash(c.Args)
 	}
 	if _, ok := slash.Lookup(c.Name); ok {
 		return func() tea.Msg {

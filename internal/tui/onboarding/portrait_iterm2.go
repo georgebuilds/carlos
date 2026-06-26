@@ -6,6 +6,15 @@ import (
 	"strings"
 )
 
+// iTermPortraitName is the base64-encoded filename advertised in the
+// iTerm2 File= escape's name= argument. iTerm2 surfaces this name in its
+// "Allow Terminal-Initiated Display?" confirmation; with name= omitted it
+// labels the transfer "Unnamed file", which reads as suspicious. A real
+// name makes the prompt legible (and the "Remember my choice" checkbox
+// meaningful, so the user is asked at most once). The value must be the
+// base64 of the display name per the protocol spec.
+var iTermPortraitName = base64.StdEncoding.EncodeToString([]byte("carlos.png"))
+
 // renderITerm2 emits the iTerm2 inline-image escape at a fixed 20×11 cell
 // box. Splash-style usage; onboarding's rail uses renderITerm2Cells.
 //
@@ -15,8 +24,8 @@ func renderITerm2(png []byte) (string, error) {
 	enc := base64.StdEncoding.EncodeToString(png)
 	var b strings.Builder
 	fmt.Fprintf(&b,
-		"\x1b]1337;File=inline=1;preserveAspectRatio=1;size=%d;width=20;height=11:%s\x07\n",
-		len(png), enc,
+		"\x1b]1337;File=name=%s;inline=1;preserveAspectRatio=1;size=%d;width=20;height=11:%s\x07\n",
+		iTermPortraitName, len(png), enc,
 	)
 	return b.String(), nil
 }
@@ -47,8 +56,8 @@ func renderITerm2Cells(png []byte, cols, rows int) (string, error) {
 	enc := base64.StdEncoding.EncodeToString(png)
 	var b strings.Builder
 	fmt.Fprintf(&b,
-		"\x1b]1337;File=inline=1;preserveAspectRatio=1;size=%d;width=%d;height=%d:%s\x07",
-		len(png), cols, rows, enc,
+		"\x1b]1337;File=name=%s;inline=1;preserveAspectRatio=1;size=%d;width=%d;height=%d:%s\x07",
+		iTermPortraitName, len(png), cols, rows, enc,
 	)
 	for i := 0; i < rows-1; i++ {
 		b.WriteByte('\n')

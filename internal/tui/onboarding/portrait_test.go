@@ -1,6 +1,7 @@
 package onboarding
 
 import (
+	"encoding/base64"
 	"strings"
 	"testing"
 )
@@ -116,6 +117,13 @@ func TestITerm2OutputShape(t *testing.T) {
 	}
 	if !strings.Contains(s, "\x07") {
 		t.Error("iterm2 output missing BEL terminator")
+	}
+	// name= must be present so iTerm2 labels the transfer instead of
+	// prompting about an "Unnamed file". The value is the base64 of the
+	// display name per the protocol.
+	wantName := "name=" + base64.StdEncoding.EncodeToString([]byte("carlos.png"))
+	if !strings.Contains(s, wantName) {
+		t.Errorf("iterm2 output missing %q; got prefix %q", wantName, s[:min(80, len(s))])
 	}
 }
 
