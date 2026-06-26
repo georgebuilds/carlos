@@ -1107,10 +1107,9 @@ func TestRun_GatewayEnabledStartsRuntime(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { done <- d.Run(ctx) }()
 	waitForSocket(t, d.opts.SocketPath, 2*time.Second)
-	d.mu.Lock()
-	hasGw := d.gw != nil
-	d.mu.Unlock()
-	if !hasGw {
+	// Poll: the gateway is wired a beat after the socket is connectable,
+	// so a one-shot read here raced under CI load.
+	if !waitForGatewayWired(t, d, 2*time.Second) {
 		t.Errorf("gateway runtime should be wired when Enabled+state.db")
 	}
 	cancel()

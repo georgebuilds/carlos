@@ -1,0 +1,113 @@
+# Label-gated auto-release. When a pull request merges into main AND
+# carries a release label, this computes the next semver tag, pushes it,
+# and runs goreleaser. Unlabeled merges do nothing, so you opt in per-PR.
+#
+# Labels (most significant wins):
+#   release        -> patch bump (vX.Y.Z+1)
+#   release:patch  -> patch bump
+#   release:minor  -> minor bump (vX.Y+1.0)
+#   release:major  -> major bump (vX+1.0.0)
+#
+# Why this is self-contained (it duplicates release.yml's goreleaser step
+# instead of reusing it): a tag pushed with the default GITHUB_TOKEN does
+# NOT trigger release.yml's `on: push: tags` (GitHub suppresses workflow
+# runs spawned by GITHUB_TOKEN to prevent recursion). Rather than require
+# a separate PAT just to re-trigger release.yml, this workflow builds the
+# release itself in the same job. release.yml stays the path for manual
+# tag pushes and workflow_dispatch re-runs.
+#
+# Required secrets (same as release.yml):
+#   - HOMEBREW_TAP_GITHUB_TOKEN — fine-grained PAT for georgebuilds/homebrew-tap.
+
+name: release-on-merge
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    # Only on a genuine merge (closed-without-merge is ignored), and only
+    # when one of the release labels is present.
+    if: >
+      github.event.pull_request.merged == true &&
+      (
+        contains(github.event.pull_request.labels.*.name, 'release') ||
+        contains(github.event.pull_request.labels.*.name, 'release:patch') ||
+        contains(github.event.pull_request.labels.*.name, 'release:minor') ||
+        contains(github.event.pull_request.labels.*.name, 'release:major')
+      )
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          # Full history + tags so the version compute sees prior tags and
+          # goreleaser can build the changelog.
+          fetch-depth: 0
+
+      - name: Compute next version
+        id: bump
+        env:
+          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+        run: |
+          set -euo pipefail
+          # Most significant label wins; default to patch.
+          level=patch
+          printf '%s' "$LABELS" | grep -q '"release:minor"' && level=minor || true
+          printf '%s' "$LABELS" | grep -q '"release:major"' && level=major || true
+
+          latest=$(git tag -l 'v*' --sort=-v:refname | head -n1)
+          [ -z "$latest" ] && latest=v0.0.0
+          ver=${latest#v}
+          # Drop any pre-release/build suffix before bumping.
+          ver=${ver%%-*}
+          major=${ver%%.*}
+          rest=${ver#*.}
+          minor=${rest%%.*}
+          patch=${rest#*.}
+
+          case "$level" in
+            major) major=$((major + 1)); minor=0; patch=0 ;;
+            minor) minor=$((minor + 1)); patch=0 ;;
+            patch) patch=$((patch + 1)) ;;
+          esac
+          next="v${major}.${minor}.${patch}"
+          echo "tag=$next" >> "$GITHUB_OUTPUT"
+          echo "Bumping $latest -> $next ($level)"
+
+      - name: Create and push tag
+        run: |
+          set -euo pipefail
+          tag='${{ steps.bump.outputs.tag }}'
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          # Tag the merge commit (current HEAD of main) and check it out so
+          # goreleaser builds from the exact tagged commit.
+          git tag -a "$tag" -m "$tag"
+          git push origin "$tag"
+          git checkout "$tag"
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run tests
+        # Gate the release on a green suite, matching release.yml.
+        run: go test ./...
+
+      - name: Run goreleaser
+        uses: goreleaser/goreleaser-action@v7
+        with:
+          distribution: goreleaser
+          version: '~> v2'
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}

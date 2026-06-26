@@ -98,6 +98,28 @@ func waitForSocket(t *testing.T, sock string, timeout time.Duration) {
 	t.Fatalf("daemon never bound %s within %v", sock, timeout)
 }
 
+// waitForGatewayWired polls d.gw until it is set or the timeout elapses,
+// returning whether the gateway runtime came up. The gateway is wired
+// during Run slightly AFTER the socket becomes connectable - the listener
+// binds before the gateway step (daemon.go), so a unix connect succeeds
+// while d.gw is still nil. A single read right after waitForSocket
+// therefore races on a loaded runner, which was a source of CI flakiness.
+// Reads under d.mu to keep the race detector happy.
+func waitForGatewayWired(t *testing.T, d *Daemon, timeout time.Duration) bool {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		d.mu.Lock()
+		up := d.gw != nil
+		d.mu.Unlock()
+		if up {
+			return true
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	return false
+}
+
 // shortSock returns a UDS path short enough to satisfy macOS's
 // UNIX_PATH_MAX (104 chars including the terminating null). t.TempDir
 // paths under /var/folders/.../TestNameXXX/001/ routinely exceed 104,
