@@ -234,11 +234,19 @@ func runDefault(cfg *config.Config, sessionID string) error {
 	// "<server>__<tool>" namespace. Failures don't block boot - the
 	// user sees the warning on stderr and the rest of the catalog
 	// keeps wiring up. Sessions are closed on session end via defer.
-	_, mcpClose, mcpCount := wireMCP(ctx, diagWriter, cfg.MCP, cfg.Frames.Active, baseReg)
+	mcpServers, mcpClose, mcpCount := wireMCP(ctx, diagWriter, cfg.MCP, cfg.Frames.Active, baseReg)
 	defer mcpClose()
 	if mcpCount > 0 {
 		notices = append(notices, fmt.Sprintf("mcp: registered %d tool(s) from %d server(s)", mcpCount, len(cfg.MCP.Servers)))
 	}
+	// Read-only snapshot for the /mcp listing: which configured servers
+	// connected at boot and how many tools each contributed. Built once
+	// (servers connect only at startup) and handed to the chat as a
+	// closure so /mcp can annotate live state without the chat package
+	// importing internal/mcp's session types. Per-server tool counts come
+	// from the registry's "<server>__<tool>" namespacing, so there's no
+	// extra round-trip to the servers.
+	mcpStatusFn := buildMCPStatusFn(cfg.MCP, cfg.Frames.Active, mcpServers, baseReg)
 	sup := agent.NewSupervisor(log, d.provider, baseReg)
 	sup.Run(ctx)
 	defer sup.Shutdown()
@@ -854,6 +862,7 @@ func runDefault(cfg *config.Config, sessionID string) error {
 		}
 		opts = append(opts, chat.WithStartupNotices(notices))
 		opts = append(opts, chat.WithDiagWriter(diagWriter))
+		opts = append(opts, chat.WithMCPStatus(mcpStatusFn))
 		if trace != nil {
 			// Slice 9f: stamp the final boot checkpoint when the chat
 			// composes its first frame. Finish is idempotent, so the
