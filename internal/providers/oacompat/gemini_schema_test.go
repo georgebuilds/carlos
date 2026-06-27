@@ -134,6 +134,78 @@ func TestSanitizeGemini_FailOpenOnInvalidJSON(t *testing.T) {
 	}
 }
 
+// TestSanitizeGemini_DropsItemsOnNonArray is the exact DigitalOcean shape
+// that produced the user's "field predicate failed: $type == Type.ARRAY":
+// a string property carrying a stray `items`. Gemini only allows `items` on
+// arrays, so it must be dropped - and the allowed values trapped in
+// items.enum hoisted onto the node.
+func TestSanitizeGemini_DropsItemsOnNonArray(t *testing.T) {
+	in := json.RawMessage(`{
+		"type": "string",
+		"description": "Period",
+		"items": {"enum": ["2m","5m","1h"], "type": "string"}
+	}`)
+	got := decode(t, sanitizeGeminiSchema(in))
+	if _, ok := got["items"]; ok {
+		t.Error("items must be dropped from a non-array node")
+	}
+	enum, ok := got["enum"].([]any)
+	if !ok || len(enum) != 3 || enum[0] != "2m" {
+		t.Errorf("items.enum should be hoisted onto the string node: %v", got["enum"])
+	}
+}
+
+func TestSanitizeGemini_KeepsItemsOnArray(t *testing.T) {
+	in := json.RawMessage(`{"type":"array","items":{"type":"string"},"minItems":1}`)
+	got := decode(t, sanitizeGeminiSchema(in))
+	if _, ok := got["items"].(map[string]any); !ok {
+		t.Error("items must be preserved on an array node")
+	}
+	if _, ok := got["minItems"]; !ok {
+		t.Error("minItems must be preserved on an array node")
+	}
+}
+
+func TestSanitizeGemini_DropsMismatchedKeywords(t *testing.T) {
+	// properties on a string, numeric bounds on a string, pattern on a number.
+	in := json.RawMessage(`{
+		"type": "string",
+		"properties": {"x": {"type": "string"}},
+		"required": ["x"],
+		"minimum": 1,
+		"pattern": "^a$"
+	}`)
+	got := decode(t, sanitizeGeminiSchema(in))
+	for _, k := range []string{"properties", "required", "minimum"} {
+		if _, ok := got[k]; ok {
+			t.Errorf("%s must be dropped from a string node", k)
+		}
+	}
+	if _, ok := got["pattern"]; !ok {
+		t.Error("pattern is valid on a string node and must be kept")
+	}
+}
+
+func TestSanitizeGemini_DropsNumericBoundsOnNonNumber(t *testing.T) {
+	in := json.RawMessage(`{"type":"boolean","minimum":0,"maximum":1}`)
+	got := decode(t, sanitizeGeminiSchema(in))
+	if _, ok := got["minimum"]; ok {
+		t.Error("minimum must be dropped from a boolean node")
+	}
+	if _, ok := got["maximum"]; ok {
+		t.Error("maximum must be dropped from a boolean node")
+	}
+}
+
+func TestSanitizeGemini_LeavesKeywordsWhenTypeUnknown(t *testing.T) {
+	// No concrete type: we can't decide, so structural keywords stay.
+	in := json.RawMessage(`{"items":{"type":"string"}}`)
+	got := decode(t, sanitizeGeminiSchema(in))
+	if _, ok := got["items"]; !ok {
+		t.Error("items should be left alone when the node has no concrete type")
+	}
+}
+
 func TestSanitizeGemini_DropsEnumWhenAllEmpty(t *testing.T) {
 	in := json.RawMessage(`{"type":"string","enum":["",""]}`)
 	got := decode(t, sanitizeGeminiSchema(in))
