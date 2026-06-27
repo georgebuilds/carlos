@@ -32,10 +32,18 @@ func BuildRequest(req providers.Request, errPrefix string) (*MessagesRequest, er
 		}
 		out.Messages = append(out.Messages, converted...)
 	}
+	// Gemini's FunctionDeclaration validator rejects the broad JSON-Schema
+	// dialect external MCP tools emit (arrays without `items`, $ref, anyOf,
+	// additionalProperties, ...). Built-in tools are kept clean by a
+	// compile-time test, but MCP schemas are arbitrary, so we normalize them
+	// to Gemini's subset on exactly the request paths that hit Google.
+	gemini := targetsGemini(errPrefix, req.Model)
 	for _, t := range req.Tools {
 		params := json.RawMessage(t.Schema)
 		if len(params) == 0 {
 			params = json.RawMessage(`{"type":"object","properties":{}}`)
+		} else if gemini {
+			params = sanitizeGeminiSchema(params)
 		}
 		out.Tools = append(out.Tools, APITool{
 			Type: "function",
