@@ -93,6 +93,7 @@ func sanitizeGeminiNode(node any) any {
 		}
 
 		normalizeGeminiType(v)
+		dropTypeMismatchedKeywords(v)
 		pruneGeminiEnum(v)
 
 		for key, child := range v {
@@ -160,6 +161,57 @@ func pickGeminiMember(members []any) map[string]any {
 		}
 	}
 	return first
+}
+
+// dropTypeMismatchedKeywords removes structural keywords that Gemini only
+// permits on a specific type. Gemini's Schema validator enforces these as
+// field predicates: e.g. `items` is rejected with "field predicate failed:
+// $type == Type.ARRAY" when it appears on a non-array node. External MCP
+// schemas violate this constantly - DigitalOcean ships a `type: "string"`
+// property that also carries an `items` (with the real enum of allowed
+// values) - so without this strip the whole request 400s.
+//
+// When a string property's allowed values are trapped inside a stray
+// `items.enum`, they're hoisted onto the node as a real `enum` before the
+// `items` is dropped, so the model still sees the valid choices.
+//
+// A node with no concrete type is left alone: we can't know which keywords
+// are valid, and Gemini tolerates the absence.
+func dropTypeMismatchedKeywords(v map[string]any) {
+	t, ok := v["type"].(string)
+	if !ok || t == "" {
+		return
+	}
+	if t != "array" {
+		if t == "string" {
+			if items, ok := v["items"].(map[string]any); ok {
+				if _, has := v["enum"]; !has {
+					if e, ok := items["enum"].([]any); ok && len(e) > 0 {
+						v["enum"] = e
+					}
+				}
+			}
+		}
+		delete(v, "items")
+		delete(v, "minItems")
+		delete(v, "maxItems")
+		delete(v, "uniqueItems")
+	}
+	if t != "object" {
+		delete(v, "properties")
+		delete(v, "required")
+		delete(v, "minProperties")
+		delete(v, "maxProperties")
+	}
+	if t != "string" {
+		delete(v, "minLength")
+		delete(v, "maxLength")
+		delete(v, "pattern")
+	}
+	if t != "number" && t != "integer" {
+		delete(v, "minimum")
+		delete(v, "maximum")
+	}
 }
 
 // normalizeGeminiType reduces a JSON-Schema-7 type array (["string","null"])
