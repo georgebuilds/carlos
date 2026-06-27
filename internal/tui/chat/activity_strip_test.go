@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/lipgloss"
+
 	"github.com/georgebuilds/carlos/internal/agent"
 )
 
@@ -379,12 +381,13 @@ func TestStripMetadata_ErrorChipPlural(t *testing.T) {
 }
 
 // TestStripHint is a smoke test that the affordance contains both the
-// keybind ("e") and the action label ("expand") so users learn the
-// gesture without diving into /help.
+// keybind ("ctrl+e") and the action label ("expand") so users learn the
+// gesture without diving into /help. ctrl+e (not bare e) because the
+// composer textarea holds focus.
 func TestStripHint(t *testing.T) {
 	got := stripHint()
-	if !strings.Contains(got, "e") {
-		t.Errorf("hint missing key glyph: %q", got)
+	if !strings.Contains(got, "ctrl+e") {
+		t.Errorf("hint missing keybind: %q", got)
 	}
 	if !strings.Contains(got, "expand") {
 		t.Errorf("hint missing label: %q", got)
@@ -569,22 +572,150 @@ func TestRenderToolStrip_MixedErrorsKeepNeutralGlyph(t *testing.T) {
 	}
 }
 
-// TestRenderToolStrip_NarrowWidthDropsHint exercises the
-// composeStripLine fallback: a strip whose left section already eats
-// most of contentW must drop the trailing "e expand" hint before it
-// sacrifices the metadata. We force the budget squeeze by listing
-// multiple distinct tool names AND requesting a tight viewport.
-func TestRenderToolStrip_NarrowWidthDropsHint(t *testing.T) {
+// TestRenderToolStrip_WrapsOnOverflow pins item-3 behavior: a segment
+// list too wide for the viewport WRAPS across lines instead of running
+// off the right edge. Every visual line must fit the width budget, both
+// tool names must survive, and the expand hint is preserved (wrapping
+// frees the room the old single-line layout lacked).
+func TestRenderToolStrip_WrapsOnOverflow(t *testing.T) {
 	es := []transcriptEntry{
 		{tool: "very_long_tool_name_a", hasResult: true, toolResult: "ok"},
 		{tool: "very_long_tool_name_b", hasResult: true, toolResult: "ok"},
 	}
-	got := renderToolStrip(es, 38)
-	if !strings.Contains(got, "very_long_tool_name_a") {
-		t.Errorf("missing first tool name: %q", got)
+	const width = 38
+	got := renderToolStrip(es, width)
+	if !strings.Contains(got, "very_long_tool_name_a") || !strings.Contains(got, "very_long_tool_name_b") {
+		t.Errorf("both tool names must survive wrapping: %q", got)
 	}
-	if strings.Contains(got, "expand") {
-		t.Errorf("hint should have dropped at the squeezed width: %q", got)
+	if !strings.Contains(got, "\n") {
+		t.Errorf("overflowing strip should wrap to multiple lines: %q", got)
+	}
+	for _, ln := range strings.Split(got, "\n") {
+		if w := lipgloss.Width(ln); w > width {
+			t.Errorf("wrapped line exceeds width %d (got %d): %q", width, w, ln)
+		}
+	}
+}
+
+// TestRenderToolStripExpanded_ShowsInputAndError pins item-2 behavior:
+// the expanded view surfaces each entry's name, args, and full result,
+// with the error result included (the "what was the MCP error?" case),
+// plus a ctrl+e collapse hint.
+func TestRenderToolStripExpanded_ShowsInputAndError(t *testing.T) {
+	es := []transcriptEntry{
+		{tool: "domain-list", toolInput: `{"page":1}`, hasResult: true, isError: true, toolResult: "api error: 401 Unable to authenticate you"},
+	}
+	got := renderToolStripExpanded(es, 100)
+	for _, want := range []string{"domain-list", `{"page":1}`, "401 Unable to authenticate", "ctrl+e", "collapse"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("expanded view missing %q:\n%s", want, got)
+		}
+	}
+}
+
+// TestWrapStripParts covers the wrapping primitive directly: empty input, a
+// sub-1 budget floor, packing multiple parts onto one line, and an oversized
+// single part getting its own (overflowing) line.
+func TestWrapStripParts(t *testing.T) {
+	if got := wrapStripParts(nil, " · ", 10); got != nil {
+		t.Errorf("empty parts should yield nil, got %v", got)
+	}
+	// Budget < 1 is floored to 1; a single part still returns one line.
+	if got := wrapStripParts([]string{"a"}, " · ", 0); len(got) != 1 || got[0] != "a" {
+		t.Errorf("sub-1 budget: got %v", got)
+	}
+	// Three short parts fit on one line at a generous budget.
+	one := wrapStripParts([]string{"aa", "bb", "cc"}, " · ", 40)
+	if len(one) != 1 {
+		t.Errorf("parts should pack onto one line, got %d lines: %v", len(one), one)
+	}
+	// Tight budget forces each part to its own line.
+	many := wrapStripParts([]string{"aaaa", "bbbb", "cccc"}, " · ", 4)
+	if len(many) != 3 {
+		t.Errorf("tight budget should wrap to 3 lines, got %d: %v", len(many), many)
+	}
+	// An oversized single part overflows on its own line rather than crashing.
+	big := wrapStripParts([]string{"this-is-way-too-long"}, " · ", 5)
+	if len(big) != 1 || big[0] != "this-is-way-too-long" {
+		t.Errorf("oversized part should get its own line verbatim: %v", big)
+	}
+}
+
+// TestRenderToolStripExpanded_States covers the per-entry branches: a skill
+// (named), a still-running call (no result), a finished call with no output,
+// and a normal one, all in one expanded run.
+func TestRenderToolStripExpanded_States(t *testing.T) {
+	es := []transcriptEntry{
+		{tool: "skill_use", isSkill: true, skillName: "calendar", hasResult: true, toolResult: "loaded"},
+		{tool: "bash", toolInput: `{"cmd":"sleep 1"}`, hasResult: false},
+		{tool: "read", hasResult: true, toolResult: ""},
+		{tool: "grep", hasResult: true, toolResult: "match a\nmatch b"},
+	}
+	got := renderToolStripExpanded(es, 100)
+	for _, want := range []string{"calendar", "running", "no output", "match a", "ctrl+e", "collapse"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("expanded states missing %q:\n%s", want, got)
+		}
+	}
+}
+
+// TestRenderToolStrip_WrapKeepsMetaOnLastLine forces the wrap path where the
+// last segment line is short enough that the metadata fits on it (the else
+// branch of the meta placement), rather than spilling to its own line.
+func TestRenderToolStrip_WrapKeepsMetaOnLastLine(t *testing.T) {
+	es := make([]transcriptEntry, 0, 8)
+	for _, n := range []string{"aaa", "bbb", "ccc", "ddd", "eee", "fff", "ggg", "hhh"} {
+		es = append(es, transcriptEntry{tool: n, hasResult: true, toolResult: "ok"})
+	}
+	got := renderToolStrip(es, 44)
+	if !strings.Contains(got, "\n") {
+		t.Fatalf("expected wrapping, got one line: %q", got)
+	}
+	if !strings.Contains(got, "lines") {
+		t.Errorf("metadata should survive wrapping: %q", got)
+	}
+	for _, ln := range strings.Split(got, "\n") {
+		if w := lipgloss.Width(ln); w > 44 {
+			t.Errorf("wrapped line exceeds width 44 (got %d): %q", w, ln)
+		}
+	}
+}
+
+// TestRenderToolStripExpanded_Empty returns empty for no entries.
+func TestRenderToolStripExpanded_Empty(t *testing.T) {
+	if got := renderToolStripExpanded(nil, 100); got != "" {
+		t.Errorf("want empty, got %q", got)
+	}
+}
+
+// TestComposeTranscript_ExpandToggle pins the wiring: with expandTools
+// false a tool run renders as the dense strip (one logical line + hint);
+// with it true the same run renders expanded rows that include the
+// result body and a collapse hint.
+func TestComposeTranscript_ExpandToggle(t *testing.T) {
+	es := []transcriptEntry{
+		{kind: entryToolCall, tool: "bash", toolInput: `{"cmd":"ls"}`, hasResult: true, toolResult: "file-a\nfile-b"},
+		{kind: entryToolCall, tool: "read", hasResult: true, toolResult: "contents"},
+	}
+	collapsed := composeTranscript(es, "", "", nil, nil, 100, false)
+	if !strings.Contains(collapsed, "expand") {
+		t.Errorf("collapsed transcript should show the expand hint:\n%s", collapsed)
+	}
+	expanded := composeTranscript(es, "", "", nil, nil, 100, true)
+	if !strings.Contains(expanded, "file-a") || !strings.Contains(expanded, "collapse") {
+		t.Errorf("expanded transcript should show result body + collapse hint:\n%s", expanded)
+	}
+}
+
+// TestComposeTranscript_SoloToolExpands pins that a single errored tool
+// call (the MCP screenshot case) expands too, not just multi-call runs.
+func TestComposeTranscript_SoloToolExpands(t *testing.T) {
+	es := []transcriptEntry{
+		{kind: entryToolCall, tool: "domain-list", hasResult: true, isError: true, toolResult: "401 Unable to authenticate you"},
+	}
+	expanded := composeTranscript(es, "", "", nil, nil, 100, true)
+	if !strings.Contains(expanded, "401 Unable to authenticate") {
+		t.Errorf("solo errored tool call should expand to show the error:\n%s", expanded)
 	}
 }
 
@@ -730,7 +861,7 @@ func TestWantsLeadingBlankLine(t *testing.T) {
 // viewport.
 func TestComposeTranscript_FirstUserGetsLeadingBlankLine(t *testing.T) {
 	entries := []transcriptEntry{{kind: entryUserMessage, text: "hello"}}
-	out := composeTranscript(entries, "", "", nil, nil, 80)
+	out := composeTranscript(entries, "", "", nil, nil, 80, false)
 	if !strings.HasPrefix(out, "\n") {
 		t.Errorf("expected leading blank line; got %q", out)
 	}
@@ -745,7 +876,7 @@ func TestComposeTranscript_FirstNonTurnSkipsBlankLine(t *testing.T) {
 	entries := []transcriptEntry{
 		{kind: entryToolCall, tool: "bash", hasResult: true, toolResult: "ok"},
 	}
-	out := composeTranscript(entries, "", "", nil, nil, 80)
+	out := composeTranscript(entries, "", "", nil, nil, 80, false)
 	if strings.HasPrefix(out, "\n") {
 		t.Errorf("non-turn opening shouldn't lead with a blank line; got %q", out[:8])
 	}
@@ -760,7 +891,7 @@ func TestComposeTranscript_TurnAfterToolGetsBlankLine(t *testing.T) {
 		{kind: entryToolCall, tool: "bash", hasResult: true, toolResult: "ok"},
 		{kind: entryAssistantMessage, text: "done"},
 	}
-	out := composeTranscript(entries, "", "", nil, nil, 80)
+	out := composeTranscript(entries, "", "", nil, nil, 80, false)
 	if !strings.Contains(out, "\n\n") {
 		t.Errorf("expected blank line between tool and assistant: %q", out)
 	}
@@ -780,7 +911,7 @@ func TestComposeTranscript_AlternatingTurnsCountGaps(t *testing.T) {
 		{kind: entryToolCall, tool: "read", hasResult: true, toolResult: "a"},
 		{kind: entryToolCall, tool: "grep", hasResult: true, toolResult: "b"},
 	}
-	out := composeTranscript(entries, "", "", nil, nil, 80)
+	out := composeTranscript(entries, "", "", nil, nil, 80, false)
 	if got := strings.Count(out, "\n\n"); got != 1 {
 		t.Errorf("want exactly 1 blank-line gap; got %d in:\n%s", got, out)
 	}
@@ -802,7 +933,7 @@ func TestComposeTranscript_ThinkingRowGetsBlankLine(t *testing.T) {
 	entries := []transcriptEntry{
 		{kind: entryUserMessage, text: "hey"},
 	}
-	out := composeTranscript(entries, "", "🧢: thinking…", nil, nil, 80)
+	out := composeTranscript(entries, "", "🧢: thinking…", nil, nil, 80, false)
 	if strings.Count(out, "\n\n") < 1 {
 		t.Errorf("expected blank line before thinking row: %q", out)
 	}
@@ -818,7 +949,7 @@ func TestComposeTranscript_LiveTextGetsBlankLine(t *testing.T) {
 	entries := []transcriptEntry{
 		{kind: entryUserMessage, text: "hey"},
 	}
-	out := composeTranscript(entries, "streaming reply...", "", nil, nil, 80)
+	out := composeTranscript(entries, "streaming reply...", "", nil, nil, 80, false)
 	// Two blank-line gaps: one before the user (leading), one between
 	// user and live text.
 	if strings.Count(out, "\n\n") < 1 {
@@ -840,7 +971,7 @@ func TestComposeTranscript_RunOfToolsFoldsToStrip(t *testing.T) {
 		{kind: entryToolCall, tool: "read", hasResult: true, toolResult: "z"},
 		{kind: entryAssistantMessage, text: "found 3"},
 	}
-	out := composeTranscript(entries, "", "", nil, nil, 120)
+	out := composeTranscript(entries, "", "", nil, nil, 120, false)
 
 	if !strings.Contains(out, stripGlyphTool) {
 		t.Errorf("missing ▸ leading glyph: %q", out)

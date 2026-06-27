@@ -30,7 +30,7 @@ func TestComposeTranscript_CachesAssistantMarkdownAcrossFrames(t *testing.T) {
 	}
 
 	// First frame: every assistant message is a cold cache miss.
-	_ = composeTranscript(entries, "", "", md, nil, 80)
+	_ = composeTranscript(entries, "", "", md, nil, 80, false)
 	if mdMisses != n {
 		t.Fatalf("first compose: glamour misses = %d, want %d", mdMisses, n)
 	}
@@ -38,7 +38,7 @@ func TestComposeTranscript_CachesAssistantMarkdownAcrossFrames(t *testing.T) {
 	// Subsequent frames over the unchanged transcript must be pure cache
 	// hits - no glamour, the whole point of the fix.
 	for f := 0; f < 8; f++ {
-		_ = composeTranscript(entries, "", "", md, nil, 80)
+		_ = composeTranscript(entries, "", "", md, nil, 80, false)
 	}
 	if mdMisses != n {
 		t.Errorf("re-composing re-rendered markdown: misses %d, want %d (every-frame glamour is back)", mdMisses, n)

@@ -70,6 +70,7 @@ watch(
             v-else-if="row.type === 'tool'"
             :name="row.name"
             :input="row.input"
+            :input-raw="row.inputRaw"
             :output="row.output"
             :is-error="row.isError"
             :truncated="row.truncated"

@@ -13,6 +13,11 @@ export type RenderRow =
       key: string
       name: string
       input: string
+      // inputRaw is the structured tool input (object/string as sent on the
+      // wire), kept alongside the stringified `input` so the redesigned
+      // ToolCard viewers can read fields (path, search/replace, cmd, ...)
+      // without re-parsing.
+      inputRaw: unknown
       output: string
       isError: boolean
       truncated: boolean
@@ -76,6 +81,7 @@ export function buildRows(events: WireEvent[]): RenderRow[] {
           key,
           name,
           input: stringifyInput(d.input),
+          inputRaw: d.input ?? null,
           output: '',
           isError: false,
           truncated: false,
@@ -105,6 +111,7 @@ export function buildRows(events: WireEvent[]): RenderRow[] {
             key,
             name,
             input: '',
+            inputRaw: null,
             output: d.output_preview ?? '',
             isError: !!d.is_error,
             truncated: !!d.truncated,

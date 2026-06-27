@@ -1,0 +1,132 @@
+<!-- @dsCard group="carlos web" name="Tool cards (condensed)" subtitle="invocation chips + per-type viewers" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>carlos web · tool cards</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --paper: light-dark(#f4ecd8, #15171c);
+    --paper-hi: light-dark(#fdf7e6, #1c1f27);
+    --card: light-dark(#fdf7e6, #1a1d27);
+    --navy: light-dark(#2c4a78, #7aa0d4);
+    --navy-soft: light-dark(rgba(44,74,120,.14), rgba(122,160,212,.18));
+    --clay: light-dark(#c64a2c, #e87a55);
+    --sage: light-dark(#7a9676, #a3c0a0);
+    --sun: light-dark(#e8a635, #f3c886);
+    --ink: light-dark(#1b1812, #ece4d2);
+    --ink-soft: light-dark(#3a342a, #c9c1ad);
+    --muted: light-dark(#6b6357, #8a8170);
+    --subtle: light-dark(#8a8170, #6b6357);
+    --rule: light-dark(rgba(27,24,18,.18), rgba(236,228,210,.18));
+    --rule-soft: light-dark(rgba(27,24,18,.10), rgba(236,228,210,.08));
+    --focus: var(--navy);
+    --code-ground: light-dark(#14253f, #1c2940);
+    --code-ink: light-dark(#f3ecda, #ece4d2);
+    --code-trunc: #a8b6c8;
+    --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 34px 28px; background: var(--paper); color: var(--ink);
+    font-family: ui-sans-serif, -apple-system, system-ui, sans-serif;
+    display: flex; flex-direction: column; gap: 14px; max-width: 760px;
+  }
+  h1 { font-size: 14px; font-weight: 600; color: var(--muted); margin: 0 0 4px; }
+  .cap { font-family: 'Caveat', cursive; font-size: 18px; color: var(--sun); margin: -8px 0 6px; }
+
+  /* ---- tool card (mirrors ToolCard.vue scoped styles) ---- */
+  .tool-card { background: var(--card); border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; }
+  .tool-card.err { border-color: color-mix(in srgb, var(--clay) 45%, var(--rule)); }
+  .tc-head { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 11px;
+    background: none; border: 0; cursor: pointer; text-align: left; font-family: var(--mono); color: var(--ink-soft); }
+  .tc-head:hover { background: var(--paper-hi); }
+  .tc-glyph { font-size: 12px; color: var(--navy); }
+  .tc-glyph.k-bash { color: var(--ink-soft); }
+  .tc-glyph.k-edit, .tc-glyph.k-write { color: var(--sage); }
+  .tc-glyph.k-mcp { color: var(--sun); }
+  .tc-server { font-size: 10.5px; color: var(--muted); background: var(--navy-soft); padding: 1px 5px; border-radius: 4px; }
+  .tc-name { font-size: 12px; font-weight: 600; color: var(--navy); }
+  .tc-primary { min-width: 0; font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tc-spacer { flex: 1 1 auto; }
+  .tc-stat { font-size: 11px; display: inline-flex; gap: 5px; }
+  .tc-stat .add { color: var(--sage); } .tc-stat .del { color: var(--clay); }
+  .tc-dot { width: 6px; height: 6px; border-radius: 50%; }
+  .tc-dot.ok { background: var(--sage); } .tc-dot.bad { background: var(--clay); }
+  .tc-chev { font-size: 10px; color: var(--subtle); }
+  .tc-body { border-top: 1px solid var(--rule-soft); padding: 9px 11px; display: flex; flex-direction: column; gap: 8px; }
+  .tc-sub { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .tc-cmd { font-family: var(--mono); font-size: 11.5px; color: var(--code-ink); background: var(--code-ground); border-radius: 6px; padding: 7px 10px; }
+  .tc-cmd::before { content: '❯ '; color: var(--sage); }
+  .tc-well { margin: 0; font-family: var(--mono); font-size: 11.5px; line-height: 1.6; background: var(--code-ground); color: var(--code-ink); border-radius: 6px; padding: 9px 11px; white-space: pre-wrap; }
+  .tc-well.err { color: #f0b3a0; }
+  .tc-receipt { font-family: var(--mono); font-size: 10.5px; color: var(--muted); }
+
+  /* ---- diff (mirrors DiffView.vue) ---- */
+  .diff { font-family: var(--mono); font-size: 11.5px; line-height: 1.55; background: var(--code-ground); color: var(--code-ink); border-radius: 6px; overflow: hidden; }
+  .diff-row { display: grid; grid-template-columns: 3ch 3ch 1.5ch 1fr; column-gap: 6px; padding: 0 10px; white-space: pre; }
+  .diff-no { text-align: right; color: var(--code-trunc); opacity: .7; }
+  .diff-sign { text-align: center; opacity: .85; }
+  .op-add { background: color-mix(in srgb, var(--sage) 26%, transparent); }
+  .op-add .diff-sign, .op-add .diff-text { color: #c2e3bd; }
+  .op-del { background: color-mix(in srgb, var(--clay) 26%, transparent); }
+  .op-del .diff-sign, .op-del .diff-text { color: #f0b3a0; }
+</style>
+</head>
+<body>
+  <div>
+    <h1>Tool cards — condensed invocation, full output a click away</h1>
+    <div class="cap">collapsed chips ↓</div>
+  </div>
+
+  <!-- collapsed chips -->
+  <div class="tool-card"><div class="tc-head"><span class="tc-glyph k-read">◇</span><span class="tc-name">read</span><span class="tc-primary">internal/agent/eventlog.go</span><span class="tc-spacer"></span><span class="tc-dot ok"></span><span class="tc-chev">▸</span></div></div>
+
+  <div class="tool-card"><div class="tc-head"><span class="tc-glyph k-edit">±</span><span class="tc-name">edit</span><span class="tc-primary">internal/web/stream.go</span><span class="tc-spacer"></span><span class="tc-stat"><span class="add">+4</span><span class="del">-1</span></span><span class="tc-dot ok"></span><span class="tc-chev">▸</span></div></div>
+
+  <div class="tool-card"><div class="tc-head"><span class="tc-glyph k-bash">❯</span><span class="tc-name">bash</span><span class="tc-primary">go test ./internal/web/... -run TestStreamBackfillSplice</span><span class="tc-spacer"></span><span class="tc-dot ok"></span><span class="tc-chev">▸</span></div></div>
+
+  <div class="tool-card err"><div class="tc-head"><span class="tc-glyph k-mcp">◈</span><span class="tc-server">digitalocean-mcp-local</span><span class="tc-name">domain-list</span><span class="tc-spacer"></span><span class="tc-dot bad"></span><span class="tc-chev">▸</span></div></div>
+
+  <div class="cap" style="margin-top:10px">expanded ↓</div>
+
+  <!-- expanded: edit diff -->
+  <div class="tool-card open">
+    <div class="tc-head"><span class="tc-glyph k-edit">±</span><span class="tc-name">edit</span><span class="tc-primary">internal/web/stream.go</span><span class="tc-spacer"></span><span class="tc-stat"><span class="add">+4</span><span class="del">-1</span></span><span class="tc-dot ok"></span><span class="tc-chev">▾</span></div>
+    <div class="tc-body">
+      <div class="tc-sub">internal/web/stream.go</div>
+      <div class="diff">
+        <div class="diff-row op-ctx"><span class="diff-no">1</span><span class="diff-no">1</span><span class="diff-sign"></span><span class="diff-text">for ev := range sub {</span></div>
+        <div class="diff-row op-add"><span class="diff-no"></span><span class="diff-no">2</span><span class="diff-sign">+</span><span class="diff-text">	if ev.Seq <= lastBackfilled {</span></div>
+        <div class="diff-row op-add"><span class="diff-no"></span><span class="diff-no">3</span><span class="diff-sign">+</span><span class="diff-text">		continue</span></div>
+        <div class="diff-row op-add"><span class="diff-no"></span><span class="diff-no">4</span><span class="diff-sign">+</span><span class="diff-text">	}</span></div>
+        <div class="diff-row op-del"><span class="diff-no">2</span><span class="diff-no"></span><span class="diff-sign">-</span><span class="diff-text">	enc.Encode(ev)</span></div>
+        <div class="diff-row op-add"><span class="diff-no"></span><span class="diff-no">5</span><span class="diff-sign">+</span><span class="diff-text">	enc.Encode(ev)</span></div>
+        <div class="diff-row op-ctx"><span class="diff-no">3</span><span class="diff-no">6</span><span class="diff-sign"></span><span class="diff-text">}</span></div>
+      </div>
+      <div class="tc-receipt">edited internal/web/stream.go: replaced 1 occurrence</div>
+    </div>
+  </div>
+
+  <!-- expanded: bash -->
+  <div class="tool-card open">
+    <div class="tc-head"><span class="tc-glyph k-bash">❯</span><span class="tc-name">bash</span><span class="tc-primary">goreleaser release --snapshot --clean</span><span class="tc-spacer"></span><span class="tc-dot bad"></span><span class="tc-chev">▾</span></div>
+    <div class="tc-body">
+      <div class="tc-cmd">goreleaser release --snapshot --clean</div>
+      <pre class="tc-well err">error: yaml: unmarshal errors:
+  line 12: field format not found in type config.Archive
+(deprecated in v2: use formats)</pre>
+    </div>
+  </div>
+
+  <!-- expanded: mcp error -->
+  <div class="tool-card open err">
+    <div class="tc-head"><span class="tc-glyph k-mcp">◈</span><span class="tc-server">digitalocean-mcp-local</span><span class="tc-name">domain-list</span><span class="tc-spacer"></span><span class="tc-dot bad"></span><span class="tc-chev">▾</span></div>
+    <div class="tc-body">
+      <pre class="tc-well err">api error: GET https://api.digitalocean.com/v2/domains?page=1&per_page=20: 401 Unable to authenticate you</pre>
+    </div>
+  </div>
+</body>
+</html>

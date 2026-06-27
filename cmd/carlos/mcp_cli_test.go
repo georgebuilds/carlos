@@ -178,7 +178,7 @@ func TestMCPCLIPlan_Help(t *testing.T) {
 		t.Fatal("help should succeed")
 	}
 	body := rowsText(res.rows)
-	for _, want := range []string{"carlos mcp add", "--http", "-e KEY=VAL", "remove"} {
+	for _, want := range []string{"carlos mcp add", "-t http", "-e KEY=VAL", "remove"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("help missing %q:\n%s", want, body)
 		}

@@ -35,6 +35,18 @@ describe('buildRows folds tool_call + tool_result', () => {
     })
   })
 
+  it('carries the structured inputRaw through for viewers', () => {
+    const rows = buildRows([
+      e(1, 'tool_call', { name: 'edit', input: { path: 'a.ts', search: 'x', replace: 'y' } }),
+      e(2, 'tool_result', { name: 'edit', output_preview: 'ok', is_error: false, truncated: false }),
+    ])
+    expect((rows[0] as { inputRaw: unknown }).inputRaw).toEqual({
+      path: 'a.ts',
+      search: 'x',
+      replace: 'y',
+    })
+  })
+
   it('carries the truncated flag through', () => {
     const rows = buildRows([
       e(1, 'tool_call', { name: 'Read', input: 'big.md' }),

@@ -84,6 +84,60 @@ func TestParseAddSpec_Frames(t *testing.T) {
 	}
 }
 
+// TestParseAddSpec_ClaudeCodeTransport covers Claude Code's grammar where
+// `--transport`/`-t` selects the transport and the url is a positional after
+// the name, with options allowed before OR after the name. This is the exact
+// shape that previously failed ("first argument must be a server name, got
+// flag").
+func TestParseAddSpec_ClaudeCodeTransport(t *testing.T) {
+	cases := []struct {
+		name   string
+		tokens []string
+	}{
+		{"transport before name", strings.Fields("--transport http home-tools http://192.168.0.201:5678/mcp/abc")},
+		{"short -t before name", strings.Fields("-t http home-tools http://192.168.0.201:5678/mcp/abc")},
+		{"transport after name", strings.Fields("home-tools --transport http http://192.168.0.201:5678/mcp/abc")},
+		{"equals form", strings.Fields("--transport=http home-tools http://192.168.0.201:5678/mcp/abc")},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			sc, err := ParseAddSpec(tc.tokens)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if sc.Name != "home-tools" {
+				t.Errorf("name = %q, want home-tools", sc.Name)
+			}
+			if sc.TransportKind() != TransportHTTP {
+				t.Errorf("transport = %q, want http", sc.TransportKind())
+			}
+			if sc.URL != "http://192.168.0.201:5678/mcp/abc" {
+				t.Errorf("url = %q", sc.URL)
+			}
+		})
+	}
+}
+
+func TestParseAddSpec_ClaudeCodeStdioAndScope(t *testing.T) {
+	// -t stdio explicit, options before the name, -s scope accepted+ignored.
+	sc, err := ParseAddSpec(strings.Fields("-s local -t stdio -e K=v gh npx -y @scope/pkg"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if sc.Name != "gh" || sc.Command != "npx" {
+		t.Errorf("name/command wrong: %+v", sc)
+	}
+	if strings.Join(sc.Args, " ") != "-y @scope/pkg" {
+		t.Errorf("args = %v (command flags must pass through verbatim)", sc.Args)
+	}
+	if sc.Env["K"] != "v" {
+		t.Errorf("env = %+v", sc.Env)
+	}
+	if sc.TransportKind() != TransportStdio {
+		t.Errorf("transport = %q, want stdio", sc.TransportKind())
+	}
+}
+
 func TestParseAddSpec_Errors(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -91,16 +145,20 @@ func TestParseAddSpec_Errors(t *testing.T) {
 		want   string
 	}{
 		{"empty", nil, "usage"},
-		{"name is flag", []string{"--http", "https://x"}, "must be a server name"},
+		{"only a flag, no name", []string{"--http", "https://x"}, "missing server name"},
 		{"unknown flag", strings.Fields("docs --htttp https://x"), "unknown flag"},
 		{"https typo", strings.Fields("docs --https https://x"), "unknown flag"},
+		{"bad transport value", strings.Fields("-t ftp name url"), "unknown transport"},
 		{"stdio no command", []string{"lonely"}, "needs a command"},
 		{"env missing value", []string{"x", "-e"}, "needs a value"},
 		{"env malformed", []string{"x", "-e", "NOEQUALS", "--", "run"}, "must be KEY=VALUE"},
 		{"http missing url", []string{"x", "--http"}, "needs a value"},
-		{"http with command", strings.Fields("x --http https://u extra cmd"), "takes a url"},
-		{"header on stdio", []string{"x", "-H", "A: b", "--", "run"}, "only applies to --http"},
-		{"transport conflict", strings.Fields("x --http https://u --sse https://v"), "conflicts"},
+		{"transport http missing url", strings.Fields("-t http x"), "needs a url"},
+		{"http with extra positional", strings.Fields("x --http https://u extra cmd"), "takes only a url"},
+		{"transport http with extra", strings.Fields("-t http x https://u extra"), "extra"},
+		{"header on stdio", []string{"x", "-H", "A: b", "--", "run"}, "only applies to"},
+		{"url as stdio command (misordered transport)", strings.Fields("home-tools http://host/mcp -t http"), "looks like a url"},
+		{"transport conflict", strings.Fields("x --http https://u --sse https://v"), "conflicting"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
