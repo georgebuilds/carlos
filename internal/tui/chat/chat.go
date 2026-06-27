@@ -601,6 +601,13 @@ type Model struct {
 	// through) had no way to copy carlos's responses.
 	mouseOff bool
 
+	// expandTools toggles tool-activity strips between the dense one-line
+	// view and full per-entry rows (input + result/error). Flipped by
+	// ctrl+e; the per-strip "ctrl+e expand" hint advertises it. Global
+	// (not per-strip) so the toggle stays a single keypress with no
+	// cursor/focus model in the transcript.
+	expandTools bool
+
 	// /resume picker state. showResume gates the takeover overlay;
 	// resumeSessions is the list loaded from the SQLite log on
 	// open; resumeCursor is the focused card; resumeSelected is
@@ -1302,6 +1309,17 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.openCommandPalette()
 				return m, nil
 			}
+		case "ctrl+e":
+			// Toggle the tool-activity strips between the dense one-line
+			// view and full per-entry rows (input + result/error). The
+			// "ctrl+e expand" hint on each strip advertises this; ctrl+e
+			// (not bare e) because the composer textarea holds focus, so
+			// a letter key would just type into the input. Global toggle:
+			// simple, discoverable, and exactly what "what was that
+			// error?" needs without a per-strip cursor model.
+			m.expandTools = !m.expandTools
+			m.rerenderViewport()
+			return m, nil
 		case "ctrl+l":
 			// Phase F-8: mute cwd-hint footer for the rest of the
 			// session. Idempotent - second press just keeps the lock

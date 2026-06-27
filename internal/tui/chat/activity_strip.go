@@ -126,7 +126,7 @@ func stripRollup(es []transcriptEntry) []stripSegment {
 	for i := 1; i < len(es); i++ {
 		e := es[i]
 		label := segmentLabel(e)
-		// Sub-agent entries break the fold on both sides — they may
+		// Sub-agent entries break the fold on both sides: they may
 		// not merge with a neighbor regardless of label/error match.
 		if !curIsAgent && !e.isAgent && label == cur.label && e.isError == cur.isError {
 			cur.count++
@@ -233,20 +233,68 @@ func renderStripSegment(seg stripSegment) string {
 	return styled
 }
 
-// stripSegmentsList composes the inline middot-separated list of
-// rendered segments. Separator is a faint " · " so it visually recedes
-// against the bold tool names.
-func stripSegmentsList(es []transcriptEntry) string {
+// stripSegmentSeparator is the faint middot that joins inline segments.
+// Pulled out so the single-line join and the wrapped layout measure the
+// same separator width.
+func stripSegmentSeparator() string {
+	return lipgloss.NewStyle().Foreground(colorMuted).Render(" · ")
+}
+
+// stripSegmentParts returns the individually rendered segments (no
+// separator) so callers can either join them on one line or wrap them
+// across several. Order matches call order.
+func stripSegmentParts(es []transcriptEntry) []string {
 	segs := stripRollup(es)
 	if len(segs) == 0 {
-		return ""
+		return nil
 	}
 	parts := make([]string, 0, len(segs))
 	for _, s := range segs {
 		parts = append(parts, renderStripSegment(s))
 	}
-	sep := lipgloss.NewStyle().Foreground(colorMuted).Render(" · ")
-	return strings.Join(parts, sep)
+	return parts
+}
+
+// stripSegmentsList composes the inline middot-separated list of
+// rendered segments. Separator is a faint " · " so it visually recedes
+// against the bold tool names.
+func stripSegmentsList(es []transcriptEntry) string {
+	parts := stripSegmentParts(es)
+	if len(parts) == 0 {
+		return ""
+	}
+	return strings.Join(parts, stripSegmentSeparator())
+}
+
+// wrapStripParts greedily packs the rendered segment parts into lines no
+// wider than budget cells (measured with lipgloss.Width so ANSI styling
+// doesn't inflate the count). A single part wider than the budget gets
+// its own line and is allowed to overflow rather than being chopped mid-
+// escape-sequence. Returns one entry per visual line.
+func wrapStripParts(parts []string, sep string, budget int) []string {
+	if len(parts) == 0 {
+		return nil
+	}
+	if budget < 1 {
+		budget = 1
+	}
+	sepW := lipgloss.Width(sep)
+	lines := make([]string, 0, 2)
+	cur := parts[0]
+	curW := lipgloss.Width(parts[0])
+	for _, p := range parts[1:] {
+		pw := lipgloss.Width(p)
+		if curW+sepW+pw <= budget {
+			cur += sep + p
+			curW += sepW + pw
+			continue
+		}
+		lines = append(lines, cur)
+		cur = p
+		curW = pw
+	}
+	lines = append(lines, cur)
+	return lines
 }
 
 // stripMetadata returns the right-aligned status text for the strip.
@@ -309,18 +357,111 @@ func stripMetadata(es []transcriptEntry) string {
 	return strings.Join(parts, muted.Render(" · "))
 }
 
-// stripHint returns the faint right-most "e expand" affordance.
-// The "e" is brand-accent so it reads as a keybind cue, the "expand"
-// is muted so it stays out of the way. The hint is the only place
-// users learn about the (future) expand-to-full-rows keybind without
-// pulling up /help, which matters per the awesome-TUI research
-// finding: "if a power user must read your README to discover what a
-// key does, you've already lost."
+// stripHint returns the faint right-most "ctrl+e expand" affordance.
+// The key is brand-accent so it reads as a keybind cue, the label is
+// muted so it stays out of the way. The hint is the only place users
+// learn about the expand-to-full-rows keybind without pulling up /help,
+// which matters per the awesome-TUI research finding: "if a power user
+// must read your README to discover what a key does, you've already
+// lost." ctrl+e (not bare e) because the composer textarea holds focus,
+// so a bare letter would just type into the input.
 func stripHint() string {
-	k := lipgloss.NewStyle().Foreground(colorAccent).Bold(true).Render("e")
-	label := lipgloss.NewStyle().Foreground(colorMuted).Render(" expand")
-	return k + label
+	return keyHint("ctrl+e", "expand")
 }
+
+// keyHint renders a "<key> <label>" affordance with the key in brand
+// accent and the label muted. Shared by the collapsed strip hint and the
+// expanded view's collapse hint so the two read identically.
+func keyHint(key, label string) string {
+	k := lipgloss.NewStyle().Foreground(colorAccent).Bold(true).Render(key)
+	l := lipgloss.NewStyle().Foreground(colorMuted).Render(" " + label)
+	return k + l
+}
+
+// renderToolStripExpanded renders a run of tool entries as full per-entry
+// rows instead of the one-line strip: each call shows its glyph + name, a
+// muted args preview, and the full result (errors in warn color). It is
+// the ctrl+e counterpart to renderToolStrip - the user toggles between
+// the dense strip and this detailed view. A trailing "ctrl+e collapse"
+// hint mirrors the strip's expand hint so the toggle is discoverable from
+// either state.
+func renderToolStripExpanded(es []transcriptEntry, width int) string {
+	if len(es) == 0 {
+		return ""
+	}
+	contentW := width - stripIndent*2
+	if contentW < minStripContentW {
+		contentW = minStripContentW
+	}
+	indent := strings.Repeat(" ", stripIndent)
+	inner := strings.Repeat(" ", stripIndent+2)
+	muted := lipgloss.NewStyle().Foreground(colorMuted)
+	warn := lipgloss.NewStyle().Foreground(colorWarn)
+
+	var b strings.Builder
+	for i, e := range es {
+		if i > 0 {
+			b.WriteString("\n")
+		}
+		glyph, gcolor := stripGlyphTool, colorTool
+		nameColor := colorTool
+		switch {
+		case e.isError:
+			glyph, gcolor, nameColor = stripGlyphError, colorWarn, colorWarn
+		case e.isSkill:
+			glyph, gcolor, nameColor = stripGlyphSkill, colorAccent, colorAccent
+		}
+		name := e.tool
+		if e.isSkill {
+			if s := strings.TrimSpace(e.skillName); s != "" {
+				name = s
+			} else if name == "" {
+				name = skillUseToolName
+			}
+		}
+		if name == "" {
+			name = "?"
+		}
+		gr := lipgloss.NewStyle().Foreground(gcolor).Bold(true).Render(glyph)
+		nr := lipgloss.NewStyle().Foreground(nameColor).Bold(true).Render(name)
+		b.WriteString(indent + gr + " " + nr)
+
+		if e.toolInput != "" && !e.isSkill {
+			if arg := oneLine(e.toolInput, contentW-2); arg != "" {
+				b.WriteString("\n" + inner + muted.Render(arg))
+			}
+		}
+
+		switch {
+		case !e.hasResult:
+			b.WriteString("\n" + inner + muted.Render("running…"))
+		default:
+			body := previewLines(strings.TrimRight(e.toolResult, "\n"), contentW-2, expandedResultRows)
+			if body == "" {
+				if !e.isError {
+					b.WriteString("\n" + inner + muted.Render("(no output)"))
+				}
+				break
+			}
+			style := muted
+			if e.isError {
+				style = warn
+			}
+			for _, ln := range strings.Split(body, "\n") {
+				b.WriteString("\n" + inner + style.Render(ln))
+			}
+		}
+	}
+
+	b.WriteString("\n" + indent + keyHint("ctrl+e", "collapse"))
+	return b.String()
+}
+
+// expandedResultRows caps how many result lines each entry shows in the
+// expanded view. Generous (the point of expanding is to read output) but
+// still bounded so a 10k-line bash dump can't paint the whole transcript;
+// the overflow note from previewLines tells the user bytes were elided.
+const expandedResultRows = 40
 
 // composeStripLine lays out the strip's three sections (left, meta,
 // hint) inside a contentW-cell budget. Tries the full layout first;
@@ -408,7 +549,51 @@ func renderToolStrip(es []transcriptEntry, width int) string {
 		}
 	}
 
-	line := composeStripLine(left, meta, hint, contentW)
+	// Fast path: the whole left section fits on one line. Preserves the
+	// long-standing single-line layout (and its tests) exactly - only an
+	// overflowing run takes the wrapping path below.
+	if lipgloss.Width(left) <= contentW {
+		line := composeStripLine(left, meta, hint, contentW)
+		return strings.Repeat(" ", stripIndent) + line
+	}
 
-	return strings.Repeat(" ", stripIndent) + line
+	// Overflow path: wrap the segment list across multiple lines instead
+	// of letting the terminal run it off the right edge. Continuation
+	// lines align under the first segment (past the glyph + its two
+	// trailing spaces) so the run reads as one indented block.
+	prefix := glyphR + "  "
+	prefixW := lipgloss.Width(prefix)
+	usable := contentW - prefixW
+	if usable < 1 {
+		usable = 1
+	}
+	sep := stripSegmentSeparator()
+	segLines := wrapStripParts(stripSegmentParts(es), sep, usable)
+
+	contentLines := make([]string, 0, len(segLines)+1)
+	for i, sl := range segLines {
+		if i == 0 {
+			contentLines = append(contentLines, prefix+sl)
+		} else {
+			contentLines = append(contentLines, strings.Repeat(" ", prefixW)+sl)
+		}
+	}
+
+	// Attach meta + hint to the last line when there's room; otherwise
+	// give them their own trailing right-aligned line so the error count
+	// is never silently dropped on a wrapped strip.
+	if last := len(contentLines) - 1; last >= 0 && (lipgloss.Width(meta) > 0 || lipgloss.Width(hint) > 0) {
+		withMeta := composeStripLine(contentLines[last], meta, hint, contentW)
+		if withMeta == contentLines[last] {
+			contentLines = append(contentLines, composeStripLine("", meta, hint, contentW))
+		} else {
+			contentLines[last] = withMeta
+		}
+	}
+
+	indent := strings.Repeat(" ", stripIndent)
+	for i := range contentLines {
+		contentLines[i] = indent + contentLines[i]
+	}
+	return strings.Join(contentLines, "\n")
 }

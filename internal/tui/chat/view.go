@@ -1088,7 +1088,7 @@ func (m *Model) rerenderViewport() {
 		md := m.ensureMarkdown(m.vp.Width)
 		// liveReveal gates the streaming buffer behind the typewriter
 		// cursor (slice 9b); sealed transcript entries render in full.
-		content = composeTranscript(m.transcript, m.liveReveal(m.source.Get(m.agentID)), thinking, md, m.childrenSnap, m.vp.Width)
+		content = composeTranscript(m.transcript, m.liveReveal(m.source.Get(m.agentID)), thinking, md, m.childrenSnap, m.vp.Width, m.expandTools)
 	}
 	m.vp.SetContent(content)
 	if wasAtBottom {
@@ -1202,7 +1202,7 @@ func renderBetaBadge() string {
 // (isThinking returns false when source.Get returns text) but we
 // don't enforce that here, the caller already decides. composeTranscript
 // just renders what it's asked to.
-func composeTranscript(entries []transcriptEntry, liveText, thinkingRow string, md *glamour.TermRenderer, snaps []ChildSnapshot, width int) string {
+func composeTranscript(entries []transcriptEntry, liveText, thinkingRow string, md *glamour.TermRenderer, snaps []ChildSnapshot, width int, expandTools bool) string {
 	var sb strings.Builder
 	// Two-or-more consecutive entries of the same groupable kind
 	// (entryToolCall, entryError) get folded into a single bordered
@@ -1239,9 +1239,20 @@ func composeTranscript(entries []transcriptEntry, liveText, thinkingRow string, 
 		sb.WriteString(transcriptSeparator(wrote, wantsLeadingBlankLine(kind)))
 		switch {
 		case runEnd-i >= 2 && kind == entryToolCall:
-			sb.WriteString(renderToolStrip(entries[i:runEnd], width))
+			if expandTools {
+				sb.WriteString(renderToolStripExpanded(entries[i:runEnd], width))
+			} else {
+				sb.WriteString(renderToolStrip(entries[i:runEnd], width))
+			}
 		case runEnd-i >= 2 && kind == entryError:
 			sb.WriteString(renderErrorCardGroup(entries[i:runEnd], width))
+		case kind == entryToolCall && !entries[i].isAgent && expandTools:
+			// Solo tool call, expanded: ctrl+e shows its full input +
+			// result (e.g. the MCP error text) instead of the one-line
+			// strip. Sub-agent tool calls (isAgent) keep their bordered
+			// card via renderEntry below.
+			sb.WriteString(renderToolStripExpanded(entries[i:i+1], width))
+			runEnd = i + 1
 		default:
 			sb.WriteString(renderEntry(entries[i], md, snaps, width))
 			runEnd = i + 1 // single-entry path: advance by one

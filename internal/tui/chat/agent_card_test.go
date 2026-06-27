@@ -282,7 +282,7 @@ func TestAgentEntryBreaksStripFold(t *testing.T) {
 		{kind: entryToolCall, tool: "read", hasResult: true, toolResult: "x"},
 		{kind: entryToolCall, tool: "write", hasResult: true, toolResult: "y"},
 	}
-	got := composeTranscript(entries, "", "", nil, nil, 100)
+	got := composeTranscript(entries, "", "", nil, nil, 100, false)
 
 	if !strings.Contains(got, agentCardEmoji) {
 		t.Errorf("expected agent card emoji in output:\n%s", got)
@@ -322,7 +322,7 @@ func TestAgentEntryIsSoloRenderedWhenNoNeighbors(t *testing.T) {
 			toolCalledAt:   time.Now(),
 		},
 	}
-	got := composeTranscript(entries, "", "", nil, nil, 100)
+	got := composeTranscript(entries, "", "", nil, nil, 100, false)
 	if !strings.Contains(got, agentCardEmoji) {
 		t.Errorf("solo agent entry should render as card:\n%s", got)
 	}
