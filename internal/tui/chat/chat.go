@@ -503,6 +503,23 @@ type Model struct {
 	newFrameGlyphEd bool // user touched the glyph field
 	newFrameError   string
 
+	// /config (alias /settings) overlay: a flowing settings panel that
+	// edits ~/.carlos/config.yaml post-onboarding. configCfg is the
+	// loaded-on-open working copy; edits mutate it and Save immediately.
+	// configFrame is which frame the (frame-first) Providers section is
+	// showing. configEditing + configEditBuf drive hand-rolled inline
+	// text editing (matching the new-frame wizard). See overlay_config.go.
+	showConfig           bool
+	configCfg            *config.Config
+	configCursor         int
+	configScroll         int
+	configFrame          string
+	configEditing        bool
+	configEditBuf        string
+	configAddingProvider bool
+	configErr            string
+	configNotice         string
+
 	// Phase T-2 follow-on: first-launch trust prompt.
 	showFirstTrust      bool
 	firstTrustDismissed bool
@@ -1063,6 +1080,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 		}
+		// /config settings overlay: while open it owns every key (except
+		// ctrl+c) so its inline edits aren't double-handled. A pending
+		// tool-approval is modal above it (View paints the approval box
+		// over the panel), so let approval keys through when one is up.
+		if m.showConfig && m.pendingApproval == nil {
+			next, cmd, handled := m.handleConfigKey(msg)
+			if handled {
+				return next, cmd
+			}
+		}
 		// Phase F-10: new-frame wizard sits above the switcher. While
 		// it's up, every key (except ctrl+c) routes here so the form
 		// edits aren't double-handled by the switcher.
@@ -1243,6 +1270,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// the slash echo from /frame already covers that path.
 			if m.frame.Active != "" {
 				m.openFrameSwitcher()
+				return m, nil
+			}
+		case "ctrl+,":
+			// Open the /config settings overlay. Comma-with-ctrl is the
+			// conventional "preferences" chord (editors, browsers); it
+			// has no textarea binding to shadow.
+			if !m.readOnly {
+				if cmd := m.openConfig(); cmd != nil {
+					return m, cmd
+				}
 				return m, nil
 			}
 		case "ctrl+o":
@@ -2399,6 +2436,8 @@ func (m *Model) dispatchSlash(c slash.Command) tea.Cmd {
 		return m.whoamiSlash()
 	case "mcp":
 		return m.mcpSlash(c.Args)
+	case "config", "settings":
+		return m.openConfig()
 	}
 	if _, ok := slash.Lookup(c.Name); ok {
 		return func() tea.Msg {

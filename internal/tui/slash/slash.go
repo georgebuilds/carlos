@@ -69,6 +69,8 @@ var Builtins = []Spec{
 	{Name: "compact", Description: "summarize the conversation and shed older context"},
 	{Name: "model", ArgsHint: "[provider:model]", Description: "switch the active model; no args lists options"},
 	{Name: "review", Description: "open the manage-mode approval queue (plans, diffs, skill proposals)"},
+	{Name: "config", Description: "edit settings without leaving the chat: name, providers (per-frame), theme, vault (Ctrl+,)"},
+	{Name: "settings", Description: "alias for /config"},
 
 	// carlos-specific verbs.
 	{Name: "insights", ArgsHint: "[topic]", Description: "show what carlos has learned about you and your work; topical filter optional"},
