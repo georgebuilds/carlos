@@ -134,6 +134,51 @@ func TestSanitizeGemini_FailOpenOnInvalidJSON(t *testing.T) {
 	}
 }
 
+func TestSanitizeGemini_DropsEnumWhenAllEmpty(t *testing.T) {
+	in := json.RawMessage(`{"type":"string","enum":["",""]}`)
+	got := decode(t, sanitizeGeminiSchema(in))
+	if _, ok := got["enum"]; ok {
+		t.Errorf("enum that empties out should be removed: %v", got["enum"])
+	}
+}
+
+func TestSanitizeGemini_KeepsNonStringEnum(t *testing.T) {
+	in := json.RawMessage(`{"type":"integer","enum":[1,2,3]}`)
+	got := decode(t, sanitizeGeminiSchema(in))
+	enum, ok := got["enum"].([]any)
+	if !ok || len(enum) != 3 {
+		t.Errorf("numeric enum should be preserved: %v", got["enum"])
+	}
+}
+
+func TestSanitizeGemini_MalformedCombinatorIsDropped(t *testing.T) {
+	// anyOf that isn't an array, and a oneOf list with non-object members:
+	// both should just be dropped without panicking.
+	in := json.RawMessage(`{"type":"string","anyOf":"weird","oneOf":["scalar",42]}`)
+	got := decode(t, sanitizeGeminiSchema(in))
+	for _, k := range []string{"anyOf", "oneOf"} {
+		if _, ok := got[k]; ok {
+			t.Errorf("%s not dropped: %v", k, got[k])
+		}
+	}
+	if got["type"] != "string" {
+		t.Errorf("type lost: %v", got["type"])
+	}
+}
+
+func TestSanitizeGemini_AllNullCombinatorAndTypeArray(t *testing.T) {
+	// pickGeminiMember falls back to the first member when none has a
+	// concrete type; normalizeGeminiType defaults an all-null type array.
+	in := json.RawMessage(`{"anyOf":[{"description":"a"},{"type":"null"}],"type":["null"]}`)
+	got := decode(t, sanitizeGeminiSchema(in))
+	if got["type"] != "string" {
+		t.Errorf("all-null type array should default to string: %v", got["type"])
+	}
+	if got["description"] != "a" {
+		t.Errorf("first member should be merged in: %v", got["description"])
+	}
+}
+
 func TestTargetsGemini(t *testing.T) {
 	cases := []struct {
 		provider, model string
