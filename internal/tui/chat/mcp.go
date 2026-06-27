@@ -200,48 +200,18 @@ func mcpHelpText() string {
 	}, "\n")
 }
 
-// mcpAdd parses an add command and appends the server to the config. Two
-// shapes are accepted: stdio (`<name> <command> [args...]`) and remote
-// (`<name> --http <url>` / `--sse <url>`). The server is validated before
-// it touches disk so a malformed entry fails here rather than as a
-// confusing boot-time connect error.
+// mcpAdd parses an add command and appends the server to the config. The
+// grammar is shared with the `carlos mcp add` CLI via mcp.ParseAddSpec, so
+// the TUI accepts stdio (`<name> <command> [args...]` or `<name> -- <command>
+// [args...]`), remote (`<name> --http|--sse <url>`), and `-e KEY=VAL` env /
+// `-H "K: V"` header overrides. The server is validated before it touches
+// disk so a malformed entry fails here rather than as a confusing boot-time
+// connect error. Input is whitespace-split, so values that contain spaces
+// must be added via the `carlos mcp add` CLI instead.
 func (m *Model) mcpAdd(rest string) tea.Cmd {
-	name, tail, _ := strings.Cut(rest, " ")
-	name = strings.TrimSpace(name)
-	tail = strings.TrimSpace(tail)
-	if name == "" || tail == "" {
-		return statusCmd("usage: /mcp add <name> <command> [args...] | <name> --http|--sse <url>", statusWarn)
-	}
-
-	sc := mcp.ServerConfig{Name: name}
-	switch {
-	case strings.HasPrefix(tail, "--http "), tail == "--http":
-		url := strings.TrimSpace(strings.TrimPrefix(tail, "--http"))
-		sc.Transport = mcp.TransportHTTP
-		sc.URL = url
-	case strings.HasPrefix(tail, "--sse "), tail == "--sse":
-		url := strings.TrimSpace(strings.TrimPrefix(tail, "--sse"))
-		sc.Transport = mcp.TransportSSE
-		sc.URL = url
-	default:
-		// stdio: first field is the command, the rest are args. A
-		// leading "--" here means the user fat-fingered a transport flag
-		// (e.g. --htttp, --https); without this guard it would persist a
-		// junk stdio server whose "command" is the typo, failing only at
-		// the next boot. Fail loudly at add time instead.
-		cmd, args, _ := strings.Cut(tail, " ")
-		cmd = strings.TrimSpace(cmd)
-		if strings.HasPrefix(cmd, "--") {
-			return statusCmd(fmt.Sprintf("mcp add: unknown flag %q; use --http or --sse for remote servers", cmd), statusWarn)
-		}
-		sc.Transport = mcp.TransportStdio
-		sc.Command = cmd
-		if a := strings.TrimSpace(args); a != "" {
-			sc.Args = strings.Fields(a)
-		}
-	}
-	if err := sc.Validate(); err != nil {
-		return statusCmd("mcp add: "+err.Error(), statusWarn)
+	sc, err := mcp.ParseAddSpec(strings.Fields(rest))
+	if err != nil {
+		return statusCmd(err.Error(), statusWarn)
 	}
 
 	cfgPath := config.DefaultPath()
@@ -250,12 +220,12 @@ func (m *Model) mcpAdd(rest string) tea.Cmd {
 		return statusCmd("mcp add: load config: "+err.Error(), statusWarn)
 	}
 	if !cfg.MCP.AddServer(sc) {
-		return statusCmd(fmt.Sprintf("mcp: server %q already exists", name), statusWarn)
+		return statusCmd(fmt.Sprintf("mcp: server %q already exists", sc.Name), statusWarn)
 	}
 	if err := config.Save(cfgPath, cfg); err != nil {
 		return statusCmd("mcp add: save config: "+err.Error(), statusWarn)
 	}
-	return statusCmd(fmt.Sprintf("added MCP server %q (%s); restart carlos to connect", name, sc.TransportKind()), statusInfo)
+	return statusCmd(fmt.Sprintf("added MCP server %q (%s); restart carlos to connect", sc.Name, sc.TransportKind()), statusInfo)
 }
 
 // mcpRemove deletes a server by name and persists the change.
