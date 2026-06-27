@@ -176,6 +176,28 @@ func TestMCPAdd_SSE(t *testing.T) {
 	}
 }
 
+func TestMCPAdd_StdioWithEnvAndSeparator(t *testing.T) {
+	// The TUI add path shares mcp.ParseAddSpec with the CLI, so `-e` env
+	// overrides and the `--` command separator work from `/mcp add` too.
+	path := withTempConfig(t)
+	m := &Model{}
+	msg := m.mcpAdd("do -e TOKEN=secret -- npx @digitalocean/mcp")().(statusMsg)
+	if msg.kind != statusInfo {
+		t.Fatalf("add stdio+env: kind = %v, msg = %q", msg.kind, msg.text)
+	}
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := cfg.MCP.Servers[0]
+	if s.Command != "npx" || strings.Join(s.Args, " ") != "@digitalocean/mcp" {
+		t.Errorf("command/args wrong: %+v", s)
+	}
+	if s.Env["TOKEN"] != "secret" {
+		t.Errorf("env not persisted: %+v", s.Env)
+	}
+}
+
 func TestMCPAdd_Duplicate(t *testing.T) {
 	withMCPConfig(t, mcp.ServerConfig{Name: "github", Command: "x"})
 	m := &Model{}
@@ -239,10 +261,16 @@ func TestMCPAdd_InvalidNoURL(t *testing.T) {
 func TestMCPAdd_Usage(t *testing.T) {
 	withTempConfig(t)
 	m := &Model{}
-	for _, in := range []string{"", "onlyname"} {
+	// Each malformed input warns with guidance specific to what's wrong:
+	// an empty add shows the full usage; a name with no command says so.
+	cases := map[string]string{
+		"":         "usage",
+		"onlyname": "needs a command",
+	}
+	for in, want := range cases {
 		msg := m.mcpAdd(in)().(statusMsg)
-		if msg.kind != statusWarn || !strings.Contains(msg.text, "usage") {
-			t.Errorf("mcpAdd(%q): want usage warn, got kind=%v text=%q", in, msg.kind, msg.text)
+		if msg.kind != statusWarn || !strings.Contains(msg.text, want) {
+			t.Errorf("mcpAdd(%q): want warn containing %q, got kind=%v text=%q", in, want, msg.kind, msg.text)
 		}
 	}
 }

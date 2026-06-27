@@ -334,6 +334,16 @@ func main() {
 				exit(err)
 			}
 			return
+		case "mcp":
+			// `carlos mcp list|add|remove|help` - manage Model Context
+			// Protocol servers from the CLI (the same on-disk config the
+			// TUI `/mcp` slash command and onboarding import edit). Every
+			// outcome renders as a bordered box; a failed run exits non-
+			// zero via errMCPReported without a duplicate stderr line.
+			if err := runMCP(args[1:]); err != nil {
+				exit(err)
+			}
+			return
 		case "web":
 			// `carlos web [--port N]` - localhost HTTP + SSE agent
 			// console (Vue SPA over the event log). Needs a complete
@@ -1300,6 +1310,10 @@ Usage:
   carlos attach <id>                       stream a background job's output until it finishes
   carlos logs <id>                         print a background job's captured output once
   carlos stop <id>                         cancel a running background job
+  carlos mcp list                          list configured MCP servers (add -f <frame> to scope)
+  carlos mcp add <name> -- <command>       add a stdio MCP server (-e KEY=VAL pins env)
+  carlos mcp add <name> --http <url>       add a remote (Streamable-HTTP or --sse) MCP server
+  carlos mcp remove <name>                 remove an MCP server by name
   carlos web [--port N]                    serve the localhost web console (default port 7777)
   carlos chat                              [dev-aid, Slice 1e] chat TUI against a temp log
   carlos manage                            [dev-aid, Slice 4]  manage TUI with seeded sample roster
@@ -1318,6 +1332,11 @@ Examples:
 func exit(err error) {
 	if errors.Is(err, errFramePickerCancelled) {
 		os.Exit(130)
+	}
+	if errors.Is(err, errMCPReported) {
+		// runMCP already rendered the error box to stdout; exit non-zero
+		// without a second "carlos: ..." line.
+		os.Exit(1)
 	}
 	fmt.Fprintln(os.Stderr, "carlos:", scrubProviderName(err))
 	os.Exit(1)
