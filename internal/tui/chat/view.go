@@ -97,6 +97,14 @@ func (m *Model) renderInner(innerW, innerH int) string {
 	if m.pendingApproval != nil {
 		approval = renderApprovalBox(m.pendingApproval, innerW)
 		approvalH = lipgloss.Height(approval)
+	} else if m.showConfig {
+		// /config settings panel: full takeover slot (minus chrome).
+		cfgH := innerH - headerH - footerH - inputH - 1
+		if cfgH < 12 {
+			cfgH = 12
+		}
+		approval = renderConfigOverlay(m, innerW, cfgH)
+		approvalH = lipgloss.Height(approval)
 	} else if m.showNewFrame {
 		// Phase F-10: new-frame wizard renders in the same slot as
 		// the switcher; precedence handled in chat.Update.
