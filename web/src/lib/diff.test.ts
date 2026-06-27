@@ -44,4 +44,23 @@ describe('lineDiff', () => {
     expect(r.added).toBe(0)
     expect(r.removed).toBe(0)
   })
+
+  it('falls back to whole-block replace on huge inputs (maxCells guard)', () => {
+    const a = Array.from({ length: 1300 }, (_, i) => `a${i}`).join('\n')
+    const b = Array.from({ length: 1300 }, (_, i) => `b${i}`).join('\n')
+    const r = lineDiff(a, b)
+    expect(r.added).toBe(1300)
+    expect(r.removed).toBe(1300)
+  })
+
+  it('collapses a unchanged run in the middle, keeping context both sides', () => {
+    const lines = Array.from({ length: 30 }, (_, i) => `l${i}`)
+    const oldT = lines.join('\n')
+    const newT = lines.map((l, i) => (i === 15 ? 'CHANGED' : l)).join('\n')
+    const r = lineDiff(oldT, newT, 3)
+    expect(r.lines.filter((l) => l.op === 'gap').length).toBeGreaterThanOrEqual(1)
+    // context lines immediately around the change are preserved
+    expect(r.lines.some((l) => l.op === 'ctx' && l.text === 'l14')).toBe(true)
+    expect(r.lines.some((l) => l.op === 'add' && l.text === 'CHANGED')).toBe(true)
+  })
 })

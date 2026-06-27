@@ -641,6 +641,46 @@ func TestWrapStripParts(t *testing.T) {
 	}
 }
 
+// TestRenderToolStripExpanded_States covers the per-entry branches: a skill
+// (named), a still-running call (no result), a finished call with no output,
+// and a normal one, all in one expanded run.
+func TestRenderToolStripExpanded_States(t *testing.T) {
+	es := []transcriptEntry{
+		{tool: "skill_use", isSkill: true, skillName: "calendar", hasResult: true, toolResult: "loaded"},
+		{tool: "bash", toolInput: `{"cmd":"sleep 1"}`, hasResult: false},
+		{tool: "read", hasResult: true, toolResult: ""},
+		{tool: "grep", hasResult: true, toolResult: "match a\nmatch b"},
+	}
+	got := renderToolStripExpanded(es, 100)
+	for _, want := range []string{"calendar", "running", "no output", "match a", "ctrl+e", "collapse"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("expanded states missing %q:\n%s", want, got)
+		}
+	}
+}
+
+// TestRenderToolStrip_WrapKeepsMetaOnLastLine forces the wrap path where the
+// last segment line is short enough that the metadata fits on it (the else
+// branch of the meta placement), rather than spilling to its own line.
+func TestRenderToolStrip_WrapKeepsMetaOnLastLine(t *testing.T) {
+	es := make([]transcriptEntry, 0, 8)
+	for _, n := range []string{"aaa", "bbb", "ccc", "ddd", "eee", "fff", "ggg", "hhh"} {
+		es = append(es, transcriptEntry{tool: n, hasResult: true, toolResult: "ok"})
+	}
+	got := renderToolStrip(es, 44)
+	if !strings.Contains(got, "\n") {
+		t.Fatalf("expected wrapping, got one line: %q", got)
+	}
+	if !strings.Contains(got, "lines") {
+		t.Errorf("metadata should survive wrapping: %q", got)
+	}
+	for _, ln := range strings.Split(got, "\n") {
+		if w := lipgloss.Width(ln); w > 44 {
+			t.Errorf("wrapped line exceeds width 44 (got %d): %q", w, ln)
+		}
+	}
+}
+
 // TestRenderToolStripExpanded_Empty returns empty for no entries.
 func TestRenderToolStripExpanded_Empty(t *testing.T) {
 	if got := renderToolStripExpanded(nil, 100); got != "" {
