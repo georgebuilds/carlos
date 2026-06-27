@@ -5,7 +5,10 @@
 # carlos
 
 <p align="center">
+  <a href="https://github.com/georgebuilds/carlos/releases"><img src="https://img.shields.io/github/v/release/georgebuilds/carlos?sort=semver" alt="latest release"></a>
   <a href="https://codecov.io/gh/georgebuilds/carlos"><img src="https://codecov.io/gh/georgebuilds/carlos/graph/badge.svg?branch=main" alt="coverage"></a>
+  <a href="https://goreportcard.com/report/github.com/georgebuilds/carlos"><img src="https://goreportcard.com/badge/github.com/georgebuilds/carlos" alt="go report card"></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-blue" alt="license"></a>
 </p>
 
 A pure-Go TUI agent. Single binary around 30 MB. No CGO. Cross-compiled for darwin + linux × amd64 + arm64.
@@ -32,14 +35,17 @@ Onboarding takes ~30 seconds:
 1. Your name
 2. A provider (Anthropic, OpenAI, OpenRouter, Ollama, or Gemini) and an API key
 3. A model from a curated dropdown (OpenRouter shows live pricing)
-4. Whether to enable the background daemon (scheduled runs, gateway delivery)
+4. Skills convention
 5. Optional Obsidian vault path
+6. Whether to enable the background daemon (scheduled runs, gateway delivery)
+7. A messaging gateway (ntfy / Telegram), if the daemon is on
+8. Import any MCP servers already configured in Claude Code
 
 <p align="center">
   <img src="docs/branding/screenshots/onboarding-name.png" alt="carlos onboarding step 1: 'What should I call you?' with 'Boss' typed in" width="640">
 </p>
 
-Everything lands in `~/.carlos/config.yaml` (mode 0600). Re-enter any single screen later with `carlos onboard --only providers` (or `models`, `daemon`, `gateway`, etc.).
+Everything lands in `~/.carlos/config.yaml` (mode 0600). Re-enter any single screen later with `carlos onboard --only providers` (or `models`, `skills`, `vault`, `daemon`, `gateway`, `mcp`).
 
 After onboarding you're in the chat TUI. Type a question. carlos answers, calls tools when needed (prompting for the risky ones), and keeps the transcript in a SQLite event log at `~/.carlos/state.db`.
 
@@ -57,7 +63,7 @@ After onboarding you're in the chat TUI. Type a question. carlos answers, calls 
 | `/agents` | open the sub-agent manage view |
 | `/whoami` | current frame, mode, provider, model |
 | `/permissions` | layered approval state + audit log |
-| `/mcp` | list configured MCP servers and their tools |
+| `/mcp` | MCP server panel: status + tool counts (manage servers with `carlos mcp`) |
 
 #### Demo: the user-shell
 
@@ -81,6 +87,7 @@ carlos memory search <query>     # FTS5 over conversation summaries
 carlos schedule list|add|rm      # cron + natural language
 carlos gateway add               # wizard to configure ntfy / Telegram / Signal
 carlos gateway test <channel>    # verify ntfy / Telegram wiring
+carlos mcp add|list|get|remove   # manage MCP servers (mirrors `claude mcp`)
 carlos daemon enable|disable     # background service
 ```
 
@@ -123,7 +130,7 @@ GOOS=darwin GOARCH=amd64  go build ./cmd/carlos
 
 ### Test discipline
 
-- `go test ./...` is the floor. Current count is ~3490 tests across 41 packages.
+- `go test ./...` is the floor. Current count is ~6,300 tests across 47 packages.
 - `go vet ./...` must be clean.
 - New code aims for 80%+ coverage on touched packages.
 - The sub-agent + daemon + event log paths have integration tests; if you touch any of them, run `go test -race ./internal/agent/... ./internal/daemon/...` at least once before pushing.
@@ -164,7 +171,7 @@ docs/               GitHub Pages site + llms.txt
 |---|---|
 | Add a tool | `internal/tools/`, register in `tools.go` |
 | Add a slash command | `internal/tui/slash/slash.go` Builtins + handler in `internal/tui/chat/` |
-| Wire an MCP server | `mcp_servers:` block in `~/.carlos/config.yaml`; client + adapter live in `internal/mcp/` |
+| Wire an MCP server | `carlos mcp add` (or the `mcp:` / `servers:` block in `~/.carlos/config.yaml`); client + adapter live in `internal/mcp/` |
 | Add a provider | `internal/providers/<name>/`, satisfy the `Provider` interface |
 | Add a frame field | `internal/frame/frame.go`, then sysprompt + render helpers |
 | Change permission rules | `internal/agent/policy.go` (`LayeredApprover`) |

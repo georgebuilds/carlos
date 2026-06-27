@@ -47,6 +47,7 @@
     <a href="../guides/research.html">research</a>
     <a href="../guides/gateway.html">gateway</a>
     <a href="../guides/schedule.html">schedule</a>
+    <a href="../guides/mcp.html">mcp</a>
   </nav>
 
   <main id="main">
@@ -164,7 +165,7 @@
 &#9474;   &#9500;&#9472;&#9472; usershell/      <span class="com">(per-job logs)</span>
 &#9474;   &#9500;&#9472;&#9472; worktrees/      <span class="com">(sub-agent worktrees)</span>
 &#9474;   &#9492;&#9472;&#9472; digest/         <span class="com">(scheduled-digest artifacts)</span>
-&#9492;&#9472;&#9472; config.yaml         <span class="com">(user prefs, frames, providers, mcp_servers)</span></pre>
+&#9492;&#9472;&#9472; config.yaml         <span class="com">(user prefs, frames, providers, mcp.servers)</span></pre>
     </div>
 
     <p>File modes: <code>0700</code> directories, <code>0600</code> secret-bearing files (<code>config.yaml</code>, <code>state.db</code>, <code>trusted-workspaces.json</code>, artifact blobs), <code>0644</code> elsewhere. Atomic writes (temp + fsync + rename) for any file containing user state.</p>

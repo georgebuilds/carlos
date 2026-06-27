@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>carlos · MCP servers</title>
+  <meta name="description" content="Manage Model Context Protocol servers in carlos. The `carlos mcp` CLI mirrors `claude mcp` (add / list / get / remove); the in-session /mcp panel shows status and tool counts. Config lives under mcp.servers." />
+  <meta name="theme-color" content="#f4ecd8" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#11131a" media="(prefers-color-scheme: dark)" />
+  <link rel="icon" type="image/png" href="../../branding/carlos-portrait.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" />
+  <link rel="stylesheet" href="../../theme.css" />
+  <script src="../../analytics.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">skip to content</a>
+
+  <!-- ambient doodles (2 max per page) -->
+  <svg class="doodle doodle-cloud-1" viewBox="0 0 240 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path d="M30 70 Q 10 70, 12 50 Q 14 30, 40 32 Q 48 14, 80 18 Q 110 6, 130 24 Q 160 16, 170 42 Q 200 38, 200 60 Q 210 78, 184 80 L 50 80 Q 30 82, 30 70 Z"/>
+  </svg>
+  <svg class="doodle doodle-cloud-2 ink" viewBox="0 0 240 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path d="M30 70 Q 10 70, 12 50 Q 14 30, 40 32 Q 48 14, 80 18 Q 110 6, 130 24 Q 160 16, 170 42 Q 200 38, 200 60 Q 210 78, 184 80 L 50 80 Q 30 82, 30 70 Z"/>
+  </svg>
+
+  <header class="site">
+    <a class="mark" href="../../" aria-label="carlos home">carlos</a>
+    <nav>
+      <a href="../">docs</a>
+      <a href="../../agent-loop.html">agent loop</a>
+      <a href="https://github.com/georgebuilds/carlos">github</a>
+    </nav>
+  </header>
+
+  <nav class="docnav" aria-label="documentation sections">
+    <a href="../getting-started/install.html">install</a>
+    <a href="../getting-started/quickstart.html">quickstart</a>
+    <a href="../concepts/frames.html">frames</a>
+    <a href="../concepts/permissions.html">permissions</a>
+    <a href="../concepts/sub-agents.html">sub-agents</a>
+    <a href="../concepts/memory.html">memory</a>
+    <a href="../reference/tools.html">tools</a>
+    <a href="../reference/slash-commands.html">slash</a>
+    <a href="../reference/config.html">config</a>
+    <a href="./research.html">research</a>
+    <a href="./gateway.html">gateway</a>
+    <a href="./schedule.html">schedule</a>
+    <a href="./mcp.html" aria-current="page">mcp</a>
+  </nav>
+
+  <main id="main">
+    <p class="crumbs">
+      <a href="../../">home</a>
+      <span class="sep">·</span>
+      <a href="../">docs</a>
+      <span class="sep">·</span>
+      <span class="here">mcp</span>
+    </p>
+
+    <section class="hero">
+      <span class="eyebrow">guides · mcp</span>
+      <h1>Bring your own <span class="accent">tools</span>.</h1>
+      <p class="subhead">Model Context Protocol servers extend carlos with extra tools (GitHub, Postgres, Linear, anything that speaks MCP). Manage them from your shell with <code>carlos mcp</code>, which deliberately mirrors <code>claude mcp</code> so a command copied from the internet works by swapping the binary name. Check status from inside a session with the <code>/mcp</code> panel.</p>
+    </section>
+
+    <h2>Two surfaces, <span class="accent">one model</span></h2>
+    <p>carlos follows Claude Code's split:</p>
+    <ul>
+      <li><strong>The <code>carlos mcp</code> CLI</strong> manages servers: add, list, get, remove. This is where you wire a server up.</li>
+      <li><strong>The in-session <code>/mcp</code> panel</strong> shows configured servers, whether each connected this session, and how many tools it contributed. It is a status view, not a place to add servers.</li>
+    </ul>
+    <p>Servers are read once at startup, so any add or remove takes effect on the <strong>next</strong> carlos start.</p>
+
+    <div class="rule-sketch"><svg viewBox="0 0 480 14" preserveAspectRatio="none"><path d="M4 8 Q 60 2, 130 7 T 260 7 T 380 8 T 476 6"/></svg></div>
+
+    <h2>From the <span class="accent">CLI</span></h2>
+    <p>Drop the binary name in front of any <code>claude mcp add</code> recipe:</p>
+
+    <div class="code-block">
+      <span class="fname">shell</span>
+<pre><span class="com"># stdio server (the common case). Put the server command after `--`.</span>
+carlos mcp add github -e GITHUB_TOKEN=ghp_xxx -- npx -y @modelcontextprotocol/server-github
+
+<span class="com"># remote servers by URL</span>
+carlos mcp add --transport sse linear https://mcp.linear.app/sse
+carlos mcp add --transport http notion https://mcp.notion.com/mcp -H "Authorization: Bearer xxx"
+
+<span class="com"># add from a JSON blob (Claude Code's add-json shape)</span>
+carlos mcp add-json weather '{"type":"stdio","command":"npx","args":["-y","weather-mcp"]}'
+
+<span class="com"># inspect + remove</span>
+carlos mcp list
+carlos mcp get github
+carlos mcp remove github</pre>
+    </div>
+
+    <p>The <code>add</code> flags match <code>claude mcp add</code>:</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>flag</th><th>what</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="row-label"><code>-t, --transport</code></td><td><code>stdio</code> (default), <code>sse</code>, or <code>http</code>. For sse/http the positional after the name is the URL.</td></tr>
+          <tr><td class="row-label"><code>-e, --env KEY=value</code></td><td>Environment variable for a stdio server. Repeatable.</td></tr>
+          <tr><td class="row-label"><code>-H, --header "Name: value"</code></td><td>HTTP header for an sse/http server. Repeatable.</td></tr>
+          <tr><td class="row-label"><code>--</code></td><td>Everything after it is the verbatim stdio command and its arguments.</td></tr>
+          <tr><td class="row-label"><code>-f, --frame &lt;name&gt;</code></td><td>carlos-native: gate the server to a frame. Repeatable. Omit to enable everywhere.</td></tr>
+          <tr><td class="row-label"><code>-s, --scope</code></td><td>Accepted for paste compatibility and ignored: carlos uses per-frame gating, not Claude Code's local/project/user scopes. Use <code>--frame</code> instead.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="note">carlos's MCP client does not do OAuth, so Claude Code's <code>--client-id</code> / <code>--client-secret</code> / <code>--callback-port</code> flags are accepted and ignored with a note rather than failing the paste.</p>
+
+    <div class="rule-sketch"><svg viewBox="0 0 480 14" preserveAspectRatio="none"><path d="M4 8 Q 60 2, 130 7 T 260 7 T 380 8 T 476 6"/></svg></div>
+
+    <h2>From within the <span class="accent">TUI</span></h2>
+    <p>Type <code>/mcp</code> in a session to open the panel. It lists every server configured for the active frame with a live marker: a filled dot for connected, an open dot for not, plus the per-server tool count and an <code>x/y connected</code> summary.</p>
+
+    <div class="code-block">
+      <span class="fname">in a carlos session</span>
+<pre><span class="com"># show servers + live status for this frame</span>
+/mcp
+/mcp list
+
+<span class="com"># quick edits without leaving the chat (same config the CLI writes)</span>
+/mcp add github npx -y @modelcontextprotocol/server-github
+/mcp add docs --http https://example.com/mcp
+/mcp remove github
+
+/mcp help</pre>
+    </div>
+
+    <p>The slash edits and the <code>carlos mcp</code> CLI write the same <code>~/.carlos/config.yaml</code>, so they compose freely. As with the CLI, a newly added server connects on the next start.</p>
+
+    <div class="rule-sketch"><svg viewBox="0 0 480 14" preserveAspectRatio="none"><path d="M4 8 Q 60 2, 130 7 T 260 7 T 380 8 T 476 6"/></svg></div>
+
+    <h2>The config <span class="accent">block</span></h2>
+    <p>Both surfaces edit the <code>mcp.servers</code> list in <code>~/.carlos/config.yaml</code>. You can also hand-edit it:</p>
+
+    <div class="code-block">
+      <span class="fname">~/.carlos/config.yaml</span>
+<pre><span class="key">mcp</span>:
+  <span class="key">servers</span>:
+    - <span class="key">name</span>: <span class="val">github</span>
+      <span class="key">command</span>: <span class="str">npx</span>
+      <span class="key">args</span>: [<span class="str">"-y"</span>, <span class="str">"@modelcontextprotocol/server-github"</span>]
+      <span class="key">env</span>:
+        <span class="key">GITHUB_TOKEN</span>: <span class="str">ghp_...</span>
+      <span class="key">frames</span>: [<span class="str">"personal"</span>]   <span class="com"># optional gate; omit to enable everywhere</span>
+    - <span class="key">name</span>: <span class="val">linear</span>
+      <span class="key">transport</span>: <span class="val">sse</span>
+      <span class="key">url</span>: <span class="str">https://mcp.linear.app/sse</span></pre>
+    </div>
+
+    <p>Each server's tools register under <code>&lt;server&gt;__&lt;tool&gt;</code> (e.g. <code>github__list_issues</code>) and flow through the standard <a href="../concepts/permissions.html">layered approval policy</a>. The optional <code>frames</code> field is the gate: a server with no <code>frames</code> is available in every frame; otherwise it is restricted to the listed ones. See <a href="../concepts/frames.html">frames</a> for the gating model.</p>
+
+    <div class="rule-sketch"><svg viewBox="0 0 480 14" preserveAspectRatio="none"><path d="M4 8 Q 60 2, 130 7 T 260 7 T 380 8 T 476 6"/></svg></div>
+
+    <h2>Importing from <span class="accent">Claude Code</span></h2>
+    <p>Onboarding offers to import the MCP servers already configured in your Claude Code setup. Re-run it any time with <code>carlos onboard --only mcp</code> to pick servers off that list instead of re-typing them.</p>
+
+  </main>
+
+  <footer class="site">
+    <span>carlos · 2026 · gpl-3.0</span>
+    <nav>
+      <a href="https://github.com/georgebuilds/carlos">github</a>
+      <a href="../">all docs</a>
+    </nav>
+  </footer>
+</body>
+</html>
