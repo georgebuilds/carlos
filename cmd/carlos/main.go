@@ -1311,8 +1311,8 @@ Usage:
   carlos logs <id>                         print a background job's captured output once
   carlos stop <id>                         cancel a running background job
   carlos mcp list                          list configured MCP servers (add -f <frame> to scope)
-  carlos mcp add <name> -- <command>       add a stdio MCP server (-e KEY=VAL pins env)
-  carlos mcp add <name> --http <url>       add a remote (Streamable-HTTP or --sse) MCP server
+  carlos mcp add <name> <command> [args]   add a stdio MCP server (-e KEY=VAL pins env)
+  carlos mcp add -t http <name> <url>      add a remote MCP server (-t sse for SSE; Claude Code grammar)
   carlos mcp remove <name>                 remove an MCP server by name
   carlos web [--port N]                    serve the localhost web console (default port 7777)
   carlos chat                              [dev-aid, Slice 1e] chat TUI against a temp log

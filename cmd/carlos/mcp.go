@@ -176,12 +176,12 @@ func planMCPRemove(args []string) mcpCLIResult {
 // matches the surface's look.
 func planMCPHelp() mcpCLIResult {
 	return mcpCLIResult{ok: true, rows: []farewell.Message{
-		{Emoji: "📡", Text: "carlos mcp - manage Model Context Protocol servers"},
+		{Emoji: "📡", Text: "carlos mcp - manage Model Context Protocol servers (Claude Code grammar)"},
 		{Emoji: "•", Text: "carlos mcp list [-f <frame>]", Detail: "show configured servers"},
-		{Emoji: "•", Text: "carlos mcp add <name> -- <command> [args...]", Detail: "add a stdio server"},
-		{Emoji: "•", Text: "carlos mcp add <name> --http <url>", Detail: "add a Streamable-HTTP server"},
-		{Emoji: "•", Text: "carlos mcp add <name> --sse <url>", Detail: "add an SSE server"},
-		{Emoji: "•", Text: "carlos mcp add ... -e KEY=VAL", Detail: "pin an env override (repeatable)"},
+		{Emoji: "•", Text: "carlos mcp add <name> <command> [args...]", Detail: "add a stdio server (the default transport)"},
+		{Emoji: "•", Text: "carlos mcp add -t http <name> <url>", Detail: "add a Streamable-HTTP server (-t sse for SSE)"},
+		{Emoji: "•", Text: "carlos mcp add ... -e KEY=VAL", Detail: "env override; -H \"H: v\" for http/sse headers (repeatable)"},
+		{Emoji: "•", Text: "carlos mcp add ... --frame <name>", Detail: "gate the server to a frame (repeatable)"},
 		{Emoji: "•", Text: "carlos mcp remove <name>", Detail: "remove a server"},
 		{Emoji: "🔌", Text: "servers connect at startup", Detail: "add/remove take effect on the next carlos run"},
 	}}
