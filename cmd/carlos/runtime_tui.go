@@ -687,6 +687,14 @@ func runDefault(cfg *config.Config, sessionID string) error {
 		// (see headerState in internal/tui/chat/view.go), so the user
 		// sees the swap immediately without a state_change event.
 		_ = log.UpdateAgentModel(ctx, defaultAgentID, newDispatch.model)
+		// Persist the choice into config so a brand-new session (fresh
+		// ULID, not a resume) also boots on this model. UpdateAgentModel
+		// above only sticks for THIS agent; buildDispatchForFrame on the
+		// next boot reads config, so the choice must land there too.
+		// Best-effort, like UpdateAgentModel: the in-session swap already
+		// succeeded, so a Save failure must not present as a failed switch.
+		persistModelChoice(cfg, activeFrameForDispatch(cfg, ""), newDispatch.name, newDispatch.model)
+		_ = config.Save(config.DefaultPath(), cfg)
 		return newDispatch.name, newDispatch.model, nil
 	}
 

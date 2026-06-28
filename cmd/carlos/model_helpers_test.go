@@ -412,3 +412,103 @@ func TestExtractCapabilityBackends_PinsContract(t *testing.T) {
 // import the test file would compile clean without exercising the
 // summariseSkills contract.
 var _ = agent.SkillSummary{}
+
+// TestPersistModelChoice_FrameScoped: with a frame active, /model pins
+// the choice on the frame's highest-precedence slots and never touches
+// the global default or pantry (so other frames are unaffected).
+func TestPersistModelChoice_FrameScoped(t *testing.T) {
+	cfg := &config.Config{
+		DefaultProvider: "openrouter",
+		Providers: map[string]config.ProviderConfig{
+			"openrouter": {APIKey: "or-key", DefaultModel: "z-ai/glm-5.2"},
+			"anthropic":  {APIKey: "an-key", DefaultModel: "claude-sonnet-4-6"},
+		},
+		Frames: frame.Config{
+			Active: "personal",
+			List:   []frame.Frame{{Name: "personal"}, {Name: "ludus"}},
+		},
+	}
+	af := cfg.Frames.Find("personal")
+	persistModelChoice(cfg, af, "anthropic", "claude-opus-4-7")
+
+	if af.Provider != "anthropic" || af.Model != "claude-opus-4-7" {
+		t.Errorf("frame slots: provider=%q model=%q want anthropic/claude-opus-4-7", af.Provider, af.Model)
+	}
+	// Frame-scoped: globals and the other frame stay put.
+	if cfg.DefaultProvider != "openrouter" {
+		t.Errorf("DefaultProvider mutated to %q, want openrouter (frame-scoped only)", cfg.DefaultProvider)
+	}
+	if cfg.Providers["openrouter"].DefaultModel != "z-ai/glm-5.2" {
+		t.Errorf("pantry default_model mutated: %q", cfg.Providers["openrouter"].DefaultModel)
+	}
+	if f := cfg.Frames.Find("ludus"); f.Provider != "" || f.Model != "" {
+		t.Errorf("sibling frame leaked: %+v", f)
+	}
+
+	// "Into a new session": buildDispatchForFrame on the same active frame
+	// must now resolve to the persisted choice.
+	d, err := buildDispatchForFrame(cfg, pleaseOptions{}, cfg.Frames.Find("personal"))
+	if err != nil {
+		t.Fatalf("buildDispatchForFrame: %v", err)
+	}
+	if d.name != "anthropic" || d.model != "claude-opus-4-7" {
+		t.Errorf("new-session dispatch = %s:%s, want anthropic:claude-opus-4-7", d.name, d.model)
+	}
+}
+
+// TestPersistModelChoice_LegacyNoFrame: with no frame active, the choice
+// lands on the global default provider and that provider's pantry model.
+func TestPersistModelChoice_LegacyNoFrame(t *testing.T) {
+	cfg := &config.Config{
+		DefaultProvider: "openrouter",
+		Providers: map[string]config.ProviderConfig{
+			"openrouter": {APIKey: "or-key", DefaultModel: "z-ai/glm-5.2"},
+			"anthropic":  {APIKey: "an-key", DefaultModel: "claude-sonnet-4-6"},
+		},
+	}
+	persistModelChoice(cfg, nil, "anthropic", "claude-opus-4-7")
+
+	if cfg.DefaultProvider != "anthropic" {
+		t.Errorf("DefaultProvider=%q want anthropic", cfg.DefaultProvider)
+	}
+	if got := cfg.Providers["anthropic"].DefaultModel; got != "claude-opus-4-7" {
+		t.Errorf("anthropic default_model=%q want claude-opus-4-7", got)
+	}
+
+	d, err := buildDispatchForFrame(cfg, pleaseOptions{}, nil)
+	if err != nil {
+		t.Fatalf("buildDispatchForFrame: %v", err)
+	}
+	if d.name != "anthropic" || d.model != "claude-opus-4-7" {
+		t.Errorf("new-session dispatch = %s:%s, want anthropic:claude-opus-4-7", d.name, d.model)
+	}
+}
+
+// TestPersistModelChoice_SurvivesConfigRoundTrip: the choice must persist
+// across a config Save/Load cycle — that is the literal "new session"
+// boundary (process exit + relaunch reads config from disk).
+func TestPersistModelChoice_SurvivesConfigRoundTrip(t *testing.T) {
+	cfg := &config.Config{
+		Providers: map[string]config.ProviderConfig{
+			"anthropic": {APIKey: "an-key", DefaultModel: "claude-sonnet-4-6"},
+		},
+		Frames: frame.Config{
+			Active: "personal",
+			List:   []frame.Frame{{Name: "personal"}},
+		},
+	}
+	persistModelChoice(cfg, cfg.Frames.Find("personal"), "anthropic", "claude-opus-4-7")
+
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := config.Save(path, cfg); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	reloaded, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	f := reloaded.Frames.Find("personal")
+	if f == nil || f.Provider != "anthropic" || f.Model != "claude-opus-4-7" {
+		t.Errorf("after round-trip frame=%+v want anthropic/claude-opus-4-7", f)
+	}
+}

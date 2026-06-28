@@ -790,6 +790,37 @@ func buildDispatchForFrame(cfg *config.Config, opts pleaseOptions, activeFrame *
 	return &dispatch{provider: p, name: name, model: model}, nil
 }
 
+// persistModelChoice records a `/model` selection into cfg so a NEW
+// session resolves to it, not just the session that issued the swap.
+// Without this, /model only updates the live loop + the current agent
+// row, and the next `carlos` boot reverts to the config defaults.
+//
+// The write mirrors buildDispatchForFrame's resolution precedence so the
+// next boot actually lands on the choice:
+//
+//   - With a frame active, the choice is frame-scoped: frame.Provider and
+//     frame.Model are the highest-precedence slots (checked before the
+//     provider_override and pantry default_model), so pinning them is
+//     authoritative for that frame and never bleeds into other frames.
+//   - With no frame (legacy single-shelf), update the global default
+//     provider and that provider's pantry default_model.
+//
+// activeFrame, when non-nil, must be a pointer into cfg.Frames.List (e.g.
+// from activeFrameForDispatch / Frames.Find) so the mutation is captured
+// by a subsequent config.Save(cfg). Callers Save.
+func persistModelChoice(cfg *config.Config, activeFrame *frame.Frame, provider, model string) {
+	if activeFrame != nil {
+		activeFrame.Provider = provider
+		activeFrame.Model = model
+		return
+	}
+	cfg.DefaultProvider = provider
+	if pc, ok := cfg.Providers[provider]; ok {
+		pc.DefaultModel = model
+		cfg.Providers[provider] = pc
+	}
+}
+
 // activeFrameForDispatch returns a pointer to the active frame's record
 // in cfg.Frames.List, honouring CARLOS_FRAME env + cwd + persisted-active
 // resolution. Returns nil when frames aren't wired or the resolved name
