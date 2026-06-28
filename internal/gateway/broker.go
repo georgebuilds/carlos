@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"sync"
 	"time"
 
@@ -34,6 +35,11 @@ type Broker struct {
 	retry   RetryConfig
 	clock   func() time.Time
 	sleep   func(context.Context, time.Duration) error
+	// auditErr is invoked when an EvtGatewayOutbound audit row fails to
+	// persist. The audit log is a delivery contract, so a dropped row
+	// must not be silent. Defaults to a stderr log line; tests inject a
+	// capturing func.
+	auditErr func(error)
 
 	mu       sync.RWMutex
 	adapters map[Source]Adapter
@@ -86,6 +92,9 @@ type Options struct {
 	// to a select-on-ctx-Done implementation. Tests pass a fake to
 	// avoid real waits.
 	Sleep func(ctx context.Context, d time.Duration) error
+	// AuditErr is called when an outbound audit row fails to persist.
+	// Optional; defaults to a stderr log line.
+	AuditErr func(error)
 }
 
 // New constructs a Broker with the given options. Returns an error if
@@ -114,6 +123,7 @@ func New(opts Options) (*Broker, error) {
 		subs:     map[string][]chan Decision{},
 		clock:    opts.Now,
 		sleep:    opts.Sleep,
+		auditErr: opts.AuditErr,
 	}
 	if b.clock == nil {
 		b.clock = time.Now
@@ -121,7 +131,22 @@ func New(opts Options) (*Broker, error) {
 	if b.sleep == nil {
 		b.sleep = ctxSleep
 	}
+	if b.auditErr == nil {
+		b.auditErr = func(err error) {
+			log.Printf("gateway: outbound audit row dropped: %v", err)
+		}
+	}
 	return b, nil
+}
+
+// recordOutbound persists an EvtGatewayOutbound audit row. A failure to
+// persist is surfaced through b.auditErr rather than silently dropped - the
+// outbound log is a delivery contract operators rely on.
+func (b *Broker) recordOutbound(ctx context.Context, p OutboundPayload) {
+	if _, err := appendOutbound(ctx, b.log, p, b.clock()); err != nil {
+		b.auditErr(fmt.Errorf("append outbound (channel %s, envelope %s, attempt %d): %w",
+			p.Channel, p.EnvelopeID, p.Attempt, err))
+	}
 }
 
 // ctxSleep waits for d or for ctx to cancel, whichever comes first.
@@ -417,14 +442,14 @@ func (b *Broker) sendOne(ctx context.Context, a Adapter, env OutboundEnvelope, r
 
 		// Pre-attempt row - "we tried, status unknown" per spec.
 		preReceipt := DeliveryReceipt{Source: a.Name(), Status: StatusUnknown}
-		_, _ = appendOutbound(ctx, b.log, OutboundPayload{
+		b.recordOutbound(ctx, OutboundPayload{
 			Channel:    a.Name(),
 			EnvelopeID: env.ID,
 			ArtifactID: env.ArtifactID,
 			Envelope:   env,
 			Receipt:    preReceipt,
 			Attempt:    attempt,
-		}, b.clock())
+		})
 
 		receipt, err := a.Send(ctx, env)
 		if err == nil && receipt.Source == "" {
@@ -439,14 +464,14 @@ func (b *Broker) sendOne(ctx context.Context, a Adapter, env OutboundEnvelope, r
 		}
 
 		// Post-attempt row - terminal status for this attempt.
-		_, _ = appendOutbound(ctx, b.log, OutboundPayload{
+		b.recordOutbound(ctx, OutboundPayload{
 			Channel:    a.Name(),
 			EnvelopeID: env.ID,
 			ArtifactID: env.ArtifactID,
 			Envelope:   env,
 			Receipt:    receipt,
 			Attempt:    attempt,
-		}, b.clock())
+		})
 
 		last = receipt
 		if receipt.Status == StatusDelivered || receipt.Status == StatusUnknown {

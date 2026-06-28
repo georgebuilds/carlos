@@ -65,3 +65,84 @@ func TestAskCarlos_FailsClosed(t *testing.T) {
 		t.Error("empty url should fail closed")
 	}
 }
+
+// A payload claude's PreToolUse hook cannot parse must deny without ever
+// consulting carlos - the fail-safe contract in the package doc. Previously
+// a malformed payload fell through to asking about an empty tool name.
+func TestCCHookDecision_DeniesMalformedPayload(t *testing.T) {
+	asked := false
+	d, r := ccHookDecision([]byte("not json"), func(string, json.RawMessage) (string, string, bool) {
+		asked = true
+		return "allow", "should not happen", true
+	})
+	if asked {
+		t.Error("asker must not be consulted for an unparseable payload")
+	}
+	if d != "deny" {
+		t.Errorf("decision = %q, want deny", d)
+	}
+	if r == "" {
+		t.Error("deny should carry a reason")
+	}
+}
+
+// Empty stdin (a read that yielded nothing) is also a deny, not an ask
+// about a zero-valued tool name.
+func TestCCHookDecision_DeniesEmptyStdin(t *testing.T) {
+	d, _ := ccHookDecision(nil, func(string, json.RawMessage) (string, string, bool) {
+		t.Error("asker must not run on empty stdin")
+		return "allow", "", true
+	})
+	if d != "deny" {
+		t.Errorf("decision = %q, want deny", d)
+	}
+}
+
+// A well-formed payload forwards the tool name to the asker and passes its
+// allow decision through.
+func TestCCHookDecision_PassesThroughAllow(t *testing.T) {
+	raw := []byte(`{"tool_name":"bash","tool_input":{"command":"ls"}}`)
+	var gotName string
+	d, r := ccHookDecision(raw, func(name string, _ json.RawMessage) (string, string, bool) {
+		gotName = name
+		return "allow", "approved", true
+	})
+	if gotName != "bash" {
+		t.Errorf("asker saw tool %q, want bash", gotName)
+	}
+	if d != "allow" || r != "approved" {
+		t.Errorf("decision/reason = %q/%q", d, r)
+	}
+}
+
+// A transport failure (asker ok=false) denies even for a valid payload.
+func TestCCHookDecision_DeniesWhenAskerUnavailable(t *testing.T) {
+	raw := []byte(`{"tool_name":"bash"}`)
+	d, _ := ccHookDecision(raw, func(string, json.RawMessage) (string, string, bool) {
+		return "", "", false
+	})
+	if d != "deny" {
+		t.Errorf("decision = %q, want deny when asker fails", d)
+	}
+}
+
+// The rendered response is always valid PreToolUse JSON.
+func TestCCHookResponse_Shape(t *testing.T) {
+	out := ccHookResponse("allow", "ok")
+	var parsed struct {
+		HookSpecificOutput struct {
+			HookEventName            string `json:"hookEventName"`
+			PermissionDecision       string `json:"permissionDecision"`
+			PermissionDecisionReason string `json:"permissionDecisionReason"`
+		} `json:"hookSpecificOutput"`
+	}
+	if err := json.Unmarshal([]byte(out), &parsed); err != nil {
+		t.Fatalf("response is not valid JSON: %v (%s)", err, out)
+	}
+	if parsed.HookSpecificOutput.HookEventName != "PreToolUse" {
+		t.Errorf("hookEventName = %q", parsed.HookSpecificOutput.HookEventName)
+	}
+	if parsed.HookSpecificOutput.PermissionDecision != "allow" {
+		t.Errorf("decision = %q", parsed.HookSpecificOutput.PermissionDecision)
+	}
+}

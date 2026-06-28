@@ -38,20 +38,47 @@ func runCCHook(args []string) error {
 		}
 	}
 
-	// claude passes {hook_event_name, tool_name, tool_input, session_id, cwd}.
+	// Fail safe: a stdin we cannot read is treated exactly like a tool we
+	// cannot get a human decision for - deny. We do NOT proceed to ask
+	// carlos about a zero-valued (empty tool name) payload.
+	raw, err := io.ReadAll(os.Stdin)
+	if err != nil {
+		raw = nil
+	}
+
+	decision, reason := ccHookDecision(raw, func(name string, input json.RawMessage) (string, string, bool) {
+		return askCarlos(url, token, thread, name, input)
+	})
+	fmt.Println(ccHookResponse(decision, reason))
+	return nil
+}
+
+// ccHookDecision resolves the PreToolUse decision for a raw stdin payload.
+// It fails safe: a payload that does not parse (or whose tool the human
+// declines to approve) yields "deny". Extracted so the fail-safe path is
+// unit-testable without driving os.Stdin.
+func ccHookDecision(raw []byte, ask func(name string, input json.RawMessage) (string, string, bool)) (decision, reason string) {
 	var hookIn struct {
 		ToolName  string          `json:"tool_name"`
 		ToolInput json.RawMessage `json:"tool_input"`
 	}
-	if raw, err := io.ReadAll(os.Stdin); err == nil {
-		_ = json.Unmarshal(raw, &hookIn)
+	// claude passes {hook_event_name, tool_name, tool_input, session_id, cwd}.
+	// A read error or malformed payload denies rather than asking about an
+	// empty tool name.
+	if err := json.Unmarshal(raw, &hookIn); err != nil {
+		return "deny", "carlos approval unavailable"
 	}
-
-	decision, reason := "deny", "carlos approval unavailable"
-	if d, r, ok := askCarlos(url, token, thread, hookIn.ToolName, hookIn.ToolInput); ok {
-		decision, reason = d, r
+	if d, r, ok := ask(hookIn.ToolName, hookIn.ToolInput); ok {
+		return d, r
 	}
+	return "deny", "carlos approval unavailable"
+}
 
+// ccHookResponse renders the hook's permissionDecision JSON. Marshal cannot
+// fail for these string-only fields, but we guard it anyway and fall back
+// to a hand-written deny so a marshal bug can never emit a blank line that
+// claude might read as "no decision".
+func ccHookResponse(decision, reason string) string {
 	out := map[string]any{
 		"hookSpecificOutput": map[string]any{
 			"hookEventName":            "PreToolUse",
@@ -59,9 +86,11 @@ func runCCHook(args []string) error {
 			"permissionDecisionReason": reason,
 		},
 	}
-	b, _ := json.Marshal(out)
-	fmt.Println(string(b))
-	return nil
+	b, err := json.Marshal(out)
+	if err != nil {
+		return `{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"carlos approval unavailable"}}`
+	}
+	return string(b)
 }
 
 // askCarlos posts the tool to the carlos web server and waits for the
@@ -72,9 +101,14 @@ func askCarlos(url, token, thread, name string, input json.RawMessage) (decision
 	if url == "" {
 		return "", "", false
 	}
-	body, _ := json.Marshal(map[string]any{
+	body, err := json.Marshal(map[string]any{
 		"thread": thread, "tool_name": name, "tool_input": input,
 	})
+	if err != nil {
+		// Fail safe: never POST an empty body the server would
+		// misread; deny instead.
+		return "", "", false
+	}
 	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		return "", "", false

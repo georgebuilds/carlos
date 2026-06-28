@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"path"
 	"strings"
 
@@ -26,6 +27,24 @@ import (
 	"github.com/georgebuilds/carlos/internal/frame"
 	"github.com/georgebuilds/carlos/internal/notes"
 )
+
+// notesLogf is the package logger seam for non-fatal notes-tool warnings.
+// Tests override it to assert that a swallowed error is at least observed.
+var notesLogf = log.Printf
+
+// refresher is the subset of *notes.Cache vault handles that notes tools
+// poll for changes. Declared as an interface so refreshOrLog is unit
+// testable with a fake that returns an error.
+type refresher interface{ MaybeRefresh() error }
+
+// refreshOrLog runs a cheap mtime poll and, on failure, logs rather than
+// failing the tool call: the last-good index is still valid, but the error
+// must not vanish silently (it was previously discarded with `_ = rerr`).
+func refreshOrLog(v refresher) {
+	if err := v.MaybeRefresh(); err != nil {
+		notesLogf("notes: vault refresh failed, serving last-good index: %v", err)
+	}
+}
 
 // notesEnv is the shared dependency every notes_* tool holds. The same
 // *notes.Cache flows through all seven tools so a vault opened by
@@ -227,13 +246,11 @@ func (e *notesEnv) openVault(perCallVault string) (string, *notes.VaultIndex, er
 	// stat per .md file (microseconds on a 1000-note vault); for
 	// changed vaults it triggers a full re-walk. A real fsnotify
 	// watcher (slice 12-future) replaces this.
-	if rerr := v.MaybeRefresh(); rerr != nil {
-		// Refresh failure shouldn't bring down the tool call - the
-		// last-good index is still valid. Surface it as a hint in
-		// the response would be nice but the existing envelope
-		// doesn't have a slot for warnings; swallow + continue.
-		_ = rerr
-	}
+	// Refresh failure shouldn't bring down the tool call - the last-good
+	// index is still valid - but it is logged rather than swallowed so an
+	// operator can see a wedged vault. The response envelope has no slot
+	// for warnings, so the log is the surface.
+	refreshOrLog(v)
 	return abs, v, nil
 }
 
