@@ -194,6 +194,13 @@ func (m *Model) renderInner(innerW, innerH int) string {
 			innerW,
 		)
 		approvalH = lipgloss.Height(approval)
+	} else if m.showMCP {
+		mcpH := innerH - headerH - footerH - inputH - 1
+		if mcpH < 10 {
+			mcpH = 10
+		}
+		approval = renderMCPOverlay(m, innerW, mcpH)
+		approvalH = lipgloss.Height(approval)
 	} else if m.showHelp {
 		approval = renderHelpBox(innerW)
 		approvalH = lipgloss.Height(approval)

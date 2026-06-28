@@ -441,6 +441,23 @@ type Model struct {
 	permsFilter     string
 	permsFilterMode bool
 
+	// /mcp tool-management overlay state. mcpMgr is the runtime seam
+	// (nil => /mcp falls back to the text list). The overlay is two
+	// levels: mcpLevel 0 = servers, 1 = a server's tool picker.
+	// mcpWorking holds the focused server's raw-name -> enabled edits
+	// (flushed to an allowlist on leave); mcpDirty gates that flush.
+	showMCP       bool
+	mcpMgr        MCPManager
+	mcpServers    []MCPManagedServer
+	mcpLevel      int
+	mcpSrvCursor  int
+	mcpToolCursor int
+	mcpFilter     string
+	mcpFilterMode bool
+	mcpWorking    map[string]bool
+	mcpWorkingSrv string
+	mcpDirty      bool
+
 	// Phase F: per-frame view + switch hook. frame is the resolved
 	// active frame for this session; surface in the header pill and
 	// served read-only to /frame. frame.SwitchActive is a callback
@@ -1170,6 +1187,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// through to the quit handler.
 		if m.showPerms {
 			next, cmd, handled := m.handlePermsOverlayKey(msg)
+			if handled {
+				return next, cmd
+			}
+		}
+		// /mcp tool-management overlay. Same routing pattern: the
+		// overlay owns nav + toggle keys; ctrl+c falls through.
+		if m.showMCP {
+			next, cmd, handled := m.handleMCPOverlayKey(msg)
 			if handled {
 				return next, cmd
 			}

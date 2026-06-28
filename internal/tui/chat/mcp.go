@@ -40,7 +40,11 @@ type MCPServerStatus struct {
 func (m *Model) mcpSlash(args string) tea.Cmd {
 	verb, rest, _ := strings.Cut(strings.TrimSpace(args), " ")
 	switch strings.ToLower(strings.TrimSpace(verb)) {
-	case "", "list":
+	case "":
+		// Bare /mcp opens the interactive manager (availability + auto-
+		// approve). Falls back to the text list when no manager is wired.
+		return m.openMCPOverlay()
+	case "list":
 		return m.mcpList()
 	case "add":
 		return m.mcpAdd(strings.TrimSpace(rest))
