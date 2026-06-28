@@ -83,24 +83,28 @@ func providerModels(provider string) []ModelSuggestion {
 			{Slug: "gemini-2.5-pro", Label: "Gemini 2.5 Pro", Note: "older flagship", PromptUSDPerM: 1.25, CompletionUSDPerM: 5, CtxLen: 2_000_000},
 		}
 	case "openrouter":
-		// Default keeps Gemini 3.5 Flash (fast & cheap). The rest is a
-		// spread across vendors so a user trying carlos for the first
-		// time on OpenRouter can sample any major lab in one keystroke.
-		// Prices are fallback only; the live fetcher overlays whatever
-		// the catalog currently quotes.
+		// Default is GLM 5.2 (strong agentic coder, 1M context, cheap). The
+		// rest is a spread across vendors so a user trying carlos for the
+		// first time on OpenRouter can sample any major lab in one
+		// keystroke. Prices are fallback only; the live fetcher overlays
+		// whatever the catalog currently quotes.
 		return []ModelSuggestion{
-			{Slug: "google/gemini-3.5-flash", Label: "Gemini 3.5 Flash", Note: "fast & cheap, default", PromptUSDPerM: 0.10, CompletionUSDPerM: 0.40, CtxLen: 1_000_000},
+			{Slug: "z-ai/glm-5.2", Label: "GLM 5.2", Note: "agentic coder, 1M ctx, default", PromptUSDPerM: 0.95, CompletionUSDPerM: 3, CtxLen: 1_000_000},
+			{Slug: "google/gemini-3.5-flash", Label: "Gemini 3.5 Flash", Note: "fast & cheap", PromptUSDPerM: 0.10, CompletionUSDPerM: 0.40, CtxLen: 1_000_000},
 			{Slug: "google/gemini-3.1-flash-lite", Label: "Gemini 3.1 Flash Lite", Note: "cheapest", PromptUSDPerM: 0.05, CompletionUSDPerM: 0.20, CtxLen: 1_000_000},
 			{Slug: "anthropic/claude-sonnet-4-6", Label: "Claude Sonnet 4.6", Note: "Claude workhorse", PromptUSDPerM: 3, CompletionUSDPerM: 15, CtxLen: 200_000},
 			{Slug: "anthropic/claude-opus-4.8", Label: "Claude Opus 4.8", Note: "Claude flagship", PromptUSDPerM: 15, CompletionUSDPerM: 75, CtxLen: 200_000},
-			{Slug: "anthropic/claude-fable-5", Label: "Claude Fable 5", Note: "Claude creative", PromptUSDPerM: 3, CompletionUSDPerM: 15, CtxLen: 200_000},
 			{Slug: "openai/gpt-5.5", Label: "GPT-5.5", Note: "OpenAI flagship", PromptUSDPerM: 5, CompletionUSDPerM: 25, CtxLen: 400_000},
 			{Slug: "openai/gpt-5.4-mini", Label: "GPT-5.4 Mini", Note: "fast OpenAI", PromptUSDPerM: 0.30, CompletionUSDPerM: 2.40, CtxLen: 400_000},
 			{Slug: "deepseek/deepseek-v4-pro", Label: "DeepSeek V4 Pro", Note: "open-weights flagship", PromptUSDPerM: 0.55, CompletionUSDPerM: 2.20, CtxLen: 128_000},
 			{Slug: "deepseek/deepseek-v4-flash", Label: "DeepSeek V4 Flash", Note: "fast DeepSeek", PromptUSDPerM: 0.14, CompletionUSDPerM: 0.28, CtxLen: 128_000},
+			{Slug: "x-ai/grok-build-0.1", Label: "Grok Build 0.1", Note: "xAI agentic coder", PromptUSDPerM: 1, CompletionUSDPerM: 2, CtxLen: 256_000},
+			{Slug: "moonshotai/kimi-k2.6", Label: "Kimi K2.6", Note: "Moonshot agentic coder", PromptUSDPerM: 0.66, CompletionUSDPerM: 3.41, CtxLen: 256_000},
+			{Slug: "xiaomi/mimo-v2.5", Label: "MiMo V2.5", Note: "cheap omnimodal, 1M ctx", PromptUSDPerM: 0.11, CompletionUSDPerM: 0.28, CtxLen: 1_000_000},
 			{Slug: "qwen/qwen3.7-plus", Label: "Qwen 3.7 Plus", Note: "Qwen mainstream", PromptUSDPerM: 0.40, CompletionUSDPerM: 1.20, CtxLen: 128_000},
 			{Slug: "qwen/qwen3.6-flash", Label: "Qwen 3.6 Flash", Note: "fast Qwen", PromptUSDPerM: 0.18, CompletionUSDPerM: 0.36, CtxLen: 128_000},
 			{Slug: "minimax/minimax-m3", Label: "MiniMax M3", Note: "MiniMax latest", PromptUSDPerM: 0.20, CompletionUSDPerM: 1.10, CtxLen: 256_000},
+			{Slug: "openrouter/owl-alpha", Label: "Owl Alpha", Note: "free stealth model, may vanish", PromptUSDPerM: 0, CompletionUSDPerM: 0, CtxLen: 1_000_000},
 		}
 	case "ollama":
 		// Local: users pull these tags with `ollama pull <tag>`. The

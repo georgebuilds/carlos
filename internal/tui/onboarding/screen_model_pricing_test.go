@@ -80,9 +80,13 @@ func TestFormatCtxColumn_Variants(t *testing.T) {
 // future edit that drops the pricing fields is caught here, not in a
 // silent dropdown regression.
 func TestModelSuggestion_PricingPopulated(t *testing.T) {
+	// Genuinely-free models (stealth / promo slots priced at $0 on
+	// OpenRouter) legitimately carry a zero price, like local Ollama. They
+	// are exempt from the non-zero-price guard but still need a CtxLen.
+	free := map[string]bool{"openrouter/owl-alpha": true}
 	for _, p := range []string{"anthropic", "openai", "gemini", "openrouter"} {
 		for _, s := range providerModels(p) {
-			if s.PromptUSDPerM <= 0 {
+			if s.PromptUSDPerM <= 0 && !free[s.Slug] {
 				t.Errorf("%s: %q has zero prompt price", p, s.Slug)
 			}
 			if s.CtxLen <= 0 {

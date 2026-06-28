@@ -54,7 +54,7 @@ func TestSuggestedDefaultModel(t *testing.T) {
 		"anthropic":  "claude-sonnet-4-6",
 		"openai":     "gpt-5",
 		"gemini":     "gemini-3.5-flash",
-		"openrouter": "google/gemini-3.5-flash",
+		"openrouter": "z-ai/glm-5.2",
 		"ollama":     "llama3.1:8b",
 		"unknown":    "",
 	}
@@ -85,29 +85,33 @@ func TestProviderModels_AllPopulated(t *testing.T) {
 	}
 }
 
-// TestProviderModels_OpenRouterIncludesClaudeFable pins the curated
-// openrouter list contains anthropic/claude-fable-5 so it surfaces
-// in both the onboarding picker and (via CuratedModelSlugs) the
-// /model slash autocomplete on a fresh install with no cached
-// catalog yet.
-func TestProviderModels_OpenRouterIncludesClaudeFable(t *testing.T) {
-	const slug = "anthropic/claude-fable-5"
-	for _, m := range providerModels("openrouter") {
-		if m.Slug == slug {
-			return
-		}
+// TestProviderModels_OpenRouterNewAdditions pins the curated openrouter list:
+// the newly added slugs are present (and reachable via CuratedModelSlugs),
+// glm-5.2 is the suggested default (position 0), and the retired Claude Fable
+// slug is gone.
+func TestProviderModels_OpenRouterNewAdditions(t *testing.T) {
+	want := []string{
+		"z-ai/glm-5.2",
+		"x-ai/grok-build-0.1",
+		"moonshotai/kimi-k2.6",
+		"xiaomi/mimo-v2.5",
+		"openrouter/owl-alpha",
 	}
-	t.Errorf("%q missing from curated openrouter list", slug)
-
-	// Belt-and-braces: the autocomplete view (CuratedModelSlugs)
-	// must also surface it, since /model openrouter:<tab> reads
-	// through there.
+	have := map[string]bool{}
 	for _, s := range CuratedModelSlugs("openrouter") {
-		if s == slug {
-			return
+		have[s] = true
+	}
+	for _, slug := range want {
+		if !have[slug] {
+			t.Errorf("%q missing from curated openrouter list", slug)
 		}
 	}
-	t.Errorf("%q missing from CuratedModelSlugs(\"openrouter\")", slug)
+	if have["anthropic/claude-fable-5"] {
+		t.Error("anthropic/claude-fable-5 should have been removed (Anthropic retired it)")
+	}
+	if def := suggestedDefaultModel("openrouter"); def != "z-ai/glm-5.2" {
+		t.Errorf("openrouter default = %q, want z-ai/glm-5.2", def)
+	}
 }
 
 func TestFilterModels_Substring(t *testing.T) {

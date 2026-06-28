@@ -236,7 +236,7 @@ func (t *CarlosAboutTool) Execute(_ context.Context, input []byte) ([]byte, erro
 		// session-start default, and the model has empirically been
 		// observed picking the providers-section value when answering
 		// "what model are you" - producing the v0.7.7 bug report where
-		// /model openrouter:anthropic/claude-fable-5 visibly swapped the
+		// /model openrouter:anthropic/claude-opus-4.8 visibly swapped the
 		// dispatch but the assistant kept saying "running on
 		// google/gemini-3.5-flash via OpenRouter". Mutating the response
 		// copy (not t.providers) keeps the override scoped to this call.
