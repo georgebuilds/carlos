@@ -1356,10 +1356,15 @@ func TestRunApprovals_ListWithinDeadline(t *testing.T) {
 		r, w, _ := os.Pipe()
 		orig := os.Stdout
 		os.Stdout = w
-		defer func() { os.Stdout = orig }()
 		err := runApprovals([]string{"list"})
 		w.Close()
 		_, _ = io.Copy(io.Discard, r)
+		// Restore os.Stdout BEFORE signaling done, not in a defer: the
+		// channel send orders this write before the test (and the next
+		// test) observes os.Stdout. A deferred restore runs after `done`
+		// is received and the test returns, so it would race the next
+		// test's read of the global (e.g. mcpBoxWidth's os.Stdout.Fd()).
+		os.Stdout = orig
 		done <- err
 	}()
 	select {
