@@ -13,6 +13,11 @@ import (
 	"regexp"
 )
 
+// maxRegexPatternLen bounds the size of a user-supplied regex before
+// compilation. RE2 matching is linear, but compiling a huge bounded-repeat
+// pattern is not, and compile time is not covered by the request context.
+const maxRegexPatternLen = 4096
+
 // GrepTool recursively searches files under `root` for `pattern`. Default
 // is literal substring search; `regex: true` switches to Go regexp.
 // Results are formatted `path:line:text` (ripgrep-ish) and capped at 100
@@ -124,6 +129,14 @@ func (t *GrepTool) Execute(ctx context.Context, input []byte) ([]byte, error) {
 
 	var matcher func([]byte) bool
 	if in.Regex {
+		// Go's RE2 engine is linear-time at match, but compiling a
+		// pathological pattern (deeply nested bounded repeats) can still
+		// burn CPU/memory, and that work is not bounded by the request
+		// context. Cap the pattern length as cheap defense-in-depth - no
+		// legitimate grep pattern approaches this.
+		if len(in.Pattern) > maxRegexPatternLen {
+			return nil, fmt.Errorf("grep: regex pattern too long (%d bytes, max %d)", len(in.Pattern), maxRegexPatternLen)
+		}
 		re, err := regexp.Compile(in.Pattern)
 		if err != nil {
 			return nil, fmt.Errorf("grep: compile regex: %w", err)

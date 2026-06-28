@@ -87,11 +87,15 @@ func (t *WriteTool) Execute(_ context.Context, input []byte) ([]byte, error) {
 		return nil, fmt.Errorf("write: %w", err)
 	}
 
-	if in.Mode == "create" {
-		if _, err := os.Stat(path); err == nil {
-			return nil, fmt.Errorf("write: %s already exists (use mode=overwrite to replace)", path)
-		} else if !os.IsNotExist(err) {
-			return nil, fmt.Errorf("write: stat %s: %w", path, err)
+	// For relative paths resolved into a sandbox BaseDir, reject writes that
+	// resolve outside it through a symlink. resolveBaseDir's lexical check
+	// only catches `..` escapes; a symlink planted inside the worktree
+	// (e.g. `worktree/escape -> /etc`) would slip past it. Absolute paths
+	// are a deliberate, user-visible policy escape (see resolveBaseDir) and
+	// are intentionally left unchecked.
+	if t.BaseDir != "" && !filepath.IsAbs(in.Path) {
+		if err := withinBase(t.BaseDir, path); err != nil {
+			return nil, fmt.Errorf("write: %w", err)
 		}
 	}
 
@@ -100,10 +104,69 @@ func (t *WriteTool) Execute(_ context.Context, input []byte) ([]byte, error) {
 		return nil, fmt.Errorf("write: mkdir %s: %w", dir, err)
 	}
 
-	if err := atomicWrite(path, []byte(in.Content), 0o644); err != nil {
+	// create mode must not clobber an existing file. atomicCreate makes the
+	// existence check and the creation a single link(2), closing the
+	// stat-then-write TOCTOU window the old os.Stat pre-check left open.
+	if in.Mode == "create" {
+		if err := atomicCreate(path, []byte(in.Content), 0o644); err != nil {
+			return nil, err
+		}
+	} else if err := atomicWrite(path, []byte(in.Content), 0o644); err != nil {
 		return nil, err
 	}
 	return []byte(fmt.Sprintf("wrote %d bytes to %s\n", len(in.Content), path)), nil
+}
+
+// withinBase verifies that target, after resolving symlinks in both it and
+// base, stays inside base. It mirrors notes_write's symlink-containment
+// check so the write and notes_write tools share one containment rule.
+func withinBase(base, target string) error {
+	canonBase, err := evalAncestor(base)
+	if err != nil {
+		return fmt.Errorf("resolve sandbox base %s: %w", base, err)
+	}
+	canonTarget, err := evalAncestor(target)
+	if err != nil {
+		return fmt.Errorf("resolve target %s: %w", target, err)
+	}
+	if !isInside(canonTarget, canonBase) {
+		return fmt.Errorf("target %s resolves outside sandbox base %s (symlink containment)", target, base)
+	}
+	return nil
+}
+
+// writeTemp writes data to a freshly created temp file in dir and returns
+// its path for the caller to rename or link into place. The temp name is
+// randomized via os.CreateTemp (which opens with O_CREATE|O_EXCL), so an
+// attacker cannot pre-plant a symlink at a predictable temp path and have
+// our write follow it to clobber an out-of-tree target - the old fixed
+// `path + ".tmp"` name with O_TRUNC was vulnerable to exactly that.
+func writeTemp(dir, base string, data []byte, mode os.FileMode) (string, error) {
+	f, err := os.CreateTemp(dir, "."+base+".tmp-*")
+	if err != nil {
+		return "", fmt.Errorf("atomicWrite: open tmp in %s: %w", dir, err)
+	}
+	tmp := f.Name()
+	if _, err := f.Write(data); err != nil {
+		_ = f.Close()
+		_ = os.Remove(tmp)
+		return "", fmt.Errorf("atomicWrite: write tmp: %w", err)
+	}
+	if err := f.Sync(); err != nil {
+		_ = f.Close()
+		_ = os.Remove(tmp)
+		return "", fmt.Errorf("atomicWrite: fsync tmp: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		_ = os.Remove(tmp)
+		return "", fmt.Errorf("atomicWrite: close tmp: %w", err)
+	}
+	// CreateTemp forces 0600; restore the caller's intended mode.
+	if err := os.Chmod(tmp, mode); err != nil {
+		_ = os.Remove(tmp)
+		return "", fmt.Errorf("atomicWrite: chmod tmp: %w", err)
+	}
+	return tmp, nil
 }
 
 // atomicWrite is the shared write primitive used by WriteTool and
@@ -111,28 +174,32 @@ func (t *WriteTool) Execute(_ context.Context, input []byte) ([]byte, error) {
 // rename. POSIX rename is atomic on Darwin and Linux, so a reader either
 // sees the old file or the new file - never a torn write.
 func atomicWrite(path string, data []byte, mode os.FileMode) error {
-	tmp := path + ".tmp"
-	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode)
+	tmp, err := writeTemp(filepath.Dir(path), filepath.Base(path), data, mode)
 	if err != nil {
-		return fmt.Errorf("atomicWrite: open tmp %s: %w", tmp, err)
-	}
-	if _, err := f.Write(data); err != nil {
-		_ = f.Close()
-		_ = os.Remove(tmp)
-		return fmt.Errorf("atomicWrite: write tmp: %w", err)
-	}
-	if err := f.Sync(); err != nil {
-		_ = f.Close()
-		_ = os.Remove(tmp)
-		return fmt.Errorf("atomicWrite: fsync tmp: %w", err)
-	}
-	if err := f.Close(); err != nil {
-		_ = os.Remove(tmp)
-		return fmt.Errorf("atomicWrite: close tmp: %w", err)
+		return err
 	}
 	if err := os.Rename(tmp, path); err != nil {
 		_ = os.Remove(tmp)
 		return fmt.Errorf("atomicWrite: rename %s -> %s: %w", tmp, path, err)
+	}
+	return nil
+}
+
+// atomicCreate writes data to path but fails if path already exists. The
+// existence check and the creation are a single os.Link, so - unlike a
+// stat-then-rename - there is no window in which a file or symlink that
+// appears at path after the check can be silently clobbered.
+func atomicCreate(path string, data []byte, mode os.FileMode) error {
+	tmp, err := writeTemp(filepath.Dir(path), filepath.Base(path), data, mode)
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp)
+	if err := os.Link(tmp, path); err != nil {
+		if errors.Is(err, os.ErrExist) {
+			return fmt.Errorf("write: %s already exists (use mode=overwrite to replace)", path)
+		}
+		return fmt.Errorf("atomicCreate: link %s -> %s: %w", tmp, path, err)
 	}
 	return nil
 }
