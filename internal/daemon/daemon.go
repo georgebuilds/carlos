@@ -211,6 +211,13 @@ type Daemon struct {
 	stopOnce sync.Once
 	stopFn   context.CancelFunc
 
+	// wg tracks the long-lived background goroutines Run starts
+	// (acceptLoop, awayWatcher, reminderWatcher). Shutdown joins them
+	// before closing d.log / d.listener / d.fireLog so a watcher mid
+	// log.Read() never touches a handle closed out from under it - the
+	// data race the -race detector flags on the shutdown path.
+	wg sync.WaitGroup
+
 	// logger is the package-internal slog.Logger. Always non-nil after
 	// New (defaulted to a stderr text handler so call sites never need a
 	// nil check). Scoped with a "component" attr so multi-binary
@@ -410,7 +417,11 @@ func (d *Daemon) Run(ctx context.Context) error {
 		// Away-watcher: tail the shared log and, while the user is /away,
 		// ping the gateway when a backgrounded shell job finishes. Only
 		// runs when the gateway is up (there's nowhere to deliver otherwise).
-		go newAwayWatcher(d.log, d.notifyBackgroundComplete).run(runCtx)
+		d.wg.Add(1)
+		go func() {
+			defer d.wg.Done()
+			newAwayWatcher(d.log, d.notifyBackgroundComplete).run(runCtx)
+		}()
 		// Reminder-watcher: while the user is /away, periodically scan the
 		// todo backends for due (or overdue) items and ping the gateway once
 		// per item. Shares the same presence gate as the away-watcher so
@@ -419,12 +430,20 @@ func (d *Daemon) Run(ctx context.Context) error {
 		rrouter, rerr := tools.BuildTodoRouter(d.vaultCfg, d.todosCfg, d.frameCfg, "", nil)
 		d.mu.Unlock()
 		if rerr == nil && rrouter != nil {
-			go newReminderWatcher(d.log, rrouter, d.notifyTodoDue, d.opts.Now.Now, reminderScanInterval).run(runCtx)
+			d.wg.Add(1)
+			go func() {
+				defer d.wg.Done()
+				newReminderWatcher(d.log, rrouter, d.notifyTodoDue, d.opts.Now.Now, reminderScanInterval).run(runCtx)
+			}()
 		}
 	}
 
 	// 6. IPC accept goroutine.
-	go d.acceptLoop(runCtx)
+	d.wg.Add(1)
+	go func() {
+		defer d.wg.Done()
+		d.acceptLoop(runCtx)
+	}()
 
 	d.mu.Lock()
 	d.startedAt = d.opts.Now.Now().UTC()
@@ -439,7 +458,12 @@ func (d *Daemon) Run(ctx context.Context) error {
 	for {
 		select {
 		case <-runCtx.Done():
+			// Close the listener first so acceptLoop's blocking Accept()
+			// returns, then join all long-lived goroutines before closing
+			// the log handles they read from. Closing the logs before the
+			// join would race a watcher mid log.Read().
 			_ = d.listener.Close()
+			d.wg.Wait()
 			d.mu.Lock()
 			fl := d.fireLog
 			d.mu.Unlock()
