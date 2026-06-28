@@ -54,7 +54,12 @@ func rewriteKimiRefs(node any) any {
 			delete(v, "definitions")
 		}
 		if ref, ok := v["$ref"].(string); ok {
-			v["$ref"] = strings.Replace(ref, "#/definitions/", "#/$defs/", 1)
+			// A JSON-pointer $ref is anchored at "#/", so only the leading
+			// "#/definitions/" is the dialect marker. Rewrite that prefix
+			// alone; never touch a "definitions" segment deeper in the path.
+			if rest, found := strings.CutPrefix(ref, "#/definitions/"); found {
+				v["$ref"] = "#/$defs/" + rest
+			}
 		}
 		for k, child := range v {
 			v[k] = rewriteKimiRefs(child)

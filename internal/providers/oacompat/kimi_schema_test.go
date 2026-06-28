@@ -83,6 +83,27 @@ func TestSanitizeKimiSchema_PreservesRichDialect(t *testing.T) {
 	}
 }
 
+// The rewrite must touch only the anchored "#/definitions/" prefix, never a
+// "definitions" segment embedded deeper in a pointer, and must leave a ref
+// that doesn't carry the prefix alone.
+func TestSanitizeKimiSchema_RewritesPrefixOnly(t *testing.T) {
+	in := []byte(`{"properties":{
+		"a":{"$ref":"#/definitions/Outer/definitions/Inner"},
+		"b":{"$ref":"#/components/definitions/T"}
+	}}`)
+	var got map[string]any
+	if err := json.Unmarshal(sanitizeKimiSchema(in), &got); err != nil {
+		t.Fatal(err)
+	}
+	props := got["properties"].(map[string]any)
+	if ref := props["a"].(map[string]any)["$ref"].(string); ref != "#/$defs/Outer/definitions/Inner" {
+		t.Errorf("only the leading prefix should be rewritten, got %q", ref)
+	}
+	if ref := props["b"].(map[string]any)["$ref"].(string); ref != "#/components/definitions/T" {
+		t.Errorf("a non-prefixed ref must be left untouched, got %q", ref)
+	}
+}
+
 func TestSanitizeKimiSchema_FailOpen(t *testing.T) {
 	bad := []byte(`{nope`)
 	if !reflect.DeepEqual([]byte(sanitizeKimiSchema(bad)), bad) {
