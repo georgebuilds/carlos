@@ -474,38 +474,58 @@ func (f *Flow) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// Route everything else to the active child.
 	switch f.current {
+	// Each child's Update returns its own concrete model type. We guard
+	// the assertions with comma-ok (matching the ScreenDone case below) so
+	// a child that ever returns a wrapped model degrades to "keep the
+	// previous child" instead of panicking inside the event loop.
 	case ScreenName:
 		updated, cmd := f.name.Update(msg)
-		f.name = updated.(nameModel)
+		if nm, ok := updated.(nameModel); ok {
+			f.name = nm
+		}
 		return f, cmd
 	case ScreenProvider:
 		updated, cmd := f.provider.Update(msg)
-		f.provider = updated.(providerModel)
+		if pm, ok := updated.(providerModel); ok {
+			f.provider = pm
+		}
 		return f, cmd
 	case ScreenModel:
 		f.model.syncFromConfig(f.cfg)
 		updated, cmd := f.model.Update(msg)
-		f.model = updated.(modelModel)
+		if mm, ok := updated.(modelModel); ok {
+			f.model = mm
+		}
 		return f, cmd
 	case ScreenSkills:
 		updated, cmd := f.skills.Update(msg)
-		f.skills = updated.(skillsModel)
+		if sm, ok := updated.(skillsModel); ok {
+			f.skills = sm
+		}
 		return f, cmd
 	case ScreenVault:
 		updated, cmd := f.vault.Update(msg)
-		f.vault = updated.(vaultModel)
+		if vm, ok := updated.(vaultModel); ok {
+			f.vault = vm
+		}
 		return f, cmd
 	case ScreenDaemon:
 		updated, cmd := f.daemon.Update(msg)
-		f.daemon = updated.(daemonModel)
+		if dm, ok := updated.(daemonModel); ok {
+			f.daemon = dm
+		}
 		return f, cmd
 	case ScreenGateway:
 		updated, cmd := f.gateway.Update(msg)
-		f.gateway = updated.(gatewayModel)
+		if gm, ok := updated.(gatewayModel); ok {
+			f.gateway = gm
+		}
 		return f, cmd
 	case ScreenMCPImport:
 		updated, cmd := f.mcpImport.Update(msg)
-		f.mcpImport = updated.(mcpImportModel)
+		if mm, ok := updated.(mcpImportModel); ok {
+			f.mcpImport = mm
+		}
 		return f, cmd
 	case ScreenDone:
 		updated, cmd := f.done.Update(msg)

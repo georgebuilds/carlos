@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, watch } from 'vue'
 import { api, ApiError } from '@/api/client'
-import type { ApprovalDecision, ChildrenData, WireEvent } from '@/api/types'
+import type { ApprovalDecision, WireEvent } from '@/api/types'
+import { isChildrenData } from '@/api/types'
 import { displayState, useThreadsStore } from '@/stores/threads'
 import { useGroupsStore } from '@/stores/groups'
 import { useConnectionStore } from '@/stores/connection'
@@ -89,9 +90,8 @@ function onStreamEvent(id: string, ev: WireEvent): void {
   }
   // a children snapshot mid-stream is the moment the crew column appears:
   // adopt it so the rail slides in when the first sub-agent spawns.
-  if (ev.kind === 'children') {
-    const data = ev.data as unknown as ChildrenData
-    if (Array.isArray(data.children)) threadsStore.setChildren(id, data.children)
+  if (ev.kind === 'children' && isChildrenData(ev.data)) {
+    threadsStore.setChildren(id, ev.data.children)
   }
 }
 

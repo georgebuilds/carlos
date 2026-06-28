@@ -24,7 +24,13 @@ var vaultMu sync.Map // vault root → *sync.Mutex
 // lockVault acquires the per-root mutex and returns its unlock func.
 func lockVault(root string) func() {
 	m, _ := vaultMu.LoadOrStore(root, &sync.Mutex{})
-	mu := m.(*sync.Mutex)
+	mu, ok := m.(*sync.Mutex)
+	if !ok {
+		// vaultMu only ever stores *sync.Mutex; this guards against a
+		// future store of a different type rather than panicking deep in
+		// a lock path.
+		panic(fmt.Sprintf("lockVault: vaultMu holds %T, want *sync.Mutex", m))
+	}
 	mu.Lock()
 	return mu.Unlock
 }

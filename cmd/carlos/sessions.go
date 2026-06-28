@@ -67,7 +67,17 @@ func runSessionPicker(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	fm := final.(sessionPickerModel)
+	return pickerResult(final)
+}
+
+// pickerResult extracts the chosen session ID from the model bubbletea
+// returns. Split out so the type assertion is unit-testable: a final model
+// of the wrong type yields an error instead of panicking.
+func pickerResult(final tea.Model) (string, error) {
+	fm, ok := final.(sessionPickerModel)
+	if !ok {
+		return "", fmt.Errorf("session picker: unexpected final model %T", final)
+	}
 	if fm.cancelled {
 		return "", errPickerCancelled
 	}

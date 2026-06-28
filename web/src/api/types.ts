@@ -58,6 +58,17 @@ export interface ChildSnapshot {
 }
 export interface ChildrenData { children: ChildSnapshot[] }
 
+// isChildrenData narrows a WireEvent's loosely-typed `data` to ChildrenData
+// without the `as unknown as ChildrenData` double cast, so a malformed
+// `children` payload is skipped instead of trusted.
+export function isChildrenData(d: unknown): d is ChildrenData {
+  return (
+    typeof d === 'object' &&
+    d !== null &&
+    Array.isArray((d as { children?: unknown }).children)
+  )
+}
+
 // ── the envelope ──────────────────────────────────────────────────────
 // seq is present on persisted kinds, absent on ephemeral kinds
 // (delta, delta_reset, approval_request).
