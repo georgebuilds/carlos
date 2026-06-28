@@ -94,6 +94,37 @@ type Loop struct {
 	// is safe; if we ever parallelize, this becomes per-handler
 	// state passed through closure capture instead.
 	ctx context.Context
+
+	// turnCancel cancels the in-flight turn's context (a child of the
+	// loop ctx) and interrupted records that the cancel was a deliberate
+	// Interrupt (esc), not a shutdown or provider error. Both are read
+	// after agent.Run to decide whether to seal a partial turn. Guarded by
+	// turnMu because Interrupt runs on the TUI goroutine while the turn
+	// runs on the loop goroutine. turnCancel is nil when idle; interrupted
+	// is reset at the start of every turn.
+	turnMu      sync.Mutex
+	turnCancel  context.CancelFunc
+	interrupted bool
+}
+
+// Interrupt aborts the in-flight turn, if any, without stopping the loop -
+// the session stays alive and the next user message runs as normal. It
+// records the interrupt so the turn body seals the partial output (rather
+// than surfacing a cancel as an error), then cancels the turn context. Safe
+// to call from another goroutine; a no-op when idle or nil.
+func (l *Loop) Interrupt() {
+	if l == nil {
+		return
+	}
+	l.turnMu.Lock()
+	cancel := l.turnCancel
+	if cancel != nil {
+		l.interrupted = true
+	}
+	l.turnMu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
 }
 
 // NewLoop wires a Loop. agentID is the chat's parent agent id (the
@@ -186,11 +217,6 @@ func (l *Loop) handleUserMessage(ctx context.Context, _ agent.Event) {
 	// find them.
 	ctx = agent.WithSpawnParent(ctx, l.agentID)
 
-	// Stash for the OnToolCall / OnToolResult hooks - they run inside
-	// agent.Run's loop and need a live ctx for their EventLog writes.
-	l.ctx = ctx
-	defer func() { l.ctx = nil }()
-
 	history, err := l.buildHistory(ctx)
 	if err != nil {
 		l.surfaceError(ctx, fmt.Errorf("load history: %w", err))
@@ -211,8 +237,6 @@ func (l *Loop) handleUserMessage(ctx context.Context, _ agent.Event) {
 // wake-turn never overlaps an in-flight user turn.
 func (l *Loop) handleBackgroundCompletion(ctx context.Context, jobID string) {
 	ctx = agent.WithSpawnParent(ctx, l.agentID)
-	l.ctx = ctx
-	defer func() { l.ctx = nil }()
 
 	history, err := l.buildHistory(ctx)
 	if err != nil {
@@ -231,10 +255,27 @@ func (l *Loop) handleBackgroundCompletion(ctx context.Context, jobID string) {
 
 // runAgentTurn is the shared turn body for a user message and a
 // background-completion wake: stream the assistant reply into the live
-// TextSource, persist the sealed turn, and reset the source. The caller has
-// already set l.ctx (for the OnToolCall/OnToolResult hooks) and assembled
-// history (including any nudge).
-func (l *Loop) runAgentTurn(ctx context.Context, history []providers.Message) {
+// TextSource, persist the sealed turn, and reset the source. The caller
+// assembled history (including any nudge); this owns the per-turn context.
+func (l *Loop) runAgentTurn(parentCtx context.Context, history []providers.Message) {
+	// Per-turn context so Loop.Interrupt (esc-to-interrupt) can abort just
+	// this turn while the loop goroutine keeps serving later messages. Stash
+	// it for the OnToolCall/OnToolResult hooks and register the cancel for
+	// Interrupt; clear both when the turn unwinds.
+	turnCtx, turnCancel := context.WithCancel(parentCtx)
+	l.ctx = turnCtx
+	l.turnMu.Lock()
+	l.turnCancel = turnCancel
+	l.interrupted = false
+	l.turnMu.Unlock()
+	defer func() {
+		l.turnMu.Lock()
+		l.turnCancel = nil
+		l.turnMu.Unlock()
+		turnCancel()
+		l.ctx = nil
+	}()
+
 	writer := &textSourceWriter{source: l.source, agentID: l.agentID}
 	// Capture-at-issue: if the configured approver supports per-turn
 	// frame snapshots, freeze the cross-frame state at the start of
@@ -264,9 +305,28 @@ func (l *Loop) runAgentTurn(ctx context.Context, history []providers.Message) {
 		OnToolResult: l.persistToolResult,
 	}
 
-	msgs, err := agent.Run(ctx, l.cfg.Provider, l.cfg.Tools, opts, history)
+	msgs, err := agent.Run(turnCtx, l.cfg.Provider, l.cfg.Tools, opts, history)
+
+	// esc-to-interrupt is detected by the flag, not the error: a provider
+	// may end a cancelled stream cleanly (channel close, nil err) OR with a
+	// cancel error, and either way the turn was deliberately aborted. Seal
+	// the text the user already watched stream and go idle. Gated on the
+	// parent still being live so a shutdown (which also cancels the turn)
+	// doesn't try to persist into a closing log.
+	l.turnMu.Lock()
+	wasInterrupted := l.interrupted
+	l.turnMu.Unlock()
+	if wasInterrupted && parentCtx.Err() == nil {
+		l.sealInterrupted(parentCtx, writer.String())
+		return
+	}
 	if err != nil {
-		l.surfaceError(ctx, err)
+		if parentCtx.Err() != nil {
+			// Loop is shutting down: the log may be closing, so don't
+			// persist - just unwind.
+			return
+		}
+		l.surfaceError(parentCtx, err)
 		return
 	}
 
@@ -294,9 +354,28 @@ func (l *Loop) runAgentTurn(ctx context.Context, history []providers.Message) {
 		// is complete + the model just had nothing to add.
 		full = "(no follow-up text after tools)"
 	}
-	if err := l.persistAssistantTurn(ctx, full); err != nil {
-		l.surfaceError(ctx, fmt.Errorf("persist assistant turn: %w", err))
+	if err := l.persistAssistantTurn(parentCtx, full); err != nil {
+		l.surfaceError(parentCtx, fmt.Errorf("persist assistant turn: %w", err))
 	}
+	l.source.Reset(l.agentID)
+}
+
+// interruptedNote is appended to a turn aborted via esc-to-interrupt so the
+// sealed reply reads as deliberately cut short rather than as a model that
+// trailed off. Markdown italic; the chat renders it muted.
+const interruptedNote = "_(interrupted)_"
+
+// sealInterrupted persists the partial streamed text of an aborted turn as a
+// normal assistant message tagged with interruptedNote, then resets the live
+// source. partial is whatever reached the TextSink before the cancel; an empty
+// partial seals just the note so the transcript still shows the turn ended.
+func (l *Loop) sealInterrupted(ctx context.Context, partial string) {
+	partial = strings.TrimSpace(partial)
+	sealed := interruptedNote
+	if partial != "" {
+		sealed = partial + "\n\n" + interruptedNote
+	}
+	_ = l.persistAssistantTurn(ctx, sealed)
 	l.source.Reset(l.agentID)
 }
 
@@ -745,12 +824,21 @@ func buildToolSpecs(reg *tools.Registry) []providers.ToolSpec {
 type textSourceWriter struct {
 	source  TextSource
 	agentID string
+	// buf accumulates everything streamed this turn so an interrupted
+	// turn can be sealed with the exact text the user already saw (the
+	// returned msgs from agent.Run omit the in-flight assistant message
+	// on a cancel).
+	buf strings.Builder
 }
 
 func (w *textSourceWriter) Write(p []byte) (int, error) {
 	w.source.Append(w.agentID, string(p))
+	w.buf.Write(p)
 	return len(p), nil
 }
+
+// String returns the text streamed so far this turn.
+func (w *textSourceWriter) String() string { return w.buf.String() }
 
 // Compile-time check.
 var _ io.Writer = (*textSourceWriter)(nil)

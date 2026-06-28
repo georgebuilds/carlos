@@ -76,6 +76,14 @@ func WithMCPManager(mgr MCPManager) Option {
 	return func(m *Model) { m.mcpMgr = mgr }
 }
 
+// WithInterrupter injects the callback that aborts the in-flight assistant
+// turn (esc-to-interrupt). The runtime points it at the live chatglue.Loop's
+// Interrupt. Without it, esc never interrupts (the read-only daemon/web paths
+// have no turn to abort).
+func WithInterrupter(fn func()) Option {
+	return func(m *Model) { m.interrupt = fn }
+}
+
 // openMCPOverlay snapshots the catalog and enters the servers level. Returns
 // a status echo (not the overlay) when no manager is wired or no servers are
 // configured, so the user gets a concrete next step.

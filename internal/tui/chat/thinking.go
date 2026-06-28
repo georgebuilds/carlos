@@ -100,6 +100,20 @@ func (m *Model) assistantBusy() bool {
 	return m.isThinking()
 }
 
+// maybeInterrupt aborts the in-flight turn when esc is pressed while the
+// assistant is busy, returning true when it consumed the key. esc otherwise
+// (idle, non-esc key, or no interrupter wired) falls through to its existing
+// meanings. The wired interrupter cancels the live chatglue.Loop turn, which
+// seals the partial output and goes idle; see WithInterrupter.
+func (m *Model) maybeInterrupt(key string) bool {
+	if key != "esc" || m.interrupt == nil || !m.assistantBusy() {
+		return false
+	}
+	m.interrupt()
+	m.status = "interrupting current turn"
+	return true
+}
+
 // thinkingElapsed returns the wall-clock time since the most recent
 // transcript entry. Zero when the transcript is empty. Used by the
 // indicator to surface a "(Ns)" trailer once the wait crosses
