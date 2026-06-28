@@ -18,6 +18,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 )
 
@@ -195,7 +196,7 @@ func (c Config) ToolExposed(combined string) bool {
 	if !ok {
 		return true
 	}
-	sc := (&c).Find(server)
+	sc := c.Find(server)
 	if sc == nil || len(sc.Tools) == 0 {
 		return true
 	}
@@ -242,21 +243,10 @@ func expandEnv(env map[string]string) []string {
 	for k := range env {
 		keys = append(keys, k)
 	}
-	sortStrings(keys)
+	sort.Strings(keys)
 	for _, k := range keys {
 		v := os.ExpandEnv(env[k])
 		out = append(out, k+"="+v)
 	}
 	return out
-}
-
-// sortStrings is a tiny insertion sort to avoid a sort package import
-// for this single use site. The override list is small (handful of
-// entries per server), so an insertion sort is fine.
-func sortStrings(s []string) {
-	for i := 1; i < len(s); i++ {
-		for j := i; j > 0 && strings.Compare(s[j-1], s[j]) > 0; j-- {
-			s[j-1], s[j] = s[j], s[j-1]
-		}
-	}
 }

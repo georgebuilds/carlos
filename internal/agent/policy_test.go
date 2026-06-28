@@ -545,14 +545,3 @@ func TestSetFrameSubtrees_RefreshesActiveAfterSwap(t *testing.T) {
 		t.Fatalf("after swap the new active=work must treat personal as cross-frame; got %+v", d)
 	}
 }
-
-func TestSortStrings(t *testing.T) {
-	in := []string{"banana", "apple", "cherry", ""}
-	sortStrings(in)
-	want := []string{"", "apple", "banana", "cherry"}
-	for i := range want {
-		if in[i] != want[i] {
-			t.Errorf("sortStrings[%d]: want %q got %q", i, want[i], in[i])
-		}
-	}
-}

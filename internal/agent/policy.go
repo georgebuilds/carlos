@@ -34,6 +34,7 @@ package agent
 import (
 	"encoding/json"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 )
@@ -464,7 +465,7 @@ func (l *LayeredApprover) BuiltinAllowList() []string {
 	for name := range l.builtinAllow {
 		out = append(out, name)
 	}
-	sortStrings(out)
+	sort.Strings(out)
 	return out
 }
 
@@ -495,7 +496,7 @@ func (l *LayeredApprover) TrustedWorkspaces() []string {
 		out = append(out, r)
 	}
 	l.mu.RUnlock()
-	sortStrings(out)
+	sort.Strings(out)
 	return out
 }
 
@@ -528,17 +529,6 @@ func (l *LayeredApprover) SetWorkspacePolicy(p WorkspacePolicy) {
 	l.mu.Lock()
 	l.workspacePolicy = p
 	l.mu.Unlock()
-}
-
-// sortStrings - insertion sort; the slices we care about top out at
-// a couple dozen entries, so dragging in sort.Strings would be
-// overkill.
-func sortStrings(a []string) {
-	for i := 1; i < len(a); i++ {
-		for j := i; j > 0 && a[j-1] > a[j]; j-- {
-			a[j-1], a[j] = a[j], a[j-1]
-		}
-	}
 }
 
 // extractInputField is a small helper used by the workspace policy
