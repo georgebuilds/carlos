@@ -83,11 +83,22 @@ func (mm *mcpManager) SetAllow(server string, allow []string) error {
 	if sc == nil {
 		return fmt.Errorf("mcp: unknown server %q", server)
 	}
+	prev := sc.Tools
 	sc.Tools = allow
 	if mm.avail != nil {
 		mm.avail.set(server, allow) // apply to the live selector, race-free
 	}
-	return mm.save()
+	if err := mm.save(); err != nil {
+		// Roll back so the in-memory config and the live selector match disk;
+		// otherwise a failed write leaves the session exposing a set the user
+		// never persisted.
+		sc.Tools = prev
+		if mm.avail != nil {
+			mm.avail.set(server, prev)
+		}
+		return err
+	}
+	return nil
 }
 
 func (mm *mcpManager) SetAutoApprove(server string, on bool) error {
@@ -95,8 +106,10 @@ func (mm *mcpManager) SetAutoApprove(server string, on bool) error {
 	if sc == nil {
 		return fmt.Errorf("mcp: unknown server %q", server)
 	}
+	prev := sc.AutoApprove
 	sc.AutoApprove = on
 	if err := mm.save(); err != nil {
+		sc.AutoApprove = prev // keep in-memory state consistent with disk
 		return err
 	}
 	if mm.reapprove != nil {

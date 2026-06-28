@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"errors"
 	"sort"
 	"strings"
 	"testing"
@@ -10,6 +11,8 @@ type fakeMCPMgr struct {
 	servers    []MCPManagedServer
 	allowCalls map[string][]string
 	autoCalls  map[string]bool
+	allowErr   error // when set, SetAllow fails and records nothing
+	autoErr    error // when set, SetAutoApprove fails and records nothing
 	capModel   string
 	capCap     int
 	capExposed int
@@ -21,10 +24,16 @@ func newFakeMCPMgr(servers []MCPManagedServer) *fakeMCPMgr {
 
 func (f *fakeMCPMgr) Servers() []MCPManagedServer { return f.servers }
 func (f *fakeMCPMgr) SetAllow(server string, allow []string) error {
+	if f.allowErr != nil {
+		return f.allowErr
+	}
 	f.allowCalls[server] = allow
 	return nil
 }
 func (f *fakeMCPMgr) SetAutoApprove(server string, on bool) error {
+	if f.autoErr != nil {
+		return f.autoErr
+	}
 	f.autoCalls[server] = on
 	return nil
 }
@@ -78,6 +87,47 @@ func TestFlushMCPWorking_NotDirtyNoOp(t *testing.T) {
 	m.flushMCPWorking()
 	if len(mgr.allowCalls) != 0 {
 		t.Errorf("clean working set must not persist: %v", mgr.allowCalls)
+	}
+}
+
+func TestFlushMCPWorking_SurfacesSaveError(t *testing.T) {
+	mgr := newFakeMCPMgr([]MCPManagedServer{srvWithTools("do", "a", "b")})
+	mgr.allowErr = errors.New("disk full")
+	m := &Model{mcpMgr: mgr, mcpServers: mgr.servers, mcpWorkingSrv: "do",
+		mcpWorking: map[string]bool{"a": true, "b": false}, mcpDirty: true}
+	cmd := m.flushMCPWorking()
+	if cmd == nil {
+		t.Fatal("a failed save must return a status cmd, not be swallowed")
+	}
+	msg, ok := cmd().(statusMsg)
+	if !ok || msg.kind != statusError || !strings.Contains(msg.text, "disk full") {
+		t.Errorf("want statusError mentioning the error, got %+v ok=%v", msg, ok)
+	}
+}
+
+func TestFlushMCPWorking_NilCmdOnSuccess(t *testing.T) {
+	mgr := newFakeMCPMgr([]MCPManagedServer{srvWithTools("do", "a", "b")})
+	m := &Model{mcpMgr: mgr, mcpServers: mgr.servers, mcpWorkingSrv: "do",
+		mcpWorking: map[string]bool{"a": true, "b": false}, mcpDirty: true}
+	if cmd := m.flushMCPWorking(); cmd != nil {
+		t.Errorf("a successful flush should return nil cmd, got %v", cmd())
+	}
+}
+
+func TestHandleMCPServersKey_AutoApproveSaveErrorSurfaces(t *testing.T) {
+	mgr := newFakeMCPMgr([]MCPManagedServer{srvWithTools("do", "a")})
+	mgr.autoErr = errors.New("disk full")
+	m := &Model{mcpMgr: mgr, mcpServers: mgr.servers, showMCP: true}
+	_, cmd, handled := m.handleMCPServersKey(key("a"))
+	if !handled {
+		t.Fatal("the key must be handled")
+	}
+	if cmd == nil {
+		t.Fatal("an auto-approve save failure must surface a status cmd")
+	}
+	msg, ok := cmd().(statusMsg)
+	if !ok || msg.kind != statusError || !strings.Contains(msg.text, "disk full") {
+		t.Errorf("want statusError, got %+v ok=%v", msg, ok)
 	}
 }
 
@@ -261,6 +311,20 @@ func TestHandleMCPToolsKey_ToggleAllNoneFilterBack(t *testing.T) {
 	m.handleMCPToolsKey(key("esc"))
 	if m.mcpLevel != 0 {
 		t.Errorf("esc should go back to servers, level=%d", m.mcpLevel)
+	}
+}
+
+// If the working server vanishes from the snapshot (config edited elsewhere
+// while the overlay is open), the tools level says so instead of rendering a
+// bare "name · 0/0 enabled".
+func TestRenderMCPOverlay_WorkingServerGone(t *testing.T) {
+	mgr := newFakeMCPMgr([]MCPManagedServer{srvWithTools("do", "a", "b")})
+	m := &Model{mcpMgr: mgr, mcpServers: mgr.servers}
+	m.enterMCPTools()        // working server = "do"
+	m.mcpServers = nil       // server disappeared from the snapshot
+	out := renderMCPOverlay(m, 80, 20)
+	if !strings.Contains(out, "no longer configured") {
+		t.Errorf("vanished server should render a clear note, got:\n%s", out)
 	}
 }
 

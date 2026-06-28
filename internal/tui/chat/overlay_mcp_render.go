@@ -83,9 +83,17 @@ func renderMCPTools(m *Model, innerW, innerH int) string {
 		}
 	}
 
+	// If the server vanished from the snapshot (e.g. config edited by another
+	// process while the overlay is open), say so plainly instead of rendering a
+	// bare "name · 0/0 enabled" for a server that no longer exists.
+	header := fmt.Sprintf("%s · %d/%d enabled", m.mcpWorkingSrv, enabled, total)
+	if srv == nil {
+		header = fmt.Sprintf("%s · no longer configured (esc to go back)", m.mcpWorkingSrv)
+	}
+
 	var b strings.Builder
 	b.WriteString(dim.Render(strings.Repeat("┄", ruleW)) + " " +
-		tag.Render(fmt.Sprintf("%s · %d/%d enabled", m.mcpWorkingSrv, enabled, total)) + "\n")
+		tag.Render(header) + "\n")
 
 	// Query row (always shown so the affordance is discoverable).
 	query := accent.Render("⌕ ") + m.mcpFilter

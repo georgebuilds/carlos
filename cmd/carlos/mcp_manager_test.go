@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -103,6 +104,43 @@ func TestMCPManager_SetAutoApproveCallsReapprove(t *testing.T) {
 	}
 	if !called {
 		t.Error("reapprove should fire so the change applies this session")
+	}
+}
+
+// A failed save must leave both the in-memory config and the live availability
+// snapshot matching disk, not the rejected edit.
+func TestMCPManager_SetAllowRollsBackOnSaveError(t *testing.T) {
+	mm, cfg := mgrFixture()
+	mm.avail = newMCPAvailability(cfg.MCP)
+	mm.save = func() error { return errors.New("disk full") }
+	prev := strings.Join(cfg.MCP.Find("digitalocean").Tools, ",") // "droplet_list"
+
+	err := mm.SetAllow("digitalocean", []string{"droplet_list", "database_create"})
+	if err == nil {
+		t.Fatal("expected the save error to propagate")
+	}
+	if got := strings.Join(cfg.MCP.Find("digitalocean").Tools, ","); got != prev {
+		t.Errorf("config not rolled back: got %q want %q", got, prev)
+	}
+	if mm.avail.ToolExposed("digitalocean__database_create") {
+		t.Error("live availability snapshot not rolled back: database_create should stay hidden")
+	}
+}
+
+func TestMCPManager_SetAutoApproveRollsBackOnSaveError(t *testing.T) {
+	mm, cfg := mgrFixture()
+	reapproved := false
+	mm.reapprove = func() { reapproved = true }
+	mm.save = func() error { return errors.New("disk full") }
+
+	if err := mm.SetAutoApprove("digitalocean", true); err == nil {
+		t.Fatal("expected the save error to propagate")
+	}
+	if cfg.MCP.Find("digitalocean").AutoApprove {
+		t.Error("AutoApprove not rolled back after save failure")
+	}
+	if reapproved {
+		t.Error("reapprove must not fire when the save failed")
 	}
 }
 

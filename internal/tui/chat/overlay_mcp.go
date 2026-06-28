@@ -98,8 +98,11 @@ func (m *Model) openMCPOverlay() tea.Cmd {
 	return nil
 }
 
-func (m *Model) closeMCPOverlay() {
-	m.flushMCPWorking()
+// closeMCPOverlay persists any pending edit and tears the overlay down. It
+// returns the flush's status cmd (nil on success) so the caller can surface a
+// save failure.
+func (m *Model) closeMCPOverlay() tea.Cmd {
+	cmd := m.flushMCPWorking()
 	m.showMCP = false
 	m.mcpServers = nil
 	m.mcpWorking = nil
@@ -108,6 +111,7 @@ func (m *Model) closeMCPOverlay() {
 	m.mcpFilter = ""
 	m.mcpFilterMode = false
 	m.rerenderViewport()
+	return cmd
 }
 
 // enterMCPTools loads the working enabled-set for the focused server and
@@ -131,11 +135,12 @@ func (m *Model) enterMCPTools() {
 
 // flushMCPWorking persists the working enabled-set as an allowlist if it was
 // edited. An all-enabled set persists as nil (== "expose all"), so a server
-// that later adds tools still exposes them.
-func (m *Model) flushMCPWorking() {
+// that later adds tools still exposes them. Returns a status cmd describing a
+// save failure, or nil on success / no-op.
+func (m *Model) flushMCPWorking() tea.Cmd {
 	if !m.mcpDirty || m.mcpWorkingSrv == "" || m.mcpMgr == nil {
 		m.mcpDirty = false
-		return
+		return nil
 	}
 	srv := m.mcpServerByName(m.mcpWorkingSrv)
 	allEnabled := true
@@ -161,10 +166,13 @@ func (m *Model) flushMCPWorking() {
 		// would silently read back as exposing all of them.
 		allow = []string{hideAllToolsSentinel}
 	}
-	_ = m.mcpMgr.SetAllow(m.mcpWorkingSrv, allow)
 	m.mcpDirty = false
+	if err := m.mcpMgr.SetAllow(m.mcpWorkingSrv, allow); err != nil {
+		return statusCmd("/mcp: saving tool availability failed: "+err.Error(), statusError)
+	}
 	// Refresh the snapshot so the servers level shows the new counts.
 	m.mcpServers = m.mcpMgr.Servers()
+	return nil
 }
 
 func (m *Model) mcpServerByName(name string) *MCPManagedServer {
@@ -212,8 +220,8 @@ func (m *Model) handleMCPOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 func (m *Model) handleMCPServersKey(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 	switch msg.String() {
 	case "esc":
-		m.closeMCPOverlay()
-		return m, nil, true
+		cmd := m.closeMCPOverlay()
+		return m, cmd, true
 	case "up", "k":
 		m.mcpSrvCursor = wrapCursor(m.mcpSrvCursor-1, len(m.mcpServers))
 		m.rerenderViewport()
@@ -225,7 +233,12 @@ func (m *Model) handleMCPServersKey(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 		m.rerenderViewport()
 	case "a":
 		if srv := m.focusedServer(); srv != nil && m.mcpMgr != nil {
-			_ = m.mcpMgr.SetAutoApprove(srv.Name, !srv.AutoApprove)
+			if err := m.mcpMgr.SetAutoApprove(srv.Name, !srv.AutoApprove); err != nil {
+				// Leave the displayed snapshot untouched: SetAutoApprove rolls
+				// back its in-memory change on failure, so not refreshing keeps
+				// the row showing the real (unsaved) state.
+				return m, statusCmd("/mcp: saving auto-approve failed: "+err.Error(), statusError), true
+			}
 			m.mcpServers = m.mcpMgr.Servers()
 			m.rerenderViewport()
 		}
@@ -258,9 +271,10 @@ func (m *Model) handleMCPToolsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 	tools := m.filteredMCPTools()
 	switch msg.String() {
 	case "esc", "left", "h", "backspace":
-		m.flushMCPWorking()
+		cmd := m.flushMCPWorking()
 		m.mcpLevel = 0
 		m.rerenderViewport()
+		return m, cmd, true
 	case "up", "k":
 		m.mcpToolCursor = wrapCursor(m.mcpToolCursor-1, len(tools))
 		m.rerenderViewport()
