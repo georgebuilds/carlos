@@ -863,6 +863,15 @@ func runDefault(cfg *config.Config, sessionID string) error {
 				save:      func() error { return config.Save(config.DefaultPath(), cfg) },
 				reapprove: func() { layered.SetMCPAutoApprove(mcpAutoApproveSet(cfg.MCP)) },
 			}),
+			// esc-to-interrupt: abort the current turn on the live Loop,
+			// read under loopMu so a /frame, /model, or agent swap still
+			// hits the loop that's actually running the turn.
+			chat.WithInterrupter(func() {
+				loopMu.Lock()
+				l := liveLoop
+				loopMu.Unlock()
+				l.Interrupt()
+			}),
 			chat.WithSummarizer(summarizer),
 			chat.WithUserShell(shellMgr),
 			chat.WithShellHistory(shellHistory),

@@ -285,6 +285,12 @@ type Model struct {
 	subCh     <-chan agent.Event
 	subCancel func()
 
+	// interrupt aborts the in-flight assistant turn without ending the
+	// session, wired to the live chatglue.Loop by the runtime. nil in the
+	// daemon/web read-only paths and bare test Models; esc-to-interrupt is
+	// a no-op when unset. See WithInterrupter.
+	interrupt func()
+
 	// Layout.
 	width  int
 	height int
@@ -1427,6 +1433,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// ordering after the slash handler is belt-and-braces only.
 		if cmd, handled := m.handleMentionSuggestKey(msg.String()); handled {
 			return m, cmd
+		}
+		// Esc-to-interrupt: abort the in-flight turn while keeping the
+		// session alive (mirrors Claude Code). Reached only after overlays,
+		// the approval prompt, and the slash/mention popups have had their
+		// crack at esc, so it never shadows those. A no-op (esc falls through
+		// to the textarea) unless a turn is actually running.
+		if m.maybeInterrupt(msg.String()) {
+			return m, nil
 		}
 		// Default route: textarea owns the keystroke when input is enabled.
 		// In read-only mode we send arrow keys/etc to the viewport so the
