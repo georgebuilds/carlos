@@ -74,6 +74,42 @@ type Config struct {
 	// block is emitted only when non-empty so older configs round-trip
 	// without a stray `mcp: {}` line.
 	MCP mcp.Config `json:"mcp,omitempty"`
+	// Formatter controls auto-formatting of files after the write/edit
+	// tools touch them. An absent block means the built-in formatter set
+	// is active (each built-in only runs when its binary is on PATH and
+	// the file extension matches), so older configs gain auto-formatting
+	// forward without rewriting. Emitted only when non-empty so older
+	// configs round-trip without a stray `formatter: {}` line.
+	Formatter FormatterConfig `json:"formatter,omitempty"`
+}
+
+// FormatterConfig is the on-disk shape of the formatter: block. The zero
+// value (absent block) means "enabled with the built-in set"; auto-format
+// is opt-out, not opt-in, mirroring opencode's auto-detect behavior. Each
+// built-in only fires when its binary is found on PATH and the edited
+// file's extension matches, so default-on stays quiet on machines that
+// lack the relevant tools.
+type FormatterConfig struct {
+	// Disabled is the master off switch. When true, no formatter runs
+	// regardless of Formatters.
+	Disabled bool `json:"disabled,omitempty"`
+	// Formatters overrides, adds, or disables individual formatters keyed
+	// by name. A built-in name (e.g. "gofmt") with a Command/Extensions
+	// here replaces the built-in's; with Disabled:true it is turned off.
+	// A novel name registers an additional formatter.
+	Formatters map[string]FormatterSpec `json:"formatters,omitempty"`
+}
+
+// FormatterSpec defines one formatter. Command is the argv to run; the
+// literal token "$FILE" is replaced with the absolute path of the file to
+// format (if Command contains no "$FILE", the path is appended as the
+// final argument). Extensions is the set of file suffixes (with leading
+// dot, e.g. ".go") the formatter applies to. Disabled turns just this one
+// off while leaving the rest of the built-in set active.
+type FormatterSpec struct {
+	Command    []string `json:"command,omitempty"`
+	Extensions []string `json:"extensions,omitempty"`
+	Disabled   bool     `json:"disabled,omitempty"`
 }
 
 // GatewayConfig is the on-disk shape of the gateway: block. Adapters
