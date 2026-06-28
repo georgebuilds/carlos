@@ -19,13 +19,35 @@ import (
 const apiVersion = "2023-06-01"
 
 // messagesRequest is the request body for POST /v1/messages.
+//
+// System is sent as a typed block array (not the string shortcut) so we
+// can hang a cache_control breakpoint off it: the tools+system prefix is
+// the large, byte-stable head of every request in a session, and caching
+// it turns the advertised PromptCaching capability into a real input-cost
+// reduction across the many turns of a coding loop. Prompt caching is GA
+// under anthropic-version 2023-06-01 (no beta header required).
 type messagesRequest struct {
-	Model     string    `json:"model"`
-	MaxTokens int       `json:"max_tokens"`
-	System    string    `json:"system,omitempty"`
-	Messages  []apiMsg  `json:"messages"`
-	Tools     []apiTool `json:"tools,omitempty"`
-	Stream    bool      `json:"stream"`
+	Model     string        `json:"model"`
+	MaxTokens int           `json:"max_tokens"`
+	System    []systemBlock `json:"system,omitempty"`
+	Messages  []apiMsg      `json:"messages"`
+	Tools     []apiTool     `json:"tools,omitempty"`
+	Stream    bool          `json:"stream"`
+}
+
+// systemBlock is one entry in the system block array. The only kind we
+// emit is "text"; CacheControl is attached to the last (here: only)
+// block to cache the tools+system prefix.
+type systemBlock struct {
+	Type         string        `json:"type"` // always "text"
+	Text         string        `json:"text"`
+	CacheControl *cacheControl `json:"cache_control,omitempty"`
+}
+
+// cacheControl marks a content block as a prompt-cache breakpoint.
+// "ephemeral" is the only supported type (5-minute TTL by default).
+type cacheControl struct {
+	Type string `json:"type"` // always "ephemeral"
 }
 
 // apiMsg is the on-the-wire shape for a single message in the messages
@@ -78,8 +100,18 @@ func buildRequest(req providers.Request) (*messagesRequest, error) {
 	out := &messagesRequest{
 		Model:     req.Model,
 		MaxTokens: 4096,
-		System:    req.System,
 		Stream:    true,
+	}
+	// Send the system prompt as a cached block. Empty system stays omitted
+	// (omitempty on the slice) so the zero-config path is unchanged on the
+	// wire. If the prefix is below the model's minimum cacheable size the
+	// breakpoint is silently ignored by the API - never an error.
+	if req.System != "" {
+		out.System = []systemBlock{{
+			Type:         "text",
+			Text:         req.System,
+			CacheControl: &cacheControl{Type: "ephemeral"},
+		}}
 	}
 	for _, m := range req.Messages {
 		blocks, err := toAPIBlocks(m.Content)

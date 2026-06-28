@@ -117,11 +117,53 @@ func TestBuildRequest_PinsSystemAndMessages(t *testing.T) {
 	if err != nil {
 		t.Fatalf("buildRequest: %v", err)
 	}
-	if r.System != "you are carlos" {
-		t.Errorf("System=%q want pinned through", r.System)
+	if len(r.System) != 1 || r.System[0].Text != "you are carlos" {
+		t.Errorf("System=%+v want one block pinned through", r.System)
+	}
+	if r.System[0].Type != "text" {
+		t.Errorf("System block type=%q want text", r.System[0].Type)
 	}
 	if len(r.Messages) != 1 || r.Messages[0].Role != "user" {
 		t.Errorf("Messages=%+v", r.Messages)
+	}
+}
+
+func TestBuildRequest_SystemCarriesCacheBreakpoint(t *testing.T) {
+	r, err := buildRequest(providers.Request{Model: "claude-x", System: "you are carlos"})
+	if err != nil {
+		t.Fatalf("buildRequest: %v", err)
+	}
+	if len(r.System) != 1 {
+		t.Fatalf("System=%+v want one block", r.System)
+	}
+	cc := r.System[0].CacheControl
+	if cc == nil || cc.Type != "ephemeral" {
+		t.Errorf("cache_control=%+v want {ephemeral}", cc)
+	}
+	// The cached prefix must serialize to the documented wire shape.
+	b, err := json.Marshal(r)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if !strings.Contains(string(b), `"cache_control":{"type":"ephemeral"}`) {
+		t.Errorf("wire body missing cache_control breakpoint: %s", b)
+	}
+}
+
+func TestBuildRequest_EmptySystemOmitted(t *testing.T) {
+	r, err := buildRequest(providers.Request{Model: "claude-x"})
+	if err != nil {
+		t.Fatalf("buildRequest: %v", err)
+	}
+	if r.System != nil {
+		t.Errorf("System=%+v want nil (omitted) when unset", r.System)
+	}
+	b, err := json.Marshal(r)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if strings.Contains(string(b), `"system"`) {
+		t.Errorf("empty system should be omitted from wire body: %s", b)
 	}
 }
 

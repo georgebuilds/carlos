@@ -13,6 +13,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -227,5 +228,7 @@ func isContextCancellation(ctx context.Context, err error) bool {
 	if ctx.Err() != nil {
 		return true
 	}
-	return err == context.Canceled || err == context.DeadlineExceeded
+	// parseSSE wraps scan errors with %w, so a cancellation surfacing
+	// through the read path may be wrapped - match with errors.Is, not ==.
+	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
 }
