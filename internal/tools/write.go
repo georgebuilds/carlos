@@ -25,6 +25,10 @@ type WriteTool struct {
 	// `carlos please --worktree` so writes land inside the sandbox
 	// before propose-don't-publish review. Zero-value = current behaviour.
 	BaseDir string
+	// Formatter, when non-nil, runs the matching code formatter on the
+	// file after a successful write (best-effort; see Formatter.Format).
+	// Wired post-construction by EnableFormatter; nil = no auto-format.
+	Formatter *Formatter
 }
 
 // NewWriteTool constructs a WriteTool. No knobs at construction time;
@@ -67,7 +71,7 @@ type writeInput struct {
 
 // Execute writes the requested file atomically and returns a short
 // human-readable receipt ("wrote N bytes to /path").
-func (t *WriteTool) Execute(_ context.Context, input []byte) ([]byte, error) {
+func (t *WriteTool) Execute(ctx context.Context, input []byte) ([]byte, error) {
 	var in writeInput
 	if err := json.Unmarshal(input, &in); err != nil {
 		return nil, fmt.Errorf("write: parse input: %w", err)
@@ -114,7 +118,13 @@ func (t *WriteTool) Execute(_ context.Context, input []byte) ([]byte, error) {
 	} else if err := atomicWrite(path, []byte(in.Content), 0o644); err != nil {
 		return nil, err
 	}
-	return []byte(fmt.Sprintf("wrote %d bytes to %s\n", len(in.Content), path)), nil
+	receipt := fmt.Sprintf("wrote %d bytes to %s\n", len(in.Content), path)
+	if t.Formatter != nil {
+		if note := t.Formatter.Format(ctx, path).Note(); note != "" {
+			receipt += note + "\n"
+		}
+	}
+	return []byte(receipt), nil
 }
 
 // withinBase verifies that target, after resolving symlinks in both it and

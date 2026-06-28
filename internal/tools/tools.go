@@ -81,6 +81,31 @@ func EnableBackgroundShell(r *Registry, shell BackgroundShell) {
 	r.Register(&KillShellTool{Shell: shell})
 }
 
+// EnableFormatter wires a Formatter into the registry's write and edit
+// tools so a successful write/edit auto-formats the touched file. Call once
+// per session after the registry is built. A nil formatter is a no-op, so
+// callers can pass NewFormatter(cfg.Formatter) unconditionally; the built-in
+// formatter set is active unless cfg disables it.
+//
+// Kept as a post-construction step (like EnableBackgroundShell) so the
+// formatter, derived from session config, does not have to thread through
+// every NewDefaultRegistry* factory variant.
+func EnableFormatter(r *Registry, f *Formatter) {
+	if r == nil || f == nil {
+		return
+	}
+	if t, ok := r.Get("write"); ok {
+		if wt, ok := t.(*WriteTool); ok {
+			wt.Formatter = f
+		}
+	}
+	if t, ok := r.Get("edit"); ok {
+		if et, ok := t.(*EditTool); ok {
+			et.Formatter = f
+		}
+	}
+}
+
 // NewDefaultRegistry constructs a Registry pre-populated with every
 // tool shipped in this package. The foreground (cmd/carlos) is free to
 // build its own Registry from scratch and pick & choose; this factory

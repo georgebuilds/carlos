@@ -28,6 +28,10 @@ type EditTool struct {
 	// `carlos please --worktree` so edits land inside the sandbox.
 	// Zero-value = current behaviour (cwd-relative).
 	BaseDir string
+	// Formatter, when non-nil, runs the matching code formatter on the
+	// file after a successful edit (best-effort; see Formatter.Format).
+	// Wired post-construction by EnableFormatter; nil = no auto-format.
+	Formatter *Formatter
 }
 
 // NewEditTool constructs an EditTool. Like WriteTool it carries no
@@ -74,7 +78,7 @@ type editInput struct {
 
 // Execute performs the edit and returns a human-readable receipt
 // summarising what changed.
-func (t *EditTool) Execute(_ context.Context, input []byte) ([]byte, error) {
+func (t *EditTool) Execute(ctx context.Context, input []byte) ([]byte, error) {
 	var in editInput
 	if err := json.Unmarshal(input, &in); err != nil {
 		return nil, fmt.Errorf("edit: parse input: %w", err)
@@ -129,7 +133,13 @@ func (t *EditTool) Execute(_ context.Context, input []byte) ([]byte, error) {
 	if err := atomicWrite(path, []byte(updated), 0o644); err != nil {
 		return nil, err
 	}
-	return []byte(fmt.Sprintf("edited %s: replaced %d occurrence(s)\n", path, got)), nil
+	receipt := fmt.Sprintf("edited %s: replaced %d occurrence(s)\n", path, got)
+	if t.Formatter != nil {
+		if note := t.Formatter.Format(ctx, path).Note(); note != "" {
+			receipt += note + "\n"
+		}
+	}
+	return []byte(receipt), nil
 }
 
 var _ Tool = (*EditTool)(nil)
