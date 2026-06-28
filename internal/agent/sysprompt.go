@@ -27,6 +27,7 @@ package agent
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -176,7 +177,7 @@ func SystemPromptWithFrame(userName, cwd, projectCtx string, fi FrameInfo) strin
 			for k, v := range fi.Capabilities {
 				parts = append(parts, k+"="+v)
 			}
-			sortStrings(parts)
+			sort.Strings(parts)
 			fmt.Fprintf(&where, "\n- Capabilities wired for this frame: %s", strings.Join(parts, ", "))
 		}
 		// Skills surface: list each frame-applicable skill by name +

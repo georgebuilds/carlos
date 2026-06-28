@@ -124,6 +124,17 @@ func TestMCPManager_SetAllowUpdatesAvailability(t *testing.T) {
 	}
 }
 
+// Servers configured but none AutoApprove must yield nil, not an empty map, so
+// the nil-vs-empty contract matches the no-servers path.
+func TestMCPAutoApproveSet_NilWhenNoneAuto(t *testing.T) {
+	got := mcpAutoApproveSet(mcp.Config{Servers: []mcp.ServerConfig{
+		{Name: "do"}, {Name: "home"},
+	}})
+	if got != nil {
+		t.Errorf("no auto-approved servers must return nil, got %v", got)
+	}
+}
+
 func TestCapNotice(t *testing.T) {
 	if n := capNotice("openrouter", "x-ai/grok-4", 240); !strings.Contains(n, "40 auto-dropped") {
 		t.Errorf("notice=%q want overflow detail", n)

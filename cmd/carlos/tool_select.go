@@ -92,7 +92,10 @@ func (a *mcpAvailability) ToolExposed(combined string) bool {
 	a.mu.RLock()
 	list, ok := a.allow[server]
 	a.mu.RUnlock()
-	if !ok || len(list) == 0 {
+	// set() deletes empty allowlists and newMCPAvailability only seeds non-empty
+	// ones, so a present entry always has at least one tool: absence is the only
+	// "expose all" case.
+	if !ok {
 		return true
 	}
 	for _, t := range list {
@@ -122,14 +125,14 @@ func exposedToolCount(reg *tools.Registry, mcpCfg mcp.Config) int {
 // mcpAutoApproveSet snapshots the MCP servers marked AutoApprove into the
 // set the LayeredApprover's per-server trust layer consults. nil when none.
 func mcpAutoApproveSet(c mcp.Config) map[string]bool {
-	if len(c.Servers) == 0 {
-		return nil
-	}
 	m := make(map[string]bool, len(c.Servers))
 	for _, s := range c.Servers {
 		if s.AutoApprove {
 			m[s.Name] = true
 		}
+	}
+	if len(m) == 0 {
+		return nil // no auto-approved servers: nil, not an empty map
 	}
 	return m
 }
