@@ -63,15 +63,29 @@ type Config struct {
 //
 // Frames gates the server to a subset of frames. Empty (the common case)
 // means "available in every frame" - the same convention skills use.
+//
+// Tools is a per-server availability allowlist of RAW tool names (without the
+// "<server>__" prefix). Empty (the default) exposes every tool the server
+// advertises. A non-empty list exposes only those tools to the model - the
+// lever for trimming a huge MCP catalog (e.g. DigitalOcean's hundreds of
+// tools) down to the handful actually used, which also keeps the request
+// under provider tool caps. Hidden tools stay connected and executable; they
+// are simply not advertised, so re-enabling is instant.
+//
+// AutoApprove, when true, makes every tool from this server run without the
+// approval prompt (the per-server analog of trusting a workspace). Off by
+// default: MCP tools prompt like any other non-read-only tool.
 type ServerConfig struct {
-	Name      string            `json:"name"`
-	Transport string            `json:"transport,omitempty"`
-	Command   string            `json:"command,omitempty"`
-	Args      []string          `json:"args,omitempty"`
-	Env       map[string]string `json:"env,omitempty"`
-	URL       string            `json:"url,omitempty"`
-	Headers   map[string]string `json:"headers,omitempty"`
-	Frames    []string          `json:"frames,omitempty"`
+	Name        string            `json:"name"`
+	Transport   string            `json:"transport,omitempty"`
+	Command     string            `json:"command,omitempty"`
+	Args        []string          `json:"args,omitempty"`
+	Env         map[string]string `json:"env,omitempty"`
+	URL         string            `json:"url,omitempty"`
+	Headers     map[string]string `json:"headers,omitempty"`
+	Frames      []string          `json:"frames,omitempty"`
+	Tools       []string          `json:"tools,omitempty"`
+	AutoApprove bool              `json:"auto_approve,omitempty"`
 }
 
 // TransportKind returns the normalized transport for the server: an empty
@@ -146,6 +160,63 @@ func (c *Config) AddServer(s ServerConfig) bool {
 	}
 	c.Servers = append(c.Servers, s)
 	return true
+}
+
+// Find returns a pointer to the server config with the given name, or nil.
+// The pointer indexes into c.Servers so mutations through it are captured by
+// a subsequent config.Save.
+func (c *Config) Find(name string) *ServerConfig {
+	for i := range c.Servers {
+		if c.Servers[i].Name == name {
+			return &c.Servers[i]
+		}
+	}
+	return nil
+}
+
+// splitToolName splits a combined registry name "<server>__<tool>" into its
+// server and raw-tool parts. ok is false for built-in tools (no separator),
+// which carry no server prefix.
+func splitToolName(combined string) (server, raw string, ok bool) {
+	i := strings.Index(combined, ToolNameSeparator)
+	if i <= 0 {
+		return "", "", false
+	}
+	return combined[:i], combined[i+len(ToolNameSeparator):], true
+}
+
+// ToolExposed reports whether a combined tool name ("<server>__<tool>") should
+// be advertised to the model. Built-in tools (no separator) are always
+// exposed. A tool whose server is absent from the config, or whose server has
+// an empty allowlist, is exposed. Only an explicit non-empty Tools allowlist
+// that omits the raw name hides it.
+func (c Config) ToolExposed(combined string) bool {
+	server, raw, ok := splitToolName(combined)
+	if !ok {
+		return true
+	}
+	sc := (&c).Find(server)
+	if sc == nil || len(sc.Tools) == 0 {
+		return true
+	}
+	for _, t := range sc.Tools {
+		if t == raw {
+			return true
+		}
+	}
+	return false
+}
+
+// AutoApproves reports whether the server that owns a combined tool name is
+// marked AutoApprove. Built-in tools and tools from unconfigured servers
+// return false, leaving the decision to the other approver layers.
+func (c Config) AutoApproves(combined string) bool {
+	server, _, ok := splitToolName(combined)
+	if !ok {
+		return false
+	}
+	sc := (&c).Find(server)
+	return sc != nil && sc.AutoApprove
 }
 
 // expandEnv returns a KEY=VAL slice suitable for exec.Cmd.Env: the

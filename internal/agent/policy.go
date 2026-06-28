@@ -73,6 +73,15 @@ type LayeredApprover struct {
 	// works fine without it.
 	auditLog AuditSink
 
+	// mcpAutoApprove is the set of MCP server names whose tools run
+	// without prompting (the per-server analog of workspace trust).
+	// Keyed by server name; an MCP tool is "<server>__<tool>", so the
+	// server prefix selects the policy. Installed as an immutable
+	// snapshot via SetMCPAutoApprove (swap-the-pointer, never mutate in
+	// place) so the approver goroutine can read it without racing the
+	// config writer. Guarded by mu alongside workspaceRoots.
+	mcpAutoApprove map[string]bool
+
 	// Phase F-12 cross-frame detection. activeFrame names the frame
 	// the session is currently in; frameSubtrees maps every known
 	// frame name to its on-disk subtree (the per-frame paths.Root
@@ -134,6 +143,9 @@ const (
 	ReasonCrossFrameAllow DecisionReason = "cross-frame-allow"
 	// ReasonCrossFrameDeny - same path but the user rejected.
 	ReasonCrossFrameDeny DecisionReason = "cross-frame-deny"
+	// ReasonMCPAutoApprove - tool belongs to an MCP server the user
+	// marked auto-approve (per-server trust). Phase: tool management.
+	ReasonMCPAutoApprove DecisionReason = "mcp-auto-approve"
 )
 
 // DefaultBuiltinAllow is the initial hardcoded auto-approve set.
@@ -255,6 +267,10 @@ func (l *LayeredApprover) approveWith(snap frameSnapshot, name string, input []b
 		l.record(name, input, true, ReasonWorkspaceAllow)
 		return true
 	}
+	if l.mcpAutoApproves(name) {
+		l.record(name, input, true, ReasonMCPAutoApprove)
+		return true
+	}
 	ok := l.fallback.ApproveToolCall(name, input)
 	reason := ReasonSessionDeny
 	if ok {
@@ -262,6 +278,42 @@ func (l *LayeredApprover) approveWith(snap frameSnapshot, name string, input []b
 	}
 	l.record(name, input, ok, reason)
 	return ok
+}
+
+// SetMCPAutoApprove installs the set of MCP server names whose tools run
+// without prompting. Pass a fresh map each time (the value is copied and
+// stored as an immutable snapshot, swapped under lock) so a concurrent
+// approver read never sees a half-mutated map. A nil/empty map disables the
+// layer. cmd/carlos wires the boot snapshot from config; a future live
+// re-apply on a /permissions toggle calls this again with the new set.
+func (l *LayeredApprover) SetMCPAutoApprove(servers map[string]bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if len(servers) == 0 {
+		l.mcpAutoApprove = nil
+		return
+	}
+	cp := make(map[string]bool, len(servers))
+	for k, v := range servers {
+		if v {
+			cp[k] = true
+		}
+	}
+	l.mcpAutoApprove = cp
+}
+
+// mcpAutoApproves reports whether name is an MCP tool ("<server>__<tool>")
+// whose server is in the auto-approve snapshot.
+func (l *LayeredApprover) mcpAutoApproves(name string) bool {
+	i := strings.Index(name, "__")
+	if i <= 0 {
+		return false
+	}
+	server := name[:i]
+	l.mu.RLock()
+	allowed := l.mcpAutoApprove[server]
+	l.mu.RUnlock()
+	return allowed
 }
 
 // SetFrameSubtrees plugs the Phase F-12 cross-frame detector. active
