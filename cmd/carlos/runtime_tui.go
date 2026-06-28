@@ -229,6 +229,8 @@ func runDefault(cfg *config.Config, sessionID string) error {
 	// cross-frame queries.
 	baseReg := tools.NewDefaultRegistryWithIdentity("", cfg.Vault, cfg.Frames, cfg.Frames.Active, tools.ProviderSummariesFromConfig(cfg.Providers), cfg.UserName, cfg.Todos)
 	baseReg.Register(tools.NewSkillUseTool(skillsLib, cfg.Frames.Active))
+	// Auto-format files after write/edit (opt-out via config.formatter).
+	tools.EnableFormatter(baseReg, tools.NewFormatter(cfg.Formatter))
 	// MCP v1: connect every configured MCP server enabled for the
 	// active frame and register each discovered tool under the
 	// "<server>__<tool>" namespace. Failures don't block boot - the

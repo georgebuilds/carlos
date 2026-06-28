@@ -169,6 +169,9 @@ func runHeadless(prompt string, opts pleaseOptions) error {
 	// itself is added to the PARENT'S registry only (below), NOT the
 	// base - children at depth 1 (the v0 cap) can't further spawn.
 	baseReg := tools.NewDefaultRegistryWithIdentity(baseDir, cfg.Vault, cfg.Frames, cfg.Frames.Active, tools.ProviderSummariesFromConfig(cfg.Providers), cfg.UserName, cfg.Todos)
+	// Auto-format files after write/edit (opt-out via config.formatter).
+	// Children inherit baseReg, so sandboxed sub-agent edits format too.
+	tools.EnableFormatter(baseReg, tools.NewFormatter(cfg.Formatter))
 	// Skill library + the skill_use tool so `carlos please` sees the
 	// same skill catalog the chat surface does. Bundled-overlay path
 	// means even a fresh brew install gets the starter pack.

@@ -201,6 +201,7 @@ type Daemon struct {
 	providersCfg    map[string]config.ProviderConfig
 	vaultCfg        config.VaultConfig
 	todosCfg        config.TodosConfig
+	formatterCfg    config.FormatterConfig
 
 	// activeCount tracks in-flight scheduled spawns so the status
 	// response can surface "n schedules running right now".
@@ -580,6 +581,7 @@ func (d *Daemon) loadConfig() error {
 	d.providersCfg = cfg.Providers
 	d.vaultCfg = cfg.Vault
 	d.todosCfg = cfg.Todos
+	d.formatterCfg = cfg.Formatter
 	d.mu.Unlock()
 	return nil
 }
@@ -735,6 +737,7 @@ func (d *Daemon) resolveFrameForFire(s schedule.Schedule) (string, agent.FrameIn
 	defaultProvider := d.defaultProvider
 	providersCfg := d.providersCfg
 	vaultCfg := d.vaultCfg
+	formatterCfg := d.formatterCfg
 	d.mu.Unlock()
 
 	name := s.Frame
@@ -771,6 +774,9 @@ func (d *Daemon) resolveFrameForFire(s schedule.Schedule) (string, agent.FrameIn
 	// boot path in cmd/carlos/daemon.go: scheduled runs share the home
 	// dir as their sandbox root.
 	reg := tools.NewDefaultRegistryWithBaseDirAndFrames("", vaultCfg, frameCfg, name)
+	// Auto-format files after write/edit for scheduled runs, matching the
+	// foreground default-on contract (opt-out via config.formatter).
+	tools.EnableFormatter(reg, tools.NewFormatter(formatterCfg))
 
 	// Per-fire paths are reserved for the daemon daily-digest feature;
 	// reading PathsFor here keeps the import live and signals intent

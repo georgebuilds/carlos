@@ -80,12 +80,19 @@ func runDaemonRun() error {
 		return err
 	}
 
+	// Auto-format files after write/edit for daemon-spawned sub-agents,
+	// matching the TUI/headless/web default-on contract. The per-fire
+	// primary-agent registry is wired separately inside the daemon, which
+	// reads cfg.Formatter on load and SIGHUP reload.
+	baseTools := tools.NewDefaultRegistryWithBaseDirAndFrames("", cfg.Vault, cfg.Frames, cfg.Frames.Active)
+	tools.EnableFormatter(baseTools, tools.NewFormatter(cfg.Formatter))
+
 	dmn, err := daemon.New(daemon.Options{
 		ConfigPath:      cfgPath,
 		StateDBPath:     dbPath,
 		SocketPath:      daemon.DefaultSocketPath(),
 		Provider:        d.provider,
-		BaseTools:       tools.NewDefaultRegistryWithBaseDirAndFrames("", cfg.Vault, cfg.Frames, cfg.Frames.Active),
+		BaseTools:       baseTools,
 		TickInterval:    30 * time.Second,
 		Notifier:        &daemon.SystemNotifier{}, // slice 8d: desktop banners on fire
 		Home:            home,

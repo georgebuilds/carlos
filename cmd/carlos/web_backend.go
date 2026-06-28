@@ -87,6 +87,8 @@ func newCarlosBackend(ctx context.Context, cfg *config.Config, log *agent.SQLite
 	baseReg := tools.NewDefaultRegistryWithIdentity("", cfg.Vault, cfg.Frames, cfg.Frames.Active,
 		tools.ProviderSummariesFromConfig(cfg.Providers), cfg.UserName, cfg.Todos)
 	baseReg.Register(tools.NewSkillUseTool(skillsLib, cfg.Frames.Active))
+	// Auto-format files after write/edit (opt-out via config.formatter).
+	tools.EnableFormatter(baseReg, tools.NewFormatter(cfg.Formatter))
 
 	sup := agent.NewSupervisor(log, d.provider, baseReg)
 	sup.Run(ctx)
