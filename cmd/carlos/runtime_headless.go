@@ -238,6 +238,10 @@ func runHeadless(prompt string, opts pleaseOptions) error {
 			Name: t.Name(), Description: t.Description(), Schema: t.Schema(),
 		})
 	}
+	// Apply per-server MCP availability + the model's tool cap, same as the
+	// chat path, so the headless `please` run never advertises a hidden tool
+	// or overflows a provider's tool limit.
+	toolSpecs = newToolSelector(cfg.MCP, d.name, os.Stderr)(toolSpecs, d.model)
 
 	approver := agent.Approver(agent.AutoApprover{})
 	if !opts.autoApprove {
@@ -250,6 +254,7 @@ func runHeadless(prompt string, opts pleaseOptions) error {
 	// learn one set of approval rules from one entry point and a
 	// different set from another.
 	layered := agent.NewLayeredApprover(approver, agent.DefaultBuiltinAllow, nil)
+	layered.SetMCPAutoApprove(mcpAutoApproveSet(cfg.MCP))
 	// Phase T-2: wire workspace-trust. When the cwd is in the
 	// trusted-workspaces store the policy allows a small set of
 	// read-only bash verbs (git status/diff/log/…, ls, pwd, cat,

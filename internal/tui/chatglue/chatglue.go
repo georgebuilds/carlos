@@ -65,6 +65,12 @@ type Config struct {
 	// MaxIterations caps tool-use ping-pong per turn (default 25
 	// from agent.Run when zero).
 	MaxIterations int
+	// ToolSelect, when set, post-processes the full tool spec list before
+	// each turn: it filters by per-server MCP availability and caps the
+	// count to the model's tool limit. Re-evaluated every turn with the
+	// live Model, so a /model swap to a stricter-capped provider trims
+	// automatically. Optional; nil means "advertise every registered tool".
+	ToolSelect func(specs []providers.ToolSpec, model string) []providers.ToolSpec
 }
 
 // Loop is the per-session glue. One Loop runs per chat - it owns the
@@ -248,7 +254,7 @@ func (l *Loop) runAgentTurn(ctx context.Context, history []providers.Message) {
 		Approver:      turnApprover,
 		Budget:        l.cfg.Budget,
 		MaxIterations: l.cfg.MaxIterations,
-		Tools:         buildToolSpecs(l.cfg.Tools),
+		Tools:         l.selectedToolSpecs(),
 		// Stream tool events live: the loop pops the hook the moment a
 		// tool_use lands and again when its result comes back. The chat
 		// surface renders a "running…" card immediately, then folds in
@@ -703,6 +709,18 @@ func finalAssistantText(msgs []providers.Message) string {
 		}
 	}
 	return strings.Join(parts, "\n\n")
+}
+
+// selectedToolSpecs builds the per-turn tool list: the full registry lifted
+// to specs, then narrowed by the optional ToolSelect (availability filter +
+// model-aware cap). Run with the live Model so a /model swap re-evaluates the
+// cap. A nil ToolSelect returns the full set unchanged.
+func (l *Loop) selectedToolSpecs() []providers.ToolSpec {
+	specs := buildToolSpecs(l.cfg.Tools)
+	if l.cfg.ToolSelect != nil {
+		specs = l.cfg.ToolSelect(specs, l.cfg.Model)
+	}
+	return specs
 }
 
 // buildToolSpecs lifts a tools.Registry into the []providers.ToolSpec

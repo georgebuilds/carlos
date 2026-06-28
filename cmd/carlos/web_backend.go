@@ -191,6 +191,7 @@ func (b *carlosBackend) Frame(id string) string {
 // runDefault wires them.
 func (b *carlosBackend) newLayered(fallback agent.Approver) *agent.LayeredApprover {
 	layered := agent.NewLayeredApprover(fallback, agent.DefaultBuiltinAllow, nil)
+	layered.SetMCPAutoApprove(mcpAutoApproveSet(b.cfg.MCP))
 	if b.cwd != "" {
 		layered.SetWorkspacePolicy(workspace.NewPolicy(workspace.NewStore(workspace.DefaultPath()), b.cwd))
 	}
@@ -250,11 +251,12 @@ func (b *carlosBackend) Attach(ctx context.Context, id string) error {
 	}
 	threadCtx, cancel := context.WithCancel(life)
 	loop := chatglue.NewLoop(chatglue.Config{
-		Provider: b.dispatch.provider,
-		Model:    b.dispatch.model,
-		Tools:    b.parent,
-		Approver: layered,
-		System:   b.system,
+		Provider:   b.dispatch.provider,
+		Model:      b.dispatch.model,
+		Tools:      b.parent,
+		Approver:   layered,
+		System:     b.system,
+		ToolSelect: newToolSelector(b.cfg.MCP, b.dispatch.name, nil),
 	}, b.log, b.src, id)
 	if err := loop.Start(threadCtx); err != nil {
 		cancel()

@@ -241,6 +241,18 @@ func runDefault(cfg *config.Config, sessionID string) error {
 	if mcpCount > 0 {
 		notices = append(notices, fmt.Sprintf("mcp: registered %d tool(s) from %d server(s)", mcpCount, len(cfg.MCP.Servers)))
 	}
+	// Per-turn tool narrowing: hide MCP tools the user has not allowlisted,
+	// then cap to the model's tool limit. Shared by every loop this session
+	// builds (initial, /model swap, frame swap). The boot notice fires when
+	// the exposed set already overflows the active model's cap.
+	// Lock-guarded availability snapshot: the per-turn selector reads it on
+	// the agent-loop goroutine while the /mcp overlay edits it on the UI
+	// goroutine, so both go through mcpAvailability rather than racing on
+	// cfg.MCP directly.
+	mcpAvail := newMCPAvailability(cfg.MCP)
+	toolSelector := newToolSelector(mcpAvail, d.name, diagWriter)
+	// Connection snapshot for the /mcp overlay (servers connect at boot).
+	connectedMCP := connectedSet(mcpServers)
 	// Read-only snapshot for the /mcp listing: which configured servers
 	// connected at boot and how many tools each contributed. Built once
 	// (servers connect only at startup) and handed to the chat as a
@@ -308,6 +320,7 @@ func runDefault(cfg *config.Config, sessionID string) error {
 	// TUI prompt. The TUI surface still gets the bare approver via
 	// WithTUIApprover so the in-process y/N channel stays wired.
 	layered := agent.NewLayeredApprover(approver, agent.DefaultBuiltinAllow, nil)
+	layered.SetMCPAutoApprove(mcpAutoApproveSet(cfg.MCP))
 	var trustPolicy *workspace.Policy
 	cwd, err := os.Getwd()
 	if err == nil {
@@ -558,11 +571,12 @@ func runDefault(cfg *config.Config, sessionID string) error {
 	systemPrompt := agent.SystemPromptWithFrame(cfg.UserName, chatCwd, chatProjectCtx, frameInfo)
 
 	loop := chatglue.NewLoop(chatglue.Config{
-		Provider: d.provider,
-		Model:    d.model,
-		Tools:    parentReg,
-		Approver: layered,
-		System:   systemPrompt,
+		Provider:   d.provider,
+		Model:      d.model,
+		Tools:      parentReg,
+		Approver:   layered,
+		System:     systemPrompt,
+		ToolSelect: toolSelector,
 	}, log, src, defaultAgentID)
 	if err := loop.Start(ctx); err != nil {
 		return err
@@ -595,11 +609,12 @@ func runDefault(cfg *config.Config, sessionID string) error {
 		}
 		newSys := agent.SystemPromptWithFrame(cfg.UserName, chatCwd, chatProjectCtx, newInfo)
 		newLoop := chatglue.NewLoop(chatglue.Config{
-			Provider: newDispatch.provider,
-			Model:    newDispatch.model,
-			Tools:    parentReg,
-			Approver: layered,
-			System:   newSys,
+			Provider:   newDispatch.provider,
+			Model:      newDispatch.model,
+			Tools:      parentReg,
+			Approver:   layered,
+			System:     newSys,
+			ToolSelect: toolSelector,
 		}, log, src, defaultAgentID)
 		if err := newLoop.Start(ctx); err != nil {
 			return fmt.Errorf("start new loop: %w", err)
@@ -665,11 +680,12 @@ func runDefault(cfg *config.Config, sessionID string) error {
 		}
 		newSys := agent.SystemPromptWithFrame(cfg.UserName, chatCwd, chatProjectCtx, newInfo)
 		newLoop := chatglue.NewLoop(chatglue.Config{
-			Provider: newDispatch.provider,
-			Model:    newDispatch.model,
-			Tools:    parentReg,
-			Approver: layered,
-			System:   newSys,
+			Provider:   newDispatch.provider,
+			Model:      newDispatch.model,
+			Tools:      parentReg,
+			Approver:   layered,
+			System:     newSys,
+			ToolSelect: toolSelector,
 		}, log, src, defaultAgentID)
 		if err := newLoop.Start(ctx); err != nil {
 			return "", "", fmt.Errorf("start new loop: %w", err)
@@ -810,6 +826,14 @@ func runDefault(cfg *config.Config, sessionID string) error {
 		return out
 	})
 
+	// Boot cap notice, computed once against parentReg (the registry the loop
+	// actually caps: baseReg + the agent tool + background-shell tools), so the
+	// exposed count matches what is advertised per turn. Placed before the
+	// chat/manage relaunch loop so it is not duplicated on a round-trip.
+	if n := capNotice(d.name, d.model, exposedToolCount(parentReg, cfg.MCP)); n != "" {
+		notices = append(notices, n)
+	}
+
 	for {
 		// Refresh the frame list each iteration so a new frame
 		// created in the previous chat session (wizard or `/frame
@@ -823,6 +847,22 @@ func runDefault(cfg *config.Config, sessionID string) error {
 		opts := []chat.Option{
 			chat.WithTUIApprover(approver),
 			chat.WithUserName(cfg.UserName),
+			chat.WithMCPManager(&mcpManager{
+				cfg:       cfg,
+				reg:       parentReg,
+				connected: connectedMCP,
+				avail:     mcpAvail,
+				dispatch: func() (string, string) {
+					loopMu.Lock()
+					defer loopMu.Unlock()
+					if liveDispatch == nil {
+						return "", ""
+					}
+					return liveDispatch.name, liveDispatch.model
+				},
+				save:      func() error { return config.Save(config.DefaultPath(), cfg) },
+				reapprove: func() { layered.SetMCPAutoApprove(mcpAutoApproveSet(cfg.MCP)) },
+			}),
 			chat.WithSummarizer(summarizer),
 			chat.WithUserShell(shellMgr),
 			chat.WithShellHistory(shellHistory),
@@ -908,11 +948,12 @@ func runDefault(cfg *config.Config, sessionID string) error {
 			}
 			defaultAgentID = picked
 			newLoop := chatglue.NewLoop(chatglue.Config{
-				Provider: liveDispatch.provider,
-				Model:    liveDispatch.model,
-				Tools:    parentReg,
-				Approver: layered,
-				System:   systemPrompt,
+				Provider:   liveDispatch.provider,
+				Model:      liveDispatch.model,
+				Tools:      parentReg,
+				Approver:   layered,
+				System:     systemPrompt,
+				ToolSelect: toolSelector,
 			}, log, src, defaultAgentID)
 			if err := newLoop.Start(ctx); err != nil {
 				return fmt.Errorf("resume %s: start loop: %w", picked, err)
