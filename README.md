@@ -8,7 +8,7 @@
   <a href="https://codecov.io/gh/georgebuilds/carlos"><img src="https://codecov.io/gh/georgebuilds/carlos/graph/badge.svg?branch=main" alt="coverage"></a>
 </p>
 
-A pure-Go TUI agent. Single binary around 30 MB. No CGO. Cross-compiled for darwin + linux × amd64 + arm64.
+A pure-Go TUI agent. Single binary around 25 MB. No CGO. Cross-compiled for darwin + linux × amd64 + arm64.
 
 Marketing copy and feature tour live at [georgebuilds.github.io/carlos](https://georgebuilds.github.io/carlos/). This README is for getting carlos running and for Go developers who want to contribute.
 
@@ -123,7 +123,7 @@ GOOS=darwin GOARCH=amd64  go build ./cmd/carlos
 
 ### Test discipline
 
-- `go test ./...` is the floor. Current count is ~3490 tests across 41 packages.
+- `go test ./...` is the floor. Current count is ~5300 tests across 46 packages.
 - `go vet ./...` must be clean.
 - New code aims for 80%+ coverage on touched packages.
 - The sub-agent + daemon + event log paths have integration tests; if you touch any of them, run `go test -race ./internal/agent/... ./internal/daemon/...` at least once before pushing.
