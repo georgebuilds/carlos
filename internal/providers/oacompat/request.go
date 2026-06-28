@@ -32,18 +32,30 @@ func BuildRequest(req providers.Request, errPrefix string) (*MessagesRequest, er
 		}
 		out.Messages = append(out.Messages, converted...)
 	}
-	// Gemini's FunctionDeclaration validator rejects the broad JSON-Schema
-	// dialect external MCP tools emit (arrays without `items`, $ref, anyOf,
-	// additionalProperties, ...). Built-in tools are kept clean by a
-	// compile-time test, but MCP schemas are arbitrary, so we normalize them
-	// to Gemini's subset on exactly the request paths that hit Google.
+	// Some backends reject parts of the broad JSON-Schema dialect external
+	// MCP tools emit. Gemini's FunctionDeclaration validator rejects arrays
+	// without `items`, $ref, anyOf, additionalProperties, ...; xAI/Grok
+	// rejects `additionalProperties: false`; Moonshot/Kimi rejects
+	// `#/definitions/` refs (it requires `#/$defs/`). Built-in tools are kept
+	// clean by a compile-time test, but MCP schemas are arbitrary, so we
+	// normalize them to each backend's accepted form on the paths that hit it.
 	gemini := targetsGemini(errPrefix, req.Model)
+	xai := targetsXAI(errPrefix, req.Model)
+	kimi := targetsKimi(errPrefix, req.Model)
 	for _, t := range req.Tools {
 		params := json.RawMessage(t.Schema)
 		if len(params) == 0 {
 			params = json.RawMessage(`{"type":"object","properties":{}}`)
 		} else if gemini {
 			params = sanitizeGeminiSchema(params)
+		} else if xai {
+			// Grok rejects additionalProperties:false; strip it (narrow
+			// fix, unlike Gemini's full-subset rewrite). See xai_schema.go.
+			params = sanitizeXAISchema(params)
+		} else if kimi {
+			// Kimi requires #/$defs/ refs, not #/definitions/. See
+			// kimi_schema.go.
+			params = sanitizeKimiSchema(params)
 		}
 		out.Tools = append(out.Tools, APITool{
 			Type: "function",
