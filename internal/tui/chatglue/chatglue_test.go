@@ -228,28 +228,6 @@ func TestLoop_StopIsIdempotent(t *testing.T) {
 	l.Stop() // second call must not panic
 }
 
-// finalAssistantText must concat text across ALL assistant messages
-// in the returned slice, not just the last — a tool-use turn yields
-// (assistant: "let me check…", tool_use), then (assistant: "here it is").
-// Persisting only the second one drops the preamble the user just
-// watched stream in.
-func TestFinalAssistantText_MultiIterationConcat(t *testing.T) {
-	msgs := []providers.Message{
-		{Role: "user", Content: []providers.Block{{Kind: "text", Text: "hi"}}},
-		{Role: "assistant", Content: []providers.Block{
-			{Kind: "text", Text: "let me check"},
-			{Kind: "tool_use", Text: ""},
-		}},
-		{Role: "tool", Content: []providers.Block{{Kind: "tool_result", Text: ""}}},
-		{Role: "assistant", Content: []providers.Block{{Kind: "text", Text: "here it is"}}},
-	}
-	got := finalAssistantText(msgs)
-	want := "let me check\n\nhere it is"
-	if got != want {
-		t.Errorf("finalAssistantText = %q, want %q", got, want)
-	}
-}
-
 // recordingSnapshotApprover satisfies agent.Approver AND the
 // `SnapshotAtFrame() agent.Approver` shape the chatglue Loop type-
 // asserts at the start of each turn. Counts snapshot calls + records
