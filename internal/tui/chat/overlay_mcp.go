@@ -78,9 +78,10 @@ func WithMCPManager(mgr MCPManager) Option {
 
 // WithInterrupter injects the callback that aborts the in-flight assistant
 // turn (esc-to-interrupt). The runtime points it at the live chatglue.Loop's
-// Interrupt. Without it, esc never interrupts (the read-only daemon/web paths
-// have no turn to abort).
-func WithInterrupter(fn func()) Option {
+// Interrupt, which returns true only when a turn was actually cancelled.
+// Without it, esc never interrupts (the read-only daemon/web paths have no
+// turn to abort).
+func WithInterrupter(fn func() bool) Option {
 	return func(m *Model) { m.interrupt = fn }
 }
 

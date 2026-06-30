@@ -112,9 +112,13 @@ type Loop struct {
 // records the interrupt so the turn body seals the partial output (rather
 // than surfacing a cancel as an error), then cancels the turn context. Safe
 // to call from another goroutine; a no-op when idle or nil.
-func (l *Loop) Interrupt() {
+//
+// Returns true only when it actually cancelled an armed turn, so the caller
+// can avoid claiming an interrupt happened when none did (e.g. esc pressed
+// between turns, or before the turn context is armed).
+func (l *Loop) Interrupt() bool {
 	if l == nil {
-		return
+		return false
 	}
 	l.turnMu.Lock()
 	cancel := l.turnCancel
@@ -124,7 +128,18 @@ func (l *Loop) Interrupt() {
 	l.turnMu.Unlock()
 	if cancel != nil {
 		cancel()
+		return true
 	}
+	return false
+}
+
+// wasInterrupted reports whether the in-flight turn was interrupted via
+// Interrupt. Read under turnMu since Interrupt sets the flag from the TUI
+// goroutine.
+func (l *Loop) wasInterrupted() bool {
+	l.turnMu.Lock()
+	defer l.turnMu.Unlock()
+	return l.interrupted
 }
 
 // NewLoop wires a Loop. agentID is the chat's parent agent id (the
@@ -216,13 +231,7 @@ func (l *Loop) handleUserMessage(ctx context.Context, _ agent.Event) {
 	// children queries (the web crew column, the TUI inline panel) can't
 	// find them.
 	ctx = agent.WithSpawnParent(ctx, l.agentID)
-
-	history, err := l.buildHistory(ctx)
-	if err != nil {
-		l.surfaceError(ctx, fmt.Errorf("load history: %w", err))
-		return
-	}
-	l.runAgentTurn(ctx, history)
+	l.serveTurn(ctx, l.buildHistory)
 }
 
 // handleBackgroundCompletion runs a wake-turn when a background shell job
@@ -237,31 +246,26 @@ func (l *Loop) handleUserMessage(ctx context.Context, _ agent.Event) {
 // wake-turn never overlaps an in-flight user turn.
 func (l *Loop) handleBackgroundCompletion(ctx context.Context, jobID string) {
 	ctx = agent.WithSpawnParent(ctx, l.agentID)
-
-	history, err := l.buildHistory(ctx)
-	if err != nil {
-		l.surfaceError(ctx, fmt.Errorf("load history: %w", err))
-		return
-	}
-	history = append(history, providers.Message{
-		Role: "user",
-		Content: []providers.Block{{
-			Kind: "text",
-			Text: fmt.Sprintf("[background] The shell job you started (id %s) has finished; its output is in the <user-shell> block above. Continue the task or report the result. If nothing more is needed, reply briefly.", jobID),
-		}},
+	l.serveTurn(ctx, func(turnCtx context.Context) ([]providers.Message, error) {
+		history, err := l.buildHistory(turnCtx)
+		if err != nil {
+			return nil, err
+		}
+		return append(history, providers.Message{
+			Role: "user",
+			Content: []providers.Block{{
+				Kind: "text",
+				Text: fmt.Sprintf("[background] The shell job you started (id %s) has finished; its output is in the <user-shell> block above. Continue the task or report the result. If nothing more is needed, reply briefly.", jobID),
+			}},
+		}), nil
 	})
-	l.runAgentTurn(ctx, history)
 }
 
-// runAgentTurn is the shared turn body for a user message and a
-// background-completion wake: stream the assistant reply into the live
-// TextSource, persist the sealed turn, and reset the source. The caller
-// assembled history (including any nudge); this owns the per-turn context.
-func (l *Loop) runAgentTurn(parentCtx context.Context, history []providers.Message) {
-	// Per-turn context so Loop.Interrupt (esc-to-interrupt) can abort just
-	// this turn while the loop goroutine keeps serving later messages. Stash
-	// it for the OnToolCall/OnToolResult hooks and register the cancel for
-	// Interrupt; clear both when the turn unwinds.
+// serveTurn owns the per-turn context for one turn so esc-to-interrupt
+// (Loop.Interrupt) can abort history-build as well as the model loop, while
+// the loop goroutine stays alive for the next message. It arms the cancel,
+// builds history, runs the turn body, and persists exactly one outcome.
+func (l *Loop) serveTurn(parentCtx context.Context, buildHistory func(context.Context) ([]providers.Message, error)) {
 	turnCtx, turnCancel := context.WithCancel(parentCtx)
 	l.ctx = turnCtx
 	l.turnMu.Lock()
@@ -276,6 +280,30 @@ func (l *Loop) runAgentTurn(parentCtx context.Context, history []providers.Messa
 		l.ctx = nil
 	}()
 
+	history, err := buildHistory(turnCtx)
+	if err != nil {
+		// esc during history-build cancels turnCtx, so buildHistory returns a
+		// ctx error: land the interrupt (note-only seal) so the key isn't lost
+		// during a slow log scan. A genuine build error surfaces as before.
+		if l.wasInterrupted() && parentCtx.Err() == nil {
+			l.sealInterrupted(parentCtx, "")
+			return
+		}
+		if parentCtx.Err() != nil {
+			return // shutting down; the log may be closing
+		}
+		l.surfaceError(parentCtx, fmt.Errorf("load history: %w", err))
+		return
+	}
+	l.runTurnBody(parentCtx, turnCtx, history)
+}
+
+// runTurnBody streams one assistant reply into the live TextSource and
+// persists exactly one outcome (normal turn, interrupted seal, or error).
+// serveTurn owns turnCtx (a cancellable child of parentCtx) and the arm/
+// disarm of turnCancel; this body runs the model loop under turnCtx and uses
+// parentCtx (still live unless shutting down) for persistence.
+func (l *Loop) runTurnBody(parentCtx, turnCtx context.Context, history []providers.Message) {
 	writer := &textSourceWriter{source: l.source, agentID: l.agentID}
 	// Capture-at-issue: if the configured approver supports per-turn
 	// frame snapshots, freeze the cross-frame state at the start of
@@ -307,15 +335,21 @@ func (l *Loop) runAgentTurn(parentCtx context.Context, history []providers.Messa
 
 	msgs, err := agent.Run(turnCtx, l.cfg.Provider, l.cfg.Tools, opts, history)
 
-	// esc-to-interrupt is detected by the flag, not the error: a provider
-	// may end a cancelled stream cleanly (channel close, nil err) OR with a
-	// cancel error, and either way the turn was deliberately aborted. Seal
-	// the text the user already watched stream and go idle. Gated on the
-	// parent still being live so a shutdown (which also cancels the turn)
-	// doesn't try to persist into a closing log.
+	// Disarm the moment the loop returns, in the same critical section that
+	// reads the flag, so an esc arriving after this point finds no armed turn
+	// and is a clean no-op rather than mislabeling a finished turn.
 	l.turnMu.Lock()
 	wasInterrupted := l.interrupted
+	l.turnCancel = nil
 	l.turnMu.Unlock()
+
+	// esc-to-interrupt is detected by the flag, not the error: a provider may
+	// end a cancelled stream cleanly (channel close, nil err) OR with a cancel
+	// error, so keying off err would lose the seal for clean-closing providers.
+	// The disarm above means wasInterrupted is true only when esc landed while
+	// the turn was genuinely in flight (an esc after the loop returned finds no
+	// armed turn), so always seal the partial here. Gated on the parent still
+	// being live so a shutdown doesn't persist into a closing log.
 	if wasInterrupted && parentCtx.Err() == nil {
 		l.sealInterrupted(parentCtx, writer.String())
 		return
@@ -373,7 +407,14 @@ func (l *Loop) sealInterrupted(ctx context.Context, partial string) {
 	partial = strings.TrimSpace(partial)
 	sealed := interruptedNote
 	if partial != "" {
-		sealed = partial + "\n\n" + interruptedNote
+		sep := "\n\n"
+		// An interrupted code stream often ends inside an unclosed ``` fence;
+		// closing it first keeps the note from being swallowed into the code
+		// block (where it would render as a literal "_(interrupted)_").
+		if strings.Count(partial, "```")%2 == 1 {
+			sep = "\n```\n\n"
+		}
+		sealed = partial + sep + interruptedNote
 	}
 	_ = l.persistAssistantTurn(ctx, sealed)
 	l.source.Reset(l.agentID)

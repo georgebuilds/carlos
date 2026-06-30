@@ -286,10 +286,16 @@ type Model struct {
 	subCancel func()
 
 	// interrupt aborts the in-flight assistant turn without ending the
-	// session, wired to the live chatglue.Loop by the runtime. nil in the
-	// daemon/web read-only paths and bare test Models; esc-to-interrupt is
-	// a no-op when unset. See WithInterrupter.
-	interrupt func()
+	// session, wired to the live chatglue.Loop by the runtime. It returns
+	// true only when a turn was actually armed and got cancelled, so esc is
+	// not consumed (and no "interrupting" status shown) when there was
+	// nothing to interrupt. nil in the daemon/web read-only paths and bare
+	// test Models; esc-to-interrupt is a no-op when unset. See WithInterrupter.
+	interrupt func() bool
+	// interrupting is true between an esc-interrupt and the turn going idle,
+	// so the eventMsg arm can clear the "interrupting" status once the seal
+	// lands instead of leaving it stale until the next keystroke.
+	interrupting bool
 
 	// Layout.
 	width  int
@@ -1547,6 +1553,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case eventMsg:
 		m.applyEvent(msg.ev)
 		m.rerenderViewport()
+		m.clearInterruptStatusIfDone()
 		// Drain one queued mid-turn user message if the event we just
 		// processed left the assistant idle. assistant_message and
 		// chatglue's error-as-assistant-message events both transition

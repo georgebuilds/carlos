@@ -35,10 +35,12 @@ func (p *firstBlocksThenCompletes) Stream(ctx context.Context, _ providers.Reque
 	go func() {
 		defer close(ch)
 		if call == 1 {
-			select {
-			case ch <- providers.Event{Kind: providers.EventTextDelta, Text: p.partial}:
-			case <-ctx.Done():
-				return
+			if p.partial != "" {
+				select {
+				case ch <- providers.Event{Kind: providers.EventTextDelta, Text: p.partial}:
+				case <-ctx.Done():
+					return
+				}
 			}
 			close(p.streaming)
 			<-ctx.Done() // block until interrupted; never send a stop reason
@@ -102,12 +104,88 @@ func TestLoop_InterruptSealsPartialAndKeepsServing(t *testing.T) {
 	}
 }
 
+// TestLoop_InterruptBeforeFirstTokenSealsNote: interrupting after the stream
+// opens but before any token (and with a clean-closing provider, nil err)
+// must still seal a note-only "(interrupted)" turn, not erase the turn. This
+// is the regression guard for keying the seal off the interrupt flag alone
+// rather than off the streamed text or the provider error.
+func TestLoop_InterruptBeforeFirstTokenSealsNote(t *testing.T) {
+	log := openTestLog(t)
+	const id = "agent-cg-pretoken"
+	seedAgent(t, log, id)
+	src := newMemSource()
+	prov := &firstBlocksThenCompletes{partial: "", second: "x", streaming: make(chan struct{})}
+
+	l := NewLoop(Config{Provider: prov}, log, src, id)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := l.Start(ctx); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer l.Stop()
+
+	time.Sleep(50 * time.Millisecond)
+	appendUserMessage(t, log, id, "think hard")
+	select {
+	case <-prov.streaming:
+	case <-time.After(2 * time.Second):
+		t.Fatal("provider never opened the stream")
+	}
+	l.Interrupt()
+
+	sealed := waitForAssistant(t, log, id, interruptedNote)
+	if strings.TrimSpace(sealed) != interruptedNote {
+		t.Errorf("pre-token interrupt should seal the note only, got %q", sealed)
+	}
+}
+
 // TestLoop_InterruptIdleAndNilAreNoops: interrupting with no turn in flight,
-// or on a nil Loop, must not panic.
+// or on a nil Loop, returns false and must not panic.
 func TestLoop_InterruptIdleAndNilAreNoops(t *testing.T) {
 	l := NewLoop(Config{Provider: scriptedProvider("hi")}, openTestLog(t), newMemSource(), "x")
-	l.Interrupt() // no turn in flight
+	if l.Interrupt() { // no turn in flight
+		t.Error("Interrupt with no armed turn should return false")
+	}
 
 	var nilLoop *Loop
-	nilLoop.Interrupt() // nil receiver
+	if nilLoop.Interrupt() { // nil receiver
+		t.Error("Interrupt on a nil loop should return false")
+	}
+}
+
+// TestLoop_InterruptClosesUnbalancedCodeFence: a partial that ends inside an
+// open ``` fence gets the fence closed before the (interrupted) note, so the
+// note renders as text rather than being swallowed into the code block.
+func TestLoop_InterruptClosesUnbalancedCodeFence(t *testing.T) {
+	log := openTestLog(t)
+	const id = "agent-cg-fence"
+	seedAgent(t, log, id)
+	src := newMemSource()
+	prov := &firstBlocksThenCompletes{partial: "```go\nfunc main() {", second: "x", streaming: make(chan struct{})}
+
+	l := NewLoop(Config{Provider: prov}, log, src, id)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := l.Start(ctx); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer l.Stop()
+
+	time.Sleep(50 * time.Millisecond)
+	appendUserMessage(t, log, id, "write some go")
+	select {
+	case <-prov.streaming:
+	case <-time.After(2 * time.Second):
+		t.Fatal("provider never streamed")
+	}
+	l.Interrupt()
+
+	sealed := waitForAssistant(t, log, id, interruptedNote)
+	if strings.Count(sealed, "```")%2 != 0 {
+		t.Errorf("interrupted seal left an unbalanced code fence: %q", sealed)
+	}
+	// The note must sit OUTSIDE the code block (after the closing fence).
+	if i := strings.LastIndex(sealed, "```"); i < 0 || strings.Contains(sealed[:i], interruptedNote) {
+		t.Errorf("note should follow the closing fence, not precede it: %q", sealed)
+	}
 }
