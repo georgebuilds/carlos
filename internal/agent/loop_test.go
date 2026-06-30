@@ -563,3 +563,40 @@ func TestLoop_PassesExactToolInputBytes(t *testing.T) {
 		t.Errorf("input not valid JSON to begin with: %v", err)
 	}
 }
+
+// stuckProvider returns a stream channel that never sends and never closes,
+// and does NOT observe ctx - it models a provider whose body read fails to
+// unblock promptly on cancel (slow time-to-first-token, idle keep-alive). The
+// agent loop must still abort when ctx is cancelled (esc-interrupt), instead
+// of wedging in collectAssistant waiting for the channel to close.
+type stuckProvider struct{}
+
+func (stuckProvider) Name() string                         { return "stuck" }
+func (stuckProvider) Capabilities() providers.Capabilities { return providers.Capabilities{} }
+func (stuckProvider) Stream(ctx context.Context, _ providers.Request) (<-chan providers.Event, error) {
+	return make(chan providers.Event), nil // never sends, never closes
+}
+
+func TestRun_CancelUnblocksStuckProvider(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		cancel()
+	}()
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := agent.Run(ctx, stuckProvider{}, nil, agent.LoopOptions{Model: "x"},
+			[]providers.Message{{Role: "user", Content: []providers.Block{{Kind: "text", Text: "hi"}}}})
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("Run err = %v, want context.Canceled", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Run did not return after ctx cancel: collectAssistant wedged on the stuck provider")
+	}
+}
