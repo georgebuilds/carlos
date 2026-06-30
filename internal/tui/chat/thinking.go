@@ -109,9 +109,30 @@ func (m *Model) maybeInterrupt(key string) bool {
 	if key != "esc" || m.interrupt == nil || !m.assistantBusy() {
 		return false
 	}
-	m.interrupt()
+	// Only claim the key (and show the status) when a turn was actually
+	// armed and cancelled. assistantBusy can be true a beat before the turn
+	// is interruptible (e.g. while the loop is still building history); in
+	// that window esc falls through rather than lying that it interrupted.
+	if !m.interrupt() {
+		return false
+	}
 	m.status = "interrupting current turn"
+	m.interrupting = true
 	return true
+}
+
+// clearInterruptStatusIfDone clears the transient "interrupting current turn"
+// status once the interrupted turn has sealed and the assistant is idle
+// again, so the footer doesn't keep showing it until the next keystroke. Only
+// clears the interrupt status it set, never a status another path owns.
+func (m *Model) clearInterruptStatusIfDone() {
+	if !m.interrupting || m.assistantBusy() {
+		return
+	}
+	m.interrupting = false
+	if m.status == "interrupting current turn" {
+		m.status = ""
+	}
 }
 
 // thinkingElapsed returns the wall-clock time since the most recent

@@ -866,11 +866,11 @@ func runDefault(cfg *config.Config, sessionID string) error {
 			// esc-to-interrupt: abort the current turn on the live Loop,
 			// read under loopMu so a /frame, /model, or agent swap still
 			// hits the loop that's actually running the turn.
-			chat.WithInterrupter(func() {
+			chat.WithInterrupter(func() bool {
 				loopMu.Lock()
 				l := liveLoop
 				loopMu.Unlock()
-				l.Interrupt()
+				return l.Interrupt()
 			}),
 			chat.WithSummarizer(summarizer),
 			chat.WithUserShell(shellMgr),
