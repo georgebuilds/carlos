@@ -157,7 +157,7 @@ func Run(ctx context.Context, p providers.Provider, reg *tools.Registry, opts Lo
 			return messages, fmt.Errorf("loop: stream iter %d: %w", iter, err)
 		}
 
-		assistant, stopReason, err := collectAssistant(stream, opts.TextSink, streamCancel)
+		assistant, stopReason, err := collectAssistant(streamCtx, stream, opts.TextSink, streamCancel)
 		if err != nil {
 			streamCancel()
 			return messages, fmt.Errorf("loop: iter %d: %w", iter, err)
@@ -326,7 +326,7 @@ func executeOneTool(ctx context.Context, reg *tools.Registry, approver Approver,
 // close(ch)` before we return, otherwise it wedges on the next send.
 // nil is accepted (tests + headless callers that don't plumb a per-
 // stream cancel); the drain still happens.
-func collectAssistant(stream <-chan providers.Event, textSink io.Writer, streamCancel context.CancelFunc) (providers.Message, string, error) {
+func collectAssistant(ctx context.Context, stream <-chan providers.Event, textSink io.Writer, streamCancel context.CancelFunc) (providers.Message, string, error) {
 	var blocks []providers.Block
 	var textBuf strings.Builder
 	var stopReason string
@@ -342,7 +342,27 @@ func collectAssistant(stream <-chan providers.Event, textSink io.Writer, streamC
 		textBuf.Reset()
 	}
 
-	for ev := range stream {
+	for {
+		var ev providers.Event
+		select {
+		case <-ctx.Done():
+			// The turn was cancelled (esc-interrupt or shutdown). Stop waiting
+			// on the provider immediately instead of relying on it to close the
+			// stream - a slow time-to-first-token, an idle keep-alive
+			// connection, or a provider that doesn't promptly react to ctx
+			// would otherwise wedge the whole agent loop here and defeat the
+			// interrupt. streamCancel unwinds the producer goroutine.
+			if streamCancel != nil {
+				streamCancel()
+			}
+			return providers.Message{}, "", ctx.Err()
+		case e, ok := <-stream:
+			if !ok {
+				flushText()
+				return providers.Message{Role: "assistant", Content: blocks}, stopReason, nil
+			}
+			ev = e
+		}
 		switch ev.Kind {
 		case providers.EventTextDelta:
 			// Scrub terminal control sequences before they hit the
@@ -406,8 +426,6 @@ func collectAssistant(stream <-chan providers.Event, textSink io.Writer, streamC
 			return providers.Message{}, "", err
 		}
 	}
-	flushText()
-	return providers.Message{Role: "assistant", Content: blocks}, stopReason, nil
 }
 
 // scrubControlChars strips C0/C1 terminal control bytes from s before
