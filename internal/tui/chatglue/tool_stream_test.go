@@ -19,7 +19,7 @@ func TestPersistToolCall_AppendsEvent(t *testing.T) {
 	log := openTestLog(t)
 	const id = "01HZ0000000000000000000001"
 	seedAgent(t, log, id)
-	l := &Loop{log: log, agentID: id, ctx: context.Background()}
+	l := &Loop{log: log, agentID: id, ctx: context.Background(), source: newMemSource()}
 
 	use := providers.Block{
 		Kind:      "tool_use",

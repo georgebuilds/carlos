@@ -38,6 +38,10 @@ import (
 type TextSource interface {
 	Append(agentID, delta string)
 	Reset(agentID string)
+	// Get returns the text buffered for agentID since the last Reset. Used to
+	// seal the current segment (the text streamed before a tool call, or the
+	// final/in-flight segment) as its own transcript entry.
+	Get(agentID string) string
 }
 
 // Config bundles the provider + model + tools + budget knobs chatglue
@@ -105,6 +109,13 @@ type Loop struct {
 	turnMu      sync.Mutex
 	turnCancel  context.CancelFunc
 	interrupted bool
+
+	// wroteText records whether any assistant text was persisted this turn
+	// (a mid-turn pre-tool segment or the final segment). Drives the
+	// "(no follow-up text after tools)" placeholder, which should fire only
+	// when the model ran tools and never said anything all turn. Loop-
+	// goroutine-only (set in the seal paths, reset at turn start), like l.ctx.
+	wroteText bool
 }
 
 // Interrupt aborts the in-flight turn, if any, without stopping the loop -
@@ -268,6 +279,7 @@ func (l *Loop) handleBackgroundCompletion(ctx context.Context, jobID string) {
 func (l *Loop) serveTurn(parentCtx context.Context, buildHistory func(context.Context) ([]providers.Message, error)) {
 	turnCtx, turnCancel := context.WithCancel(parentCtx)
 	l.ctx = turnCtx
+	l.wroteText = false
 	l.turnMu.Lock()
 	l.turnCancel = turnCancel
 	l.interrupted = false
@@ -351,7 +363,9 @@ func (l *Loop) runTurnBody(parentCtx, turnCtx context.Context, history []provide
 	// armed turn), so always seal the partial here. Gated on the parent still
 	// being live so a shutdown doesn't persist into a closing log.
 	if wasInterrupted && parentCtx.Err() == nil {
-		l.sealInterrupted(parentCtx, writer.String())
+		// Prior pre-tool segments were already sealed (sealPendingText); the
+		// live source holds only the in-flight final segment, so seal that.
+		l.sealInterrupted(parentCtx, l.source.Get(l.agentID))
 		return
 	}
 	if err != nil {
@@ -364,34 +378,42 @@ func (l *Loop) runTurnBody(parentCtx, turnCtx context.Context, history []provide
 		return
 	}
 
-	// agent.Run returns the FULL message slice (history + new turns),
-	// so we slice off everything we passed in. Otherwise every
-	// persisted assistant_message event ends up containing ALL prior
-	// assistant text concatenated, and every tool event from prior
-	// turns gets persisted again. Field repro: after a few turns,
-	// each rendered "🧢: …" entry grows by including every previous
-	// response, which reads as "Carlos's new reply appended to the
-	// old one without a cap" because the entry's lone cap is at the
-	// top of the (now multi-turn) text blob.
-	newMsgs := msgs
-	if len(history) <= len(msgs) {
-		newMsgs = msgs[len(history):]
+	// Persist the FINAL text segment: everything the model streamed after its
+	// last tool call. The pre-tool segments were already sealed mid-turn by
+	// sealPendingText (via the OnToolCall hook), so each one interleaves above
+	// its tools in the transcript. The live source holds only this final
+	// segment because each seal reset it.
+	final := strings.TrimSpace(l.source.Get(l.agentID))
+	if final != "" {
+		if err := l.persistAssistantTurn(parentCtx, final); err != nil {
+			l.surfaceError(parentCtx, fmt.Errorf("persist assistant turn: %w", err))
+		}
+		l.wroteText = true
 	}
-
-	full := finalAssistantText(newMsgs)
-	if full == "" && hadToolUse(newMsgs) {
-		// Some models (notably Gemini's tool-use flow) end a turn
-		// without a wrap-up message after the tool round-trip. The
-		// chat would otherwise show "tool ran" with no
-		// acknowledgement - looks like carlos hung. Surface a
-		// muted "no follow-up text" line so the user knows the turn
-		// is complete + the model just had nothing to add.
-		full = "(no follow-up text after tools)"
-	}
-	if err := l.persistAssistantTurn(parentCtx, full); err != nil {
-		l.surfaceError(parentCtx, fmt.Errorf("persist assistant turn: %w", err))
+	if !l.wroteText && hadToolUse(msgs) {
+		// The model ran tools and never said anything all turn (notably
+		// Gemini's tool-use flow). Surface a muted placeholder so the chat
+		// doesn't read as "tool ran, carlos hung".
+		_ = l.persistAssistantTurn(parentCtx, "(no follow-up text after tools)")
 	}
 	l.source.Reset(l.agentID)
+}
+
+// sealPendingText persists whatever assistant text has streamed since the last
+// seal as its own EvtAssistantMessage and clears the live buffer, so text the
+// model emitted before a tool call lands ABOVE that tool in the transcript
+// (interleaved) rather than being collected into one block at turn end. A
+// no-op when nothing has streamed (e.g. a second tool in the same batch, or a
+// tool-first iteration). Runs on the loop goroutine via the OnToolCall hook,
+// so it uses l.ctx like the other hooks.
+func (l *Loop) sealPendingText() {
+	text := strings.TrimSpace(l.source.Get(l.agentID))
+	if text == "" {
+		return
+	}
+	_ = l.persistAssistantTurn(l.ctx, text)
+	l.source.Reset(l.agentID)
+	l.wroteText = true
 }
 
 // interruptedNote is appended to a turn aborted via esc-to-interrupt so the
@@ -457,6 +479,11 @@ const ToolResultPreviewCap = agent.ToolResultPreviewCap
 // closes over it via the receiver instead of taking a ctx parameter
 // so the LoopOptions signature stays simple.
 func (l *Loop) persistToolCall(use providers.Block) {
+	// Seal any assistant text that streamed before this tool as its own
+	// transcript entry, so the model's pre-tool preamble renders ABOVE the
+	// tool (interleaved) instead of being collected into one block at turn
+	// end. No-op for a second tool in the same batch (source already reset).
+	l.sealPendingText()
 	// Marshal of {string, []byte} can't fail per encoding/json's
 	// type contract, so we treat the result as definitely-non-nil
 	// and drop the defensive error check. SQLite-side payload-not-
@@ -588,6 +615,19 @@ func (l *Loop) buildHistory(ctx context.Context) ([]providers.Message, error) {
 				Content: l.expandUserBlocks(p.Text, p.Attachments),
 			})
 			continue
+		}
+		// Merge consecutive assistant segments back into one turn. A single
+		// turn now persists one EvtAssistantMessage per iteration (so text
+		// interleaves with tools in the transcript), but the model must see
+		// them as ONE assistant message - providers like Anthropic reject
+		// consecutive same-role messages. Tools are already dropped above, so
+		// post-drop the segments of one turn are adjacent here.
+		if n := len(out); n > 0 && out[n-1].Role == "assistant" {
+			last := &out[n-1].Content
+			if k := len(*last); k > 0 && (*last)[k-1].Kind == "text" {
+				(*last)[k-1].Text += "\n\n" + p.Text
+				continue
+			}
 		}
 		out = append(out, providers.Message{
 			Role:    role,
@@ -804,33 +844,6 @@ func (l *Loop) surfaceError(ctx context.Context, err error) {
 	l.source.Reset(l.agentID)
 }
 
-// finalAssistantText concatenates the text blocks of EVERY assistant
-// message in msgs (across all agent.Run iterations within one turn).
-// Tool-use blocks are skipped; consecutive text blocks across
-// iterations are joined with "\n\n" so a multi-step response
-// ("let me check…" → bash → "here's what I found…") reads as a
-// single arc in the persisted transcript. Taking only the last
-// message would drop any preamble the model said before invoking a
-// tool, which is exactly the text the user just watched stream in.
-func finalAssistantText(msgs []providers.Message) string {
-	var parts []string
-	for _, msg := range msgs {
-		if msg.Role != "assistant" {
-			continue
-		}
-		var b strings.Builder
-		for _, blk := range msg.Content {
-			if blk.Kind == "text" {
-				b.WriteString(blk.Text)
-			}
-		}
-		if s := strings.TrimSpace(b.String()); s != "" {
-			parts = append(parts, s)
-		}
-	}
-	return strings.Join(parts, "\n\n")
-}
-
 // selectedToolSpecs builds the per-turn tool list: the full registry lifted
 // to specs, then narrowed by the optional ToolSelect (availability filter +
 // model-aware cap). Run with the live Model so a /model swap re-evaluates the
@@ -865,21 +878,12 @@ func buildToolSpecs(reg *tools.Registry) []providers.ToolSpec {
 type textSourceWriter struct {
 	source  TextSource
 	agentID string
-	// buf accumulates everything streamed this turn so an interrupted
-	// turn can be sealed with the exact text the user already saw (the
-	// returned msgs from agent.Run omit the in-flight assistant message
-	// on a cancel).
-	buf strings.Builder
 }
 
 func (w *textSourceWriter) Write(p []byte) (int, error) {
 	w.source.Append(w.agentID, string(p))
-	w.buf.Write(p)
 	return len(p), nil
 }
-
-// String returns the text streamed so far this turn.
-func (w *textSourceWriter) String() string { return w.buf.String() }
 
 // Compile-time check.
 var _ io.Writer = (*textSourceWriter)(nil)
